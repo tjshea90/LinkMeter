@@ -1,7 +1,6 @@
 package com.tj.linkmeter;
 
 import android.content.Context;
-import android.net.DhcpInfo;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Handler;
@@ -29,6 +28,7 @@ final class HomeTab extends Tab {
     private MeterView mCell;
     private MeterView mWifi;
     private TextView tStatus;
+    private TextView tDetail;
 
     private HandlerThread worker;
     private volatile Handler bg;
@@ -47,6 +47,9 @@ final class HomeTab extends Tab {
         JSONObject phone;
         String error = "";
         boolean justPaired;
+        boolean onWifi;
+        String host = "";
+        String how = "";
         long at;
     }
 
@@ -80,6 +83,8 @@ final class HomeTab extends Tab {
         col.addView(Ui.text(act, "LinkMeter", 22, Ui.FG, true));
         tStatus = Ui.text(act, "Starting…", 14, Ui.DIM, false);
         col.addView(tStatus, Ui.lp(act, 4));
+        tDetail = Ui.text(act, "", 11, Ui.DIM, false);
+        col.addView(tDetail, Ui.lp(act, 2));
 
         mBat = new MeterView(act);
         mCell = new MeterView(act);
@@ -142,69 +147,72 @@ final class HomeTab extends Tab {
     private Snap poll() {
         Snap s = new Snap();
         s.at = System.currentTimeMillis();
-        int gateway = 0;
+        // The tablet's own Wi-Fi strength. Shown whenever Android gives a real reading,
+        // even if it won't say which network it is (some tablets hide that).
         try {
             WifiManager wm = (WifiManager) act.getApplicationContext()
                     .getSystemService(Context.WIFI_SERVICE);
             WifiInfo wi = wm.getConnectionInfo();
-            if (wm.isWifiEnabled() && wi != null && wi.getNetworkId() != -1) {
-                s.wifiOk = true;
-                s.wRssi = wi.getRssi();
-                s.wLink = wi.getLinkSpeed();
-                s.wFreq = wi.getFrequency();
-                s.wLvl = WifiManager.calculateSignalLevel(s.wRssi, 5);
-            }
-            DhcpInfo d = wm.getDhcpInfo();
-            if (d != null) {
-                gateway = d.gateway;
+            if (wi != null) {
+                int rssi = wi.getRssi();
+                if (rssi > -127 && rssi < 0) {
+                    s.wifiOk = true;
+                    s.wRssi = rssi;
+                    s.wLink = wi.getLinkSpeed();
+                    s.wFreq = wi.getFrequency();
+                    s.wLvl = WifiManager.calculateSignalLevel(rssi, 5);
+                }
             }
         } catch (RuntimeException ignored) {
-            // Leave the Wi-Fi meter as "not connected".
+            // leave the strength meter on "not reported"
         }
+        s.onWifi = s.wifiOk || Net.wifi(act) != null;
 
-        String host = Cfg.host(act);
-        if (host.isEmpty() && gateway != 0) {
-            host = (gateway & 0xFF) + "." + ((gateway >> 8) & 0xFF) + "."
-                    + ((gateway >> 16) & 0xFF) + "." + ((gateway >> 24) & 0xFF);
-        }
+        // Try the phone whenever an address is known, whatever the checks above said.
+        String host = Net.phoneHost(act);
+        s.host = host;
+        s.how = Net.how;
 
-        if (!s.wifiOk) {
-            s.error = "Tablet isn't on Wi-Fi. Join the phone's hotspot.";
-        } else if (host.isEmpty()) {
-            s.error = "Can't find the phone's address. Type it in Settings.";
+        if (host.isEmpty()) {
+            s.error = s.onWifi
+                    ? "Can't find the phone's address. Type it in Settings."
+                    : "Tablet isn't on Wi-Fi. Join the phone's hotspot.";
         } else {
+            String at = " (" + host + ")";
             try {
                 String token = Cfg.token(act);
-                Client.Resp r = Client.call(host, "GET", "/s", token, 1500, 2500);
+                Client.Resp r = Client.call(host, "GET", "/s", token, 2500, 3500);
                 if (r.code == 401) {
-                    Client.Resp p = Client.call(host, "POST", "/pair", token, 1500, 2500);
+                    Client.Resp p = Client.call(host, "POST", "/pair", token, 2500, 3500);
                     if (p.code == 200) {
                         s.justPaired = true;
                         s.error = "Paired with the phone. Reading status…";
                     } else {
-                        s.error = "Not paired yet. On the phone open LinkMeter and tap "
-                                + "Pair tablet, then wait a moment.";
+                        s.error = "The phone is reachable but not pairing yet. On the phone tap "
+                                + "Pair tablet, then wait a few seconds.";
                     }
                 } else if (r.code == 200) {
                     s.phone = new JSONObject(r.body);
                 } else {
-                    s.error = "The phone replied with an error (" + r.code + ").";
+                    s.error = "The phone replied with an error (" + r.code + ")" + at + ".";
                 }
             } catch (SocketTimeoutException e) {
-                s.error = "The phone didn't answer. Is its hotspot on and LinkMeter running?";
+                s.error = "No answer from" + at + ". Is the phone's hotspot on and LinkMeter "
+                        + "running on the phone?";
             } catch (ConnectException e) {
-                s.error = "The phone refused. Open LinkMeter on the phone once to start it.";
+                s.error = "The phone" + at + " refused the connection. Open LinkMeter on the "
+                        + "phone and tap Start.";
             } catch (NoRouteToHostException e) {
-                s.error = "No route to the phone. Is the tablet on the phone's hotspot?";
+                s.error = "No route to" + at + ". Is the tablet on the phone's hotspot?";
             } catch (JSONException e) {
-                s.error = "Couldn't read the phone's reply.";
+                s.error = "Couldn't read the phone's reply" + at + ".";
             } catch (IOException e) {
                 String m = String.valueOf(e.getMessage());
                 if (m.contains("EPERM")) {
                     s.error = "Android blocked this app's network access. Open App info "
                             + "(Settings tab) and check permissions, or restart the tablet.";
                 } else {
-                    s.error = "Couldn't talk to the phone (" + m + ").";
+                    s.error = "Couldn't talk to the phone" + at + ": " + m;
                 }
             }
         }
@@ -236,10 +244,16 @@ final class HomeTab extends Tab {
             }
             mWifi.set("Tablet Wi-Fi to phone", Ui.quality(s.wLvl), sub.toString(),
                     s.wLvl, -1f, Ui.levelColor(s.wLvl));
+        } else if (s.onWifi) {
+            mWifi.set("Tablet Wi-Fi to phone", "Connected", "this tablet doesn't report the signal",
+                    -1, -1f, Ui.GREY);
         } else {
             mWifi.set("Tablet Wi-Fi to phone", "Not connected", "join the phone's hotspot",
                     -1, -1f, Ui.GREY);
         }
+        tDetail.setText(s.host.isEmpty() ? "No phone address found yet."
+                : "Phone address " + s.host + " (" + s.how + ")"
+                + (s.wifiOk ? " · tablet Wi-Fi " + s.wRssi + " dBm" : ""));
 
         if (lastPhone != null) {
             paintPhone(stale);

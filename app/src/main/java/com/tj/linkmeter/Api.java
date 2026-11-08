@@ -10,7 +10,18 @@ import org.json.JSONObject;
 
 /** Every request the service answers, on either device, comes through here. */
 final class Api {
+    /** For the phone screen: what has reached this device, so a pairing problem can be seen. */
+    static volatile int hits;
+    static volatile long lastAt;
+    static volatile String lastNote = "";
+
     private Api() {}
+
+    private static void note(Http.Req r, String result) {
+        hits++;
+        lastAt = System.currentTimeMillis();
+        lastNote = (r.peer != null ? r.peer.getHostAddress() : "?") + " " + r.path + ": " + result;
+    }
 
     static boolean authorized(Context c, String token) {
         if (token.length() != 32) {
@@ -34,9 +45,11 @@ final class Api {
             return;
         }
         if (!authorized(c, r.token)) {
+            note(r, "refused, this tablet is not paired");
             Http.err(out, 401, "not paired");
             return;
         }
+        note(r, "ok");
         if (phone && r.peer != null) {
             Cfg.setTablet(c, r.peer.getHostAddress(), r.token);
             Eco.touch(c, r.peer.isSiteLocalAddress());
@@ -185,9 +198,11 @@ final class Api {
         }
         boolean open = SystemClock.elapsedRealtime() < SenderService.pairUntil;
         if (!open || r.token.length() != 32) {
+            note(r, "pair refused, the Pair window is closed");
             Http.err(out, 403, "pairing is closed");
             return;
         }
+        note(r, "pair accepted");
         Cfg.addTrusted(c, r.token);
         if (r.peer != null) {
             Cfg.setTablet(c, r.peer.getHostAddress(), r.token);

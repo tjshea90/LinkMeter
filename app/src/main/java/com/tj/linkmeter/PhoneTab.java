@@ -12,7 +12,16 @@ final class PhoneTab extends Tab {
     private TextView state;
     private TextView priv;
     private TextView files;
+    private TextView seen;
     private Button toggle;
+
+    private final Runnable tick = new Runnable() {
+        @Override
+        public void run() {
+            refresh();
+            act.ui.postDelayed(this, 2000);
+        }
+    };
 
     PhoneTab(MainActivity a) {
         super(a);
@@ -36,6 +45,8 @@ final class PhoneTab extends Tab {
                 Ui.lp(act, 8));
         col.addView(Ui.text(act, "Pair once. After that the tablet connects by itself, "
                 + "with no numbers to type.", 13, Ui.DIM, false), Ui.lp(act, 4));
+        seen = Ui.text(act, "", 12, Ui.DIM, false);
+        col.addView(seen, Ui.lp(act, 8));
         col.addView(Ui.button(act, "Forget all tablets", v -> {
             Cfg.clearTrusted(act);
             Toast.makeText(act, "All tablets forgotten.", Toast.LENGTH_SHORT).show();
@@ -81,7 +92,13 @@ final class PhoneTab extends Tab {
 
     @Override
     void onShow() {
-        refresh();
+        act.ui.removeCallbacks(tick);
+        tick.run();
+    }
+
+    @Override
+    void onHide() {
+        act.ui.removeCallbacks(tick);
     }
 
     void refresh() {
@@ -92,6 +109,12 @@ final class PhoneTab extends Tab {
         state.setText(on ? "Ready. The tablet can connect." : "Stopped.");
         toggle.setText(on ? "Stop" : "Start");
         priv.setText(Priv.stateText(Priv.state()));
+        if (Api.hits == 0) {
+            seen.setText("Nothing has reached the phone yet from the tablet.");
+        } else {
+            seen.setText("Requests received: " + Api.hits + ". Last: " + Api.lastNote + " at "
+                    + java.text.DateFormat.getTimeInstance().format(new java.util.Date(Api.lastAt)));
+        }
         files.setText(Files.hasAccess(act) ? "All files access is allowed."
                 : "All files access is not allowed yet (needed for the Files tab).");
     }
