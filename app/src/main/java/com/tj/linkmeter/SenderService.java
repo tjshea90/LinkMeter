@@ -57,6 +57,7 @@ public class SenderService extends Service {
             t.start();
             if (Cfg.PHONE.equals(Cfg.mode(this))) {
                 Eco.onServiceStart(getApplicationContext());
+                Updater.cleanup(getApplicationContext());
             }
         }
         // Sticky: if Android ever stops it, it comes back by itself.

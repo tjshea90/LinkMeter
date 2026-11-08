@@ -76,6 +76,17 @@ final class Api {
                     Http.err(out, 404, "not a phone");
                 }
                 break;
+            case "/apk":
+                if (phone) {
+                    try {
+                        Updater.receive(c, r, out);
+                    } catch (IOException e) {
+                        Http.err(out, 500, String.valueOf(e.getMessage()));
+                    }
+                } else {
+                    Http.err(out, 404, "not a phone");
+                }
+                break;
             case "/cells":
             case "/band":
             case "/band/keep":

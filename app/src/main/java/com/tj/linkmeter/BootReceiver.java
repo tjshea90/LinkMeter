@@ -17,7 +17,9 @@ public class BootReceiver extends BroadcastReceiver {
             return;
         }
         String mode = Cfg.mode(c);
-        boolean start = (Cfg.PHONE.equals(mode) && Cfg.autoStart(c))
+        // After an update the phone side always restarts, so a tablet-driven update never leaves it off.
+        boolean updated = Intent.ACTION_MY_PACKAGE_REPLACED.equals(a);
+        boolean start = (Cfg.PHONE.equals(mode) && (updated || Cfg.autoStart(c)))
                 || (Cfg.TABLET.equals(mode) && Cfg.shareFiles(c));
         if (start) {
             try {

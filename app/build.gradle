@@ -6,12 +6,15 @@ android {
     namespace 'com.tj.linkmeter'
     compileSdk 34
 
+    // Every GitHub build gets a higher version code, so the tablet can tell the phone's copy is older.
+    def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
     defaultConfig {
         applicationId 'com.tj.linkmeter'
         minSdk 29          // tablet is Android 10 (API 29); phone is Android 16
         targetSdk 34       // stays below 35 so no forced edge-to-edge layout
-        versionCode 1
-        versionName '0.1.0'
+        versionCode runNumber
+        versionName "0.2.${runNumber}"
     }
 
     // A fixed key kept in the repo so every build is signed the same way and

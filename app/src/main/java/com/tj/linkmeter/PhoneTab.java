@@ -13,6 +13,7 @@ final class PhoneTab extends Tab {
     private TextView priv;
     private TextView files;
     private TextView seen;
+    private TextView version;
     private Button toggle;
 
     private final Runnable tick = new Runnable() {
@@ -86,7 +87,9 @@ final class PhoneTab extends Tab {
                 Ui.lp(act, 12));
         col.addView(Ui.text(act, "Tip: set this app to Unrestricted battery use so Android never "
                 + "stops it while the screen is off.", 13, Ui.DIM, false), Ui.lp(act, 4));
-        col.addView(Ui.button(act, "Switch role", v -> act.chooseRole("")), Ui.lp(act, 24));
+        version = Ui.text(act, "", 12, Ui.DIM, false);
+        col.addView(version, Ui.lp(act, 20));
+        col.addView(Ui.button(act, "Switch role", v -> act.chooseRole("")), Ui.lp(act, 12));
         return Ui.scroll(act, col);
     }
 
@@ -115,6 +118,9 @@ final class PhoneTab extends Tab {
             seen.setText("Requests received: " + Api.hits + ". Last: " + Api.lastNote + " at "
                     + java.text.DateFormat.getTimeInstance().format(new java.util.Date(Api.lastAt)));
         }
+        String last = Updater.lastResult(act);
+        version.setText("App version " + Updater.versionName(act) + " (code " + Updater.versionCode(act)
+                + ")" + (last.isEmpty() ? "" : ". Last update from the tablet: " + last));
         files.setText(Files.hasAccess(act) ? "All files access is allowed."
                 : "All files access is not allowed yet (needed for the Files tab).");
     }

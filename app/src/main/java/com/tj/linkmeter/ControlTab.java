@@ -9,6 +9,11 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * Remote controls for the phone. Nothing here polls: a request is sent only when
@@ -17,6 +22,9 @@ import android.widget.Toast;
 final class ControlTab extends Tab {
     private TextView status;
     private TextView result;
+    private TextView version;
+    private long phoneCode = -1;
+    private String phoneName = "";
 
     ControlTab(MainActivity a) {
         super(a);
@@ -66,6 +74,15 @@ final class ControlTab extends Tab {
                 Ui.button(act, "Prepare phone", v -> send("setup", "Preparing the phone", 40000)),
                 Ui.button(act, "Probe phone", v -> probe())));
 
+        col.addView(heading("App update"), Ui.lp(act, 18));
+        version = Ui.text(act, "", 12, Ui.DIM, false);
+        col.addView(version, Ui.lp(act, 4));
+        col.addView(Ui.button(act, "Update phone from this tablet", v -> updatePhone()), Ui.lp(act, 6));
+        col.addView(Ui.text(act, "Install the new version on this tablet first (open the downloaded "
+                + "file). This sends the tablet's copy to the phone, which installs it and restarts "
+                + "the app by itself. Needs Shizuku on the phone.", 12, Ui.DIM, false), Ui.lp(act, 4));
+        paintVersion();
+
         result = Ui.text(act, "", 12, Ui.FG, false);
         result.setTypeface(Typeface.MONOSPACE);
         result.setTextIsSelectable(true);
@@ -87,6 +104,9 @@ final class ControlTab extends Tab {
                 status.setTextColor(Ui.AMBER);
                 return;
             }
+            phoneCode = json.optLong("vc", -1);
+            phoneName = json.optString("vn", "");
+            paintVersion();
             int priv = json.optInt("priv", 0);
             String eco = json.optBoolean("eco", false) ? " Battery saver is on." : "";
             if (priv == Priv.READY) {
@@ -102,6 +122,63 @@ final class ControlTab extends Tab {
                 status.setTextColor(Ui.AMBER);
             }
         });
+    }
+
+    private String ownVersion() {
+        try {
+            android.content.pm.PackageInfo pi = act.getPackageManager().getPackageInfo(act.getPackageName(), 0);
+            return pi.versionName + " (code " + pi.getLongVersionCode() + ")";
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return "?";
+        }
+    }
+
+    private void paintVersion() {
+        if (version == null) {
+            return;
+        }
+        version.setText("Tablet app " + ownVersion() + "   ·   Phone app "
+                + (phoneCode >= 0 ? phoneName + " (code " + phoneCode + ")"
+                : "not read yet, or too old to update this way"));
+    }
+
+    /** Sends this tablet's installed copy of the app to the phone, which installs it over itself. */
+    private void updatePhone() {
+        show("Sending the app to the phone…", true);
+        new Thread(() -> {
+            boolean ok = false;
+            String text;
+            try {
+                String host = Net.phoneHost(act);
+                if (host.isEmpty()) {
+                    throw new IOException("The tablet is not on the phone's hotspot.");
+                }
+                File apk = new File(act.getApplicationInfo().sourceDir);
+                try (FileInputStream in = new FileInputStream(apk)) {
+                    Client.Resp r = Client.put(host, "/apk", Cfg.token(act), in, apk.length(), null);
+                    text = r.body;
+                    try {
+                        JSONObject j = new JSONObject(r.body);
+                        text = j.has("err") ? j.optString("err") : j.optString("out", r.body);
+                    } catch (JSONException plain) {
+                        // not JSON: show the text as it came
+                    }
+                    ok = r.code == 200;
+                }
+            } catch (IOException e) {
+                text = "Couldn't update the phone: " + e.getMessage();
+            }
+            final boolean fOk = ok;
+            final String fText = text;
+            act.ui.post(() -> {
+                show(fText, fOk);
+                if (fOk && fText.contains("installing")) {
+                    // The phone app restarts; look again once it is back.
+                    act.ui.postDelayed(this::onShow, 15000);
+                    act.ui.postDelayed(this::onShow, 30000);
+                }
+            });
+        }, "linkmeter-update").start();
     }
 
     private TextView heading(String s) {

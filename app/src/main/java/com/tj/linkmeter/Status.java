@@ -38,6 +38,8 @@ final class Status {
                     o.put("tmp", temp / 10.0);
                 }
             }
+            o.put("vc", Updater.versionCode(c));
+            o.put("vn", Updater.versionName(c));
             o.put("priv", Priv.state());
             o.put("eco", Eco.isOn(c));
             cell(c, o);
