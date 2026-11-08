@@ -87,6 +87,21 @@ signing key can update, and the package name is checked, so it cannot install ot
 from GITHUB_RUN_NUMBER (versionName 0.2.N), so every CI build is newer. First install of this version on both
 devices is manual; after that only the tablet needs a manual install. NOT yet tested on the devices.
 
+## Safety: getting the phone back if a change breaks mobile data
+
+The user asked for this explicitly (a band lock must never leave the phone unrecoverable). Layers:
+1. `Actions.restoreAll` = "Restore everything": clears the band lock, puts network types back to what they were
+   before LinkMeter first changed them (Saved.java; else the usual default 840583 = 2G/3G/4G + 5G), restores the
+   hotspot band, battery saver, turns airplane mode off and mobile data on. Every step is independent. Buttons: phone
+   Phone tab (top, works with no tablet and no internet), tablet Control tab and Bands tab, and a "Restore" action on
+   the phone's LinkMeter notification. "Restart modem" (`cmd phone restart-modem`) is the stronger second step.
+2. Band lock auto-reverts after 2 minutes unless the tablet taps "Keep the lock" (Cells.armRevert).
+3. `Guard` watches mobile data for 10 minutes after any band lock or 4G/5G change; if the active network is not
+   validated for 2 minutes in a row it runs `Actions.restoreRadio` and posts a notification.
+4. Without Shizuku (e.g. after a reboot) the dialogs and the Phone tab show the manual steps (`Actions.MANUAL`) and a
+   button opens the phone's mobile network settings. Network types persist across reboot; a band lock probably does not.
+NOT yet tested on the phone. First real test should be done with the phone in hand.
+
 ## Working in this sandbox (what is blocked)
 
 - No Android SDK: only GitHub Actions compiles. `tools/ci.sh "msg"` commits, pushes, waits and prints errors.
