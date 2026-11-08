@@ -56,6 +56,16 @@ final class Cells {
                 + "app_process /system/bin com.tj.linkmeter.ShellMain " + args;
     }
 
+    /**
+     * Like {@link #mainCommand} but the shell turns into the helper (exec), for long-running helpers
+     * that are stopped later with Process.destroy(). Not for Priv.run, which needs the shell to
+     * live on and print its exit code.
+     */
+    static String mainCommandExec(Context c, String args) {
+        return "export CLASSPATH=$(pm path " + c.getPackageName() + " | head -1 | cut -d: -f2); "
+                + "exec app_process /system/bin com.tj.linkmeter.ShellMain " + args;
+    }
+
     // ------------------------------------------------------------ survey
 
     static String survey() throws IOException {

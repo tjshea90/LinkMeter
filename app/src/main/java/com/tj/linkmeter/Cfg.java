@@ -134,7 +134,6 @@ final class Cfg {
         sp(c).edit().putBoolean("autostart", on).apply();
     }
 
-    /** Phone: switch on the battery-saving profile by itself when the tablet connects. */
     /** Tablet: screen view mode, 0 = video (fast), 1 = pictures (compatible). */
     static int screenMode(Context c) {
         return sp(c).getInt("scrMode", 0);
@@ -162,6 +161,7 @@ final class Cfg {
         sp(c).edit().putBoolean("screenCtl", on).apply();
     }
 
+    /** Phone: switch on the battery-saving profile by itself when the tablet connects. */
     static boolean ecoAuto(Context c) {
         return sp(c).getBoolean("ecoAuto", true);
     }

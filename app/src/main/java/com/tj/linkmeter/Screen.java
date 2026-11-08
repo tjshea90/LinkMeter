@@ -17,6 +17,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -200,7 +202,7 @@ final class Screen {
             injector = null;
         }
         try {
-            final Process p = Priv.spawn(Cells.mainCommand(c, "inject") + " 2>&1");
+            final Process p = Priv.spawn(Cells.mainCommandExec(c, "inject") + " 2>&1");
             final String[] first = new String[1];
             Thread t = new Thread(() -> {
                 try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
@@ -232,29 +234,77 @@ final class Screen {
     }
 
     private static synchronized void inject(String line) throws IOException {
+        if (injectorIn == null) {
+            throw new IOException("the touch helper has stopped");
+        }
         injectorIn.write((line + "\n").getBytes(StandardCharsets.US_ASCII));
         injectorIn.flush();
     }
 
+    /** Open touch connections. The helper runs only while at least one is open. Guarded by Screen.class. */
+    private static int ctlUsers;
+
+    /** Starts the helper if needed and counts this connection, in one step so a closing one cannot stop it. */
+    private static synchronized boolean ctlOpen(Context c) {
+        if (!injectorReady(c)) {
+            return false;
+        }
+        ctlUsers++;
+        return true;
+    }
+
+    /** The last touch connection closing stops the helper, so nothing idles on the phone between uses. */
+    private static synchronized void ctlClose() {
+        if (--ctlUsers <= 0) {
+            ctlUsers = 0;
+            if (injector != null) {
+                injector.destroy();
+                injector = null;
+                injectorIn = null;
+            }
+        }
+    }
+
     /** A long connection: the tablet sends touch lines, the phone injects them at once. */
     private static void ctl(Context c, Http.Req r, OutputStream out) throws IOException {
-        if (!injectorReady(c)) {
+        if (!ctlOpen(c)) {
             Http.err(out, 409, "The phone's touch helper did not start: " + injectorErr);
             return;
         }
-        r.sock.setSoTimeout(10 * 60 * 1000);
-        Http.headOpen(out, "text/plain", "");
-        out.flush();
-        BufferedReader br = new BufferedReader(new InputStreamReader(r.body, StandardCharsets.US_ASCII));
-        String line;
-        while ((line = br.readLine()) != null) {
-            if (!CTL.matcher(line).matches()) {
-                continue;
+        boolean down = false; // a finger is held down (no "up" seen yet)
+        int lx = 0;
+        int ly = 0;
+        try {
+            r.sock.setSoTimeout(10 * 60 * 1000);
+            Http.headOpen(out, "text/plain", "");
+            out.flush();
+            BufferedReader br = new BufferedReader(new InputStreamReader(r.body, StandardCharsets.US_ASCII));
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (!CTL.matcher(line).matches()) {
+                    continue;
+                }
+                if (line.startsWith("k ") && !allowedKey(Integer.parseInt(line.substring(2)))) {
+                    continue;
+                }
+                inject(line);
+                if (line.charAt(0) != 'k') {
+                    String[] q = line.split(" ");
+                    lx = Integer.parseInt(q[1]);
+                    ly = Integer.parseInt(q[2]);
+                    down = line.charAt(0) != 'u';
+                }
             }
-            if (line.startsWith("k ") && !allowedKey(Integer.parseInt(line.substring(2)))) {
-                continue;
+        } finally {
+            if (down) {
+                // The tablet went away mid-touch: lift the finger so the phone is not left holding a press.
+                try {
+                    inject("u " + lx + " " + ly);
+                } catch (IOException ignored) {
+                    // the helper is gone anyway
+                }
             }
-            inject(line);
+            ctlClose();
         }
     }
 
@@ -271,10 +321,14 @@ final class Screen {
         return new int[] {p.x, p.y};
     }
 
+    /** Where screenrecord's own error text goes, so the tablet can be told why video would not start. */
+    private static final String SR_ERR = "/data/local/tmp/linkmeter-screenrecord.err";
+
     /**
      * H.264 video of the screen, made by the phone's own screenrecord tool (hardware encoder).
      * The stream is cut into whole frames and sent as [4-byte length][frame] so the tablet's
-     * decoder never gets half a frame. screenrecord stops after 3 minutes, so it is restarted.
+     * decoder never gets half a frame. A negative length means "the next -length bytes are a
+     * message" (why video could not start). screenrecord stops after 3 minutes, so it is restarted.
      */
     private static void video(Context c, Http.Req r, OutputStream out, PowerManager pm) throws IOException {
         r.sock.setSoTimeout(0);
@@ -292,13 +346,38 @@ final class Screen {
         byte[] buf = new byte[64 * 1024];
         ByteArrayOutputStream acc = new ByteArrayOutputStream(128 * 1024);
         int failures = 0;
+        // The tablet sends nothing after its request, so a read that ends means it has gone away.
+        // Without this watcher screenrecord would keep running on a still screen (it only writes when
+        // the picture changes, so the write that would notice the closed connection never comes).
+        final AtomicBoolean gone = new AtomicBoolean();
+        final AtomicReference<Process> cur = new AtomicReference<>();
+        Thread watch = new Thread(() -> {
+            try {
+                while (r.body.read() >= 0) {
+                    // ignore anything the tablet might send
+                }
+            } catch (IOException ignored) {
+                // the connection was closed
+            }
+            gone.set(true);
+            Process q = cur.get();
+            if (q != null) {
+                q.destroy();
+            }
+        }, "linkmeter-video-watch");
+        watch.setDaemon(true);
+        watch.start();
         try {
-            while (true) {
+            while (!gone.get()) {
                 long started = SystemClock.elapsedRealtime();
                 long bytes = 0;
                 Process p = Priv.spawn("exec screenrecord --output-format=h264 --size " + tw + "x" + th
-                        + " --bit-rate " + br + " - 2>/dev/null");
+                        + " --bit-rate " + br + " - 2>" + SR_ERR);
+                cur.set(p);
                 try {
+                    if (gone.get()) {
+                        break;
+                    }
                     InputStream in = p.getInputStream();
                     int n;
                     while ((n = in.read(buf)) >= 0) {
@@ -317,10 +396,15 @@ final class Screen {
                         sendPacket(dout, acc);
                     }
                 } finally {
+                    cur.set(null);
                     p.destroy();
+                }
+                if (gone.get()) {
+                    break;
                 }
                 if (bytes == 0 && SystemClock.elapsedRealtime() - started < 2500) {
                     if (++failures >= 2) {
+                        sendError(dout, screenrecordError());
                         return; // screenrecord does not run here; the tablet falls back to pictures
                     }
                 } else {
@@ -340,10 +424,31 @@ final class Screen {
         dout.flush();
     }
 
+    /** A negative length tells the tablet that the next bytes are a message, not video. */
+    private static void sendError(DataOutputStream dout, String text) throws IOException {
+        byte[] b = text.getBytes(StandardCharsets.UTF_8);
+        int n = Math.min(b.length, 1000);
+        dout.writeInt(-n);
+        dout.write(b, 0, n);
+        dout.flush();
+    }
+
+    /** What screenrecord itself said when it would not run. */
+    private static String screenrecordError() {
+        try {
+            String t = Priv.run("head -c 300 " + SR_ERR, 5).out.trim();
+            return t.isEmpty() ? "screenrecord produced no video" : "screenrecord said: " + t;
+        } catch (IOException e) {
+            return "screenrecord produced no video";
+        }
+    }
+
     // ------------------------------------------------------------ pictures
 
     private static Bitmap full;
     private static byte[] raw;
+    /** Guards the two buffers above. Separate from the class lock so touch events never wait for a picture. */
+    private static final Object FRAME_LOCK = new Object();
 
     /** The screen as raw pixels straight from screencap: no PNG, no file, no decode. */
     private static Bitmap rawCapture() throws IOException {
@@ -378,7 +483,14 @@ final class Screen {
     }
 
     /** One screenshot as a small JPEG. The real size goes in the X-Size header for the tablet's taps. */
-    private static synchronized void frame(Context c, Http.Req r, OutputStream out, PowerManager pm)
+    private static void frame(Context c, Http.Req r, OutputStream out, PowerManager pm)
+            throws IOException {
+        synchronized (FRAME_LOCK) {
+            frameLocked(c, r, out, pm);
+        }
+    }
+
+    private static void frameLocked(Context c, Http.Req r, OutputStream out, PowerManager pm)
             throws IOException {
         if (!pm.isInteractive()) {
             Http.json(out, 200, "{\"off\":true}");

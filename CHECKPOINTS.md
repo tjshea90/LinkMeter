@@ -26,3 +26,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T04:43:28Z remote screen control tab (view, tap, swipe, PIN, wake/sleep) and experimental Start Shizuku from the tablet over network adb
 - 2026-11-08T04:59:51Z screen: live H.264 video with hardware decode, live touch channel, quality presets, full screen, faster pictures
 - 2026-11-08T05:15:33Z route /screen/video and /screen/ctl (live video and touch were answering 404); CI compile-checks ccr-* branches; checkpoint script retries pushes and warns about a stale HANDOFF
+- 2026-11-08T05:19:36Z remote control hardening: stop screenrecord when the tablet leaves, lift a held finger if touch drops, touch helper only while in use, pictures no longer block touch, reason shown when video fails, fps/kbit stats, keepalive

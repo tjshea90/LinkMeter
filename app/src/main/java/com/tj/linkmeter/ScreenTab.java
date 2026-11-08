@@ -69,6 +69,9 @@ final class ScreenTab extends Tab {
     private boolean gotFrame;
     private CtlChannel ctl;
     private boolean ctlTrying;
+    private long ctlFailedAt;
+    /** The finger that is down right now is being sent over the live channel. */
+    private boolean gestureOnCtl;
     private int fbX;
     private int fbY;
     private long fbT;
@@ -296,6 +299,7 @@ final class ScreenTab extends Tab {
         stopStreams();
         CtlChannel c = ctl;
         ctl = null;
+        gestureOnCtl = false;
         if (c != null) {
             c.close();
         }
@@ -370,6 +374,16 @@ final class ScreenTab extends Tab {
                         gotFrame = true;
                         note.setVisibility(View.GONE);
                         status.setText("Live video, " + QUAL[quality].toLowerCase() + ". Drag on the picture to control the phone.");
+                    }
+                });
+            }
+
+            @Override
+            public void onStats(final int fps, final int kbps) {
+                act.ui.post(() -> {
+                    if (gen == videoGen && gotFrame && status != null) {
+                        status.setText("Live video, " + QUAL[quality].toLowerCase() + " \u00b7 " + fps + " fps \u00b7 "
+                                + kbps + " kbit/s. Drag on the picture to control the phone.");
                     }
                 });
             }
@@ -548,6 +562,9 @@ final class ScreenTab extends Tab {
         if ((ctl != null && !ctl.isDead()) || ctlTrying) {
             return;
         }
+        if (SystemClock.elapsedRealtime() - ctlFailedAt < 5000) {
+            return; // it just failed: don't hammer a phone whose touch helper will not start
+        }
         final String host = Net.phoneHost(act);
         if (host.isEmpty()) {
             return;
@@ -571,9 +588,16 @@ final class ScreenTab extends Tab {
                     }
                     return;
                 }
+                CtlChannel old = ctl;
                 ctl = fc;
-                if (fc == null && status != null) {
-                    status.setText("Touch is in slower mode (" + fe + ")");
+                if (old != null && old != fc) {
+                    old.close(); // the dead one this replaces
+                }
+                if (fc == null) {
+                    ctlFailedAt = SystemClock.elapsedRealtime();
+                    if (status != null) {
+                        status.setText("Touch is in slower mode (" + fe + ")");
+                    }
                 }
             });
         }, "linkmeter-ctl").start();
@@ -581,28 +605,42 @@ final class ScreenTab extends Tab {
 
     /** One touch event, in the phone's pixels. action: 0 down, 1 move, 2 up. */
     private void touch(int action, int x, int y) {
-        CtlChannel c = ctl;
-        if (c != null && !c.isDead()) {
-            c.send((action == 0 ? "d " : (action == 1 ? "m " : "u ")) + x + " " + y);
-            return;
-        }
-        // No live channel: send a finished tap, long press or swipe when the finger lifts.
         if (action == 0) {
             fbX = x;
             fbY = y;
             fbT = SystemClock.elapsedRealtime();
-        } else if (action == 2) {
-            long dt = SystemClock.elapsedRealtime() - fbT;
-            if (Math.hypot(x - fbX, y - fbY) < 24) {
-                if (dt > 500) {
-                    post("/screen/swipe?x1=" + x + "&y1=" + y + "&x2=" + x + "&y2=" + y + "&ms=" + Math.min(dt, 2500));
-                } else {
-                    post("/screen/tap?x=" + x + "&y=" + y);
-                }
-            } else {
-                post("/screen/swipe?x1=" + fbX + "&y1=" + fbY + "&x2=" + x + "&y2=" + y + "&ms="
-                        + Math.max(80, Math.min(dt, 1200)));
+            CtlChannel c = ctl;
+            gestureOnCtl = c != null && !c.isDead();
+            if (!gestureOnCtl && shown) {
+                connectCtl(); // the live channel is gone or never started: try again for the next gesture
             }
+        }
+        if (gestureOnCtl) {
+            // A gesture stays on the channel it started on. If the channel dies half way, the phone
+            // lifts the finger itself; nothing is replayed here (a replay would tap at old positions).
+            CtlChannel c = ctl;
+            if (c != null && !c.isDead()) {
+                c.send((action == 0 ? "d " : (action == 1 ? "m " : "u ")) + x + " " + y);
+            }
+            if (action == 2) {
+                gestureOnCtl = false;
+            }
+            return;
+        }
+        if (action != 2) {
+            return;
+        }
+        // No live channel: send one finished tap, long press or swipe when the finger lifts.
+        long dt = SystemClock.elapsedRealtime() - fbT;
+        if (Math.hypot(x - fbX, y - fbY) < 24) {
+            if (dt > 500) {
+                post("/screen/swipe?x1=" + x + "&y1=" + y + "&x2=" + x + "&y2=" + y + "&ms=" + Math.min(dt, 2500));
+            } else {
+                post("/screen/tap?x=" + x + "&y=" + y);
+            }
+        } else {
+            post("/screen/swipe?x1=" + fbX + "&y1=" + fbY + "&x2=" + x + "&y2=" + y + "&ms="
+                    + Math.max(80, Math.min(dt, 1200)));
         }
     }
 
