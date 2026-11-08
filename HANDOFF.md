@@ -8,6 +8,24 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
+**2026-11-08 (later), IN PROGRESS: the user's field report on v0.2.47** (screenshot: blocks of old and new screen mixed
+while a page loaded; and the TABLET dims after a short idle). Diagnosis and plan, so a cold resume can carry on:
+- Garbled picture = wrong reference picture in the decoder until the next keyframe (screenrecord sends one only every 10 s).
+  Cause: `Screen.video` (phone) cut `screenrecord`'s raw byte stream into "frames" with a 3 ms "pipe went quiet" guess, and
+  `VideoStream.loop` (tablet) fed every packet to the decoder as one picture. Under load (the Shizuku process that relays the
+  stream adds gaps too) a big picture arrives in two pieces or two pictures arrive as one; `hasPicture` also held headless
+  fragments as "parameter sets". Too-big pictures were silently dropped as well.
+- Fix (in this order, tick them off in `CHECKPOINTS.md`): (1) NEW `AnnexBFramer` on the tablet cuts the stream into whole
+  pictures by NAL type and `first_mb_in_slice`, trusts the phone's packet end only as "the stream went quiet here", and reports
+  damage (a continuation that does not start with a start code, a slice without its picture start); tested offline against
+  ffprobe's picture boundaries (`tools/test/test_framer.py`). (2) `VideoStream` uses it; on damage the tab shows a sharp still
+  and reconnects at once for a fresh keyframe (`Events.onDamaged`); a decoder failure ends the stream at once, an oversize
+  picture is reported instead of dropped. (3) Phone: wait 12 ms of quiet after a big picture (3 ms after a small one).
+  (4) Tablet keeps its own screen on and bright while the Screen tab is shown (`MainActivity.setHoldAwake`, Options switch
+  `ScreenPrefs.tabletAwake`, default on). (5) HANDOFF + field test + release.
+- The real cure for all framing and keyframe problems is the own-encoder "Engine 2" (see "Remote screen control").
+
+
 **2026-11-08, "Faster remote control update", last part**: everything described below is MERGED into `main` (the user said
 "Merge it"), and from now on builds are NUMBERED RELEASES that merge and publish themselves.
 

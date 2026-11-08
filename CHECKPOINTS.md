@@ -44,3 +44,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T16:21:14Z handoff and CLAUDE.md describe numbered releases and the automatic merge; unused screen settings removed from Cfg
 - 2026-11-08T16:27:25Z Information box shows the app version on the tablet and on the phone (the phone sends vn in /screen/state), so a phone left on an older build is obvious in bug reports
 - 2026-11-08T16:30:03Z handoff: the automatic merge and numbered release were checked on GitHub (v0.2.46 by hand merge, v0.2.47 fully automatic); next step is the device field test
+- 2026-11-08T16:57:15Z handoff: diagnosis and plan for the garbled-video and tablet-dimming reports (work in progress)
