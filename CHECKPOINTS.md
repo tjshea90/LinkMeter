@@ -14,3 +14,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T01:28:44Z 4G toggle reads and writes the word form this phone uses; cell scan uses the serving channel; record probe results
 - 2026-11-08T01:39:53Z ShellMain: set up the telephony service wrapper first (fixes NullPointerException); show API route errors in 4G result
 - 2026-11-08T01:46:33Z speed test: use the active mobile network, fall back to the default network, name the failing stage
+- 2026-11-08T01:53:44Z speed test: small upload send buffer and two streams so upload shows the real speed, not buffer fill

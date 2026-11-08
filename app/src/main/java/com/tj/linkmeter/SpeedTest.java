@@ -9,10 +9,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLSocketFactory;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -159,13 +163,78 @@ final class SpeedTest {
         return null;
     }
 
-    private static HttpURLConnection open(Network net, String url) throws IOException {
+    private static HttpURLConnection open(Network net, String url, boolean smallBuffers)
+            throws IOException {
         URL u = new URL(url);
         HttpURLConnection h = (HttpURLConnection) (net != null ? net.openConnection(u) : u.openConnection());
         h.setUseCaches(false);
         h.setConnectTimeout(5000);
         h.setReadTimeout(10000);
+        if (smallBuffers && h instanceof HttpsURLConnection) {
+            ((HttpsURLConnection) h).setSSLSocketFactory(
+                    new SmallBufferFactory((SSLSocketFactory) SSLSocketFactory.getDefault()));
+        }
         return h;
+    }
+
+    /**
+     * Gives upload sockets a small send buffer. With the default (several megabytes) the first
+     * seconds of an upload only fill that buffer, which looks like a fast start and then a crash
+     * to almost zero, and the oversized queue can also stall a weak uplink. With a small buffer a
+     * write blocks until the data has really gone out, so the numbers are the real speed.
+     */
+    private static final class SmallBufferFactory extends SSLSocketFactory {
+        private final SSLSocketFactory d;
+
+        SmallBufferFactory(SSLSocketFactory delegate) {
+            d = delegate;
+        }
+
+        private static Socket tune(Socket s) {
+            try {
+                s.setSendBufferSize(64 * 1024);
+            } catch (IOException ignored) {
+                // keep the default buffer
+            }
+            return s;
+        }
+
+        @Override
+        public String[] getDefaultCipherSuites() {
+            return d.getDefaultCipherSuites();
+        }
+
+        @Override
+        public String[] getSupportedCipherSuites() {
+            return d.getSupportedCipherSuites();
+        }
+
+        @Override
+        public Socket createSocket(Socket s, String host, int port, boolean autoClose) throws IOException {
+            return tune(d.createSocket(s, host, port, autoClose));
+        }
+
+        @Override
+        public Socket createSocket(String host, int port) throws IOException {
+            return tune(d.createSocket(host, port));
+        }
+
+        @Override
+        public Socket createSocket(String host, int port, InetAddress local, int localPort)
+                throws IOException {
+            return tune(d.createSocket(host, port, local, localPort));
+        }
+
+        @Override
+        public Socket createSocket(InetAddress host, int port) throws IOException {
+            return tune(d.createSocket(host, port));
+        }
+
+        @Override
+        public Socket createSocket(InetAddress address, int port, InetAddress local, int localPort)
+                throws IOException {
+            return tune(d.createSocket(address, port, local, localPort));
+        }
     }
 
     /** Lowest round trip over several tiny requests on one kept-open connection. */
@@ -174,7 +243,7 @@ final class SpeedTest {
         byte[] buf = new byte[512];
         for (int i = 0; i < 6 && !cancel; i++) {
             long t0 = SystemClock.elapsedRealtimeNanos();
-            HttpURLConnection h = open(net, BASE + "__down?bytes=0");
+            HttpURLConnection h = open(net, BASE + "__down?bytes=0", false);
             int code = h.getResponseCode();
             if (code != 200) {
                 h.disconnect();
@@ -196,7 +265,7 @@ final class SpeedTest {
     private static double transfer(final Network net, final boolean down) throws IOException {
         phase = down ? DOWN : UP;
         BYTES.set(0);
-        final int n = down ? 4 : 3;
+        final int n = down ? 4 : 2;
         final long t0 = SystemClock.elapsedRealtime();
         final long end = t0 + PHASE_MS;
         final String[] fail = new String[1];
@@ -274,7 +343,7 @@ final class SpeedTest {
     private static void pumpDown(Network net, long end) throws IOException {
         byte[] buf = new byte[64 * 1024];
         while (!over(end)) {
-            HttpURLConnection h = open(net, BASE + "__down?bytes=26214400");
+            HttpURLConnection h = open(net, BASE + "__down?bytes=26214400", false);
             try {
                 int code = h.getResponseCode();
                 if (code != 200) {
@@ -299,7 +368,7 @@ final class SpeedTest {
         new Random().nextBytes(buf);
         final int total = 8 * 1024 * 1024;
         while (!over(end)) {
-            HttpURLConnection h = open(net, BASE + "__up");
+            HttpURLConnection h = open(net, BASE + "__up", true);
             try {
                 h.setDoOutput(true);
                 h.setRequestMethod("POST");
