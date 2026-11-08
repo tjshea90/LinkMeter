@@ -2,9 +2,11 @@ name: build-apk
 
 # Every push to main builds the APK and publishes it as the "latest" release,
 # so it can be downloaded straight onto the phone or the tablet.
+# Pushes to Claude session branches (ccr-*) only compile-check the code and attach the APK to
+# the run as an artifact; they never touch the "latest" release.
 on:
   push:
-    branches: [main]
+    branches: [main, 'ccr-*']
   workflow_dispatch:
 
 permissions:
@@ -35,6 +37,7 @@ jobs:
         run: ./gradlew --no-daemon assembleRelease
 
       - name: Publish to the latest release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

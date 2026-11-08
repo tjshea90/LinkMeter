@@ -4,6 +4,19 @@ A new session should be able to resume from this file alone. After every meaning
 step run `tools/ci.sh "what changed"`: it logs a checkpoint, commits, pushes, waits for the
 GitHub build and prints the compile errors if it fails. A session can be cut off at any time.
 
+## RESUME HERE (newest session first)
+
+**2026-11-08, session "Faster remote control update"** (branch `ccr-ae02e85b-7bro73`)
+- The previous session (`...ZxcnuAwP2jZg1uh8Gh`) was cut off by "Prompt is too long" right after its build passed, before
+  it updated this file or told the user anything. Nothing was lost: its work is commit `14b3e12` on `main`, built green and
+  published as `latest` (live H.264 screen video, live touch channel, quality presets, full screen, faster pictures).
+- **Bug found by reading the code (CI cannot see it): `Api.handle` never routed `/screen/video` and `/screen/ctl`**, so in
+  `14b3e12` both answered 404, the tablet silently fell back to Pictures and slow one-process-per-tap input. Fixed in
+  `Api.java` on the branch. The published `latest` APK still has the bug until the branch is merged to `main`.
+- Cloud sessions are told to stay on their designated `ccr-*` branch. CI now compile-checks pushes to `ccr-*` branches
+  (APK only as a run artifact) and publishes `latest` only from `main`. Ask the user before merging to `main`.
+- Details of this session's work are in the sections below and in `CHECKPOINTS.md`.
+
 ## What it is
 
 One Android app (`com.tj.linkmeter`, pure Java, no UI libraries) installed on two devices.

@@ -6,6 +6,7 @@
 set -u
 cd "$(dirname "$0")/.."
 msg="${1:-checkpoint}"
+tools/handoff-check.sh || true
 echo "- $(date -u +%Y-%m-%dT%H:%M:%SZ) $msg" >> CHECKPOINTS.md
 git add -A
 if [ -n "${COMMIT_TRAILER:-}" ]; then

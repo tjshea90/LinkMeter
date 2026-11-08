@@ -78,6 +78,8 @@ final class Api {
                 break;
             case "/screen/state":
             case "/screen/frame":
+            case "/screen/video":
+            case "/screen/ctl":
             case "/screen/tap":
             case "/screen/swipe":
             case "/screen/key":
