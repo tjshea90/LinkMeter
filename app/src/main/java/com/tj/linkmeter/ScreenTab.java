@@ -27,6 +27,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -97,12 +100,14 @@ final class ScreenTab extends Tab {
 
     // video
     private VideoStream video;
-    private int videoGen;
+    private volatile int videoGen;
     private boolean gotFrame;
     private volatile int fed;
     private volatile long lastPacketAt;
     private volatile int packetSeq;
     private volatile boolean stillVisible;
+    private volatile long stillHideAt;
+    private volatile int stillShownSeq;
     private int stillSeq = -1;
     private boolean stillBusy;
 
@@ -563,13 +568,53 @@ final class ScreenTab extends Tab {
         }
     };
 
+    /**
+     * The calls that start and end the phone's power options go through one queue, in order: leaving the
+     * tab and coming straight back must not let "end" overtake "begin" and switch the dimming off again.
+     */
+    private static final ThreadPoolExecutor PROFILE_QUEUE =
+            new ThreadPoolExecutor(0, 1, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>());
+
+    private interface ProfileDone {
+        void done(boolean ok, String text);
+    }
+
+    private void profileCall(final String method, final String target, final ProfileDone d) {
+        final String host = Net.phoneHost(act);
+        final String token = Cfg.token(act);
+        PROFILE_QUEUE.execute(() -> {
+            boolean ok = false;
+            String text;
+            if (host.isEmpty()) {
+                text = "The tablet is not on the phone's hotspot.";
+            } else {
+                try {
+                    Client.Resp r = Client.call(host, method, target, token, 2500, 30000);
+                    text = r.body;
+                    try {
+                        JSONObject j = new JSONObject(r.body);
+                        text = j.has("err") ? j.optString("err") : j.optString("out", r.body);
+                        ok = r.code == 200 && !j.has("err");
+                    } catch (JSONException plain) {
+                        // not JSON: show it as it came
+                    }
+                } catch (IOException e) {
+                    text = "Couldn't reach the phone: " + e.getMessage();
+                }
+            }
+            final boolean fOk = ok;
+            final String fText = text;
+            act.ui.post(() -> d.done(fOk, fText));
+        });
+    }
+
     /** Asks the phone to keep its screen on a while and dim it, as set in Settings. */
     private void beginProfile() {
         if (prefs.keepIndex() == 0 && prefs.dimIndex() == ScreenPrefs.DIM_NAMES.length - 1) {
             profileText = "Not changing the phone's screen settings (turned off in Settings).";
             return;
         }
-        Call.run(act, "POST", "/screen/profile?" + prefs.profileQuery(), 30000, (ok, text, json) -> {
+        profileCall("POST", "/screen/profile?" + prefs.profileQuery(), (ok, text) -> {
             profileText = ok ? text : "Couldn't change the phone's screen settings: " + text;
             if (advanced != null) {
                 advanced.setPhoneText(profileText);
@@ -579,7 +624,7 @@ final class ScreenTab extends Tab {
 
     /** Asks the phone to put its screen settings back. */
     private void endProfile(final boolean show) {
-        Call.run(act, "POST", "/screen/profile?end=1", 30000, (ok, text, json) -> {
+        profileCall("POST", "/screen/profile?end=1", (ok, text) -> {
             profileText = ok ? text : "Couldn't put the phone's screen settings back: " + text;
             if (show) {
                 Toast.makeText(act, profileText, Toast.LENGTH_LONG).show();
@@ -633,12 +678,23 @@ final class ScreenTab extends Tab {
 
                     @Override
                     public void onPacket() {
+                        if (gen != videoGen) {
+                            return; // a stream that has already been replaced
+                        }
                         fed++;
-                        lastPacketAt = SystemClock.elapsedRealtime();
+                        long now = SystemClock.elapsedRealtime();
+                        lastPacketAt = now;
                         packetSeq++;
                         if (stillVisible) {
-                            stillVisible = false;
-                            act.ui.post(() -> hideStill());
+                            // The screen is moving again. Keep the sharp picture up for a moment so the video has
+                            // caught up before it takes over, instead of flashing back to its older, blurrier frame.
+                            if (stillHideAt == 0) {
+                                stillHideAt = now + 120;
+                            }
+                            if (now >= stillHideAt || packetSeq - stillShownSeq >= 4) {
+                                stillVisible = false;
+                                act.ui.post(() -> hideStill());
+                            }
                         }
                     }
 
@@ -771,6 +827,7 @@ final class ScreenTab extends Tab {
 
     private void hideStill() {
         stillVisible = false;
+        stillHideAt = 0;
         if (still != null) {
             still.setVisibility(View.GONE);
         }
@@ -799,6 +856,8 @@ final class ScreenTab extends Tab {
                 }
                 still.setFrame(f.bmp, f.w, f.h);
                 still.setVisibility(View.VISIBLE);
+                stillHideAt = 0;
+                stillShownSeq = packetSeq;
                 stillVisible = true;
             });
         }, "linkmeter-still").start();
