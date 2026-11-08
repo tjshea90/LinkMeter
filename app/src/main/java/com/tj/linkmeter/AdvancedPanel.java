@@ -65,6 +65,11 @@ final class AdvancedPanel {
         }
     }
 
+    /** Rebuilds after the current touch has finished (a control must not remove itself while handling its own touch). */
+    private void rebuildLater() {
+        view.post(this::rebuild);
+    }
+
     private void rebuild() {
         final int y = view.getScrollY();
         build();
@@ -139,7 +144,7 @@ final class AdvancedPanel {
             @Override
             public void onStopTrackingTouch(SeekBar s) {
                 set.accept(values[s.getProgress()]);
-                rebuild(); // a preset may now read "Custom"
+                rebuildLater(); // a preset may now read "Custom"
             }
         });
         box.addView(sb, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -180,13 +185,13 @@ final class AdvancedPanel {
                 + "slower but it works everywhere."), Ui.lp(c, 2));
 
         col.addView(Ui.text(c, "Quality preset", 13, Ui.FG, false), Ui.lp(c, 10));
-        col.addView(choice(ScreenPrefs.PRESETS, prefs.preset(), i -> {
-            if (i < 4) {
-                prefs.setPreset(i);
-                dirtyVideo = true;
-                rebuild();
-            }
+        col.addView(choice(java.util.Arrays.copyOf(ScreenPrefs.PRESETS, 4), prefs.preset(), i -> {
+            prefs.setPreset(i);
+            dirtyVideo = true;
+            rebuildLater();
         }));
+        col.addView(note(prefs.preset() == 4 ? "Custom: you changed one of the numbers below." : "A preset sets the four "
+                + "numbers below at once."), Ui.lp(c, 2));
 
         col.addView(slider("Video width", ScreenPrefs.WIDTHS, prefs.vidWidth(), v -> v + " px", v -> {
             prefs.setVidWidth(v);
@@ -241,7 +246,7 @@ final class AdvancedPanel {
             int next = at + 1; // -1 (automatic) goes to 0, the last one wraps to automatic
             prefs.setDecoder(next >= names.size() ? "" : names.get(next));
             dirtyVideo = true;
-            rebuild();
+            rebuildLater();
         }), Ui.lp(c, 6));
 
         // ---------------------------------------------------------------- phone
@@ -286,7 +291,7 @@ final class AdvancedPanel {
             prefs.reset();
             dirtyVideo = true;
             dirtyPower = true;
-            rebuild();
+            rebuildLater();
         }), Ui.weight());
         col.addView(last, Ui.lp(c, 6));
         col.addView(Ui.button(c, "Done", v -> finish()), Ui.lp(c, 10));
