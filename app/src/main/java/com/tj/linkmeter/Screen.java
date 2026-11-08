@@ -405,8 +405,9 @@ final class Screen {
 
     /**
      * H.264 video of the screen, made by the phone's own screenrecord tool (hardware encoder).
-     * The stream is cut into whole frames and sent as [4-byte length][frame] so the tablet's
-     * decoder never gets half a frame. A negative length means "the next -length bytes are a
+     * The stream is sent as packets, [4-byte length][bytes], cut where the pipe went quiet. That is only a
+     * guess at where a picture ends (screenrecord marks nothing), so the tablet finds the real picture
+     * boundaries itself (AnnexBFramer). A negative length means "the next -length bytes are a
      * message" (why video could not start). screenrecord stops after 3 minutes, so it is restarted.
      */
     private static void video(Context c, Http.Req r, OutputStream out, PowerManager pm) throws IOException {
@@ -462,12 +463,12 @@ final class Screen {
                     while ((n = in.read(buf)) >= 0) {
                         acc.write(buf, 0, n);
                         bytes += n;
-                        if (in.available() == 0) {
-                            Thread.sleep(3); // the rest of this frame may still be on its way
-                            if (in.available() == 0 || acc.size() > (2 << 20)) {
-                                sendPacket(dout, acc);
-                            }
-                        } else if (acc.size() > (2 << 20)) {
+                        // The tablet finds the pictures in the stream by itself (AnnexBFramer), so this only decides
+                        // when to send what has arrived: when the pipe has been quiet for a moment, or when a lot has
+                        // piled up. After a big picture the quiet time is longer, because its pieces can arrive with
+                        // gaps when the phone is busy (the relay process in between is scheduled like any other),
+                        // while a small picture is written in one go and arrives whole.
+                        if (acc.size() > (2 << 20) || quiet(in, acc.size() < ONE_PIECE ? 3 : 12)) {
                             sendPacket(dout, acc);
                         }
                     }
@@ -493,6 +494,21 @@ final class Screen {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** Up to this many bytes, a picture is written by screenrecord in one go and reaches us in one piece. */
+    private static final int ONE_PIECE = 3000;
+
+    /** True if nothing more arrives for ms milliseconds (looked at every millisecond, so new data ends the wait at once). */
+    private static boolean quiet(InputStream in, long ms) throws IOException, InterruptedException {
+        long end = SystemClock.elapsedRealtime() + ms;
+        do {
+            if (in.available() > 0) {
+                return false;
+            }
+            Thread.sleep(1);
+        } while (SystemClock.elapsedRealtime() < end);
+        return in.available() == 0;
     }
 
     private static void sendPacket(DataOutputStream dout, ByteArrayOutputStream acc) throws IOException {

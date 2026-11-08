@@ -8,23 +8,29 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (later), IN PROGRESS: the user's field report on v0.2.47** (screenshot: blocks of old and new screen mixed
-while a page loaded; and the TABLET dims after a short idle). Diagnosis and plan, so a cold resume can carry on:
-- Garbled picture = wrong reference picture in the decoder until the next keyframe (screenrecord sends one only every 10 s).
+**2026-11-08 (later): the user's field report on v0.2.47 is fixed in code (NOT yet seen on a device).** Report: the picture
+sometimes showed blocks of old and new screen mixed while a page loaded (screenshot), and the TABLET dimmed after a short idle.
+- Garbled picture = a wrong reference picture in the decoder until the next keyframe (screenrecord sends one only every 10 s).
   Cause: `Screen.video` (phone) cut `screenrecord`'s raw byte stream into "frames" with a 3 ms "pipe went quiet" guess, and
-  `VideoStream.loop` (tablet) fed every packet to the decoder as one picture. Under load (the Shizuku process that relays the
-  stream adds gaps too) a big picture arrives in two pieces or two pictures arrive as one; `hasPicture` also held headless
-  fragments as "parameter sets". Too-big pictures were silently dropped as well.
-- Fix (in this order, tick them off in `CHECKPOINTS.md`): (1) NEW `AnnexBFramer` on the tablet cuts the stream into whole
-  pictures by NAL type and `first_mb_in_slice`, trusts the phone's packet end only as "the stream went quiet here", and reports
-  damage (a continuation that does not start with a start code, a slice without its picture start); tested offline against
-  ffprobe's picture boundaries (`tools/test/test_framer.py`). (2) `VideoStream` uses it; on damage the tab shows a sharp still
-  and reconnects at once for a fresh keyframe (`Events.onDamaged`); a decoder failure ends the stream at once, an oversize
-  picture is reported instead of dropped. (3) Phone: wait 12 ms of quiet after a big picture (3 ms after a small one).
-  (4) Tablet keeps its own screen on and bright while the Screen tab is shown (`MainActivity.setHoldAwake`, Options switch
-  `ScreenPrefs.tabletAwake`, default on). (5) HANDOFF + field test + release.
+  `VideoStream` (tablet) fed every packet to the decoder as one picture. Under load (the Shizuku process that relays the stream
+  adds gaps too) a big picture arrived in two pieces or two pictures arrived as one; headless fragments were held as "parameter
+  sets", and a too-big picture was silently dropped. All of those leave the decoder drifting.
+- Fix: (1) NEW `AnnexBFramer` (tablet, pure Java) cuts the byte stream into whole pictures by NAL type and `first_mb_in_slice`;
+  the phone's packet end is only a hint that the stream went quiet there (it releases the last picture of a burst, after a
+  plausibility check). If a picture was cut anyway it reports damage (the rest has no start code, or a slice without its
+  picture start). Tested in `tools/test/test_framer.py` against ffprobe's picture boundaries on 10 real x264 streams (multi-slice,
+  B-frames, AUD, repeated headers, intra refresh, big keyframes, static screen, CBR with filler) plus hand-built and fuzzed
+  streams; five deliberate breakages of the parser are caught. (2) `VideoStream` feeds one picture per decoder buffer, ends
+  the stream as "damaged" on damage (`Events.onDamaged`), reports an oversize picture instead of dropping it, and ends at once
+  when the decoder fails. `ScreenTab` then covers the picture with a sharp still and restarts the video after 0.1 s (a
+  keyframe comes first); 4 damaged restarts in a row (each within 8 s) fall back to Pictures. (3) Phone: after a read the
+  stream is sent when the pipe has been quiet for 3 ms (small picture) or 12 ms (more than 3000 bytes in the packet so far).
+  (4) The tablet keeps its own screen on and bright while the Screen tab is shown (`MainActivity.setHoldAwake`; Options >
+  "This tablet while you use this", `ScreenPrefs.tabletAwake`, default on); the old Settings switch for the whole app stays.
+- Please check on the devices (details in "Field test", items 9 and 10): no more mixed blocks during page loads; Options >
+  Information shows "Video restarts because a picture arrived damaged: N" (0 or rare is the goal) and a "Phone app:" line
+  that must say "same as this tablet"; the tablet stays bright when left alone.
 - The real cure for all framing and keyframe problems is the own-encoder "Engine 2" (see "Remote screen control").
-
 
 **2026-11-08, "Faster remote control update", last part**: everything described below is MERGED into `main` (the user said
 "Merge it"), and from now on builds are NUMBERED RELEASES that merge and publish themselves.
@@ -94,6 +100,7 @@ older estimate, kept for the unconfirmed rows.
 | Screen tab, Pictures mode (raw screencap to JPEG) and slow taps | Screen.frame, ScreenTab | Shizuku | medium |
 | Screen tab, live H.264 video + live touch (first version) | Screen.video/ctl, VideoStream, CtlChannel, ShellMain inject | Shizuku (screenrecord, app_process helper) | CONFIRMED by the user: works very well |
 | Screen tab, new interface (side bars, typing, number pad, Options, sharp still, header fix) | ScreenTab, RemoteLayout, TypingView, PinPad, AdvancedPanel, SpsFix | same | LOW until field-tested |
+| Screen tab: exact picture cutting, restart on damage, tablet stays awake | AnnexBFramer, VideoStream, ScreenTab, Screen.video, MainActivity | same | LOW until field-tested (offline tests pass) |
 | Phone screen kept on and dimmed during remote use, restored after | RemoteProfile, ProfilePlan, Eco | Shizuku (`settings put system ...`) | LOW until field-tested (logic tested offline) |
 
 ## Where things stand (latest, replaces the old "open issue" note)
@@ -173,8 +180,10 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
   "the next -length bytes are a UTF-8 message" (why video could not start; it ends the stream). Length 0 is ignored.
   Source: `exec screenrecord --output-format=h264 --size WxH --bit-rate N - 2>/data/local/tmp/linkmeter-screenrecord.err`
   started through `Priv.spawn`. screenrecord stops after 3 minutes, so it is restarted (the stream then carries new SPS/PPS
-  and a keyframe). Packets are cut by timing: when no more bytes are readable 3 ms after a read, what has been read is sent
-  as one packet (a guess that one encoder write is one frame). A watcher thread ends screenrecord when the tablet closes the
+  and a keyframe). Packets are cut by timing only as a hint: after a read, what has been read so far is sent when the pipe
+  stays empty for 3 ms (12 ms if the packet is already over 3000 bytes: big pictures can arrive in pieces with gaps), or when
+  2 MB have piled up. A packet may hold several pictures or half of one: the tablet treats the packets as a byte stream and
+  finds the pictures itself (`AnnexBFramer`). A watcher thread ends screenrecord when the tablet closes the
   connection. Two quick failures in a row send the screenrecord error text and end the stream.
 - `GET /screen/ctl`: a long connection. The tablet sends lines `d x y`, `m x y`, `u x y` (finger down, move, up, in the phone's
   pixels), `k code` (keys in `Screen.KEYS`: home, back, volume, power, menu, recents, sleep, wake, arrows, enter, tab, escape,
@@ -208,8 +217,14 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
   keyboard map has a key for can be typed (Latin letters, digits, punctuation).
 - PIN: an in-app number pad (`PinPad`), so unlocking never needs the keyboard. Sent once to `/screen/pin`, never stored.
 - Tapping the picture of a sleeping phone wakes it (an option).
-- Video (`VideoStream`): a MediaCodec decoder on the SurfaceView, every decoded buffer released at once. Parameter sets that
-  arrive alone are held and sent with the next picture. With "tuning" (default): the SPS is rewritten by `SpsFix` so the
+- Video (`VideoStream`): a MediaCodec decoder on the SurfaceView, every decoded buffer released at once. The packets go
+  through `AnnexBFramer`, which hands the decoder exactly one picture (access unit) per input buffer, with its parameter sets
+  and SEI in front: a picture ends where an AUD / SPS / PPS / SEI starts after a slice, or where a slice with
+  `first_mb_in_slice == 0` starts (the first bit after the NAL header byte is 1). The last picture of a burst has no successor,
+  so the phone's packet end releases it unless its last NAL unit is a bare start code or a stub slice; if that guess was
+  wrong the stream is reported damaged (a continuation without a start code, or a slice that is not the first of its
+  picture) and restarted, instead of showing mixed-up blocks until the next keyframe. A cut filler or end-of-sequence NAL
+  unit is not damage (no picture is lost). With "tuning" (default): the SPS is rewritten by `SpsFix` so the
   decoder is told pictures come out in order and few are kept, and low-latency hints are set (including MediaTek-unknown
   vendor keys, which are ignored if unknown); a decoder that refuses the hints is started plain. In Automatic mode, if pictures
   arrive but the decoder shows none for 8 s, the tab retries once without tuning before falling back to Pictures. If the decoder
@@ -254,7 +269,11 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
 ### Tests (offline, in this sandbox)
 `tools/test.sh` runs: `tools/test/ProfilePlanTest.java` (the phone-settings decisions: explicit scenarios plus 5000 random
 begin / change / end stories that must give the phone back exactly as it was) and `tools/test-spsfix.sh` (SpsFix against real
-x264 streams of many kinds, checked by ffmpeg's own header parser and decoder). Android code itself can only be compiled by CI.
+x264 streams of many kinds, checked by ffmpeg's own header parser and decoder) and `tools/test-framer.sh`
+(`tools/test/AnnexBFramerTest.java` + `test_framer.py`: AnnexBFramer against ffprobe's picture boundaries on real x264 streams
+and against streams built by hand; fed as pictures, merged, in odd pieces, byte by byte, without hints, with hints inside start
+codes, with false hints in the middle of pictures (every wrong picture must be followed by a damage report), joined mid-picture,
+with junk in front, and fuzzed). Android code itself can only be compiled by CI.
 
 ### Field test (the user does this with both devices in hand; this sandbox cannot)
 1. Put the same build on both devices (install on the tablet, then Control > Update phone from this tablet). Open Screen.
@@ -269,13 +288,24 @@ x264 streams of many kinds, checked by ffmpeg's own header parser and decoder). 
 7. Options: change width and bitrate, watch the speed numbers; try another decoder; try Pictures mode and its speed limit.
 8. After leaving the tab, check on the phone (Shizuku shell or Probe) that nothing lingers:
    `ps -A | grep -E "screenrecord|app_process"` should show no screenrecord and no `ShellMain inject`.
+9. Garbled picture: load a heavy page on the phone (the screenshot showed a page with a "Page is loading" overlay while a
+   download ran), scroll, switch apps quickly. The picture must not stay full of mixed old/new blocks. Options > Information:
+   "Video restarts because a picture arrived damaged" should be 0 or small, and "Phone app:" must say "same as this tablet".
+   If a restart happens the status line says "Picture damaged: restarting the video for a clean one…" and a sharp still covers
+   the picture for about a second.
+10. The tablet's screen: open Screen, leave the tablet untouched for longer than its screen timeout (the phone can be changing
+   meanwhile): it must stay on and bright. Switch Options > "Keep this tablet's screen on and bright" off and it should dim
+   as before. Leaving the tab hands the screen back to Android's timeout.
 
 ### Likely trouble spots, with the remedy to try
 - The picture still sticks until the screen changes: look at Information (does the stream line say "reorder 0, buffer 1" after
   the fix?), try the other decoder in Options, try "Never" and "Always" for tuning. Next ideas: replay the first keyframe with a
   changed `idr_pic_id` to push the decoder, or the own-encoder engine (frames repeated while the screen is still).
-- Smeared or garbled picture after fast motion: a frame was split by the 3 ms timing guess. Fix: let the tablet cut the stream
-  into pictures by parsing NAL units (a slice with `first_mb_in_slice == 0` starts a new picture) instead.
+- Smeared or garbled picture after fast motion or a page load: was a picture split or merged by the phone's 3 ms timing guess;
+  fixed by `AnnexBFramer` (see above). If it still happens: Information > "Video restarts ..." counts the cases the framer
+  noticed; garbage WITHOUT restarts means the decoder itself drifted (try another decoder, try tuning "Never"), or the
+  phone's encoder emits something the framer reads wrongly (multi-slice pictures sent in arbitrary slice order, redundant
+  pictures). A restart loop shows as "the video keeps arriving damaged" and Pictures mode.
 - A hiccup every 3 minutes: the screenrecord restart. Expected; could be hidden by starting the next one early.
 - The phone is rotated while streaming: the stream keeps the size it started with, so the picture and the touch mapping go wrong
   until the tab is left and re-entered. Fix if it matters: restart the stream when the phone's size changes.
@@ -441,7 +471,9 @@ Call (tablet helpers), Updater (tablet-driven phone update), Ui, MeterView, Spee
 HomeTab/SpeedTab/BandsTab/ControlTab/FilesTab/SettingsTab/PhoneTab/ScreenTab, MainActivity.
 Remote screen, phone: Screen (routes), RemoteProfile and ProfilePlan (screen kept on and dimmed, restored), ShellMain `inject`.
 Remote screen, tablet: ScreenTab (the tab), RemoteLayout, BarColumn, BarButton, Icons (layout and buttons), TypingView, PinPad,
-AdvancedPanel, ScreenPrefs (settings), VideoStream, SpsFix (decoder), CtlChannel, AspectSurfaceView, PhoneScreenView.
+AdvancedPanel, ScreenPrefs (settings), VideoStream, AnnexBFramer (cuts the stream into pictures), SpsFix (decoder),
+CtlChannel, AspectSurfaceView, PhoneScreenView.
 Tools: `tools/checkpoint.sh` (log, commit, push with retries), `tools/ci.sh` (same, then watches the build with gh),
 `tools/handoff-check.sh` (warns when this file is stale), `tools/test.sh` (offline tests, including
-`tools/test/test_release_decision.py` for the release pipeline's merge gate). `CHECKPOINTS.md` is the append-only log they write.
+`tools/test/test_release_decision.py` for the release pipeline's merge gate, and `tools/test-framer.sh` for the picture cutter).
+`CHECKPOINTS.md` is the append-only log they write.

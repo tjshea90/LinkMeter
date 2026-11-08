@@ -99,6 +99,11 @@ final class ScreenTab extends Tab {
     private int fps;
     private int kbps;
     private int peak;
+    /** Times this visit that the video arrived damaged (a picture was cut) and was restarted from a keyframe. */
+    private int resyncs;
+    private int damageStreak;
+    private long lastDamageAt;
+    private boolean quickResync;
 
     // video
     private VideoStream video;
@@ -146,6 +151,9 @@ final class ScreenTab extends Tab {
         mode = prefs.mode();
         fellBack = false;
         tuneOff = false;
+        resyncs = 0;
+        damageStreak = 0;
+        quickResync = false;
         surfaceReady = false;
         fullscreen = false;
         typing = false;
@@ -470,9 +478,15 @@ final class ScreenTab extends Tab {
 
     // ------------------------------------------------------------ lifecycle
 
+    /** The tablet's own screen stays on and bright while this tab is shown (nobody touches it while they watch the phone). */
+    private void applyAwake() {
+        act.setHoldAwake(shown && prefs != null && prefs.tabletAwake());
+    }
+
     @Override
     void onShow() {
         shown = true;
+        applyAwake();
         connectCtl();
         act.ui.removeCallbacks(statePoll);
         act.ui.post(statePoll);
@@ -485,6 +499,7 @@ final class ScreenTab extends Tab {
     @Override
     void onHide() {
         shown = false;
+        applyAwake();
         act.ui.removeCallbacks(statePoll);
         act.ui.removeCallbacks(stillTick);
         stopStreams();
@@ -728,6 +743,21 @@ final class ScreenTab extends Tab {
                     }
 
                     @Override
+                    public void onDamaged(final String why) {
+                        act.ui.post(() -> {
+                            if (gen != videoGen) {
+                                return;
+                            }
+                            resyncs++;
+                            long now = SystemClock.elapsedRealtime();
+                            damageStreak = now - lastDamageAt < 8000 ? damageStreak + 1 : 1;
+                            lastDamageAt = now;
+                            quickResync = true;
+                            showStillNow(); // covers the damaged picture with a sharp one while the video restarts
+                        });
+                    }
+
+                    @Override
                     public void onEnd(final String why, final boolean screenOff) {
                         act.ui.post(() -> videoEnded(gen, why, screenOff));
                     }
@@ -748,6 +778,25 @@ final class ScreenTab extends Tab {
             paintBars();
             showNote("The phone's screen is off.\nTap Wake.");
             setStatus("The phone's screen is off.");
+            return;
+        }
+        final boolean damaged = quickResync;
+        quickResync = false;
+        if (damaged) {
+            // A picture was cut on the way: what the decoder shows is wrong until the next keyframe, so start the
+            // video again (the phone sends a keyframe first). Four times in a row means this will not get better.
+            if (damageStreak >= 4) {
+                damageStreak = 0;
+                fallBack("the video keeps arriving damaged");
+                return;
+            }
+            setStatus("Picture damaged: restarting the video for a clean one…");
+            final int gd = gen;
+            act.ui.postDelayed(() -> {
+                if (shown && mode == 0 && surfaceReady && video == null && gd == videoGen) {
+                    startVideo();
+                }
+            }, 100);
             return;
         }
         if (!gotFrame) {
@@ -834,6 +883,30 @@ final class ScreenTab extends Tab {
         if (still != null) {
             still.setVisibility(View.GONE);
         }
+    }
+
+    /** Covers the video with a sharp picture of the phone's screen right now (while a damaged video restarts). */
+    private void showStillNow() {
+        if (mode != 0 || !prefs.stillImage() || stillBusy || !phoneOn || !shown) {
+            return;
+        }
+        stillBusy = true;
+        final String host = Net.phoneHost(act);
+        final int w = Math.max(720, Math.min(1080, prefs.vidWidth()));
+        new Thread(() -> {
+            final Frame f = fetchFrame(host, w, 75);
+            act.ui.post(() -> {
+                stillBusy = false;
+                if (!shown || mode != 0 || f.bmp == null) {
+                    return;
+                }
+                still.setFrame(f.bmp, f.w, f.h);
+                still.setVisibility(View.VISIBLE);
+                stillHideAt = 0;
+                stillShownSeq = packetSeq;
+                stillVisible = true; // the live video takes over again when its pictures arrive (see onPacket)
+            });
+        }, "linkmeter-still").start();
     }
 
     /** When the phone's screen has stopped changing, shows one sharp picture of it over the video. */
@@ -1235,8 +1308,14 @@ final class ScreenTab extends Tab {
         }
         advanced = new AdvancedPanel(act, prefs, new AdvancedPanel.Host() {
             @Override
+            public void tabletAwakeChanged() {
+                applyAwake();
+            }
+
+            @Override
             public void closed(boolean video, boolean power) {
                 hideOverlay();
+                applyAwake(); // "Reset all" may have changed the tablet's keep-awake choice
                 if (power) {
                     beginProfile();
                 }
@@ -1313,6 +1392,7 @@ final class ScreenTab extends Tab {
         sb.append("Touch channel: ").append(ctlText).append('\n');
         sb.append("Phone screen: ").append(phoneOn ? "on" : "off").append(phoneLocked ? ", locked" : "").append('\n');
         sb.append("Last video problem: ").append(lastError.isEmpty() ? "none" : lastError).append('\n');
+        sb.append("Video restarts because a picture arrived damaged: ").append(resyncs).append('\n');
         sb.append("Phone settings: ").append(profileText).append('\n');
         sb.append("Decoders on this tablet: ").append(decs.isEmpty() ? "none found" : decs.toString());
         return sb.toString();

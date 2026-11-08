@@ -587,6 +587,71 @@ public final class AnnexBFramerTest {
         }
     }
 
+    // ------------------------------------------------------------------------------------ fuzzing
+
+    /**
+     * Random bytes that are mostly 0, 1 and NAL headers, so start codes and odd NAL units turn up all the time, cut
+     * into random pieces with random hints. Whatever comes in, the framer must not throw, and every unit it hands
+     * on must begin with zero bytes and a start code, and must not be empty.
+     */
+    static void fuzz(long seed, int rounds) throws IOException {
+        for (int round = 0; round < rounds; round++) {
+            Random r = new Random(seed + round);
+            final int[] bad = new int[1];
+            final long[] emitted = new long[1];
+            AnnexBFramer f = new AnnexBFramer(new AnnexBFramer.Sink() {
+                @Override
+                public void unit(byte[] d, int n, boolean key, boolean sps, long at) {
+                    emitted[0] += n;
+                    int z = 0;
+                    while (z < n && d[z] == 0) {
+                        z++;
+                    }
+                    if (n < 4 || z < 2 || z >= n || d[z] != 1) {
+                        bad[0]++;
+                    }
+                }
+
+                @Override
+                public void damaged(String why, long at) {
+                    // fine: random data is full of damage
+                }
+            });
+            int total = 0;
+            int bursts = 5 + r.nextInt(40);
+            for (int b = 0; b < bursts; b++) {
+                int n = 1 + r.nextInt(r.nextInt(8) == 0 ? 400000 : 3000);
+                byte[] d = new byte[n];
+                int mode = r.nextInt(4);
+                for (int i = 0; i < n; i++) {
+                    int k = r.nextInt(10);
+                    if (mode == 0) {
+                        d[i] = (byte) r.nextInt(256);
+                    } else if (mode == 1) {
+                        d[i] = (byte) (k < 5 ? 0 : (k < 8 ? 1 : (0x40 + r.nextInt(32))));
+                    } else if (mode == 2) {
+                        d[i] = (byte) (k < 3 ? 0 : (k < 5 ? 1 : (k < 7 ? (0x41 + r.nextInt(2) * 0x24) : r.nextInt(256))));
+                    } else {
+                        d[i] = (byte) (k < 8 ? 0 : 1);
+                    }
+                }
+                int p = 0;
+                while (p < n) {
+                    int c = Math.min(n - p, 1 + r.nextInt(1 + r.nextInt(2000)));
+                    f.push(d, p, c);
+                    p += c;
+                    total += c;
+                    if (r.nextInt(3) == 0) {
+                        f.endOfPacket();
+                    }
+                }
+            }
+            f.endOfPacket();
+            check(bad[0] == 0, "fuzz " + (seed + round) + ": " + bad[0] + " units that do not begin with a start code");
+            check(emitted[0] <= total, "fuzz " + (seed + round) + ": more bytes out (" + emitted[0] + ") than in (" + total + ")");
+        }
+    }
+
     // ------------------------------------------------------------------------------------ synthetic streams
 
     static void nal(ByteArrayOutputStream o, Random r, int type, int nri, int payload, int firstSlice, boolean fourByte) {
@@ -684,6 +749,7 @@ public final class AnnexBFramerTest {
             }
         } else {
             special();
+            fuzz(Long.parseLong(a[1]) * 7, 120);
             long seed = Long.parseLong(a[1]);
             int rounds = Integer.parseInt(a[2]);
             for (int k = 0; k < rounds; k++) {

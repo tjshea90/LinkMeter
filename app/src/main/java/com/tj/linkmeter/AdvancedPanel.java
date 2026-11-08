@@ -27,6 +27,9 @@ final class AdvancedPanel {
         /** Put the phone's screen settings back right now. */
         void restorePhone();
 
+        /** The "keep this tablet's screen on" choice changed: apply it now. */
+        void tabletAwakeChanged();
+
         String diagnostics();
 
         String phoneText();
@@ -248,6 +251,16 @@ final class AdvancedPanel {
             dirtyVideo = true;
             rebuildLater();
         }), Ui.lp(c, 6));
+
+        // ---------------------------------------------------------------- this tablet
+        col.addView(heading("This tablet while you use this"));
+        col.addView(check("Keep this tablet's screen on and bright", prefs.tabletAwake(), v -> {
+            prefs.setTabletAwake(v);
+            host.tabletAwakeChanged();
+        }));
+        col.addView(note("You only watch the phone here, so the tablet gets no touches. Without this it dims and "
+                + "switches off after its normal screen timeout. It is only kept on while this tab is open."),
+                Ui.lp(c, 2));
 
         // ---------------------------------------------------------------- phone
         col.addView(heading("The phone while you use this"));

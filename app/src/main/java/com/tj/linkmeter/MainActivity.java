@@ -118,8 +118,16 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** A tab (the Screen tab) asks for the tablet to stay awake while it is shown, on top of the Settings choice. */
+    private boolean holdAwake;
+
+    void setHoldAwake(boolean on) {
+        holdAwake = on;
+        applyKeepOn();
+    }
+
     void applyKeepOn() {
-        if (Cfg.TABLET.equals(Cfg.mode(this)) && Cfg.keepOn(this)) {
+        if (Cfg.TABLET.equals(Cfg.mode(this)) && (Cfg.keepOn(this) || holdAwake)) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

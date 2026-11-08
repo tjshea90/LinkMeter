@@ -19,9 +19,14 @@ import org.json.JSONObject;
 
 /**
  * Tablet side: receives the phone's H.264 screen video and shows it with the tablet's hardware
- * decoder. Frames arrive as [length][frame]; each goes to the decoder as one piece and is shown the
- * moment it is decoded, with nothing queued up, which is what keeps the delay small.
- * A negative length is a message from the phone (why it could not start the video) instead of a frame.
+ * decoder. The video arrives as packets, [length][bytes], and a negative length is a message from the phone
+ * (why it could not start the video) instead of video. The phone cuts its stream into packets by guessing
+ * where a picture ends, and on a busy phone it guesses wrong (a picture in two pieces, or two in one), which
+ * leaves the decoder with a wrong reference picture and the screen full of mixed-up blocks until the next
+ * keyframe. So the packets are only treated as a byte stream: AnnexBFramer finds the real picture
+ * boundaries, each picture goes to the decoder as one piece and is shown the moment it is decoded, with
+ * nothing queued up, which is what keeps the delay small. If a picture still turns out to have been cut,
+ * the stream ends as "damaged" and the tab restarts it from a keyframe.
  *
  * "Tuning" (on by default) is about decoders that hold finished pictures back: the stream header is
  * rewritten to say pictures come out in order (see SpsFix) and the decoder is asked for its low-latency
@@ -48,6 +53,9 @@ final class VideoStream {
 
         /** The decoder and the stream's own description, once per start. */
         default void onDiag(String text) {}
+
+        /** The stream arrived damaged (a picture was cut): it ends now, and should be restarted from a keyframe. */
+        default void onDamaged(String why) {}
     }
 
     private final String host;
@@ -64,6 +72,15 @@ final class VideoStream {
     private final AtomicLong bytes = new AtomicLong();
     private final int[] recent = new int[10]; // kbit/s of the last ten seconds
     private int recentAt;
+    /** Set by the output thread when the decoder fails, so the input side stops at once instead of after a stall. */
+    private volatile String drainError;
+
+    /** The stream does not fit together any more. */
+    private static final class Damaged extends IOException {
+        Damaged(String why) {
+            super(why);
+        }
+    }
 
     VideoStream(String host, String token, String query, Surface surface, Events ev) {
         this(host, token, query, surface, "", false, ev);
@@ -133,20 +150,6 @@ final class VideoStream {
         }
     }
 
-    /** True if the chunk holds picture data (a slice NAL unit, type 1 or 5), not only parameter sets. */
-    private static boolean hasPicture(byte[] d, int len) {
-        for (int i = 0; i + 3 < len; i++) {
-            if (d[i] == 0 && d[i + 1] == 0 && d[i + 2] == 1) {
-                int type = d[i + 3] & 0x1F;
-                if (type == 1 || type == 5) {
-                    return true;
-                }
-                i += 2;
-            }
-        }
-        return false;
-    }
-
     private MediaCodec makeDecoder() throws IOException {
         if (!decoderName.isEmpty()) {
             try {
@@ -201,6 +204,7 @@ final class VideoStream {
     private void loop() {
         String why = "The phone ended the video.";
         boolean off = false;
+        boolean damaged = false;
         MediaCodec codec = null;
         Thread drain = null;
         try {
@@ -235,11 +239,9 @@ final class VideoStream {
                 drain = new Thread(() -> drain(dec), "linkmeter-video-out");
                 drain.start();
 
+                final AnnexBFramer framer = new AnnexBFramer(new Feeder(dec));
                 DataInputStream din = new DataInputStream(s.in);
                 byte[] data = new byte[256 * 1024];
-                byte[] config = null; // SPS/PPS that came without a picture: goes in front of the next one
-                boolean diagSent = false;
-                long pts = 0;
                 while (run) {
                     int len = din.readInt();
                     if (len < 0) {
@@ -260,65 +262,14 @@ final class VideoStream {
                     }
                     din.readFully(data, 0, len);
                     bytes.addAndGet(len + 4);
-                    byte[] pkt = data;
-                    int plen = len;
-                    if (SpsFix.hasSps(data, len)) {
-                        byte[] fixed = tune ? SpsFix.fix(data, len) : null;
-                        if (!diagSent) {
-                            diagSent = true;
-                            ev.onDiag("Decoder: " + dec.getName() + "\nStream: " + SpsFix.describe(data, len)
-                                    + (!tune ? "\nHeader fix: off"
-                                            : (fixed != null ? "\nSent to the decoder as: " + SpsFix.describe(fixed, fixed.length)
-                                                    : "\nHeader fix: not needed or not understood")));
-                        }
-                        if (fixed != null) {
-                            pkt = fixed;
-                            plen = fixed.length;
-                        }
-                    }
-                    if (!hasPicture(pkt, plen)) {
-                        // Parameter sets on their own: hold them and send them with the next picture,
-                        // so the decoder is never handed a buffer with nothing to show.
-                        int have = config == null ? 0 : config.length;
-                        if (have + plen > 65536) {
-                            have = 0;
-                            config = null;
-                        }
-                        byte[] merged = new byte[have + plen];
-                        if (have > 0) {
-                            System.arraycopy(config, 0, merged, 0, have);
-                        }
-                        System.arraycopy(pkt, 0, merged, have, plen);
-                        config = merged;
-                        continue;
-                    }
-                    ev.onPacket();
-                    // Ten tries of 0.1 s is a long time for a decoder; three seconds covers a busy tablet.
-                    int idx = dec.dequeueInputBuffer(100000);
-                    for (int tries = 0; idx < 0 && run && tries < 30; tries++) {
-                        idx = dec.dequeueInputBuffer(100000);
-                    }
-                    if (idx < 0) {
-                        // Skipping a frame would leave a smeared picture until the next keyframe;
-                        // ending here makes the tab reconnect and start again from a clean one.
-                        throw new IOException("the decoder stopped taking video");
-                    }
-                    ByteBuffer ib = dec.getInputBuffer(idx);
-                    ib.clear();
-                    int cfg = config == null ? 0 : config.length;
-                    if (cfg + plen > ib.capacity()) {
-                        dec.queueInputBuffer(idx, 0, 0, pts, 0); // too big for this decoder: hand the buffer back
-                        continue;
-                    }
-                    if (cfg > 0) {
-                        ib.put(config, 0, cfg);
-                        config = null;
-                    }
-                    ib.put(pkt, 0, plen);
-                    dec.queueInputBuffer(idx, 0, cfg + plen, pts, 0);
-                    pts += 16666;
+                    // Where the stream went quiet is the phone's word; where the pictures really end is in the bytes.
+                    framer.push(data, 0, len);
+                    framer.endOfPacket();
                 }
             }
+        } catch (Damaged d) {
+            why = "The picture got damaged (" + d.getMessage() + ")";
+            damaged = true;
         } catch (IOException | RuntimeException e) {
             why = "The video stopped: " + e.getMessage();
         } finally {
@@ -343,7 +294,66 @@ final class VideoStream {
                 }
             }
         }
+        if (damaged) {
+            ev.onDamaged(why);
+        }
         ev.onEnd(why, off);
+    }
+
+    /** Gives the decoder one picture per input buffer (AnnexBFramer has already cut the stream into pictures). */
+    private final class Feeder implements AnnexBFramer.Sink {
+        private final MediaCodec dec;
+        private long pts;
+        private boolean diagSent;
+
+        Feeder(MediaCodec dec) {
+            this.dec = dec;
+        }
+
+        @Override
+        public void unit(byte[] d, int n, boolean key, boolean sps, long at) throws IOException {
+            String broken = drainError;
+            if (broken != null) {
+                throw new IOException(broken);
+            }
+            byte[] fixed = sps && tune ? SpsFix.fix(d, n) : null;
+            ev.onPacket();
+            // Ten tries of 0.1 s is a long time for a decoder; three seconds covers a busy tablet.
+            int idx = dec.dequeueInputBuffer(100000);
+            for (int tries = 0; idx < 0 && run && tries < 30; tries++) {
+                idx = dec.dequeueInputBuffer(100000);
+            }
+            if (idx < 0) {
+                // Skipping a picture would leave a smeared one until the next keyframe;
+                // ending here makes the tab reconnect and start again from a clean one.
+                throw new IOException("the decoder stopped taking video");
+            }
+            ByteBuffer ib = dec.getInputBuffer(idx);
+            ib.clear();
+            if (sps && !diagSent) {
+                diagSent = true;
+                ev.onDiag("Decoder: " + dec.getName() + " (input buffers " + (ib.capacity() / 1024) + " KB)\nStream: "
+                        + SpsFix.describe(d, n)
+                        + (!tune ? "\nHeader fix: off"
+                                : (fixed != null ? "\nSent to the decoder as: " + SpsFix.describe(fixed, fixed.length)
+                                        : "\nHeader fix: not needed or not understood")));
+            }
+            byte[] out = fixed != null ? fixed : d;
+            int olen = fixed != null ? fixed.length : n;
+            if (olen > ib.capacity()) {
+                dec.queueInputBuffer(idx, 0, 0, pts, 0); // hand the buffer back
+                throw new IOException("a picture of " + (olen / 1024) + " KB does not fit this decoder's input buffers ("
+                        + (ib.capacity() / 1024) + " KB)");
+            }
+            ib.put(out, 0, olen);
+            dec.queueInputBuffer(idx, 0, olen, pts, key ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0);
+            pts += 16666;
+        }
+
+        @Override
+        public void damaged(String why, long at) throws IOException {
+            throw new Damaged(why); // ends this stream; the tab restarts it from a keyframe
+        }
     }
 
     private void drain(MediaCodec dec) {
@@ -376,6 +386,9 @@ final class VideoStream {
                     ev.onStats(Math.round(frames.getAndSet(0) * 1000f / ms), kbps, peak);
                 }
             } catch (RuntimeException e) {
+                if (run) {
+                    drainError = "the decoder failed: " + e;
+                }
                 return;
             }
         }

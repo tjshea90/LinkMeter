@@ -148,6 +148,20 @@ final class ScreenPrefs {
         Cfg.setBool(c, "stats", v);
     }
 
+    // ------------------------------------------------------------ this tablet while remote
+
+    /**
+     * Keep this tablet's own screen on and bright while the remote screen is open. Watching the phone does not
+     * touch the tablet, so without this the tablet dims and turns off after its normal screen timeout.
+     */
+    boolean tabletAwake() {
+        return Cfg.getBool(c, "tabAwake", true);
+    }
+
+    void setTabletAwake(boolean v) {
+        Cfg.setBool(c, "tabAwake", v);
+    }
+
     // ------------------------------------------------------------ the phone while remote
 
     /** Index into KEEP_MIN. */
@@ -202,5 +216,6 @@ final class ScreenPrefs {
         setDimIndex(0);
         setSleepOnLeave(true);
         setTapToWake(true);
+        setTabletAwake(true);
     }
 }

@@ -46,3 +46,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T16:30:03Z handoff: the automatic merge and numbered release were checked on GitHub (v0.2.46 by hand merge, v0.2.47 fully automatic); next step is the device field test
 - 2026-11-08T16:57:15Z handoff: diagnosis and plan for the garbled-video and tablet-dimming reports (work in progress)
 - 2026-11-08T17:07:39Z AnnexBFramer: cuts the phone's H.264 byte stream into whole pictures by NAL type and first_mb_in_slice, reports damage; tested against ffprobe on 10 real x264 streams and 150 hand-built ones (not wired in yet)
+- 2026-11-08T17:15:42Z remote video: the tablet now cuts the stream into whole pictures itself (fixes mixed-up blocks after a page load), restarts from a keyframe with a sharp still if a picture was still cut, phone waits longer after big pictures; tablet screen stays on and bright while the Screen tab is open (Options switch)
