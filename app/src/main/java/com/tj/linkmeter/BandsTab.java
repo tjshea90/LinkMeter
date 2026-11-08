@@ -78,6 +78,8 @@ final class BandsTab extends Tab {
                 .toLowerCase(Locale.US))), Ui.weight());
         row2.addView(Ui.button(act, "Clear lock", v -> lock("")), Ui.weight());
         col.addView(row2);
+        col.addView(Ui.button(act, "Restore everything (fix internet)", v -> ControlTab.restoreDialog(act)),
+                Ui.lp(act, 6));
 
         result = Ui.text(act, "", 12, Ui.FG, false);
         result.setTypeface(Typeface.MONOSPACE);

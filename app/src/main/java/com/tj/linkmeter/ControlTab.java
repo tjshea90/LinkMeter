@@ -42,6 +42,14 @@ final class ControlTab extends Tab {
         status = Ui.text(act, "Checking the phone helper…", 13, Ui.DIM, false);
         col.addView(status, Ui.lp(act, 4));
 
+        col.addView(Ui.button(act, "Restore everything (fix internet)", v -> restoreDialog(act)),
+                Ui.lp(act, 10));
+        col.addView(Ui.button(act, "Restart modem", v -> send("restart_modem", "Restarting the modem", 40000)),
+                Ui.lp(act, 4));
+        col.addView(Ui.text(act, "Use these if a band lock or network change leaves the phone without "
+                + "internet. They work over the hotspot even when the phone has no mobile data.",
+                12, Ui.DIM, false), Ui.lp(act, 4));
+
         col.addView(heading("Mobile network"), Ui.lp(act, 18));
         col.addView(row(
                 Ui.button(act, "Force 4G", v -> send("net_lte", "Switching to 4G", 40000)),
@@ -194,6 +202,17 @@ final class ControlTab extends Tab {
                 }
             });
         }, "linkmeter-update").start();
+    }
+
+    /** Asks the phone to put everything back and shows its report. Also used by the Bands tab. */
+    static void restoreDialog(final MainActivity act) {
+        Toast.makeText(act, "Asking the phone to restore everything…", Toast.LENGTH_SHORT).show();
+        Call.run(act, "POST", "/act?name=restore", 90000, (ok, text, json) ->
+                new AlertDialog.Builder(act)
+                        .setTitle(ok ? "Restore everything" : "Couldn't restore")
+                        .setMessage(text)
+                        .setPositiveButton("OK", null)
+                        .show());
     }
 
     private TextView heading(String s) {

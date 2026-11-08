@@ -67,20 +67,31 @@ final class Actions {
                 return Eco.restore(c);
             case "setup":
                 return setup(c);
+            case "restore":
+                return restoreAll(c);
+            case "restart_modem":
+                return report(Priv.run("cmd phone restart-modem", 30),
+                        "Modem restart requested. Mobile data comes back in a minute or so.");
             case "hotspot_info":
                 return Cells.shellMain(c, "hotspot-info").out;
             case "hotspot_band_2":
-                return Cells.shellMain(c, "hotspot-band 2").out;
+                return setHotspotBand(c, "2");
             case "hotspot_band_5":
-                return Cells.shellMain(c, "hotspot-band 5").out;
+                return setHotspotBand(c, "5");
             case "hotspot_band_auto":
-                return Cells.shellMain(c, "hotspot-band auto").out;
+                return setHotspotBand(c, "auto");
             case "net_get":
                 return netGet(c);
-            case "net_lte":
-                return setNr(c, false);
-            case "net_5g":
-                return setNr(c, true);
+            case "net_lte": {
+                String res = setNr(c, false);
+                Guard.arm(c);
+                return res;
+            }
+            case "net_5g": {
+                String res = setNr(c, true);
+                Guard.arm(c);
+                return res;
+            }
             default:
                 throw new IOException("unknown action: " + name);
         }
@@ -118,6 +129,7 @@ final class Actions {
             return "Couldn't read the phone's current network types, so nothing was changed.\n"
                     + "The phone said:\n" + g.out;
         }
+        Saved.rememberTypes(c, mask);
         long target = allow5g ? (mask | NR_BIT) : (mask & ~NR_BIT);
         if (target == mask) {
             return allow5g ? "5G is already allowed (" + typesText(mask) + ")."
@@ -173,6 +185,7 @@ final class Actions {
             return null;
         }
         apiNote = "";
+        Saved.rememberTypes(c, mask);
         long target = allow5g ? (mask | NR_BIT) : (mask & ~NR_BIT);
         if (target == mask) {
             return allow5g ? "5G is already allowed (" + typesText(mask) + ")."
@@ -185,6 +198,135 @@ final class Actions {
                     : "Forced to 4G. The phone is now on " + typesText(target) + ".";
         }
         return "The phone did not accept the change.\n" + s.out;
+    }
+
+    /** Saves the hotspot's current band the first time, then changes it. */
+    private static String setHotspotBand(Context c, String arg) throws IOException {
+        if (Saved.hotspotBand(c) < 0) {
+            Matcher m = Pattern.compile("band=(\\d)").matcher(Cells.shellMain(c, "hotspot-info").out);
+            if (m.find()) {
+                Saved.rememberHotspotBand(c, Integer.parseInt(m.group(1)));
+            }
+        }
+        return Cells.shellMain(c, "hotspot-band " + arg).out;
+    }
+
+    // ------------------------------------------------------------ restore everything
+
+    /** Allowed types that match what this phone normally uses: 2G/3G/4G and 5G. */
+    private static final long DEFAULT_TYPES = 840583L;
+
+    static final String MANUAL = "If that doesn't fix mobile data, do these on the phone, in order:\n"
+            + "1. Settings > Connections > Mobile networks > Network mode: choose 5G/LTE/3G/2G (auto connect).\n"
+            + "2. Turn airplane mode on for 10 seconds, then off.\n"
+            + "3. Restart the phone.\n"
+            + "4. Settings > General management > Reset > Reset mobile network settings (or Reset network "
+            + "settings, which also forgets saved Wi-Fi and Bluetooth devices).\n"
+            + "To fix the hotspot band: Settings > Connections > Mobile Hotspot and Tethering > Mobile "
+            + "Hotspot > Configure > Band.";
+
+    private static String firstLine(String s) {
+        int i = s.indexOf('\n');
+        return (i < 0 ? s : s.substring(0, i)).trim();
+    }
+
+    /** Puts the radio back: no band lock, and the network types as they were (or the usual default). */
+    static String restoreRadio(Context c) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            Priv.Result r = Cells.shellMain(c, "bands-clear");
+            sb.append("Band lock: ").append(r.out.contains("OK ") ? "cleared."
+                    : "could not be cleared (" + firstLine(r.out) + ").").append('\n');
+            Cells.keep();
+        } catch (IOException e) {
+            sb.append("Band lock: ").append(e.getMessage()).append('\n');
+        }
+        long saved = Saved.types(c);
+        long target = saved > 0 ? saved : DEFAULT_TYPES;
+        try {
+            String err = forceTypes(c, target);
+            if (err == null) {
+                Saved.clearTypes(c);
+                sb.append("Network types: back to ").append(typesText(target))
+                        .append(saved > 0 ? " (as they were before LinkMeter changed them).\n"
+                                : " (the usual default).\n");
+            } else {
+                sb.append("Network types: ").append(err).append('\n');
+            }
+        } catch (IOException e) {
+            sb.append("Network types: ").append(e.getMessage()).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** Sets the allowed network types to target. Returns null on success, or a message. */
+    private static String forceTypes(Context c, long target) throws IOException {
+        long cur = parseOk(Cells.shellMain(c, "nt-get").out);
+        if (cur >= 0) {
+            if (cur == target) {
+                return null;
+            }
+            Cells.shellMain(c, "nt-set " + target);
+            if (parseOk(Cells.shellMain(c, "nt-get").out) == target) {
+                return null;
+            }
+        }
+        if (parseTypes(Priv.run(GET_TYPES, 15).out) == target) {
+            return null;
+        }
+        String[] forms = {"'" + typesText(target) + "'", String.valueOf(target)};
+        for (String f : forms) {
+            for (String slot : new String[] {"", "-s 0 "}) {
+                Priv.run(SET_TYPES + " " + slot + f, 15);
+                if (parseTypes(Priv.run(GET_TYPES, 15).out) == target) {
+                    return null;
+                }
+            }
+        }
+        return "the phone did not take the setting; use Settings > Connections > Mobile networks > "
+                + "Network mode.";
+    }
+
+    /**
+     * The one button that undoes everything LinkMeter can change: band lock, network types, hotspot
+     * band, battery saver, airplane mode and mobile data. Each step runs on its own, so one failure
+     * never stops the others.
+     */
+    static String restoreAll(Context c) {
+        if (!Priv.ready()) {
+            return "LinkMeter can't change phone settings right now (" + Priv.stateText(Priv.state())
+                    + ").\n\n" + MANUAL;
+        }
+        StringBuilder sb = new StringBuilder(restoreRadio(c));
+        int hb = Saved.hotspotBand(c);
+        if (hb > 0) {
+            try {
+                String arg = hb == 1 ? "2" : (hb == 2 ? "5" : "auto");
+                Priv.Result r = Cells.shellMain(c, "hotspot-band " + arg);
+                if (r.out.contains("OK ")) {
+                    Saved.clearHotspotBand(c);
+                    sb.append("Hotspot band: put back. Restart the hotspot to use it.\n");
+                } else {
+                    sb.append("Hotspot band: could not be put back (").append(firstLine(r.out)).append(").\n");
+                }
+            } catch (IOException e) {
+                sb.append("Hotspot band: ").append(e.getMessage()).append('\n');
+            }
+        }
+        try {
+            Eco.setSuppressed(true);
+            sb.append("Battery saver: ").append(Eco.restore(c)).append('\n');
+        } catch (IOException e) {
+            sb.append("Battery saver: ").append(e.getMessage()).append('\n');
+        }
+        try {
+            Priv.run("cmd connectivity airplane-mode disable; svc data enable", 20);
+            sb.append("Airplane mode is off and mobile data is on.\n");
+        } catch (IOException e) {
+            sb.append("Airplane mode and mobile data: ").append(e.getMessage()).append('\n');
+        }
+        sb.append("\n").append(MANUAL);
+        return sb.toString();
     }
 
     /** Reads "OK 12345" from ShellMain's output. Returns -1 if the output isn't that. */

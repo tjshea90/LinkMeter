@@ -37,6 +37,18 @@ final class PhoneTab extends Tab {
     View build() {
         LinearLayout col = Ui.column(act);
         col.addView(Ui.text(act, "LinkMeter · phone", 24, Ui.FG, true));
+
+        // Works on the phone alone: no tablet and no internet needed.
+        col.addView(Ui.text(act, "If something breaks", 16, Ui.RED, true), Ui.lp(act, 12));
+        col.addView(Ui.button(act, "Restore everything (fix internet)", v -> restore()), Ui.lp(act, 4));
+        col.addView(Ui.button(act, "Restart modem", v -> restartModem()), Ui.lp(act, 4));
+        col.addView(Ui.button(act, "Open mobile network settings", v -> act.openNetworkSettings()),
+                Ui.lp(act, 4));
+        col.addView(Ui.text(act, "Restore puts back the band lock, network types, hotspot band, "
+                + "battery saver, airplane mode and mobile data. It also runs from the Restore "
+                + "button on LinkMeter's notification. Without Shizuku, follow these steps:\n"
+                + Actions.MANUAL, 12, Ui.DIM, false), Ui.lp(act, 4));
+
         state = Ui.text(act, "", 16, Ui.FG, false);
         col.addView(state, Ui.lp(act, 12));
         toggle = Ui.button(act, "", v -> act.toggleSender());
@@ -102,6 +114,35 @@ final class PhoneTab extends Tab {
     @Override
     void onHide() {
         act.ui.removeCallbacks(tick);
+    }
+
+    private void showResult(String title, String text) {
+        new android.app.AlertDialog.Builder(act).setTitle(title).setMessage(text)
+                .setPositiveButton("OK", null).show();
+    }
+
+    private void restore() {
+        Toast.makeText(act, "Restoring…", Toast.LENGTH_SHORT).show();
+        final android.content.Context app = act.getApplicationContext();
+        new Thread(() -> {
+            final String r = Actions.restoreAll(app);
+            act.ui.post(() -> showResult("Restore everything", r));
+        }, "linkmeter-restore").start();
+    }
+
+    private void restartModem() {
+        final android.content.Context app = act.getApplicationContext();
+        Toast.makeText(act, "Restarting the modem…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String r;
+            try {
+                r = Actions.run(app, "restart_modem");
+            } catch (java.io.IOException e) {
+                r = "Couldn't restart the modem: " + e.getMessage();
+            }
+            final String fr = r;
+            act.ui.post(() -> showResult("Restart modem", fr));
+        }, "linkmeter-modem").start();
     }
 
     void refresh() {

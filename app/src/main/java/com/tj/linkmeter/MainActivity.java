@@ -247,6 +247,19 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** The phone's own Network mode page: the manual way to undo a network change, no Shizuku needed. */
+    void openNetworkSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_NETWORK_OPERATOR_SETTINGS));
+        } catch (RuntimeException e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
+            } catch (RuntimeException ignored) {
+                // nothing to open
+            }
+        }
+    }
+
     void openAppInfo() {
         try {
             startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,

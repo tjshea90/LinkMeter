@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
@@ -37,6 +38,7 @@ public class SenderService extends Service {
 
     private static final String CHANNEL = "sender";
     private static final String ACTION_STOP = "com.tj.linkmeter.STOP";
+    private static final String ACTION_RESTORE = "com.tj.linkmeter.RESTORE";
 
     private volatile boolean running;
     private volatile ServerSocket server;
@@ -49,6 +51,11 @@ public class SenderService extends Service {
             return START_NOT_STICKY;
         }
         startInForeground();
+        if (intent != null && ACTION_RESTORE.equals(intent.getAction())) {
+            final Context app = getApplicationContext();
+            new Thread(() -> Notice.post(app, "LinkMeter restore",
+                    Actions.restoreAll(app)), "linkmeter-restore").start();
+        }
         if (!running) {
             running = true;
             active = true;
@@ -73,16 +80,24 @@ public class SenderService extends Service {
         PendingIntent stop = PendingIntent.getService(
                 this, 1, new Intent(this, SenderService.class).setAction(ACTION_STOP),
                 PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent restore = PendingIntent.getService(
+                this, 2, new Intent(this, SenderService.class).setAction(ACTION_RESTORE),
+                PendingIntent.FLAG_IMMUTABLE);
         boolean phone = Cfg.PHONE.equals(Cfg.mode(this));
-        Notification n = new Notification.Builder(this, CHANNEL)
+        Notification.Builder nb = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setContentTitle(phone ? "LinkMeter is ready for the tablet" : "LinkMeter is sharing files")
                 .setContentText("Tap to open")
                 .setContentIntent(open)
                 .setOngoing(true)
                 .addAction(new Notification.Action.Builder(
-                        Icon.createWithResource(this, R.drawable.ic_launcher), "Stop", stop).build())
-                .build();
+                        Icon.createWithResource(this, R.drawable.ic_launcher), "Stop", stop).build());
+        if (phone) {
+            // One tap from the notification shade puts the phone's network settings back.
+            nb.addAction(new Notification.Action.Builder(
+                    Icon.createWithResource(this, R.drawable.ic_launcher), "Restore", restore).build());
+        }
+        Notification n = nb.build();
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else {

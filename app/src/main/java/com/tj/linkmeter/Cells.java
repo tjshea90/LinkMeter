@@ -180,6 +180,7 @@ final class Cells {
         boolean ok = r.out.contains("OK ");
         if (ok && !spec.isEmpty()) {
             armRevert(c);
+            Guard.arm(c);
         } else {
             keep();
         }
