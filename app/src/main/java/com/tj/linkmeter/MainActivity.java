@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     private Tab cur;
     private int index;
     private View tabBar;
+    private boolean immersive;
     /** If set, Back runs this instead of leaving the app (used to leave full screen). */
     Runnable backHandler;
 
@@ -73,16 +74,38 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Full screen: hides the tab bar and the system bars so a tab can use the whole display. */
+    /**
+     * Full screen: hides the tab bar and the system bars so a tab can use the whole display.
+     * The "layout" flags are left out on purpose: with them the window no longer shrinks when the
+     * on-screen keyboard opens, and the keyboard would cover the bottom of the screen.
+     */
     void setFullscreen(boolean on) {
-        if (tabBar != null) {
-            tabBar.setVisibility(on ? View.GONE : View.VISIBLE);
-        }
-        getWindow().getDecorView().setSystemUiVisibility(on
+        immersive = on;
+        setTabBarVisible(!on);
+        applyImmersive();
+    }
+
+    private void applyImmersive() {
+        getWindow().getDecorView().setSystemUiVisibility(immersive
                 ? (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+                | View.SYSTEM_UI_FLAG_FULLSCREEN)
                 : View.SYSTEM_UI_FLAG_VISIBLE);
+    }
+
+    /** Shows or hides the row of tabs (hidden in full screen whatever is asked, and while typing). */
+    void setTabBarVisible(boolean visible) {
+        if (tabBar != null) {
+            tabBar.setVisibility(visible && !immersive ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    /** Android shows the system bars again after the keyboard or a dialog; hide them again in full screen. */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && immersive) {
+            applyImmersive();
+        }
     }
 
     @Override

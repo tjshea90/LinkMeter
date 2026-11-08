@@ -27,6 +27,32 @@ final class Cfg {
         sp(c).edit().putString("mode", mode).apply();
     }
 
+    // ------------------------------------------------------------ plain values (see ScreenPrefs)
+
+    static int getInt(Context c, String key, int def) {
+        return sp(c).getInt(key, def);
+    }
+
+    static void setInt(Context c, String key, int v) {
+        sp(c).edit().putInt(key, v).apply();
+    }
+
+    static boolean getBool(Context c, String key, boolean def) {
+        return sp(c).getBoolean(key, def);
+    }
+
+    static void setBool(Context c, String key, boolean v) {
+        sp(c).edit().putBoolean(key, v).apply();
+    }
+
+    static String getStr(Context c, String key, String def) {
+        return sp(c).getString(key, def);
+    }
+
+    static void setStr(Context c, String key, String v) {
+        sp(c).edit().putString(key, v).apply();
+    }
+
     // ------------------------------------------------------------ trust
 
     /**
