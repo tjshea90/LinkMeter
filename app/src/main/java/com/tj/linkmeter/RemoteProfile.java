@@ -141,11 +141,6 @@ final class RemoteProfile {
         return v;
     }
 
-    /** What to put a setting back to: its original, except that the battery saver's timeout wins while Eco is on. */
-    private static String restoreValue(Context app, int i, String orig) {
-        return (i == T && Eco.isOn(app)) ? Eco.timeoutMs() : orig;
-    }
-
     /** One shell command that sets a setting, or deletes it if it was not set before. */
     private static String put(int i, String v) {
         if (v.equals("null")) {
@@ -176,6 +171,7 @@ final class RemoteProfile {
     /**
      * Starts (or updates) a session. keepMs: make sure the screen stays on at least this long (0 = leave the
      * timeout alone). dim: brightness 0 to 255 to use meanwhile (-1 = leave brightness alone). Returns what it did.
+     * The decisions are in ProfilePlan, which is tested on a computer.
      */
     static String begin(Context c, long keepMs, int dim) throws IOException {
         final Context app = c.getApplicationContext();
@@ -185,58 +181,32 @@ final class RemoteProfile {
             SharedPreferences p = prefs(app);
             boolean on = p.getBoolean("on", false);
             String[] cur = read();
-            String[] orig = new String[3];
-            String[] appl = new String[3]; // what we set, or null when we do not manage that setting
+            String[] savedOrig = new String[3];
+            boolean[] savedChg = new boolean[3];
+            String[] savedAppl = new String[3];
             for (int i = 0; i < 3; i++) {
-                orig[i] = on ? p.getString("o" + i, cur[i]) : cur[i];
-                appl[i] = (on && p.getBoolean("c" + i, false)) ? p.getString("a" + i, "null") : null;
+                savedOrig[i] = p.getString("o" + i, cur[i]);
+                savedChg[i] = p.getBoolean("c" + i, false);
+                savedAppl[i] = p.getString("a" + i, "null");
             }
-            // What we want, worked out from the originals, so asking again with the same options changes nothing.
-            String[] want = new String[3];
-            if (keep > 0 && num(orig[T]) < keep) {
-                want[T] = String.valueOf(keep);
-            }
-            if (level >= 0) {
-                if (!"0".equals(orig[M])) {
-                    want[M] = "0";
-                }
-                want[B] = String.valueOf(level);
-            }
-            boolean[] chg = new boolean[3];
-            String[] now = new String[3];
-            StringBuilder wr = new StringBuilder();
-            for (int i = 0; i < 3; i++) {
-                if (want[i] == null) {
-                    // not wanted (any more): put it back if we changed it and nobody else has touched it since
-                    if (appl[i] != null && cur[i].equals(appl[i])) {
-                        wr.append(put(i, restoreValue(app, i, orig[i])));
-                    }
-                } else if (appl[i] == null) { // take it over
-                    wr.append(put(i, want[i]));
-                    chg[i] = true;
-                    now[i] = want[i];
-                } else if (!cur[i].equals(appl[i])) {
-                    // the user changed it during the session: keep their choice and stop managing it
-                    continue;
-                } else if (!want[i].equals(appl[i])) { // our own options changed
-                    wr.append(put(i, want[i]));
-                    chg[i] = true;
-                    now[i] = want[i];
-                } else {
-                    chg[i] = true;
-                    now[i] = appl[i];
-                }
-            }
-            boolean any = chg[T] || chg[M] || chg[B];
+            ProfilePlan.Begin plan = ProfilePlan.begin(on, savedOrig, savedChg, savedAppl, cur, keep, level,
+                    Eco.isOn(app), Eco.timeoutMs());
             // Save first (originals and what we are about to set), then change.
             SharedPreferences.Editor e = p.edit();
             for (int i = 0; i < 3; i++) {
-                e.putString("o" + i, orig[i]);
-                e.putBoolean("c" + i, chg[i]);
-                e.putString("a" + i, chg[i] ? now[i] : "null");
+                e.putString("o" + i, plan.orig[i]);
+                e.putBoolean("c" + i, plan.chg[i]);
+                e.putString("a" + i, plan.chg[i] ? plan.now[i] : "null");
             }
-            e.putBoolean("on", any);
+            e.putBoolean("on", plan.any());
             e.commit();
+            StringBuilder wr = new StringBuilder();
+            for (int i = 0; i < 3; i++) {
+                if (plan.writes[i] != null) {
+                    wr.append(put(i, plan.writes[i]));
+                }
+            }
+            String[] now = plan.now;
             if (wr.length() > 0) {
                 Priv.Result w = Priv.run(wr.append("true").toString(), 20);
                 if (!w.ok()) {
@@ -244,8 +214,9 @@ final class RemoteProfile {
                 }
                 String[] back = read(); // the phone may round or limit a value: remember what it kept
                 SharedPreferences.Editor e2 = p.edit();
+                now = plan.now.clone();
                 for (int i = 0; i < 3; i++) {
-                    if (chg[i]) {
+                    if (plan.chg[i]) {
                         now[i] = back[i];
                         e2.putString("a" + i, back[i]);
                     }
@@ -253,21 +224,21 @@ final class RemoteProfile {
                 e2.commit();
             }
             seen();
-            if (any) {
+            if (plan.any()) {
                 arm(app);
             } else {
                 H.removeCallbacks(CHECK);
             }
             StringBuilder said = new StringBuilder();
-            if (chg[T]) {
+            if (plan.chg[T]) {
                 said.append("The phone's screen stays on for at least ").append(timeoutText(now[T]))
-                        .append(" (it was ").append(timeoutText(orig[T])).append("). ");
+                        .append(" (it was ").append(timeoutText(plan.orig[T])).append("). ");
             } else if (keep > 0) {
                 said.append("Screen timeout is already ").append(timeoutText(cur[T])).append(" or more, left as it is. ");
             }
-            if (chg[B]) {
+            if (plan.chg[B]) {
                 said.append("Brightness is ").append(brightText(now[B], "0")).append(" while you use the remote screen (it was ")
-                        .append(brightText(orig[B], orig[M])).append("). ");
+                        .append(brightText(plan.orig[B], plan.orig[M])).append("). ");
             }
             if (said.length() == 0) {
                 said.append("No phone settings needed changing.");
@@ -286,22 +257,26 @@ final class RemoteProfile {
                 return "No remote session was changing the phone's screen settings.";
             }
             String[] cur = read();
+            boolean[] savedChg = new boolean[3];
+            String[] savedAppl = new String[3];
+            String[] savedOrig = new String[3];
+            for (int i = 0; i < 3; i++) {
+                savedChg[i] = p.getBoolean("c" + i, false);
+                savedAppl[i] = p.getString("a" + i, "null");
+                savedOrig[i] = p.getString("o" + i, "null");
+            }
+            String[] w = ProfilePlan.end(savedChg, savedAppl, savedOrig, cur, Eco.isOn(app), Eco.timeoutMs());
             StringBuilder wr = new StringBuilder();
             StringBuilder said = new StringBuilder();
             for (int i = 0; i < 3; i++) {
-                if (!p.getBoolean("c" + i, false)) {
-                    continue;
-                }
-                String applied = p.getString("a" + i, "null");
-                String orig = restoreValue(app, i, p.getString("o" + i, "null"));
-                if (cur[i].equals(applied)) {
-                    wr.append(put(i, orig));
+                if (w[i] != null) {
+                    wr.append(put(i, w[i]));
                     if (i == T) {
-                        said.append("Screen timeout back to ").append(timeoutText(orig)).append(". ");
+                        said.append("Screen timeout back to ").append(timeoutText(w[i])).append(". ");
                     } else if (i == B) {
-                        said.append("Brightness back to ").append(brightText(orig, p.getString("o" + M, "0"))).append(". ");
+                        said.append("Brightness back to ").append(brightText(w[i], savedOrig[M])).append(". ");
                     }
-                } else if (i == T || i == B) {
+                } else if (savedChg[i] && (i == T || i == B)) {
                     said.append(i == T ? "Screen timeout" : "Brightness").append(" left as you changed it. ");
                 }
             }

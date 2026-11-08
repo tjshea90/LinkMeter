@@ -37,3 +37,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T06:29:32Z tablet foundations: settings holder (resolution, bitrate, decoder, low-delay, power options), video decoder tuning with safe fallback, decoder choice and diagnostics, full screen that lets the keyboard resize the window
 - 2026-11-08T06:39:24Z remote screen redesign: side-bar controls that never cover the picture, typing mode with the tablet keyboard, number pad for the PIN, settings panel (resolution, bitrate, decoder, low-delay, phone power options), sharp still picture when the screen is idle, quiet reconnects
 - 2026-11-08T06:41:27Z phone power calls go through one ordered queue (end can't overtake begin); sharp still stays up until the video has caught up; stale video packets ignored
+- 2026-11-08T06:43:52Z phone settings decisions moved into a pure ProfilePlan with offline tests (scenarios plus 5000 random round trips); tools/test.sh runs all offline tests
