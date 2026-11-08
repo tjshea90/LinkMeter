@@ -76,6 +76,17 @@ with Wireless debugging OFF (wireless-debugging start dies when Wi-Fi turns off 
 - Not yet checked on the phone: ShellMain route (`Bands > Read lock info`), band lock result, Prepare phone,
   Force 4G / Allow 5G outcome, battery saver, speed test, Files.
 
+## Updating the phone from the tablet (new)
+
+Control tab > "Update phone from this tablet": the tablet uploads its own installed APK (`sourceDir`) to the phone
+(`POST /apk`, Updater.receive). The phone checks it is this package and not older (versionCode), then runs
+`cp` + `pm install -r` through Shizuku, detached, with the result written to
+`Android/data/com.tj.linkmeter/files/install.log` (shown on the Phone tab as "Last update from the tablet").
+The install kills the app; BootReceiver restarts the phone service after MY_PACKAGE_REPLACED. Only the same
+signing key can update, and the package name is checked, so it cannot install other apps. versionCode now comes
+from GITHUB_RUN_NUMBER (versionName 0.2.N), so every CI build is newer. First install of this version on both
+devices is manual; after that only the tablet needs a manual install. NOT yet tested on the devices.
+
 ## Working in this sandbox (what is blocked)
 
 - No Android SDK: only GitHub Actions compiles. `tools/ci.sh "msg"` commits, pushes, waits and prints errors.
