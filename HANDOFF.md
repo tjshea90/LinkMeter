@@ -37,6 +37,29 @@ Treat everything below as "written and built, not field-tested".
 | Cell survey | Cells.survey (parses `dumpsys telephony.registry`) | Shizuku | LOW until probed (text format unverified) |
 | Band lock | Cells.applyBands, ShellMain | Shizuku + modem cooperation | EXPERIMENTAL |
 
+## Open issue right now (read this before anything else)
+
+First field test: the user installed the APK on both devices; the phone toast said "open LinkMeter on
+the tablet" but pairing never happened, and the tablet's Home said "Tablet isn't on Wi-Fi" while it was.
+Cause (probable): HomeTab gated all networking on `WifiInfo.getNetworkId() != -1`, which this tablet
+(Android 10 MediaTek ROM) apparently does not report. Fix pushed (build 42433328029, green): `Net.phoneHost`
+now takes the default route of the Wi-Fi network (ConnectivityManager/LinkProperties), then DhcpInfo, and
+HomeTab tries the phone whenever an address is known. New diagnostics:
+- Tablet Home, small line under the status: `Phone address <ip> (typed|route|dhcp)` plus tablet Wi-Fi dBm.
+- Phone tab: `Requests received: N. Last: <ip> <path>: <result> at <time>` (Api.note), refreshed every 2 s.
+Waiting for the user to reinstall on both devices and report those two lines. Read them to tell apart:
+no address found / tablet cannot reach the phone / phone refuses pairing / Pair window closed.
+
+## Working in this sandbox (what is blocked)
+
+- No Android SDK: only GitHub Actions compiles. `tools/ci.sh "msg"` commits, pushes, waits and prints errors.
+- `gh run list|view --repo tjshea90/LinkMeter` works (REST); GraphQL commands (`gh release view`) do not;
+  use `gh api repos/tjshea90/LinkMeter/releases/tags/latest`.
+- Hooks block curl/wget, `git config` of the identity, and `rm -rf`. WebFetch cannot open GitHub pages or
+  AOSP source. Do not try to route around these.
+- Commits end with the Co-Authored-By and Claude-Session trailer lines given by the session reminder.
+- `.simple-workflow/` (plugin notes) is gitignored on purpose.
+
 ## Protocol (plain sockets, HTTP/1.0 style, port 8765)
 
 Header `X-Token: <32 hex>`. The tablet's token is its own secret; the phone keeps the secrets of

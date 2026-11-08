@@ -10,3 +10,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T00:50:25Z stage 5: cell survey, experimental band lock via ShellMain, 4G toggle through the telephony API
 - 2026-11-08T00:52:46Z handoff rewrite, sturdier Shizuku newProcess lookup
 - 2026-11-08T01:13:38Z fix: don't trust the Wi-Fi manager to say the tablet is on Wi-Fi; show the phone address and what reaches the phone
+- 2026-11-08T01:15:33Z handoff: record the pairing issue, diagnostics and sandbox limits
