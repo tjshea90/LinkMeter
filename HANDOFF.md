@@ -8,7 +8,24 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (newest): field results for the Bands tab and the hotspot band, and the fixes (released as v0.2.63).**
+**2026-11-08 (newest): Files/Attach/Texts project: PHASE A (the new file manager) is built, CI-compiled and released; NOT yet seen on a device.**
+- Design, protocol and status checklist: `docs/FILES_AND_TEXTS_PLAN.md` (keep its Status list true). Phase order: A files, B attach from the Screen tab, C Texts.
+- Built and tested offline (`tools/test.sh`): pure core (FsEntry, FsPath, FileKind, FileSort, Clip, Store, DiskStore, TransferEngine), pure protocol
+  (Json, Http/Client without Android, FsApi + FsHttp + FsJobs + FsSearch on the phone side, RemoteStore + PeerLink on the tablet side); the tests run the
+  real server and client over a real socket (every route, an old app, the engine across the wire, cancels), with deliberate-breakage checks.
+- Android parts (only CI compiles them): `FilesTab` (rewritten: source switch, breadcrumbs, shortcut chips, list/grid with thumbnails, long-press selection,
+  copy/cut/paste bar, progress card, search, rename, details, open), `FileBrowser` (state + reading), `Transfers` (runs TransferEngine, asks about clashes),
+  `FileDialogs`, `Thumbs` (8 MB cache + disk cache, newest request first), `FileIcon`, `FilesPrefs`, `ThumbMaker`, `AndroidMedia` (thumbnails, recent files,
+  media scan), `ShareProvider` (own tiny content provider so other apps can open a file; no androidx), `Files.serve` -> `FsApi`.
+- UNKNOWN until the user tries it: how the screen feels on the 600 px Go tablet; thumbnail speed over the hotspot; whether "Recent photos" works with
+  MediaStore on Android 16; opening a phone file on the tablet (downloads to cache first). Old phone apps still work (the tablet falls back), but
+  thumbnails/rename/fast copy need the new phone app (Control > Update phone from this tablet).
+- NEXT: Phase B. `Icons.Kind.PAPERCLIP` already exists (drawn, checked on the icon sheet). To do: an Attach `BarButton` in `ScreenTab.rightNormal`, a picker
+  dialog (recent tablet photos strip + the system picker for other files via `startActivityForResult` and a result hook in MainActivity), upload with
+  `RemoteStore.write` into `/Pictures/LinkMeter` (images, video) or `/Download/LinkMeter` (rest), the phone's `AndroidMedia.changed` scans them, then tell
+  the user where to find them in the phone's app. Then Phase C (Texts), design in the plan.
+
+**2026-11-08 (earlier): field results for the Bands tab and the hotspot band, and the fixes (released as v0.2.63).**
 - With the scan fixed (v0.2.61) the run showed `NOT obeyed` for EVERY lock: the phone (Samsung A15 5G, Verizon, Android 16) stayed on
   B66 + B48 even when asked for B66 only. So `setSystemSelectionChannels` is acknowledged and ignored AS APPLIED. Upload was 0.7 to 2.8
   Mbit/s on identical bands (the noise), signal about -104 dBm. The user asked "does this mean I can't lock bands".
@@ -28,7 +45,7 @@ session's transcript.
   a `TetheringManager(Context, Supplier)` by reflection and may need the same treatment if "Restart hotspot" fails. NOTE for the user:
   the hotspot's Wi-Fi band changes only the tablet-to-phone link, not the mobile upload.
 
-**2026-11-08 (later): BIG REQUEST in progress: polished file manager, attach to phone apps, Texts (SMS/MMS).**
+**2026-11-08 (earlier still): BIG REQUEST in progress: polished file manager, attach to phone apps, Texts (SMS/MMS).**
 The user asked (after the Bands work, v0.2.61 is the last release before this): send and receive SMS on the tablet with easy
 photo/file attachments; attach tablet photos/files to ANY app on the phone while using it remotely; revamp the Files tab into a
 polished file manager (copy/paste/delete, thumbnails, like File Manager +) so files move easily between phone and tablet.

@@ -502,21 +502,17 @@ final class FilesTab extends Tab implements Transfers.Listener {
         if (!k.hasThumbnail()) {
             return;
         }
-        try {
-            String path = b.full(e);
-            String key = b.id() + "|" + path + "|" + e.time + "|" + e.size + "|160";
-            Thumbs th = Thumbs.get(act);
-            Thumbs.Loader loader;
-            if (b.side == FileBrowser.THIS) {
-                final DiskStore disk = b.disk();
-                loader = (kk, p, kind, pp) -> ThumbMaker.bitmap(act, disk.resolve(p), kind, 160);
-            } else {
-                loader = th.remote(b.remoteStore(act));
-            }
-            th.load(iv, key, path, k, 160, loader);
-        } catch (IOException ignored) {
-            // no thumbnail: the icon stays
+        String path = b.full(e);
+        String key = b.id() + "|" + path + "|" + e.time + "|" + e.size + "|160";
+        final Thumbs th = Thumbs.get(act);
+        // the store (for the other device: its address) is looked up on the thumbnail thread, not while the list is being drawn
+        Thumbs.Loader loader;
+        if (b.side == FileBrowser.THIS) {
+            loader = (kk, p, kind, pp) -> ThumbMaker.bitmap(act, b.disk().resolve(p), kind, 160);
+        } else {
+            loader = (kk, p, kind, pp) -> th.remote(b.remoteStore(act)).load(kk, p, kind, pp);
         }
+        th.load(iv, key, path, k, 160, loader);
     }
 
     private void onItem(int pos) {

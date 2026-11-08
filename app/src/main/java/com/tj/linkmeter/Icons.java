@@ -10,7 +10,7 @@ final class Icons {
 
     enum Kind {
         BACK, HOME, RECENTS, VOL_UP, VOL_DOWN, KEYBOARD, POWER, LOCK, SLIDERS, FULL, EXIT_FULL, CLOSE,
-        ENTER, BACKSPACE, TAB, UP, DOWN, LEFT, RIGHT
+        ENTER, BACKSPACE, TAB, UP, DOWN, LEFT, RIGHT, PAPERCLIP
     }
 
     /** The drawing operations the icons need. Angles are degrees, clockwise from 3 o'clock. */
@@ -42,6 +42,50 @@ final class Icons {
     private static void speaker(Pen p, float cx, float cy, float r) {
         p.poly(pts(cx, cy, r, -0.85f, -0.25f, -0.45f, -0.25f, 0f, -0.65f, 0f, 0.65f, -0.45f, 0.25f, -0.85f, 0.25f),
                 true, false);
+    }
+
+    /** Points of a half circle (clockwise on the screen) from one end of its diameter to the other, in the 24-unit box of the paperclip. */
+    private static void halfCircle(java.util.List<Float> out, double x1, double y1, double x2, double y2) {
+        double mx = (x1 + x2) / 2;
+        double my = (y1 + y2) / 2;
+        double rad = Math.hypot(x2 - x1, y2 - y1) / 2;
+        double a0 = Math.atan2(y1 - my, x1 - mx);
+        for (int i = 1; i < 12; i++) {
+            double a = a0 + Math.PI * i / 12;
+            out.add((float) (mx + rad * Math.cos(a)));
+            out.add((float) (my + rad * Math.sin(a)));
+        }
+    }
+
+    /** A slanted paperclip: three half circles joined by straight pieces (the common 24-unit icon shape). */
+    private static float[] paperclip(float cx, float cy, float r) {
+        java.util.List<Float> v = new java.util.ArrayList<>();
+        double[][] corners = {{21.44, 11.05}, {12.25, 20.24}};
+        v.add((float) corners[0][0]);
+        v.add((float) corners[0][1]);
+        v.add((float) corners[1][0]);
+        v.add((float) corners[1][1]);
+        halfCircle(v, 12.25, 20.24, 3.76, 11.75);
+        v.add(3.76f);
+        v.add(11.75f);
+        v.add(12.33f);
+        v.add(3.18f);
+        halfCircle(v, 12.33, 3.18, 18.0, 8.84);
+        v.add(18.0f);
+        v.add(8.84f);
+        v.add(9.41f);
+        v.add(17.41f);
+        halfCircle(v, 9.41, 17.41, 6.58, 14.58);
+        v.add(6.58f);
+        v.add(14.58f);
+        v.add(15.07f);
+        v.add(6.1f);
+        float[] out = new float[v.size()];
+        for (int i = 0; i < out.length; i += 2) {
+            out[i] = cx + (v.get(i) - 12f) / 12f * r * 1.05f;
+            out[i + 1] = cy + (v.get(i + 1) - 12f) / 12f * r * 1.05f;
+        }
+        return out;
     }
 
     static void draw(Kind k, Pen p, float cx, float cy, float r) {
@@ -133,6 +177,9 @@ final class Icons {
                 break;
             case RIGHT:
                 p.poly(pts(cx, cy, r, 0.55f, 0f, -0.4f, -0.55f, -0.4f, 0.55f), true, true);
+                break;
+            case PAPERCLIP:
+                p.poly(paperclip(cx, cy, r), false, false);
                 break;
             default:
                 break;
