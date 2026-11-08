@@ -50,6 +50,23 @@ HomeTab tries the phone whenever an address is known. New diagnostics:
 Waiting for the user to reinstall on both devices and report those two lines. Read them to tell apart:
 no address found / tablet cannot reach the phone / phone refuses pairing / Pair window closed.
 
+## Probe results from the user's phone (first real data)
+
+Paired and working over the hotspot. Shizuku runs fine on the hotspot once started from a computer over USB
+with Wireless debugging OFF (wireless-debugging start dies when Wi-Fi turns off for the hotspot).
+- Phone is SM-S156V (Verizon A15 5G), Android 16 (SDK 36), board mt6835 (MediaTek), "Samsung RIL v5.0".
+- `cmd phone` has `get-allowed-network-types-for-users` and `set-allowed-network-types-for-users` (help gives no
+  usage), plus `radio`, `restart-modem`, `cc` (carrier config). `get` prints WORDS, not a number: `LTE|LTE_CA`.
+  So the phone is currently LTE-only (5G already off). Actions.parseTypes/typesText now read and write the words;
+  the set command's argument form is unknown, so setNr tries the words, then the number, each with and without
+  `-s 0`, and checks by reading back. The probe now also prints the set command's own usage.
+- `cmd connectivity airplane-mode` works (printed `disabled`). `cmd wifi help` lists no start/stop-softap.
+- `dumpsys telephony.registry`: serving cell is LTE band 5 (`mBands=[5]`), rsrp about -104, level 2,
+  `isUsingCarrierAggregation=true`, ServiceState `mChannelNumber=2560` (EARFCN, band 5). Cell lists HIDE
+  `mEarfcn` and `mPci` as `[****]`, so Cells.survey takes the serving channel from `mChannelNumber`.
+- Not yet checked on the phone: ShellMain route (`Bands > Read lock info`), band lock result, Prepare phone,
+  Force 4G / Allow 5G outcome, battery saver, speed test, Files.
+
 ## Working in this sandbox (what is blocked)
 
 - No Android SDK: only GitHub Actions compiles. `tools/ci.sh "msg"` commits, pushes, waits and prints errors.

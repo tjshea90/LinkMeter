@@ -51,15 +51,28 @@ final class Cells {
     // ------------------------------------------------------------ survey
 
     static String survey() throws IOException {
-        Priv.Result r = Priv.run("dumpsys telephony.registry 2>&1 | grep -i 'CellInfo' "
-                + "| cut -c1-9000 | head -6", 25);
+        Priv.Result r = Priv.run("dumpsys telephony.registry 2>&1 | grep -iE 'CellInfo|mServiceState' "
+                + "| cut -c1-9000 | head -8", 25);
+        // This phone hides each cell's channel in the cell list but shows the serving one here.
+        Matcher ch = Pattern.compile("mChannelNumber=(\\d+)").matcher(r.out);
+        int servingChannel = ch.find() ? Integer.parseInt(ch.group(1)) : NONE;
         JSONObject o = new JSONObject();
         JSONArray arr = new JSONArray();
         Set<String> seen = new HashSet<>();
         try {
             for (JSONObject cell : parse(r.out)) {
-                String key = cell.optString("t") + cell.optInt("earfcn", -1) + cell.optInt("pci", -1)
-                        + cell.optInt("reg");
+                if (cell.optInt("reg") == 1 && !cell.has("earfcn") && servingChannel != NONE) {
+                    cell.put("earfcn", servingChannel);
+                    if (cell.optJSONArray("bands") != null && cell.optJSONArray("bands").length() == 0
+                            && cell.optString("t").equals("LTE") && lteBand(servingChannel) > 0) {
+                        cell.optJSONArray("bands").put(lteBand(servingChannel));
+                    }
+                }
+                // Channels and cell ids are hidden on some phones, so the key uses what is left.
+                String key = cell.optString("t") + "|" + cell.optInt("reg") + "|"
+                        + cell.optJSONArray("bands") + "|" + cell.optInt("earfcn", -1) + "|"
+                        + cell.optInt("pci", -1) + "|" + cell.optInt("rsrp", 0) + "|"
+                        + cell.optInt("rsrq", 0);
                 if (seen.add(key)) {
                     arr.put(cell);
                 }

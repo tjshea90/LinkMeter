@@ -89,7 +89,8 @@ final class Actions {
 
     /**
      * Turns 5G on or off by reading the phone's allowed network types, changing only
-     * the 5G bit, and writing it back. Nothing is written if the read looks wrong.
+     * the 5G entry, and writing it back. Nothing is written if the read looks wrong,
+     * and every write is checked by reading the setting back.
      */
     private static String setNr(Context c, boolean allow5g) throws IOException {
         String viaApi = setNrViaApi(c, allow5g);
@@ -97,41 +98,50 @@ final class Actions {
             return viaApi;
         }
         Priv.Result g = Priv.run(GET_TYPES, 15);
-        long mask = parseMask(g.out);
-        if (mask < 0) {
+        long mask = parseTypes(g.out);
+        if (mask < 0 || (mask & LTE_BIT) == 0) {
             return "Couldn't read the phone's current network types, so nothing was changed.\n"
                     + "The phone said:\n" + g.out;
         }
         long target = allow5g ? (mask | NR_BIT) : (mask & ~NR_BIT);
         if (target == mask) {
-            return allow5g ? "5G was already allowed." : "5G was already off (4G/LTE mode).";
+            return allow5g ? "5G is already allowed (" + typesText(mask) + ")."
+                    : "5G is already off. The phone is on " + typesText(mask) + ".";
         }
+        // The phone prints types as words ("LTE|LTE_CA"); which form the set command takes
+        // is not documented, so try the likely ones and keep the first that reads back right.
+        String[] forms = {"'" + typesText(target) + "'", String.valueOf(target)};
         StringBuilder log = new StringBuilder();
-        String[] tries = {SET_TYPES + " " + target, SET_TYPES + " -s 0 " + target};
-        for (String t : tries) {
-            Priv.Result s = Priv.run(t, 15);
-            log.append(s.out).append('\n');
-            String low = s.out.toLowerCase();
-            if (s.rc == 0 && !low.contains("usage") && !low.contains("unknown")
-                    && !low.contains("error") && !low.contains("fail")) {
-                break;
+        for (String f : forms) {
+            for (String slot : new String[] {"", "-s 0 "}) {
+                String cmd = SET_TYPES + " " + slot + f;
+                Priv.Result s = Priv.run(cmd, 15);
+                log.append("$ ").append(cmd).append('\n').append(s.out).append('\n');
+                if (parseTypes(Priv.run(GET_TYPES, 15).out) == target) {
+                    return allow5g ? "5G is allowed again (" + typesText(target) + ")."
+                            : "Forced to 4G. The phone is now on " + typesText(target) + ".";
+                }
             }
         }
-        long now = parseMask(Priv.run(GET_TYPES, 15).out);
-        if (now == target) {
-            return allow5g ? "5G is allowed again." : "Forced to 4G (5G turned off).";
-        }
-        return "The phone did not accept the change.\n" + log.toString().trim();
+        Priv.Result usage = Priv.run(SET_TYPES + " 2>&1 | head -20", 15);
+        return "The phone did not accept the change.\n" + log.toString().trim()
+                + "\nUsage the phone printed:\n" + usage.out;
     }
 
     /** The phone's allowed network types, from the telephony API (first choice) or the shell command. */
     private static String netGet(Context c) throws IOException {
         long viaApi = parseOk(Cells.shellMain(c, "nt-get").out);
         if (viaApi >= 0) {
-            return "Allowed network types: " + viaApi + (viaApi != (viaApi & ~NR_BIT)
-                    ? " (5G is allowed)" : " (5G is off)");
+            return "Allowed network types: " + typesText(viaApi)
+                    + ((viaApi & NR_BIT) != 0 ? " (5G is allowed)" : " (5G is off)");
         }
-        return "Allowed network types (shell command):\n" + Priv.run(GET_TYPES, 15).out;
+        Priv.Result r = Priv.run(GET_TYPES, 15);
+        long m = parseTypes(r.out);
+        if (m >= 0) {
+            return "Allowed network types: " + typesText(m)
+                    + ((m & NR_BIT) != 0 ? " (5G is allowed)" : " (5G is off)");
+        }
+        return "Allowed network types (shell command):\n" + r.out;
     }
 
     /**
@@ -146,12 +156,14 @@ final class Actions {
         }
         long target = allow5g ? (mask | NR_BIT) : (mask & ~NR_BIT);
         if (target == mask) {
-            return allow5g ? "5G was already allowed." : "5G was already off (4G/LTE mode).";
+            return allow5g ? "5G is already allowed (" + typesText(mask) + ")."
+                    : "5G is already off. The phone is on " + typesText(mask) + ".";
         }
         Priv.Result s = Cells.shellMain(c, "nt-set " + target);
         long now = parseOk(Cells.shellMain(c, "nt-get").out);
         if (now == target) {
-            return allow5g ? "5G is allowed again." : "Forced to 4G (5G turned off).";
+            return allow5g ? "5G is allowed again (" + typesText(target) + ")."
+                    : "Forced to 4G. The phone is now on " + typesText(target) + ".";
         }
         return "The phone did not accept the change.\n" + s.out;
     }
@@ -169,20 +181,59 @@ final class Actions {
         }
     }
 
-    /** Finds the network-types bitmask in the command's output. Returns -1 if it can't be trusted. */
-    static long parseMask(String out) {
-        Matcher m = Pattern.compile("\\b(\\d{3,})\\b").matcher(out);
-        while (m.find()) {
-            try {
-                long v = Long.parseLong(m.group(1));
-                if ((v & LTE_BIT) != 0 && v < (1L << 24)) {
-                    return v;
-                }
-            } catch (NumberFormatException ignored) {
-                // too long to be a mask
+    /** Network type names in order of Android's NETWORK_TYPE_* numbers (index = number; bit = 1 << (number - 1)). */
+    private static final String[] TYPE_NAMES = {"", "GPRS", "EDGE", "UMTS", "CDMA", "EVDO_0", "EVDO_A",
+        "1xRTT", "HSDPA", "HSUPA", "HSPA", "IDEN", "EVDO_B", "LTE", "EHRPD", "HSPAP", "GSM",
+        "TD_SCDMA", "IWLAN", "LTE_CA", "NR"};
+
+    /** Writes a bitmask as the phone prints it, for example "LTE|LTE_CA|NR". */
+    static String typesText(long mask) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i < TYPE_NAMES.length; i++) {
+            if ((mask & (1L << (i - 1))) != 0) {
+                sb.append(sb.length() > 0 ? "|" : "").append(TYPE_NAMES[i]);
             }
         }
-        return -1;
+        return sb.length() == 0 ? "none" : sb.toString();
+    }
+
+    /**
+     * Reads the shell command's answer, either a number or words such as "LTE|LTE_CA".
+     * Returns -1 if any word is not recognised, so a misread can never be written back.
+     */
+    static long parseTypes(String out) {
+        String line = "";
+        for (String l : out.split("\n")) {
+            if (!l.trim().isEmpty()) {
+                line = l.trim();
+            }
+        }
+        int colon = line.lastIndexOf(':');
+        if (colon >= 0) {
+            line = line.substring(colon + 1).trim();
+        }
+        if (line.matches("\\d{1,9}")) {
+            return Long.parseLong(line);
+        }
+        long mask = 0;
+        for (String tok : line.split("[|,\\s]+")) {
+            if (tok.isEmpty()) {
+                continue;
+            }
+            String t = tok.equals("HSPA+") ? "HSPAP" : tok;
+            int idx = -1;
+            for (int i = 1; i < TYPE_NAMES.length; i++) {
+                if (TYPE_NAMES[i].equalsIgnoreCase(t)) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0) {
+                return -1;
+            }
+            mask |= 1L << (idx - 1);
+        }
+        return mask == 0 ? -1 : mask;
     }
 
     /** Facts about this phone's shell commands, for working out what it supports. Contains no IDs. */
@@ -196,8 +247,11 @@ final class Actions {
             "settings get global preferred_network_mode",
             "cmd connectivity airplane-mode 2>&1",
             "cmd wifi help 2>&1 | grep -iE 'softap|tether' | head -10",
-            "dumpsys telephony.registry 2>&1 | grep -iE 'mServiceState|mCellInfo|mSignalStrength|"
-                    + "mDataConnectionState|mDataNetworkType' | cut -c1-500 | head -12",
+            SET_TYPES + " 2>&1 | head -20",
+            "cmd phone radio help 2>&1 | head -40",
+            "dumpsys telephony.registry 2>&1 | grep -iE 'mServiceState|mSignalStrength|"
+                    + "mDataConnectionState|mDataNetworkType' | cut -c1-500 | head -8",
+            "dumpsys telephony.registry 2>&1 | grep -i 'mCellInfo' | cut -c1-3000 | head -3",
             "getprop 2>&1 | grep -iE 'ril|radio|telephony|mtk' "
                     + "| grep -viE 'imei|imsi|iccid|serial|msisdn|number' | head -40",
         };
