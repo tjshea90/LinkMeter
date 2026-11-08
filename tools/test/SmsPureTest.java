@@ -37,6 +37,7 @@ public final class SmsPureTest {
         encoding();
         wholeMessages();
         fitting();
+        times();
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }
@@ -638,6 +639,87 @@ public final class SmsPureTest {
                 // refusing is allowed; what matters is that nothing was claimed to fit when it does not
                 check(sum(in) > lim - MmsFit.OVERHEAD - text, "random fit " + round + ": refused only when it did not fit as it was");
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- times in the texts
+
+    static long at(java.util.TimeZone z, int y, int mo, int d, int h, int mi) {
+        java.util.Calendar c = java.util.Calendar.getInstance(z, java.util.Locale.US);
+        c.clear();
+        c.set(y, mo - 1, d, h, mi, 0);
+        return c.getTimeInMillis();
+    }
+
+    static void times() {
+        java.util.TimeZone utc = java.util.TimeZone.getTimeZone("UTC");
+        java.util.TimeZone ny = java.util.TimeZone.getTimeZone("America/New_York");
+        TextTime.Env us = new TextTime.Env(utc, java.util.Locale.US, false);
+        TextTime.Env us24 = new TextTime.Env(utc, java.util.Locale.US, true);
+        long now = at(utc, 2026, 11, 8, 14, 5); // a Sunday
+        eq(TextTime.clock(at(utc, 2026, 11, 8, 15, 45), us), "3:45 PM", "clock 12 hours");
+        eq(TextTime.clock(at(utc, 2026, 11, 8, 15, 45), us24), "15:45", "clock 24 hours");
+        eq(TextTime.clock(at(utc, 2026, 11, 8, 0, 5), us), "12:05 AM", "clock just after midnight");
+        eq(TextTime.stamp(at(utc, 2026, 11, 8, 9, 30), now, us), "9:30 AM", "stamp today");
+        eq(TextTime.stamp(at(utc, 2026, 11, 8, 0, 0), now, us), "12:00 AM", "stamp at the start of today");
+        eq(TextTime.stamp(at(utc, 2026, 11, 7, 23, 59), now, us), "Yesterday", "stamp one minute before midnight is yesterday");
+        eq(TextTime.stamp(at(utc, 2026, 11, 5, 10, 0), now, us), "Thu", "stamp this week is the weekday");
+        eq(TextTime.stamp(at(utc, 2026, 11, 2, 10, 0), now, us), "Mon", "stamp six days ago is still a weekday");
+        eq(TextTime.stamp(at(utc, 2026, 11, 1, 10, 0), now, us), "Nov 1", "stamp seven days ago is a date");
+        eq(TextTime.stamp(at(utc, 2026, 3, 3, 10, 0), now, us), "Mar 3", "stamp earlier this year");
+        eq(TextTime.stamp(at(utc, 2025, 12, 31, 10, 0), now, us), "Dec 31, 2025", "stamp last year has the year");
+        eq(TextTime.stamp(at(utc, 2026, 11, 9, 10, 0), now, us), "10:00 AM", "stamp a little ahead of this clock is shown as a time");
+        eq(TextTime.stamp(0, now, us), "", "stamp of nothing");
+        eq(TextTime.day(at(utc, 2026, 11, 8, 3, 0), now, us), "Today", "day heading today");
+        eq(TextTime.day(at(utc, 2026, 11, 7, 3, 0), now, us), "Yesterday", "day heading yesterday");
+        eq(TextTime.day(at(utc, 2026, 11, 3, 3, 0), now, us), "Tue, Nov 3", "day heading this year");
+        eq(TextTime.day(at(utc, 2025, 11, 3, 3, 0), now, us), "Mon, Nov 3, 2025", "day heading last year");
+        // the same instant is on different days in different zones
+        long late = at(utc, 2026, 11, 8, 3, 30); // 10:30 PM on the 7th in New York
+        TextTime.Env east = new TextTime.Env(ny, java.util.Locale.US, false);
+        eq(TextTime.clock(late, east), "10:30 PM", "clock in another zone");
+        eq(TextTime.day(late, at(ny, 2026, 11, 8, 9, 0), east), "Yesterday", "day heading in another zone");
+        check(TextTime.dayNumber(late, utc) == TextTime.dayNumber(late, ny) + 1, "the day number follows the zone");
+        // days are counted on the calendar, not in 24-hour blocks, also over a change of the clocks
+        long beforeShift = at(ny, 2026, 11, 1, 23, 0); // the night the clocks go back
+        long afterShift = at(ny, 2026, 11, 2, 8, 0);
+        eq(TextTime.stamp(beforeShift, afterShift, east), "Yesterday", "yesterday across the clock change");
+        // rows: a heading at the start of every day
+        List<Sms.Msg> msgs = new ArrayList<>();
+        long[] times = {at(utc, 2026, 11, 6, 8, 0), at(utc, 2026, 11, 6, 20, 0), at(utc, 2026, 11, 7, 1, 0), at(utc, 2026, 11, 8, 9, 0), at(utc, 2026, 11, 8, 9, 5)};
+        for (int i = 0; i < times.length; i++) {
+            msgs.add(msg("m" + i, "k", i % 2 == 0, "t" + i, times[i]));
+        }
+        List<TextTime.Row> rows = TextTime.rows(msgs, now, us);
+        StringBuilder shape = new StringBuilder();
+        for (TextTime.Row r : rows) {
+            shape.append(r.isHeader() ? "[" + r.header + "]" : r.msg.id);
+        }
+        eq(shape.toString(), "[Fri, Nov 6]m0m1[Yesterday]m2[Today]m3m4", "rows: headings and messages in order");
+        check(TextTime.rows(new ArrayList<Sms.Msg>(), now, us).isEmpty(), "rows: none for no messages");
+        // random: every message appears once and in order, a heading comes first and whenever the day changes
+        Random rnd = new Random(5);
+        for (int round = 0; round < 300; round++) {
+            List<Sms.Msg> ms = new ArrayList<>();
+            long t = at(utc, 2026, 10, 20, 0, 0) + rnd.nextInt(1_000_000);
+            for (int i = rnd.nextInt(30); i > 0; i--) {
+                t += rnd.nextInt(30_000_000);
+                ms.add(msg("m" + ms.size(), "k", rnd.nextBoolean(), "x", t));
+            }
+            List<TextTime.Row> rr = TextTime.rows(ms, now, us);
+            int seen = 0;
+            boolean ok = ms.isEmpty() || (!rr.isEmpty() && rr.get(0).isHeader());
+            long prevDay = Long.MIN_VALUE;
+            for (TextTime.Row r : rr) {
+                if (r.isHeader()) {
+                    continue;
+                }
+                long dn = TextTime.dayNumber(r.msg.time, utc);
+                ok &= r.msg == ms.get(seen++);
+                ok &= dn == prevDay || rr.get(rr.indexOf(r) - 1).isHeader();
+                prevDay = dn;
+            }
+            check(ok && seen == ms.size(), "random rows " + round);
         }
     }
 }

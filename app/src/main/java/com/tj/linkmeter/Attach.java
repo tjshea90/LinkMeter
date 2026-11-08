@@ -239,7 +239,7 @@ final class Attach {
     }
 
     /** For a picked file whose size the picker did not say: copy it aside to learn it. */
-    private static File copyToCache(Context c, Item it) throws IOException {
+    static File copyToCache(Context c, Item it) throws IOException {
         File dir = new File(c.getCacheDir(), "attach");
         dir.mkdirs();
         File f = File.createTempFile("pick", ".tmp", dir);

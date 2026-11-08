@@ -220,7 +220,7 @@ public class MainActivity extends Activity {
         View root;
         if (Cfg.TABLET.equals(mode)) {
             root = buildTabs(new Tab[] {new HomeTab(this), new SpeedTab(this), new BandsTab(this),
-                    new ControlTab(this), new ScreenTab(this), new FilesTab(this),
+                    new ControlTab(this), new ScreenTab(this), new FilesTab(this), new TextsTab(this),
                     new SettingsTab(this)});
         } else if (Cfg.PHONE.equals(mode)) {
             root = buildTabs(new Tab[] {new PhoneTab(this), new FilesTab(this)});

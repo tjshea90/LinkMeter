@@ -39,6 +39,8 @@ final class AttachDialog {
     private final List<Attach.Item> picked = new ArrayList<>();
     private Attach.Job job;
     private DiskStore local;
+    /** When set, the dialog only lets the user choose: the items go here instead of to the phone (for attaching to a text). */
+    private java.util.function.Consumer<List<Attach.Item>> onChosen;
 
     private AttachDialog(MainActivity act) {
         this.act = act;
@@ -46,6 +48,13 @@ final class AttachDialog {
 
     static void show(MainActivity act) {
         new AttachDialog(act).open();
+    }
+
+    /** The same chooser, for attaching to a text: the chosen items are handed to the callback, nothing is sent from here. */
+    static void choose(MainActivity act, java.util.function.Consumer<List<Attach.Item>> chosen) {
+        AttachDialog d = new AttachDialog(act);
+        d.onChosen = chosen;
+        d.open();
     }
 
     private TextView text(String s, int sp, int color, boolean bold) {
@@ -79,8 +88,9 @@ final class AttachDialog {
 
     private void buildChooser() {
         body.removeAllViews();
-        body.addView(text("Send to the phone", 20, Ui.FG, true));
-        body.addView(text("Choose photos or files from this tablet. They are put on the phone where every app's attach button looks: "
+        body.addView(text(onChosen != null ? "Add to the text" : "Send to the phone", 20, Ui.FG, true));
+        body.addView(text(onChosen != null ? "Choose photos or files from this tablet to send with your text."
+                : "Choose photos or files from this tablet. They are put on the phone where every app's attach button looks: "
                 + "photos in Pictures/LinkMeter, videos in Movies/LinkMeter, other files in Download/LinkMeter.", 13, Ui.DIM, false),
                 Ui.lp(act, 6));
         body.addView(text("Recent photos on this tablet", 14, Ui.FG, true), Ui.lp(act, 14));
@@ -112,7 +122,8 @@ final class AttachDialog {
     private void refreshCount() {
         int n = chosen.size() + picked.size();
         tCount.setText(n == 0 ? "Nothing chosen yet" : n + (n == 1 ? " chosen" : " chosen"));
-        bSend.setText(n == 0 ? "Send" : "Send " + n);
+        String verb = onChosen != null ? "Add" : "Send";
+        bSend.setText(n == 0 ? verb : verb + " " + n);
         bSend.setEnabled(n > 0);
     }
 
@@ -205,6 +216,11 @@ final class AttachDialog {
         items.addAll(picked);
         if (items.isEmpty()) {
             Toast.makeText(act, "Choose something first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (onChosen != null) {
+            dialog.dismiss();
+            onChosen.accept(items);
             return;
         }
         body.removeAllViews();
