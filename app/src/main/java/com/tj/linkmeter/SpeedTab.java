@@ -195,7 +195,8 @@ final class SpeedTab extends Tab {
         if (phase == SpeedTest.ERROR) {
             note.setText("The test failed: " + j.optString("error", "unknown error"));
         } else if (phase == SpeedTest.DONE) {
-            note.setText("Done. Used about " + j.optLong("mb", 0) + " MB of mobile data.");
+            note.setText("Done. Used about " + j.optLong("mb", 0) + " MB of data, over the "
+                    + j.optString("via", "network") + ".");
         }
         if (!now) {
             stopPolling();

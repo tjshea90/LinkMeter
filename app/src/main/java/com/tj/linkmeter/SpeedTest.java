@@ -48,6 +48,7 @@ final class SpeedTest {
     private static volatile double live;
     private static volatile long usedBytes;
     private static volatile String error = "";
+    private static volatile String via = "";
 
     private SpeedTest() {}
 
@@ -69,6 +70,7 @@ final class SpeedTest {
             live = 0;
             usedBytes = 0;
             error = "";
+            via = "";
             cancel = false;
             phase = PING;
         }
@@ -83,12 +85,39 @@ final class SpeedTest {
     private static void runAll(Context c) {
         try {
             Network net = cellular(c);
-            pingMs = ping(net);
+            String route = net != null ? "mobile network" : "default network";
+            double p;
+            try {
+                p = ping(net);
+            } catch (IOException first) {
+                if (net == null) {
+                    throw new IOException("ping: " + describe(first));
+                }
+                // The mobile-network handle did not work. On a hotspot phone the default network
+                // is the mobile network anyway, so fall back to it and say so.
+                net = null;
+                route = "default network (the mobile-network handle failed: " + describe(first) + ")";
+                try {
+                    p = ping(null);
+                } catch (IOException second) {
+                    throw new IOException("ping: " + describe(second));
+                }
+            }
+            pingMs = p;
+            via = route;
             if (!cancel) {
-                downMbps = transfer(net, true);
+                try {
+                    downMbps = transfer(net, true);
+                } catch (IOException e) {
+                    throw new IOException("download: " + describe(e));
+                }
             }
             if (!cancel) {
-                upMbps = transfer(net, false);
+                try {
+                    upMbps = transfer(net, false);
+                } catch (IOException e) {
+                    throw new IOException("upload: " + describe(e));
+                }
             }
             phase = cancel ? IDLE : DONE;
         } catch (IOException e) {
@@ -98,14 +127,28 @@ final class SpeedTest {
         live = 0;
     }
 
+    /** "SocketTimeoutException: Read timed out": the class name matters when the message is vague. */
+    private static String describe(Throwable e) {
+        return e.getClass().getSimpleName() + ": " + e.getMessage();
+    }
+
     /** The mobile-data network, so the test measures it even if Wi-Fi is also connected. */
     private static Network cellular(Context c) {
         try {
             ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
+            Network active = cm.getActiveNetwork();
+            NetworkCapabilities anc = active == null ? null : cm.getNetworkCapabilities(active);
+            if (anc != null && anc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                    && anc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                return active;
+            }
+            // Otherwise any ordinary mobile network. Restricted ones (carrier tethering,
+            // IMS, MMS) are not usable by an app and made the test time out.
             for (Network n : cm.getAllNetworks()) {
                 NetworkCapabilities nc = cm.getNetworkCapabilities(n);
                 if (nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
                         && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
                         && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
                     return n;
                 }
@@ -169,7 +212,7 @@ final class SpeedTest {
                 } catch (IOException e) {
                     synchronized (fail) {
                         if (fail[0] == null) {
-                            fail[0] = String.valueOf(e.getMessage());
+                            fail[0] = describe(e);
                         }
                     }
                 }
@@ -301,6 +344,7 @@ final class SpeedTest {
             o.put("down", round1(downMbps));
             o.put("up", round1(upMbps));
             o.put("mb", Math.round(usedBytes / 1e6));
+            o.put("via", via);
             if (!error.isEmpty()) {
                 o.put("error", error);
             }
