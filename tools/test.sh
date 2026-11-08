@@ -35,6 +35,9 @@ javac -proc:none -cp "$out" -d "$out" $FM/Json.java $FM/Http.java $FM/Client.jav
   $FM/PeerLink.java tools/test/JsonTest.java tools/test/FsProtocolTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.JsonTest || fail=1
 java -cp "$out" com.tj.linkmeter.FsProtocolTest || fail=1
+echo "== Texts, pure parts (phone-number keys, merging the phone's messages with the tablet's log, the MMS encoder read back by an independent decoder)"
+javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/PhoneNumbers.java $FM/Sms.java $FM/SmsMerge.java $FM/MmsPdu.java tools/test/SmsPureTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.SmsPureTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

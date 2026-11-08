@@ -8,7 +8,21 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (newest): Files/Attach/Texts project: PHASE A (the new file manager) is built, CI-compiled and released; NOT yet seen on a device.**
+**2026-11-08 (newest): Phase B (Attach) built; Phase C (Texts) has its pure parts done and tested; the phone side and the tablet screen are NEXT.**
+- Phase B (paperclip in the Screen tab -> `AttachDialog` -> `Attach` uploads into the phone's Pictures/Movies/Music/Download `/LinkMeter`, media scan) is
+  CI-compiled and merged; released with this checkpoint. UNKNOWN until the user tries it: whether the phone's pickers show the files at once, and how the
+  dialog feels on the 600 px tablet.
+- Phase C1 DONE: `PhoneNumbers`, `Sms` (data), `SmsMerge` (phone database + tablet's own outbox log, threads()/thread() never change their inputs),
+  `MmsPdu` (own m-send-req encoder). `tools/test/SmsPureTest.java` (~2,000 checks; reads the MMS bytes back with a decoder written separately in the test;
+  37 deliberate breakages are all caught: the list is the `M` table in the session's scratch script, re-create by breaking one line at a time).
+- NEXT, in this order (plan doc has the route list under "Texts protocol"): C2 pure `SmsApi` (+ `SmsBackend` interface) / `SmsHttp` / `RemoteSms`, tested over a
+  real socket like `FsProtocolTest`; C3 Android phone side (`SmsAccess` grant via Shizuku, `SmsStore`, `SmsSender`, outbox log, `/sms/` prefix in `Api.handle`
+  next to `/fs/`, a "Let the tablet use my texts" switch in PhoneTab, default OFF, manifest READ_SMS/SEND_SMS/READ_CONTACTS); C4 `TextsTab`.
+  Privacy rule: texts stay off unless the user switches them on in the phone's app, and only the paired tablet can ask.
+- UNKNOWN until the devices answer: can `pm grant` + appops make the SMS permissions work on the Samsung A15 (Android 16)? does the carrier take our hand-built
+  MMS? Fallback planned: send the files to the phone and open its own Messages app.
+
+**2026-11-08 (earlier): Files/Attach/Texts project: PHASE A (the new file manager) is built, CI-compiled and released; NOT yet seen on a device.**
 - Design, protocol and status checklist: `docs/FILES_AND_TEXTS_PLAN.md` (keep its Status list true). Phase order: A files, B attach from the Screen tab, C Texts.
 - Built and tested offline (`tools/test.sh`): pure core (FsEntry, FsPath, FileKind, FileSort, Clip, Store, DiskStore, TransferEngine), pure protocol
   (Json, Http/Client without Android, FsApi + FsHttp + FsJobs + FsSearch on the phone side, RemoteStore + PeerLink on the tablet side); the tests run the

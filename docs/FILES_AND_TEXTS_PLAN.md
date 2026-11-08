@@ -83,6 +83,21 @@ Phone side (`/sms/*`, off unless the user switches "Let the tablet use my texts"
 Tablet: new "Texts" tab (conversation list, thread with bubbles and image thumbnails, composer with an attach button that reuses the
 phase-B picker, new-message with contact search).
 
+### Texts protocol `/sms/*` (decided, v1; code: SmsApi / SmsHttp / RemoteSms are pure and tested, the phone backend is Android)
+Every route needs the paired token (like `/fs/*`). While the phone's switch "Let the tablet use my texts" is OFF, every route except
+`/sms/state` answers 403 `{"error":"off"}`. An old phone app answers 404 "unknown request" to `/sms/state`: the tablet then says "Update the phone app".
+* `GET /sms/state` -> `{"v":1,"on":bool,"read":bool,"send":bool,"contacts":bool,"note":"a sentence when something is missing"}` (on = the switch, the rest = permissions granted)
+* `POST /sms/grant` -> tries the Shizuku grant (appops ACCESS_RESTRICTED_SETTINGS allow, pm grant READ_SMS SEND_SMS READ_CONTACTS), answers like state
+* `GET /sms/stamp` -> `{"stamp":"<text that changes whenever any message arrives or changes>"}` (the tablet polls this every few seconds while Texts is open)
+* `GET /sms/threads?limit=60` -> `{"threads":[{"key","name","addr":[..],"snip","time","n","unread","att","pid"}]}` newest first (log-only threads merged in)
+* `GET /sms/thread?key=&limit=100` -> `{"key","name","addr":[..],"msgs":[{"id","key","addr","body","time","mine","state","err","unread","mms","parts":[{"id","type","name","size"}]}]}` oldest first (the newest `limit`)
+* `POST /sms/attach?name=&type=` body = the file -> `{"id","size"}` (staged in the phone's cache, removed after the send or after an hour)
+* `POST /sms/send` JSON `{"to":["+1555.."],"text":"","subject":"","att":["id",..]}` -> `{"ok":true,"id":"o12"}` or `{"ok":false,"error":".."}`; one recipient and no attachment = SMS (multipart if long), else MMS
+* `GET /sms/part?id=&s=` -> bytes of a message part (an image is scaled to `s` px and sent as JPEG when `s` is given)
+* `GET /sms/contacts?q=` -> `{"people":[{"name","number"}]}` (at most 20)
+* `POST /sms/read?key=` -> `{"ok":true}` (marks the conversation read)
+Group conversations: the key is the members' keys sorted and joined with ",".
+
 ## Test strategy
 Everything with logic is pure Java and tested offline (`tools/test.sh`): paths, kinds, sorting, clipboard, store + engine (temp dirs,
 failing stores, cancel at every moment, conflict policies, random stories, mutation checks), later the MMS PDU encoder (round trip
@@ -100,7 +115,8 @@ stay thin.
 - [x] A1 core: FsEntry, FsPath, FileKind, FileSort, FsFormat, Clip, Store, DiskStore, TransferEngine + tests (FilesCoreTest ~10,400 checks, TransferEngineTest ~4,600 checks against an in-memory model, 12 deliberate breakages caught)
 - [x] A2 phone routes + RemoteStore + media scan: protocol layer tested offline end to end (FsProtocolTest ~600 checks, JsonTest ~4000, 11 breakages caught); Android adapters written (Files.serve on FsApi, AndroidMedia, ThumbMaker) and CI-compiled
 - [x] A3 Files tab UI written and CI-compiled (FilesTab, FileBrowser, Transfers, FileDialogs, Thumbs, FileIcon, FilesPrefs, ShareProvider); released; waiting for the user's field test
-- [ ] B attach from the remote screen, release
-- [ ] C Texts: pure parts + tests
-- [ ] C Texts: phone side
-- [ ] C Texts: tablet UI, release
+- [x] B attach from the remote screen: paperclip button in the Screen tab, AttachDialog (recent photos + system picker), Attach (upload to Pictures/Movies/Music/Download `/LinkMeter` + media scan); CI-compiled; waiting for the user's field test
+- [x] C1 Texts pure parts: PhoneNumbers, Sms, SmsMerge, MmsPdu + SmsPureTest (~2,000 checks, MMS bytes read back by an independent decoder written in the test, 37 deliberate breakages caught), in tools/test.sh
+- [ ] C2 Texts protocol: SmsApi + SmsHttp + RemoteSms tested over a real socket against a fake backend (see "Texts protocol" above)
+- [ ] C3 Texts phone side: SmsAccess (grant), SmsStore (read), SmsSender (SMS/MMS), outbox log, status PendingIntents, `/sms/` route in Api, switch in PhoneTab, manifest
+- [ ] C4 Texts tablet UI (TextsTab), release
