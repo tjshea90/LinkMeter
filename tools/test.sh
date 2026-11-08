@@ -24,6 +24,12 @@ java -cp "$out" com.tj.linkmeter.BandToolsTest || fail=1
 java -cp "$out" com.tj.linkmeter.BandSweepTest || fail=1
 echo "== Scan command (the real shell command, against a 400 KB fake dump, the way Android's shell runs it)"
 java -cp "$out" com.tj.linkmeter.SurveyCommandTest || fail=1
+echo "== File manager core (paths, kinds, sorting, clipboard, DiskStore) and the transfer engine (copy, move, clashes, cancel, failures, against a model)"
+FM=app/src/main/java/com/tj/linkmeter
+javac -proc:none -d "$out" $FM/FsEntry.java $FM/FsPath.java $FM/FileKind.java $FM/FileSort.java $FM/FsFormat.java $FM/Clip.java \
+  $FM/Store.java $FM/DiskStore.java $FM/TransferEngine.java tools/test/FilesCoreTest.java tools/test/TransferEngineTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.FilesCoreTest || fail=1
+java -cp "$out" com.tj.linkmeter.TransferEngineTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

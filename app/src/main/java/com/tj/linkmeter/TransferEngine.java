@@ -249,7 +249,6 @@ final class TransferEngine {
                 res.errors.add(FsPath.name(m) + ": not found any more");
             }
             try {
-                dst.mkdirs(dstDir);
                 for (int ri = 0; ri < plan.roots.size() && !fatal; ri++) {
                     doRoot(ri);
                 }
@@ -394,6 +393,7 @@ final class TransferEngine {
             }
             FsEntry existing;
             try {
+                dst.mkdirs(dstDir); // only now: a refused transfer must not leave an empty folder behind
                 existing = dst.stat(destTop);
             } catch (IOException e) {
                 fail(name, e.getMessage());

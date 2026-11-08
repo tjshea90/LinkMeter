@@ -97,7 +97,7 @@ stay thin.
 
 ## Status (keep true)
 - [x] plan written (this file) and checkpointed
-- [ ] A1 core: FsEntry, FsPath, FileKind, FileSort, Clip, Store, DiskStore, TransferEngine + tests
+- [x] A1 core: FsEntry, FsPath, FileKind, FileSort, FsFormat, Clip, Store, DiskStore, TransferEngine + tests (FilesCoreTest ~10,400 checks, TransferEngineTest ~4,600 checks against an in-memory model, 12 deliberate breakages caught)
 - [ ] A2 phone routes + RemoteStore + media scan
 - [ ] A3 Files tab UI, release
 - [ ] B attach from the remote screen, release
