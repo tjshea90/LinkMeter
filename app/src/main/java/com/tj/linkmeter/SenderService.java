@@ -55,6 +55,9 @@ public class SenderService extends Service {
             pool = new ThreadPoolExecutor(0, 4, 20, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
             Thread t = new Thread(this::serve, "linkmeter-accept");
             t.start();
+            if (Cfg.PHONE.equals(Cfg.mode(this))) {
+                Eco.onServiceStart(getApplicationContext());
+            }
         }
         // Sticky: if Android ever stops it, it comes back by itself.
         return START_STICKY;

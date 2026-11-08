@@ -47,6 +47,7 @@ public class MainActivity extends Activity {
 
     // Phone screen
     private TextView pState;
+    private TextView pPriv;
     private Button pToggle;
 
     // ---------------------------------------------------------------- lifecycle
@@ -101,6 +102,7 @@ public class MainActivity extends Activity {
         bar = null;
         content = null;
         pState = null;
+        pPriv = null;
         pToggle = null;
 
         String mode = Cfg.mode(this);
@@ -164,7 +166,7 @@ public class MainActivity extends Activity {
         barRow.setOrientation(LinearLayout.HORIZONTAL);
         barRow.setBackgroundColor(Ui.CARD);
 
-        tabs = new Tab[] {new HomeTab(this), new SettingsTab(this)};
+        tabs = new Tab[] {new HomeTab(this), new ControlTab(this), new SettingsTab(this)};
         bar = new Button[tabs.length];
         for (int i = 0; i < tabs.length; i++) {
             final int idx = i;
@@ -222,6 +224,15 @@ public class MainActivity extends Activity {
             Cfg.clearTrusted(this);
             Toast.makeText(this, "All tablets forgotten.", Toast.LENGTH_SHORT).show();
         }), Ui.lp(this, 8));
+
+        col.addView(Ui.text(this, "Phone helper (Shizuku)", 16, Ui.FG, true), Ui.lp(this, 20));
+        pPriv = Ui.text(this, "", 13, Ui.DIM, false);
+        col.addView(pPriv, Ui.lp(this, 2));
+        col.addView(Ui.button(this, "Allow LinkMeter in Shizuku", v -> Priv.requestPermission(2)),
+                Ui.lp(this, 6));
+        col.addView(Ui.text(this, "Needed for the tablet's Control tab: airplane mode, hotspot off, "
+                + "power off, 4G toggle, battery saver. Start Shizuku first (it stops when the "
+                + "phone reboots).", 12, Ui.DIM, false), Ui.lp(this, 4));
 
         CheckBox boot = new CheckBox(this);
         boot.setText("Start automatically when the phone boots");
@@ -296,6 +307,9 @@ public class MainActivity extends Activity {
         boolean on = SenderService.active;
         pState.setText(on ? "Ready. The tablet can connect." : "Stopped.");
         pToggle.setText(on ? "Stop" : "Start");
+        if (pPriv != null) {
+            pPriv.setText(Priv.stateText(Priv.state()));
+        }
     }
 
     private void openBatterySettings() {

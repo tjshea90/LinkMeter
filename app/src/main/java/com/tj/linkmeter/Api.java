@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import org.json.JSONObject;
 
 /** Every request the service answers, on either device, comes through here. */
 final class Api {
@@ -38,6 +39,7 @@ final class Api {
         }
         if (phone && r.peer != null) {
             Cfg.setTablet(c, r.peer.getHostAddress(), r.token);
+            Eco.touch(c, r.peer.isSiteLocalAddress());
         }
         switch (r.path) {
             case "/s":
@@ -47,9 +49,54 @@ final class Api {
                     Http.err(out, 404, "not a phone");
                 }
                 break;
+            case "/act":
+                if (phone) {
+                    act(c, r, out);
+                } else {
+                    Http.err(out, 404, "not a phone");
+                }
+                break;
+            case "/probe":
+                if (phone) {
+                    probe(out);
+                } else {
+                    Http.err(out, 404, "not a phone");
+                }
+                break;
             default:
                 Http.err(out, 404, "unknown request");
                 break;
+        }
+    }
+
+    private static void act(Context c, Http.Req r, OutputStream out) throws IOException {
+        String name = r.q("name");
+        if (!"POST".equals(r.method) || name.isEmpty()) {
+            Http.err(out, 400, "bad request");
+            return;
+        }
+        if (Actions.isDelayed(name)) {
+            if (!Priv.ready()) {
+                Http.err(out, 409, Priv.stateText(Priv.state()));
+                return;
+            }
+            Http.json(out, 200, "{\"ok\":true,\"out\":\"Sent. The phone will do it in a moment.\"}");
+            Actions.later(name);
+            return;
+        }
+        try {
+            String res = Actions.run(c, name);
+            Http.json(out, 200, "{\"ok\":true,\"out\":" + JSONObject.quote(res) + "}");
+        } catch (IOException e) {
+            Http.err(out, 409, String.valueOf(e.getMessage()));
+        }
+    }
+
+    private static void probe(OutputStream out) throws IOException {
+        try {
+            Http.text(out, 200, Actions.probe());
+        } catch (IOException e) {
+            Http.err(out, 409, String.valueOf(e.getMessage()));
         }
     }
 
