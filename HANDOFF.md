@@ -25,9 +25,10 @@ session's transcript.
 3. The first remote-control build was confirmed by the user ("works very well"). Everything added since then has compiled
    and passed the offline tests (`tools/test.sh`) but has NOT run on a device yet.
 
-NEXT: the user installs the newest release on the tablet, then Control > Update phone from this tablet, and goes through the
-field-test checklist in "Remote screen control"; the Options panel's "Copy this information" gives what to report. Then fix
-what it shows.
+NEXT: the user installs the newest release (v0.2.47 or later; `https://github.com/tjshea90/LinkMeter/releases/latest/download/LinkMeter.apk`
+is always the newest) on the tablet, then Control > Update phone from this tablet, and goes through the field-test checklist in
+"Remote screen control"; the Options panel's "Copy this information" gives what to report (its "Phone app:" line says whether the
+phone really runs the same build). Then fix what it shows.
 
 Branch rule for cloud sessions: develop and push only on the designated `ccr-*` branch; the pipeline does the merging. Start
 every session with `git fetch --all && git branch -r && git log --oneline main..origin/<newest ccr-* branch>` so work that sits
@@ -294,11 +295,12 @@ Three jobs run on every push to `main` or `ccr-*` (and on manual runs):
 - `tools/test/test_release_decision.py` runs the real "Decide what to do" script, taken out of the workflow file, in
   throwaway git repositories (24 cases). Change the gate only together with that test. `actionlint` (`pip install
   actionlint-py`) lints workflow files.
-- Proof so far (2026-11-08): the hand merge of this branch into `main` made release `v0.2.46` (assets `LinkMeter-0.2.46.apk` and
-  `LinkMeter.apk`, notes from the commit subjects, old `latest` release and tag deleted). Expected for the first FULLY automatic
-  cycle (a plain push to the session branch, nothing by hand): the commit that added the phone-app-version line to the
-  Information box makes the pipeline fast-forward `main` to it and publish `v0.2.47`. If this line still says "expected",
-  look at the run of that commit and at the releases page, and fix whatever stopped it.
+- Proof (2026-11-08, checked on GitHub, not just in the run log): the hand merge of this branch into `main` made release
+  `v0.2.46` (assets `LinkMeter-0.2.46.apk` and `LinkMeter.apk`, notes from the commit subjects, old `latest` release and tag
+  deleted). Then the first FULLY automatic cycle: a plain push (`97fd7b8`, the phone-app-version line in the Information box) to
+  the session branch fast-forwarded `main` and published `v0.2.47` with nothing done by hand; the pipeline's own push to `main`
+  started no second run, so there is one release per commit. A docs-only push is merged but releases nothing (the decision
+  tests cover it; the push that recorded this proof is the live example).
 - The unnumbered `latest` release of the old pipeline was deleted by the first numbered release (`v0.2.46`); the step
   `gh release delete latest ... || true` in the workflow can be removed afterwards.
 - If `main` moved so a branch is not a fast-forward, the run says so in its summary; look at what is on `main`, then merge by
