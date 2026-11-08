@@ -129,21 +129,115 @@ final class RadioState {
         return u.startsWith("LTE") ? "LTE" : u.startsWith("NR") ? "NR" : u;
     }
 
-    /** Reads the carriers, the display label and the aggregation facts out of a dump (any part of it; missing lines are fine). */
+    /** The carriers listed on one "mPhysicalChannelConfigs=[...]" line (the text after the "="), the primary one first. */
+    private static List<Carrier> carriersIn(String line) {
+        List<Carrier> out = new ArrayList<>();
+        List<Integer> starts = new ArrayList<>();
+        Matcher m = CFG_START.matcher(line);
+        while (m.find()) {
+            starts.add(m.start());
+        }
+        for (int i = 0; i < starts.size(); i++) {
+            String seg = line.substring(starts.get(i), i + 1 < starts.size() ? starts.get(i + 1) : line.length());
+            String status = field(seg, "mConnectionStatus");
+            if (status == null) {
+                status = field(seg, "mCellConnectionStatus");
+            }
+            boolean primary = status != null && (status.startsWith("Primary") || status.equals("1"));
+            String rat = ratOf(field(seg, "mRat"));
+            if (rat.isEmpty() || rat.equals("UNKNOWN")) {
+                rat = ratOf(field(seg, "mNetworkType"));
+            }
+            int channel = number(seg, "mDownlinkChannelNumber");
+            int band = Math.max(0, number(seg, "mBand"));
+            if (band == 0 && rat.equals("LTE") && channel >= 0) {
+                band = lteBand(channel);
+            }
+            Carrier c = new Carrier(rat, band, channel, number(seg, "mCellBandwidthDownlinkKhz"), primary);
+            boolean dup = false;
+            for (Carrier o : out) {
+                if (o.rat.equals(c.rat) && o.band == c.band && o.channel == c.channel && o.primary == c.primary) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup) {
+                if (primary) {
+                    out.add(0, c);
+                } else {
+                    out.add(c);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The text after "mPhysicalChannelConfigs=" on a line. */
+    private static String configsOf(String line) {
+        int at = line.indexOf("mPhysicalChannelConfigs=");
+        return line.substring(at + "mPhysicalChannelConfigs=".length());
+    }
+
+    /**
+     * Reads the carriers, the display label and the aggregation facts out of a dump (any part of it; missing lines are fine).
+     *
+     * A phone that can hold two SIMs prints each of these fields once per SIM slot, the slots in the same order for every
+     * field, and the slot that is not in use prints an empty carrier list. So the carriers are read from every slot's line
+     * and the slot that lists the most is taken (the first on a tie); its display label and its aggregation facts are the
+     * ones at the same position, when every field has a line for every slot, and the first ones otherwise.
+     */
     static RadioState parse(String dump) {
         RadioState s = new RadioState();
         if (dump == null) {
             return s;
         }
-        Matcher d = DISPLAY.matcher(dump);
+        List<String> cfgLines = new ArrayList<>();
+        List<String> svcLines = new ArrayList<>();
+        List<String> dispLines = new ArrayList<>();
+        for (String l : dump.split("\n")) {
+            if (l.contains("mPhysicalChannelConfigs=")) {
+                cfgLines.add(l);
+            }
+            if (l.contains("mServiceState=")) {
+                svcLines.add(l);
+            }
+            if (l.contains("overrideNetwork=")) {
+                dispLines.add(l);
+            }
+        }
+        int slot = 0;
+        List<Carrier> best = new ArrayList<>();
+        for (int i = 0; i < cfgLines.size(); i++) {
+            List<Carrier> c = carriersIn(configsOf(cfgLines.get(i)));
+            if (c.size() > best.size()) {
+                best = c;
+                slot = i;
+            }
+        }
+        s.carriers.addAll(best);
+        if (best.isEmpty()) {
+            // nothing could be read: keep the first list that has text in it, so it can be looked at (and its slot is the one to read)
+            for (int i = 0; i < cfgLines.size(); i++) {
+                String t = configsOf(cfgLines.get(i)).trim();
+                if (!t.isEmpty() && !t.equals("[]") && !t.equals("null")) {
+                    s.rawConfigs = t.length() > 600 ? t.substring(0, 600) : t;
+                    slot = i;
+                    break;
+                }
+            }
+        }
+        boolean paired = cfgLines.size() > 1;
+        String disp = paired && dispLines.size() == cfgLines.size() ? dispLines.get(slot) : dump;
+        Matcher d = DISPLAY.matcher(disp);
         if (d.find()) {
             s.display = d.group(1);
         }
-        Matcher ca = CA.matcher(dump);
+        String svc = paired && svcLines.size() == cfgLines.size() ? svcLines.get(slot) : dump;
+        Matcher ca = CA.matcher(svc);
         if (ca.find()) {
             s.ca = ca.group(1).equals("true");
         }
-        Matcher bw = BANDWIDTHS.matcher(dump);
+        Matcher bw = BANDWIDTHS.matcher(svc);
         if (bw.find()) {
             for (String b : bw.group(1).split(",")) {
                 String t = b.trim();
@@ -156,56 +250,11 @@ final class RadioState {
                 }
             }
         }
-        Matcher nr = NRSTATE.matcher(dump);
-        if (nr.find()) {
-            s.nrState = nr.group(1);
-        }
-        int at = dump.indexOf("mPhysicalChannelConfigs=");
-        if (at >= 0) {
-            int eol = dump.indexOf('\n', at);
-            String line = dump.substring(at + "mPhysicalChannelConfigs=".length(), eol < 0 ? dump.length() : eol);
-            List<Integer> starts = new ArrayList<>();
-            Matcher m = CFG_START.matcher(line);
-            while (m.find()) {
-                starts.add(m.start());
-            }
-            for (int i = 0; i < starts.size(); i++) {
-                String seg = line.substring(starts.get(i), i + 1 < starts.size() ? starts.get(i + 1) : line.length());
-                String status = field(seg, "mConnectionStatus");
-                if (status == null) {
-                    status = field(seg, "mCellConnectionStatus");
-                }
-                boolean primary = status != null && (status.startsWith("Primary") || status.equals("1"));
-                String rat = ratOf(field(seg, "mRat"));
-                if (rat.isEmpty() || rat.equals("UNKNOWN")) {
-                    rat = ratOf(field(seg, "mNetworkType"));
-                }
-                int channel = number(seg, "mDownlinkChannelNumber");
-                int band = Math.max(0, number(seg, "mBand"));
-                if (band == 0 && rat.equals("LTE") && channel >= 0) {
-                    band = lteBand(channel);
-                }
-                Carrier c = new Carrier(rat, band, channel, number(seg, "mCellBandwidthDownlinkKhz"), primary);
-                boolean dup = false;
-                for (Carrier o : s.carriers) {
-                    if (o.rat.equals(c.rat) && o.band == c.band && o.channel == c.channel && o.primary == c.primary) {
-                        dup = true;
-                        break;
-                    }
-                }
-                if (!dup) {
-                    if (primary) {
-                        s.carriers.add(0, c);
-                    } else {
-                        s.carriers.add(c);
-                    }
-                }
-            }
-            if (s.carriers.isEmpty()) {
-                String t = line.trim();
-                if (!t.isEmpty() && !t.equals("[]") && !t.equals("null")) {
-                    s.rawConfigs = t.length() > 600 ? t.substring(0, 600) : t;
-                }
+        // the 5G state is printed once for every registration (voice, data, ...): the first one that says something is the data one
+        Matcher nr = NRSTATE.matcher(svc);
+        while (nr.find()) {
+            if (s.nrState.isEmpty() || (s.nrState.equals("NONE") && !nr.group(1).equals("NONE"))) {
+                s.nrState = nr.group(1);
             }
         }
         return s;

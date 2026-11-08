@@ -34,6 +34,12 @@ for better upload." Phone: SM-S156V (Verizon A15 5G, MediaTek, "Samsung RIL"), s
   A speed test that finishes with a warning ("Upload could not be measured: ...") leaves its upload number at 0 on the phone; the
   run reads that warning (`SweepLink` passes `warn`, `BandSweep.Upload.warn`) and shows "no upload result" plus the reason, never a
   false "0.0 Mbit/s" (a really measured 0.0 still shows as 0.0). v0.2.57 has this wrong; the next release has it right.
+  A phone that can hold two SIMs prints every telephony.registry field once per SIM slot, and the slot not in use prints an empty
+  carrier list. `RadioState.parse` reads every slot's `mPhysicalChannelConfigs` line, takes the slot with the most carriers, and
+  reads its `overrideNetwork` / `mServiceState` (aggregation, bandwidths, 5G state) from the same position (first ones if the
+  line counts do not match). Whether THIS phone prints two slots is unknown: the Probe report shows the raw lines. v0.2.57
+  and v0.2.58 read only the first slot; v0.2.59 and later read the right one. (5G state: the first registration that says
+  something wins, not the voice one that always says NONE.)
 - UNKNOWN until the user tries it: (a) whether this phone prints `mPhysicalChannelConfigs` in a form `RadioState` reads (the
   parser is tolerant; if not, the tab shows the raw text and Probe has it: adapt the parser to that text); (b) whether this
   modem obeys `setSystemSelectionChannels` at all (the run answers that with measurements); (c) whether `net_lte` (Force 4G) works on

@@ -80,6 +80,54 @@ public final class BandToolsTest {
             check(d.contains("does not list") && d.contains("carrier aggregation"), "no carriers but aggregation: " + d);
         }
 
+        // --- a phone that can hold two SIMs prints every field once per slot; the slot that is in use lists the carriers
+        {
+            String[] u = CA_NSA.split("\n");
+            String svcUsed = u[1];
+            String cfgUsed = u[2];
+            String dispUsed = u[3];
+            String svcIdle = "  mServiceState={mVoiceRegState=1(OUT_OF_SERVICE), isUsingCarrierAggregation=false, "
+                    + "mNetworkRegistrationInfos=[NetworkRegistrationInfo{ domain=PS transportType=WWAN nrState=NONE }]}";
+            String cfgIdle = "  mPhysicalChannelConfigs=[]";
+            String dispIdle = "  mTelephonyDisplayInfos=TelephonyDisplayInfo {network=UNKNOWN, overrideNetwork=NONE, isRoaming=false}";
+            // whole dump, slot 0 idle then slot 1 in use, and the other way round
+            RadioState slot1 = RadioState.parse("Phone Id=0\n" + svcIdle + "\n" + cfgIdle + "\n" + dispIdle + "\nPhone Id=1\n"
+                    + svcUsed + "\n" + cfgUsed + "\n" + dispUsed + "\n");
+            check(slot1.carriers.size() == 3 && slot1.carriers.get(0).band == 66, "two slots, the second in use: its carriers: " + slot1.carriers.size());
+            check(slot1.display.equals("NR_ADVANCED") && slot1.ca && slot1.bandwidths.size() == 2 && slot1.nrState.equals("CONNECTED"),
+                    "two slots, the second in use: its label and its aggregation facts (" + slot1.display + ", " + slot1.ca + ", " + slot1.bandwidths
+                    + ", " + slot1.nrState + ")");
+            RadioState b = RadioState.parse("Phone Id=0\n" + svcUsed + "\n" + cfgUsed + "\n" + dispUsed + "\nPhone Id=1\n"
+                    + svcIdle + "\n" + cfgIdle + "\n" + dispIdle + "\n");
+            check(b.carriers.size() == 3 && b.display.equals("NR_ADVANCED") && b.ca && b.nrState.equals("CONNECTED"),
+                    "two slots, the first in use");
+            // what Cells.survey hands over: only the matching lines (no "Phone Id" lines), the two parts told apart by a marker
+            RadioState c = RadioState.parse(svcIdle + "\n" + svcUsed + "\n##EXTRA\n" + cfgIdle + "\n" + cfgUsed + "\n" + dispIdle + "\n"
+                    + dispUsed + "\n");
+            check(c.carriers.size() == 3 && c.display.equals("NR_ADVANCED") && c.ca && c.bandwidths.size() == 2,
+                    "as the survey prints it (slot 1 in use): " + c.carriers.size() + " carriers, " + c.display + ", ca " + c.ca);
+            // the lines do not match up (a slot's label is missing): the carriers still come from the slot that has them
+            RadioState d = RadioState.parse(svcIdle + "\n" + svcUsed + "\n##EXTRA\n" + cfgIdle + "\n" + cfgUsed + "\n" + dispUsed + "\n");
+            check(d.carriers.size() == 3 && d.display.equals("NR_ADVANCED"), "lines that do not match up: carriers kept, the label found");
+            // both slots list carriers: the one with more is the data one
+            String cfgOne = "  mPhysicalChannelConfigs=[{mConnectionStatus=PrimaryServing,mRat=LTE,mBand=13,mDownlinkChannelNumber=5230}]";
+            RadioState e = RadioState.parse(svcIdle + "\n" + svcUsed + "\n##EXTRA\n" + cfgOne + "\n" + cfgUsed + "\n" + dispIdle + "\n"
+                    + dispUsed + "\n");
+            check(e.carriers.size() == 3 && e.carriers.get(0).band == 66 && e.display.equals("NR_ADVANCED"), "both slots list carriers: the larger list");
+            // a single slot is read exactly as before
+            RadioState f = RadioState.parse(svcUsed + "\n##EXTRA\n" + cfgUsed + "\n" + dispUsed + "\n");
+            check(f.carriers.size() == 3 && f.display.equals("NR_ADVANCED") && f.ca, "one slot");
+            // nothing readable in either slot: the text that is there is kept so it can be looked at
+            RadioState g = RadioState.parse(svcIdle + "\n" + svcUsed + "\n##EXTRA\n" + cfgIdle + "\n  mPhysicalChannelConfigs=[odd]\n");
+            check(g.carriers.isEmpty() && g.rawConfigs.equals("[odd]"), "unreadable text of the second slot is kept: " + g.rawConfigs);
+        }
+        // --- the 5G state is printed for every registration (voice first): the one that says something wins
+        check(RadioState.parse("mServiceState={domain=CS nrState=NONE domain=PS nrState=CONNECTED}").nrState.equals("CONNECTED"),
+                "5G state: the data registration, not the voice one");
+        check(RadioState.parse("mServiceState={domain=CS nrState=NONE domain=PS nrState=NONE}").nrState.equals("NONE"), "5G state: none");
+        check(RadioState.parse("mServiceState={domain=PS nrState=RESTRICTED domain=CS nrState=NONE}").nrState.equals("RESTRICTED"),
+                "5G state: the first that says something");
+
         // --- was the lock obeyed?
         List<RadioState.Carrier> ca = RadioState.parse(CA_NSA).carriers; // B66, B2 and n77
         check(BandCheck.verify("", ca).verdict == BandCheck.Verdict.OBEYED, "no lock asked for is always fine");
