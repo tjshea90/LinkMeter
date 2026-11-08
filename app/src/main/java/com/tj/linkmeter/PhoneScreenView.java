@@ -130,6 +130,8 @@ final class PhoneScreenView extends View {
                     tracking = false;
                     listener.touch(2, x, y);
                 }
+                markX = -1; // the touch marker goes away with the finger
+                invalidate();
                 return true;
             default:
                 return true;

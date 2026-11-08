@@ -1,84 +1,126 @@
 package com.tj.linkmeter;
 
-import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.SystemClock;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
-import android.widget.CheckBox;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
  * See and control the phone's screen from the tablet.
  *
- * Video mode (fast): the phone's hardware encoder streams H.264 and this tablet's hardware decoder
- * shows it, a few frames behind at most. Pictures mode (compatible): a small JPEG of the screen
- * every moment. Touches travel over one long connection as they happen; if that cannot start, taps
- * and swipes are sent one at a time instead. Nothing runs unless this tab is open.
+ * Layout (see RemoteLayout): the picture in the middle and a column of buttons on each side, never over
+ * the picture. Typing opens the tablet's keyboard without shrinking the picture. Settings (picture quality,
+ * bitrate, decoder, what the phone does while you use this) are in the Settings panel.
+ *
+ * Video mode: the phone's hardware encoder streams H.264 and this tablet's hardware decoder shows it. When
+ * the phone's screen stops changing, a sharp still picture is shown, so a still screen never depends on
+ * the decoder letting go of its last pictures. Pictures mode: a small JPEG of the screen, one after
+ * another. Touches travel over one long connection as they happen; if that cannot start, taps and swipes
+ * are sent one at a time instead. Nothing runs unless this tab is open.
  */
 final class ScreenTab extends Tab {
-    private static final int[] VID_W = {540, 720, 1080};
-    private static final int[] VID_BR = {1500000, 3000000, 8000000};
-    private static final int[] PIC_W = {360, 540, 720};
-    private static final int[] PIC_Q = {40, 55, 70};
-    private static final String[] QUAL = {"Fast", "Balanced", "Sharp"};
+    private static final int BAR_BG = 0xFF0B0D11;
+    private static final int STILL_IDLE_MS = 450;
 
+    private ScreenPrefs prefs;
+
+    // views
     private LinearLayout root;
-    private LinearLayout topBar;
-    private LinearLayout row1;
-    private LinearLayout row2;
-    private LinearLayout fsBar;
+    private LinearLayout header;
+    private TextView status;
+    private Button modeChip;
+    private Button qualChip;
+    private RemoteLayout remote;
     private FrameLayout stage;
     private PhoneScreenView pics;
     private AspectSurfaceView vid;
+    private PhoneScreenView still;
     private TextView note;
-    private TextView status;
-    private Button fsToggle;
-    private CheckBox sleepBox;
-    private final Button[] modeBtn = new Button[2];
-    private final Button[] qualBtn = new Button[3];
+    private TypingView typingView;
+    private FrameLayout overlay;
+    private FrameLayout rightBar;
+    private BarColumn rightNormal;
+    private BarColumn rightTyping;
+    private BarButton keysBtn;
+    private BarButton powerBtn;
+    private BarButton unlockBtn;
+    private BarButton fullBtn;
+    private TextView hud;
+    private AdvancedPanel advanced;
 
+    // state
     private boolean shown;
     private boolean surfaceReady;
     private boolean fullscreen;
-    private boolean fsBarOn = true;
-    private boolean woke;
-    private int mode;
-    private int quality;
+    private boolean typing;
     private boolean fellBack;
+    private boolean tuneOff;
+    private boolean woke;
+    private boolean waitingForScreen;
+    private int mode;
+    private boolean phoneOn = true;
+    private boolean phoneLocked;
+    private int failures;
+    private String statusMsg = "Connecting…";
+    private String profileText = "";
+    private String diagText = "";
+    private String lastError = "";
+    private String ctlText = "not connected yet";
+    private int fps;
+    private int kbps;
+    private int peak;
 
+    // video
     private VideoStream video;
     private int videoGen;
     private boolean gotFrame;
-    private CtlChannel ctl;
-    private boolean ctlTrying;
-    private long ctlFailedAt;
-    /** The finger that is down right now is being sent over the live channel. */
-    private boolean gestureOnCtl;
-    private int fbX;
-    private int fbY;
-    private long fbT;
+    private volatile int fed;
+    private volatile long lastPacketAt;
+    private volatile int packetSeq;
+    private volatile boolean stillVisible;
+    private int stillSeq = -1;
+    private boolean stillBusy;
 
+    // pictures
     private HandlerThread worker;
     private volatile Handler bg;
     private volatile boolean polling;
+
+    // touch and keys
+    private CtlChannel ctl;
+    private boolean ctlTrying;
+    private long ctlFailedAt;
+    private boolean gestureOnCtl;
+    private boolean swallow;
+    private int fbX;
+    private int fbY;
+    private long fbT;
+    private final StringBuilder pendingText = new StringBuilder();
 
     ScreenTab(MainActivity a) {
         super(a);
@@ -89,36 +131,22 @@ final class ScreenTab extends Tab {
         return "Screen";
     }
 
-    // ------------------------------------------------------------ screen layout
+    // ------------------------------------------------------------ layout
 
     @Override
     View build() {
-        mode = Cfg.screenMode(act);
-        quality = Cfg.screenQuality(act);
+        prefs = new ScreenPrefs(act);
+        mode = prefs.mode();
         fellBack = false;
+        tuneOff = false;
         surfaceReady = false;
+        fullscreen = false;
+        typing = false;
+        waitingForScreen = false;
+        failures = 0;
+        advanced = null;
 
-        root = new LinearLayout(act);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 8), Ui.dp(act, 8));
-
-        topBar = new LinearLayout(act);
-        topBar.setOrientation(LinearLayout.HORIZONTAL);
-        modeBtn[0] = chip("Video", v -> setMode(0));
-        modeBtn[1] = chip("Pictures", v -> setMode(1));
-        topBar.addView(modeBtn[0], Ui.weight());
-        topBar.addView(modeBtn[1], Ui.weight());
-        for (int i = 0; i < 3; i++) {
-            final int idx = i;
-            qualBtn[i] = chip(QUAL[i], v -> setQuality(idx));
-            topBar.addView(qualBtn[i], Ui.weight());
-        }
-        topBar.addView(chip("Full", v -> enterFullscreen()), Ui.weight());
-        root.addView(topBar);
-
-        status = Ui.text(act, "Connecting…", 12, Ui.DIM, false);
-        root.addView(status);
-
+        // ---- the picture
         stage = new FrameLayout(act);
         stage.setBackgroundColor(0xFF000000);
         pics = new PhoneScreenView(act);
@@ -143,119 +171,225 @@ final class ScreenTab extends Tab {
                 stopVideo();
             }
         });
-        stage.addView(pics, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        stage.addView(vid, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        still = new PhoneScreenView(act);
+        still.setListener(this::touch);
+        still.setVisibility(View.GONE);
         note = Ui.text(act, "", 15, Ui.FG, false);
         note.setGravity(Gravity.CENTER);
+        note.setBackgroundColor(0xB0000000);
+        note.setPadding(Ui.dp(act, 12), Ui.dp(act, 10), Ui.dp(act, 12), Ui.dp(act, 10));
         note.setVisibility(View.GONE);
-        stage.addView(note, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        typingView = new TypingView(act);
+        typingView.setListener(new TypingView.Listener() {
+            @Override
+            public void text(String s) {
+                sendText(s);
+            }
 
-        fsBar = new LinearLayout(act);
-        fsBar.setOrientation(LinearLayout.HORIZONTAL);
-        fsBar.setBackgroundColor(0xB0000000);
-        fsBar.addView(small("Exit", v -> exitFullscreen()), Ui.weight());
-        fsBar.addView(small("Back", v -> key(4)), Ui.weight());
-        fsBar.addView(small("Home", v -> key(3)), Ui.weight());
-        fsBar.addView(small("Recents", v -> key(187)), Ui.weight());
-        fsBar.addView(small("Wake", v -> wake()), Ui.weight());
-        fsBar.addView(small("Sleep", v -> post("/screen/off")), Ui.weight());
-        fsBar.addView(small("Unlock", v -> askPin()), Ui.weight());
-        fsBar.setVisibility(View.GONE);
-        stage.addView(fsBar, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
-        fsToggle = small("▾", v -> toggleFsBar());
-        fsToggle.setVisibility(View.GONE);
-        stage.addView(fsToggle, new FrameLayout.LayoutParams(Ui.dp(act, 48), Ui.dp(act, 40),
-                Gravity.TOP | Gravity.END));
-        root.addView(stage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+            @Override
+            public void key(int keyCode) {
+                sendKey(keyCode);
+            }
+        });
+        overlay = new FrameLayout(act);
+        overlay.setBackgroundColor(0xB0000000);
+        overlay.setClickable(true);
+        overlay.setVisibility(View.GONE);
 
-        row1 = new LinearLayout(act);
-        row1.setOrientation(LinearLayout.HORIZONTAL);
-        row1.addView(Ui.button(act, "Wake", v -> wake()), Ui.weight());
-        row1.addView(Ui.button(act, "Sleep", v -> post("/screen/off")), Ui.weight());
-        row1.addView(Ui.button(act, "Unlock", v -> askPin()), Ui.weight());
-        root.addView(row1);
+        stage.addView(pics, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        stage.addView(vid, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER));
+        stage.addView(still, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        stage.addView(note, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER));
+        stage.addView(typingView, new FrameLayout.LayoutParams(1, 1));
+        stage.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        row2 = new LinearLayout(act);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-        row2.addView(Ui.button(act, "Back", v -> key(4)), Ui.weight());
-        row2.addView(Ui.button(act, "Home", v -> key(3)), Ui.weight());
-        row2.addView(Ui.button(act, "Recents", v -> key(187)), Ui.weight());
-        row2.addView(Ui.button(act, "Vol -", v -> key(25)), Ui.weight());
-        row2.addView(Ui.button(act, "Vol +", v -> key(24)), Ui.weight());
-        root.addView(row2);
+        // ---- the side bars
+        int item = Ui.dp(act, 56);
+        BarColumn leftCol = new BarColumn(act, item);
+        leftCol.addView(new BarButton(act, Icons.Kind.RECENTS, "Apps", v -> sendKey(187)));
+        leftCol.addView(new BarButton(act, Icons.Kind.HOME, "Home", v -> sendKey(3)));
+        leftCol.addView(new BarButton(act, Icons.Kind.BACK, "Back", v -> sendKey(4)));
+        leftCol.addView(new BarButton(act, Icons.Kind.VOL_UP, "", v -> sendKey(24)));
+        leftCol.addView(new BarButton(act, Icons.Kind.VOL_DOWN, "", v -> sendKey(25)));
+        hud = Ui.text(act, "", 9, Ui.DIM, false);
+        hud.setGravity(Gravity.CENTER);
+        FrameLayout leftBar = new FrameLayout(act);
+        leftBar.setBackgroundColor(BAR_BG);
+        leftBar.addView(leftCol, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        leftBar.addView(hud, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM));
 
-        sleepBox = new CheckBox(act);
-        sleepBox.setText("Turn the phone's screen off when I leave this tab");
-        sleepBox.setTextColor(Ui.FG);
-        sleepBox.setChecked(true);
-        root.addView(sleepBox);
+        rightNormal = new BarColumn(act, item);
+        keysBtn = new BarButton(act, Icons.Kind.KEYBOARD, "Type", v -> toggleTyping());
+        powerBtn = new BarButton(act, Icons.Kind.POWER, "Sleep", v -> togglePower());
+        unlockBtn = new BarButton(act, Icons.Kind.LOCK, "Unlock", v -> showPin());
+        fullBtn = new BarButton(act, Icons.Kind.FULL, "Full", v -> toggleFullscreen());
+        rightNormal.addView(keysBtn);
+        rightNormal.addView(powerBtn);
+        rightNormal.addView(unlockBtn);
+        rightNormal.addView(new BarButton(act, Icons.Kind.SLIDERS, "Settings", v -> showAdvanced()));
+        rightNormal.addView(fullBtn);
 
+        rightTyping = new BarColumn(act, item);
+        rightTyping.addView(new BarButton(act, Icons.Kind.CLOSE, "Done", v -> endTyping()));
+        rightTyping.addView(new BarButton(act, Icons.Kind.ENTER, "", v -> sendKey(66)));
+        rightTyping.addView(new BarButton(act, Icons.Kind.BACKSPACE, "", v -> sendKey(67)));
+        rightTyping.addView(new BarButton(act, Icons.Kind.TAB, "", v -> sendKey(61)));
+        rightTyping.addView(new BarButton(act, Icons.Kind.LEFT, "", v -> sendKey(21)));
+        rightTyping.addView(new BarButton(act, Icons.Kind.UP, "", v -> sendKey(19)));
+        rightTyping.addView(new BarButton(act, Icons.Kind.DOWN, "", v -> sendKey(20)));
+        rightTyping.addView(new BarButton(act, Icons.Kind.RIGHT, "", v -> sendKey(22)));
+        rightBar = new FrameLayout(act);
+        rightBar.setBackgroundColor(BAR_BG);
+        rightBar.addView(rightNormal, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        remote = new RemoteLayout(act, stage, leftBar, rightBar);
+        remote.setKeyboardListener(this::endTyping);
+
+        // ---- the header (hidden in full screen and while typing)
+        header = new LinearLayout(act);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(Ui.dp(act, 8), Ui.dp(act, 4), Ui.dp(act, 8), Ui.dp(act, 4));
+        modeChip = chip(v -> cycleMode());
+        qualChip = chip(v -> cycleQuality());
+        status = Ui.text(act, statusMsg, 11, Ui.DIM, false);
+        status.setMaxLines(2);
+        header.addView(modeChip);
+        header.addView(qualChip);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        sp.leftMargin = Ui.dp(act, 8);
+        header.addView(status, sp);
+
+        root = new LinearLayout(act);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Ui.BG);
+        root.addView(header);
+        root.addView(remote, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         paintChips();
         return root;
     }
 
-    private Button chip(String label, View.OnClickListener l) {
-        Button b = Ui.button(act, label, l);
+    private Button chip(View.OnClickListener l) {
+        Button b = Ui.button(act, "", l);
         b.setTextSize(11);
-        b.setPadding(0, b.getPaddingTop(), 0, b.getPaddingBottom());
-        return b;
-    }
-
-    private Button small(String label, View.OnClickListener l) {
-        Button b = Ui.button(act, label, l);
-        b.setTextSize(11);
-        b.setPadding(0, 0, 0, 0);
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setPadding(Ui.dp(act, 10), Ui.dp(act, 6), Ui.dp(act, 10), Ui.dp(act, 6));
         return b;
     }
 
     private void paintChips() {
-        for (int i = 0; i < modeBtn.length; i++) {
-            modeBtn[i].setAlpha(i == mode ? 1f : 0.5f);
-        }
-        for (int i = 0; i < qualBtn.length; i++) {
-            qualBtn[i].setAlpha(i == quality ? 1f : 0.5f);
+        if (modeChip != null) {
+            modeChip.setText(mode == 0 ? "Live video" : "Still pictures");
+            qualChip.setText(ScreenPrefs.PRESETS[prefs.preset()]);
         }
     }
 
-    private void setMode(int m) {
-        mode = m;
+    private void cycleMode() {
+        mode = 1 - mode;
+        prefs.setMode(mode);
         fellBack = false;
-        Cfg.setScreenMode(act, m);
+        tuneOff = false;
         paintChips();
         if (shown) {
             applyMode();
         }
     }
 
-    private void setQuality(int q) {
-        quality = q;
-        Cfg.setScreenQuality(act, q);
+    private void cycleQuality() {
+        int p = prefs.preset();
+        prefs.setPreset(p >= 3 ? 0 : p + 1);
         paintChips();
         if (shown) {
             applyMode();
         }
     }
 
-    // ------------------------------------------------------------ full screen
+    private void paintBars() {
+        if (powerBtn != null) {
+            powerBtn.set(Icons.Kind.POWER, phoneOn ? "Sleep" : "Wake");
+            unlockBtn.setActive(phoneLocked && phoneOn);
+        }
+    }
 
-    private void enterFullscreen() {
-        fullscreen = true;
-        act.setFullscreen(true);
-        act.backHandler = this::exitFullscreen;
-        root.setPadding(0, 0, 0, 0);
-        topBar.setVisibility(View.GONE);
-        status.setVisibility(View.GONE);
-        row1.setVisibility(View.GONE);
-        row2.setVisibility(View.GONE);
-        sleepBox.setVisibility(View.GONE);
-        fsBarOn = true;
-        fsBar.setVisibility(View.VISIBLE);
-        fsToggle.setText("▾");
-        fsToggle.setVisibility(View.VISIBLE);
+    private void setStatus(String s) {
+        statusMsg = s;
+        if (status != null) {
+            status.setText(s);
+        }
+    }
+
+    private void showNote(String s) {
+        if (note != null) {
+            note.setText(s);
+            note.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void paintLive() {
+        if (mode == 0 && gotFrame) {
+            setStatus("Live video · " + ScreenPrefs.PRESETS[prefs.preset()]
+                    + (prefs.showStats() ? " · " + fps + " fps · " + kbps + " kbit/s (peak " + peak + ")" : ""));
+            if (hud != null) {
+                hud.setText(prefs.showStats() && !typing ? fps + " fps\n" + kbps + " k" : "");
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ overlays, full screen, back
+
+    private void showOverlay(View v, boolean centered) {
+        overlay.removeAllViews();
+        overlay.addView(v, centered
+                ? new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+                : new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        overlay.setVisibility(View.VISIBLE);
+        updateBack();
+    }
+
+    private void hideOverlay() {
+        if (overlay != null) {
+            overlay.setVisibility(View.GONE);
+            overlay.removeAllViews();
+        }
+        advanced = null;
+        updateBack();
+    }
+
+    private void updateBack() {
+        boolean any = typing || fullscreen || (overlay != null && overlay.getVisibility() == View.VISIBLE);
+        act.backHandler = any ? this::onBack : null;
+    }
+
+    private void onBack() {
+        if (overlay != null && overlay.getVisibility() == View.VISIBLE) {
+            if (advanced != null) {
+                advanced.close();
+            } else {
+                hideOverlay();
+            }
+        } else if (typing) {
+            endTyping();
+        } else if (fullscreen) {
+            exitFullscreen();
+        }
+    }
+
+    private void toggleFullscreen() {
+        if (fullscreen) {
+            exitFullscreen();
+        } else {
+            fullscreen = true;
+            act.setFullscreen(true);
+            header.setVisibility(View.GONE);
+            fullBtn.set(Icons.Kind.EXIT_FULL, "Exit");
+            updateBack();
+        }
     }
 
     private void exitFullscreen() {
@@ -264,24 +398,67 @@ final class ScreenTab extends Tab {
         }
         fullscreen = false;
         act.setFullscreen(false);
-        act.backHandler = null;
-        if (root != null) {
-            int pad = Ui.dp(act, 8);
-            root.setPadding(pad, pad, pad, pad);
-            topBar.setVisibility(View.VISIBLE);
-            status.setVisibility(View.VISIBLE);
-            row1.setVisibility(View.VISIBLE);
-            row2.setVisibility(View.VISIBLE);
-            sleepBox.setVisibility(View.VISIBLE);
-            fsBar.setVisibility(View.GONE);
-            fsToggle.setVisibility(View.GONE);
+        if (header != null && !typing) {
+            header.setVisibility(View.VISIBLE);
+        }
+        if (fullBtn != null) {
+            fullBtn.set(Icons.Kind.FULL, "Full");
+        }
+        updateBack();
+    }
+
+    // ------------------------------------------------------------ typing
+
+    private void toggleTyping() {
+        if (typing) {
+            endTyping();
+        } else {
+            startTyping();
         }
     }
 
-    private void toggleFsBar() {
-        fsBarOn = !fsBarOn;
-        fsBar.setVisibility(fsBarOn ? View.VISIBLE : View.GONE);
-        fsToggle.setText(fsBarOn ? "▾" : "▴");
+    private void startTyping() {
+        if (typing) {
+            return;
+        }
+        typing = true;
+        remote.setTyping(true);
+        act.setTabBarVisible(false);
+        header.setVisibility(View.GONE);
+        rightBar.removeAllViews();
+        rightBar.addView(rightTyping, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        keysBtn.setActive(true);
+        if (hud != null) {
+            hud.setText("");
+        }
+        typingView.requestFocus();
+        final InputMethodManager imm = (InputMethodManager) act.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            typingView.post(() -> imm.showSoftInput(typingView, 0));
+        }
+        updateBack();
+    }
+
+    private void endTyping() {
+        if (!typing) {
+            return;
+        }
+        typing = false;
+        InputMethodManager imm = (InputMethodManager) act.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(typingView.getWindowToken(), 0);
+        }
+        typingView.clearFocus();
+        remote.setTyping(false);
+        act.setTabBarVisible(true);
+        if (!fullscreen) {
+            header.setVisibility(View.VISIBLE);
+        }
+        rightBar.removeAllViews();
+        rightBar.addView(rightNormal, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        keysBtn.setActive(false);
+        paintLive();
+        updateBack();
     }
 
     // ------------------------------------------------------------ lifecycle
@@ -290,12 +467,19 @@ final class ScreenTab extends Tab {
     void onShow() {
         shown = true;
         connectCtl();
+        act.ui.removeCallbacks(statePoll);
+        act.ui.post(statePoll);
+        act.ui.removeCallbacks(stillTick);
+        act.ui.postDelayed(stillTick, 250);
+        beginProfile();
         applyMode();
     }
 
     @Override
     void onHide() {
         shown = false;
+        act.ui.removeCallbacks(statePoll);
+        act.ui.removeCallbacks(stillTick);
         stopStreams();
         CtlChannel c = ctl;
         ctl = null;
@@ -303,9 +487,17 @@ final class ScreenTab extends Tab {
         if (c != null) {
             c.close();
         }
+        endTyping();
+        if (overlay != null) {
+            hideOverlay();
+        }
         exitFullscreen();
-        if (woke && sleepBox != null && sleepBox.isChecked()) {
-            post("/screen/off");
+        updateBack();
+        if (prefs != null) {
+            endProfile(false);
+            if (woke && prefs.sleepOnLeave()) {
+                post("/screen/off");
+            }
         }
         woke = false;
     }
@@ -316,17 +508,23 @@ final class ScreenTab extends Tab {
             return;
         }
         note.setVisibility(View.GONE);
+        hideStill();
         boolean v = mode == 0;
         vid.setVisibility(v ? View.VISIBLE : View.GONE);
         pics.setVisibility(v ? View.GONE : View.VISIBLE);
+        if (hud != null) {
+            hud.setText("");
+        }
         if (!shown) {
             return;
         }
         if (v) {
+            setStatus("Starting video…");
             if (surfaceReady) {
                 startVideo();
             }
         } else {
+            setStatus("Starting pictures…");
             startPictures();
         }
     }
@@ -336,11 +534,60 @@ final class ScreenTab extends Tab {
         stopPictures();
     }
 
-    private void showNote(String s) {
-        if (note != null) {
-            note.setText(s);
-            note.setVisibility(View.VISIBLE);
+    // ------------------------------------------------------------ the phone's state and its power options
+
+    private final Runnable statePoll = new Runnable() {
+        @Override
+        public void run() {
+            if (!shown) {
+                return;
+            }
+            Call.run(act, "GET", "/screen/state", 4000, (ok, text, json) -> {
+                if (!shown) {
+                    return;
+                }
+                if (ok && json != null) {
+                    phoneOn = json.optBoolean("on", true);
+                    phoneLocked = json.optBoolean("locked", false);
+                    paintBars();
+                    if (phoneOn && waitingForScreen && mode == 0 && video == null && surfaceReady) {
+                        waitingForScreen = false;
+                        if (note != null) {
+                            note.setVisibility(View.GONE);
+                        }
+                        startVideo();
+                    }
+                }
+                act.ui.postDelayed(this, 3000);
+            });
         }
+    };
+
+    /** Asks the phone to keep its screen on a while and dim it, as set in Settings. */
+    private void beginProfile() {
+        if (prefs.keepIndex() == 0 && prefs.dimIndex() == ScreenPrefs.DIM_NAMES.length - 1) {
+            profileText = "Not changing the phone's screen settings (turned off in Settings).";
+            return;
+        }
+        Call.run(act, "POST", "/screen/profile?" + prefs.profileQuery(), 30000, (ok, text, json) -> {
+            profileText = ok ? text : "Couldn't change the phone's screen settings: " + text;
+            if (advanced != null) {
+                advanced.setPhoneText(profileText);
+            }
+        });
+    }
+
+    /** Asks the phone to put its screen settings back. */
+    private void endProfile(final boolean show) {
+        Call.run(act, "POST", "/screen/profile?end=1", 30000, (ok, text, json) -> {
+            profileText = ok ? text : "Couldn't put the phone's screen settings back: " + text;
+            if (show) {
+                Toast.makeText(act, profileText, Toast.LENGTH_LONG).show();
+            }
+            if (advanced != null) {
+                advanced.setPhoneText(profileText);
+            }
+        });
     }
 
     // ------------------------------------------------------------ video mode
@@ -353,69 +600,141 @@ final class ScreenTab extends Tab {
             return;
         }
         gotFrame = false;
+        fed = 0;
+        stillSeq = -1;
         final int gen = ++videoGen;
-        String q = "w=" + VID_W[quality] + "&br=" + VID_BR[quality];
-        status.setText("Starting video…");
-        video = new VideoStream(host, Cfg.token(act), q, vid.getHolder().getSurface(), new VideoStream.Events() {
-            @Override
-            public void onInfo(final int pw, final int ph, final int vw, final int vh) {
-                act.ui.post(() -> {
-                    if (gen == videoGen) {
-                        vid.setPhoneSize(pw, ph);
-                        vid.setAspect(vw, vh);
+        String q = "w=" + prefs.vidWidth() + "&br=" + (prefs.vidKbps() * 1000L);
+        boolean tune = prefs.lowDelay() == 1 || (prefs.lowDelay() == 0 && !tuneOff);
+        setStatus("Starting video…");
+        video = new VideoStream(host, Cfg.token(act), q, vid.getHolder().getSurface(), prefs.decoder(), tune,
+                new VideoStream.Events() {
+                    @Override
+                    public void onInfo(final int pw, final int ph, final int vw, final int vh) {
+                        act.ui.post(() -> {
+                            if (gen == videoGen) {
+                                // both views fit the phone's own shape, so touches map exactly
+                                vid.setPhoneSize(pw, ph);
+                                vid.setAspect(pw, ph);
+                            }
+                        });
                     }
-                });
-            }
 
-            @Override
-            public void onFrame() {
-                act.ui.post(() -> {
-                    if (gen == videoGen) {
-                        gotFrame = true;
-                        note.setVisibility(View.GONE);
-                        status.setText("Live video, " + QUAL[quality].toLowerCase() + ". Drag on the picture to control the phone.");
+                    @Override
+                    public void onFrame() {
+                        act.ui.post(() -> {
+                            if (gen == videoGen) {
+                                gotFrame = true;
+                                failures = 0;
+                                note.setVisibility(View.GONE);
+                                paintLive();
+                            }
+                        });
                     }
-                });
-            }
 
-            @Override
-            public void onStats(final int fps, final int kbps) {
-                act.ui.post(() -> {
-                    if (gen == videoGen && gotFrame && status != null) {
-                        status.setText("Live video, " + QUAL[quality].toLowerCase() + " \u00b7 " + fps + " fps \u00b7 "
-                                + kbps + " kbit/s. Drag on the picture to control the phone.");
-                    }
-                });
-            }
-
-            @Override
-            public void onEnd(final String why, final boolean screenOff) {
-                act.ui.post(() -> {
-                    if (gen != videoGen) {
-                        return;
-                    }
-                    video = null;
-                    if (!gotFrame && !screenOff) {
-                        fallBack(why);
-                        return;
-                    }
-                    showNote(screenOff ? why + "\nTap Wake." : why + "\nReconnecting…");
-                    status.setText(why);
-                    act.ui.postDelayed(() -> {
-                        if (shown && mode == 0 && surfaceReady && video == null && gen == videoGen) {
-                            startVideo();
+                    @Override
+                    public void onPacket() {
+                        fed++;
+                        lastPacketAt = SystemClock.elapsedRealtime();
+                        packetSeq++;
+                        if (stillVisible) {
+                            stillVisible = false;
+                            act.ui.post(() -> hideStill());
                         }
-                    }, 2000);
+                    }
+
+                    @Override
+                    public void onStats(int f, int k) {
+                        onStats(f, k, k);
+                    }
+
+                    @Override
+                    public void onStats(final int f, final int k, final int p) {
+                        act.ui.post(() -> {
+                            if (gen == videoGen) {
+                                fps = f;
+                                kbps = k;
+                                peak = p;
+                                paintLive();
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onDiag(final String text) {
+                        act.ui.post(() -> {
+                            if (gen == videoGen) {
+                                diagText = text;
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onEnd(final String why, final boolean screenOff) {
+                        act.ui.post(() -> videoEnded(gen, why, screenOff));
+                    }
                 });
-            }
-        });
         video.start();
+        act.ui.postDelayed(() -> noPictureCheck(gen, false), 8000);
+    }
+
+    private void videoEnded(int gen, String why, boolean screenOff) {
+        if (gen != videoGen) {
+            return;
+        }
+        video = null;
+        lastError = why;
+        if (screenOff) {
+            phoneOn = false;
+            waitingForScreen = true;
+            paintBars();
+            showNote("The phone's screen is off.\nTap Wake.");
+            setStatus("The phone's screen is off.");
+            return;
+        }
+        if (!gotFrame) {
+            fallBack(why);
+            return;
+        }
+        // It was working: reconnect quietly. The last picture stays on the screen meanwhile.
+        failures++;
+        setStatus("Video interrupted (" + why + "). Reconnecting…");
+        if (failures >= 3) {
+            showNote(why + "\nReconnecting…");
+        }
+        final int g = gen;
         act.ui.postDelayed(() -> {
-            if (gen == videoGen && !gotFrame && video != null) {
-                stopVideo();
-                fallBack("no picture after 8 seconds");
+            if (shown && mode == 0 && surfaceReady && video == null && g == videoGen) {
+                startVideo();
             }
-        }, 8000);
+        }, failures >= 3 ? 2000 : 600);
+    }
+
+    /** Checks that a picture really came out of the decoder; if not, finds out why and tries the next thing. */
+    private void noPictureCheck(int gen, boolean second) {
+        if (gen != videoGen || gotFrame || video == null || !shown) {
+            return;
+        }
+        if (fed >= 6) {
+            // pictures arrive but the decoder shows none
+            if (prefs.lowDelay() == 0 && !tuneOff) {
+                tuneOff = true;
+                lastError = "The decoder showed nothing with the low-delay tuning on: trying again without it.";
+                startVideo();
+                return;
+            }
+            stopVideo();
+            fallBack("the decoder shows no picture");
+            return;
+        }
+        if (!second) {
+            // Few pictures came: the phone's screen is probably still. The still picture covers that; give it longer.
+            act.ui.postDelayed(() -> noPictureCheck(gen, true), 12000);
+            return;
+        }
+        if (fed == 0 || !prefs.stillImage()) {
+            stopVideo();
+            fallBack(fed == 0 ? "no video from the phone" : "no picture on screen");
+        }
     }
 
     private void stopVideo() {
@@ -424,15 +743,65 @@ final class ScreenTab extends Tab {
             video.stop();
             video = null;
         }
+        stillBusy = false;
     }
 
     /** Video would not start here: use pictures for now (the saved choice is left alone). */
     private void fallBack(String why) {
         fellBack = true;
+        lastError = why;
         mode = 1;
         paintChips();
-        status.setText("Video didn't start (" + why + "). Using pictures.");
         applyMode();
+        setStatus("Video didn't start (" + why + "). Using pictures for now.");
+    }
+
+    // ------------------------------------------------------------ the sharp still picture
+
+    private final Runnable stillTick = new Runnable() {
+        @Override
+        public void run() {
+            if (!shown) {
+                return;
+            }
+            maybeStill();
+            act.ui.postDelayed(this, 200);
+        }
+    };
+
+    private void hideStill() {
+        stillVisible = false;
+        if (still != null) {
+            still.setVisibility(View.GONE);
+        }
+    }
+
+    /** When the phone's screen has stopped changing, shows one sharp picture of it over the video. */
+    private void maybeStill() {
+        if (mode != 0 || !prefs.stillImage() || stillBusy || !phoneOn || fed == 0 || video == null) {
+            return;
+        }
+        long idle = SystemClock.elapsedRealtime() - lastPacketAt;
+        if (idle < STILL_IDLE_MS || packetSeq == stillSeq) {
+            return;
+        }
+        final int seq = packetSeq;
+        stillSeq = seq; // one picture per quiet period
+        stillBusy = true;
+        final String host = Net.phoneHost(act);
+        final int w = Math.max(720, Math.min(1080, prefs.vidWidth()));
+        new Thread(() -> {
+            final Frame f = fetchFrame(host, w, 75);
+            act.ui.post(() -> {
+                stillBusy = false;
+                if (!shown || mode != 0 || f.bmp == null || seq != packetSeq) {
+                    return; // the screen moved on while it was being fetched
+                }
+                still.setFrame(f.bmp, f.w, f.h);
+                still.setVisibility(View.VISIBLE);
+                stillVisible = true;
+            });
+        }, "linkmeter-still").start();
     }
 
     // ------------------------------------------------------------ pictures mode
@@ -452,10 +821,14 @@ final class ScreenTab extends Tab {
             if (h == null || !polling) {
                 return;
             }
-            final Frame f = fetch();
+            long t0 = SystemClock.elapsedRealtime();
+            final Frame f = fetchFrame(Net.phoneHost(act), prefs.picWidth(), prefs.picQuality());
             act.ui.post(() -> show(f));
             if (polling && bg == h) {
-                h.postDelayed(this, f.bmp != null ? 40 : (f.off ? 1200 : 2000));
+                int fi = prefs.picFpsIndex();
+                long gap = fi == 0 ? 0 : 1000L / ScreenPrefs.PIC_FPS[fi];
+                long took = SystemClock.elapsedRealtime() - t0;
+                h.postDelayed(this, f.bmp != null ? Math.max(40, gap - took) : (f.off ? 1200 : 2000));
             }
         }
     };
@@ -482,14 +855,14 @@ final class ScreenTab extends Tab {
         }
     }
 
-    private Frame fetch() {
+    /** One picture of the phone's screen as a bitmap, or why there is none. Blocking: not for the UI thread. */
+    private Frame fetchFrame(String host, int width, int quality) {
         Frame f = new Frame();
-        String host = Net.phoneHost(act);
         if (host.isEmpty()) {
             f.note = "The tablet is not on the phone's hotspot.";
             return f;
         }
-        String target = "/screen/frame?w=" + PIC_W[quality] + "&q=" + PIC_Q[quality];
+        String target = "/screen/frame?w=" + width + "&q=" + quality;
         try (Client.Stream st = Client.get(host, target, Cfg.token(act), 3000, 10000)) {
             byte[] data = readAll(st);
             if (st.code != 200) {
@@ -546,17 +919,22 @@ final class ScreenTab extends Tab {
             return;
         }
         if (f.bmp != null) {
+            phoneOn = true;
             pics.setFrame(f.bmp, f.w, f.h);
             note.setVisibility(View.GONE);
-            status.setText((fellBack ? "Pictures (video was not available). " : "Pictures. ")
-                    + "Drag on the picture to control the phone.");
+            setStatus((fellBack ? "Pictures (video was not available) · " : "Pictures · ")
+                    + ScreenPrefs.PRESETS[prefs.preset()] + ". Drag on the picture to control the phone.");
         } else {
+            if (f.off) {
+                phoneOn = false;
+                paintBars();
+            }
             showNote(f.note);
-            status.setText(f.off ? "The phone's screen is off." : f.note);
+            setStatus(f.off ? "The phone's screen is off." : f.note);
         }
     }
 
-    // ------------------------------------------------------------ touch and keys
+    // ------------------------------------------------------------ touch, keys and text
 
     private void connectCtl() {
         if ((ctl != null && !ctl.isDead()) || ctlTrying) {
@@ -595,9 +973,11 @@ final class ScreenTab extends Tab {
                 }
                 if (fc == null) {
                     ctlFailedAt = SystemClock.elapsedRealtime();
-                    if (status != null) {
-                        status.setText("Touch is in slower mode (" + fe + ")");
-                    }
+                    ctlText = "slower mode (" + fe + ")";
+                    setStatus("Touch is in slower mode (" + fe + ")");
+                } else {
+                    ctlText = "live";
+                    flushText(fc);
                 }
             });
         }, "linkmeter-ctl").start();
@@ -606,6 +986,14 @@ final class ScreenTab extends Tab {
     /** One touch event, in the phone's pixels. action: 0 down, 1 move, 2 up. */
     private void touch(int action, int x, int y) {
         if (action == 0) {
+            swallow = false;
+            if (!phoneOn && prefs.tapToWake()) {
+                swallow = true; // this touch only wakes the phone
+                wake();
+                phoneOn = true;
+                paintBars();
+                return;
+            }
             fbX = x;
             fbY = y;
             fbT = SystemClock.elapsedRealtime();
@@ -614,6 +1002,11 @@ final class ScreenTab extends Tab {
             if (!gestureOnCtl && shown) {
                 connectCtl(); // the live channel is gone or never started: try again for the next gesture
             }
+        } else if (swallow) {
+            if (action == 2) {
+                swallow = false;
+            }
+            return;
         }
         if (gestureOnCtl) {
             // A gesture stays on the channel it started on. If the channel dies half way, the phone
@@ -647,18 +1040,65 @@ final class ScreenTab extends Tab {
     private void post(String target) {
         Call.run(act, "POST", target, 15000, (ok, text, json) -> {
             if (!ok && status != null) {
-                status.setText(text);
+                setStatus(text);
             }
         });
     }
 
-    private void key(int code) {
+    private void sendKey(int code) {
         CtlChannel c = ctl;
         if (c != null && !c.isDead()) {
             c.send("k " + code);
         } else {
             post("/screen/key?code=" + code);
+            connectCtl();
         }
+    }
+
+    /** Sends typed text over the live channel (a phone key press per character); held back until it is up. */
+    private void sendText(String s) {
+        CtlChannel c = ctl;
+        if (c != null && !c.isDead()) {
+            sendChunks(c, s);
+            return;
+        }
+        pendingText.append(s);
+        if (pendingText.length() > 400) {
+            pendingText.delete(0, pendingText.length() - 400);
+        }
+        connectCtl();
+    }
+
+    private void flushText(CtlChannel c) {
+        if (pendingText.length() > 0) {
+            String s = pendingText.toString();
+            pendingText.setLength(0);
+            sendChunks(c, s);
+        }
+    }
+
+    /** "t" and the text as 4 hex digits per character, at most 60 characters per line. */
+    private static void sendChunks(CtlChannel c, String s) {
+        for (int i = 0; i < s.length(); i += 60) {
+            String part = s.substring(i, Math.min(s.length(), i + 60));
+            StringBuilder sb = new StringBuilder("t ");
+            for (int j = 0; j < part.length(); j++) {
+                sb.append(String.format(Locale.US, "%04x", (int) part.charAt(j)));
+            }
+            c.send(sb.toString());
+        }
+    }
+
+    private void togglePower() {
+        if (phoneOn) {
+            post("/screen/off");
+            woke = false;
+            phoneOn = false;
+        } else {
+            wake();
+            phoneOn = true;
+        }
+        paintBars();
     }
 
     private void wake() {
@@ -666,29 +1106,32 @@ final class ScreenTab extends Tab {
         post("/screen/on");
     }
 
-    private void askPin() {
-        final EditText pin = new EditText(act);
-        pin.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        pin.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
-        pin.setSingleLine(true);
-        pin.setHint("PIN");
-        new AlertDialog.Builder(act)
-                .setTitle("Unlock the phone")
-                .setMessage("Type the phone's PIN. It is sent once to the phone and never saved. "
-                        + "After several wrong tries Android makes you wait.")
-                .setView(pin)
-                .setPositiveButton("Unlock", (d, w) -> {
-                    String p = pin.getText().toString();
-                    pin.setText("");
-                    woke = true;
-                    unlock(p);
-                })
-                .setNegativeButton("Cancel", (d, w) -> pin.setText(""))
-                .show();
+    // ------------------------------------------------------------ PIN and settings panels
+
+    private void showPin() {
+        if (!phoneOn) {
+            wake();
+            phoneOn = true;
+            paintBars();
+        }
+        View pad = PinPad.build(act, new PinPad.Done() {
+            @Override
+            public void unlock(String pin) {
+                hideOverlay();
+                woke = true;
+                sendPin(pin);
+            }
+
+            @Override
+            public void cancel() {
+                hideOverlay();
+            }
+        });
+        showOverlay(pad, true);
     }
 
-    private void unlock(final String pin) {
-        status.setText("Entering the PIN…");
+    private void sendPin(final String pin) {
+        setStatus("Entering the PIN…");
         new Thread(() -> {
             byte[] bytes = pin.getBytes(StandardCharsets.UTF_8);
             String msg;
@@ -714,10 +1157,95 @@ final class ScreenTab extends Tab {
             }
             final String fMsg = msg;
             act.ui.post(() -> {
-                if (status != null) {
-                    status.setText(fMsg);
-                }
+                setStatus(fMsg);
+                phoneLocked = !fMsg.startsWith("Unlocked") && !fMsg.contains("already unlocked");
+                paintBars();
             });
         }, "linkmeter-pin").start();
+    }
+
+    private void showAdvanced() {
+        if (advanced != null) {
+            return;
+        }
+        advanced = new AdvancedPanel(act, prefs, new AdvancedPanel.Host() {
+            @Override
+            public void closed(boolean video, boolean power) {
+                hideOverlay();
+                if (power) {
+                    beginProfile();
+                }
+                if (video) {
+                    mode = prefs.mode();
+                    fellBack = false;
+                    tuneOff = false;
+                    paintChips();
+                    if (shown) {
+                        applyMode();
+                    }
+                } else {
+                    paintChips();
+                }
+            }
+
+            @Override
+            public void restorePhone() {
+                endProfile(true);
+            }
+
+            @Override
+            public String diagnostics() {
+                return diagnosticsText();
+            }
+
+            @Override
+            public String phoneText() {
+                return profileText.isEmpty() ? "Asking the phone…" : profileText;
+            }
+
+            @Override
+            public void copy(String text) {
+                ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("LinkMeter", text));
+                    Toast.makeText(act, "Copied.", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        showOverlay(advanced.view(), false);
+        Call.run(act, "GET", "/screen/profile", 8000, (ok, text, json) -> {
+            profileText = text;
+            if (advanced != null) {
+                advanced.setPhoneText(text);
+            }
+        });
+    }
+
+    /** Everything useful for a bug report, in one block. */
+    private String diagnosticsText() {
+        String version = "?";
+        try {
+            version = act.getPackageManager().getPackageInfo(act.getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException ignored) {
+            // keep the question mark
+        }
+        List<String> decs = VideoStream.decoders();
+        StringBuilder sb = new StringBuilder();
+        sb.append("LinkMeter ").append(version).append(" on ").append(Build.MODEL).append(", Android ")
+                .append(Build.VERSION.RELEASE).append('\n');
+        sb.append("Mode: ").append(mode == 0 ? "live video" : "still pictures").append(fellBack ? " (fell back)" : "")
+                .append(", preset ").append(ScreenPrefs.PRESETS[prefs.preset()])
+                .append(": video ").append(prefs.vidWidth()).append(" px at ").append(prefs.vidKbps()).append(" kbit/s, pictures ")
+                .append(prefs.picWidth()).append(" px quality ").append(prefs.picQuality()).append('\n');
+        sb.append("Low-delay tuning: ").append(ScreenPrefs.FIX_NAMES[prefs.lowDelay()])
+                .append(tuneOff ? " (switched off for this visit because the decoder showed nothing)" : "").append('\n');
+        sb.append(diagText.isEmpty() ? "Stream: not started yet" : diagText).append('\n');
+        sb.append("Now: ").append(fps).append(" fps, ").append(kbps).append(" kbit/s, peak ").append(peak).append(" kbit/s\n");
+        sb.append("Touch channel: ").append(ctlText).append('\n');
+        sb.append("Phone screen: ").append(phoneOn ? "on" : "off").append(phoneLocked ? ", locked" : "").append('\n');
+        sb.append("Last video problem: ").append(lastError.isEmpty() ? "none" : lastError).append('\n');
+        sb.append("Phone settings: ").append(profileText).append('\n');
+        sb.append("Decoders on this tablet: ").append(decs.isEmpty() ? "none found" : decs.toString());
+        return sb.toString();
     }
 }
