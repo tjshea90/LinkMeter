@@ -8,8 +8,8 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08, session "Faster remote control update"**: branch `ccr-ae02e85b-7bro73`, NOT merged to `main` yet.
-The code is done and CI compiles it green. **Nothing in it has run on a device.**
+**2026-11-08, session "Faster remote control update"**: MERGED into `main` (the user said "merge it"), so `latest` is the
+build of that merge. The code compiles green in CI. **Nothing in it has run on a device yet.**
 
 1. What happened. The previous session (`session_01UWi8ZxcnuAwP2jZg1uh8Gh`) built the faster remote control (commit
    `14b3e12`, published as `latest`) and died of "Prompt is too long" (970K tokens in a 500K window) before it wrote any
@@ -17,23 +17,23 @@ The code is done and CI compiles it green. **Nothing in it has run on a device.*
    below are the record.
 2. Bug found by reading the code (CI cannot catch this kind): `Api.handle` never routed `/screen/video` or `/screen/ctl`,
    so in `14b3e12` both answered 404 and the tablet silently used Pictures and one-process-per-tap input. The live video and
-   the live touch never ran. Fixed on the branch (Api.java). The published `latest` APK keeps the bug until the branch is
-   merged to `main`.
-3. Hardening on the branch: screenrecord is stopped when the tablet leaves (it only writes when the picture changes, so it
-   used to keep running on a still screen); a touch connection that drops mid-gesture lifts the finger; the touch helper
-   only lives while the Screen tab is open; picture capture no longer blocks touch; if video cannot start, the tablet shows
-   screenrecord's own error text; the status line shows fps and kbit/s; the touch channel has a keepalive and reconnects on
-   the next finger-down; SPS/PPS that arrive alone are merged into the next picture; a stalled decoder restarts the stream
-   instead of skipping frames.
+   the live touch never ran. Fixed in `Api.java`; the fix is in the current `latest`.
+3. Hardening: screenrecord is stopped when the tablet leaves (it only writes when the picture changes, so it used to keep
+   running on a still screen); a touch connection that drops mid-gesture lifts the finger; the touch helper only lives while
+   the Screen tab is open; picture capture no longer blocks touch; if video cannot start, the tablet shows screenrecord's own
+   error text; the status line shows fps and kbit/s; the touch channel has a keepalive and reconnects on the next
+   finger-down; SPS/PPS that arrive alone are merged into the next picture; a stalled decoder restarts the stream instead of
+   skipping frames.
 4. NEXT, in order:
-   a. Ask the user whether to merge the branch into `main` (that publishes `latest`). Cloud sessions stay on their
-      `ccr-*` branch, and CI on a `ccr-*` branch never publishes.
-   b. The user field-tests with the checklist in "Remote screen control" and reports the status line text.
-   c. Fix what the test shows. The likely trouble spots are listed there, each with a remedy.
-   d. The user has not answered the open question about the two dead network-adb buttons (open item 6).
-5. Branch rule for cloud sessions: develop and push only on the designated `ccr-*` branch. Start every session with
-   `git fetch --all && git branch -r && git log --oneline main..origin/<newest ccr-* branch>` so work that sits on an
-   unmerged branch is not mistaken for missing.
+   a. The user installs the new `latest` APK on the tablet, then Control > "Update phone from this tablet" (the version code
+      comes from the CI run number, so the new build is newer than the 0.2.25 on the devices), and field-tests with the
+      checklist in "Remote screen control", reporting the status line text.
+   b. Fix what the test shows. The likely trouble spots are listed there, each with a remedy.
+   c. The user has not answered the open question about the two dead network-adb buttons (open item 5).
+5. Branch rule for cloud sessions: develop and push only on the designated `ccr-*` branch, and merge into `main` only when the
+   user says so (a fast-forward push of the branch to `main` publishes `latest`; the head commit of that push must not contain
+   `[skip ci]`). Start every session with `git fetch --all && git branch -r && git log --oneline main..origin/<newest ccr-*
+   branch>` so work that sits on an unmerged branch is not mistaken for missing.
 
 ## What it is
 
@@ -91,15 +91,14 @@ The user has not answered.
 
 Open items, in order:
 1. Field test of the live remote control (this session's work), see "Remote screen control".
-2. Merge the session branch into `main` once the user agrees (publishes the routing fix).
-3. Bands tab was rebuilt: grid of LTE (29) and NR (27) band buttons, a status card with Keep / Clear and a countdown,
+2. Bands tab was rebuilt: grid of LTE (29) and NR (27) band buttons, a status card with Keep / Clear and a countdown,
    "Now using" from a scan 6 s after each lock. Needs a field test: which bands the modem accepts, which gives the best
    upload (the user's goal is better indoor upload; the phone sat on LTE band 66 with sinr about 4; try 13, 5, 2, 4).
-4. Speed test servers: Cloudflare first, then Hetzner (ash-speed) and OVH as fallbacks after HTTP 429 and timeouts
+3. Speed test servers: Cloudflare first, then Hetzner (ash-speed) and OVH as fallbacks after HTTP 429 and timeouts
    hit the user's connection. The two fallbacks are unverified. Upload exists on Cloudflare only.
-5. Ask the user what his BandLock app already does to change bands.
-6. Ask the user which option they want for the dead network-adb buttons (see "Dead end" above).
-7. Keep HANDOFF.md current; run `tools/checkpoint.sh` after each change.
+4. Ask the user what his BandLock app already does to change bands.
+5. Ask the user which option they want for the dead network-adb buttons (see "Dead end" above).
+6. Keep HANDOFF.md current; run `tools/checkpoint.sh` after each change.
 
 ## Probe results from the user's phone (first real data)
 
