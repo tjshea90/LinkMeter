@@ -31,7 +31,7 @@ javac -proc:none -d "$out" $FM/FsEntry.java $FM/FsPath.java $FM/FileKind.java $F
 java -cp "$out" com.tj.linkmeter.FilesCoreTest || fail=1
 java -cp "$out" com.tj.linkmeter.TransferEngineTest || fail=1
 echo "== File protocol (the real server code and the real client over a real socket: every route, an old app, the engine across the wire)"
-javac -proc:none -cp "$out" -d "$out" $FM/Json.java $FM/Http.java $FM/Client.java $FM/FsJobs.java $FM/FsApi.java $FM/FsHttp.java $FM/RemoteStore.java \
+javac -proc:none -cp "$out" -d "$out" $FM/Json.java $FM/Http.java $FM/Client.java $FM/FsJobs.java $FM/FsSearch.java $FM/FsApi.java $FM/FsHttp.java $FM/RemoteStore.java \
   $FM/PeerLink.java tools/test/JsonTest.java tools/test/FsProtocolTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.JsonTest || fail=1
 java -cp "$out" com.tj.linkmeter.FsProtocolTest || fail=1

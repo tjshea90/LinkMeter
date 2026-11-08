@@ -166,9 +166,9 @@ final class FsApi {
 
     // ------------------------------------------------------------ routes
 
-    private Reply info() throws IOException {
-        long[] space = store.space();
-        List<Object> shorts = new ArrayList<>();
+    /** The shortcut folders that exist on this storage: {name, path, item count}. Used for /fs/info and by this device's own file screen. */
+    static List<String[]> shortcuts(DiskStore store) throws IOException {
+        List<String[]> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (String[] s : SHORTCUTS) {
             if (seen.contains(s[0])) {
@@ -178,8 +178,17 @@ final class FsApi {
             if (e != null && e.dir) {
                 seen.add(s[0]);
                 String[] kids = store.resolve(s[1]).list();
-                shorts.add(Json.obj("n", s[0], "p", s[1], "c", kids == null ? -1 : kids.length));
+                out.add(new String[] {s[0], s[1], String.valueOf(kids == null ? -1 : kids.length)});
             }
+        }
+        return out;
+    }
+
+    private Reply info() throws IOException {
+        long[] space = store.space();
+        List<Object> shorts = new ArrayList<>();
+        for (String[] s : shortcuts(store)) {
+            shorts.add(Json.obj("n", s[0], "p", s[1], "c", Long.parseLong(s[2])));
         }
         return Reply.json(Json.obj("v", VERSION, "root", store.root().getPath(), "free", space[0], "total", space[1], "short", shorts));
     }
@@ -401,33 +410,12 @@ final class FsApi {
         if (needle.isEmpty()) {
             return Reply.err(409, "nothing to search for");
         }
-        List<FsEntry> found = new ArrayList<>();
-        long[] visited = {0};
-        boolean complete = searchWalk(dir, needle, max, found, visited, System.nanoTime() + 4_000_000_000L);
+        FsSearch.Result res = FsSearch.run(store, dir, needle, max, 4000);
         List<Object> items = new ArrayList<>();
-        for (FsEntry e : found) {
+        for (FsEntry e : res.found) {
             items.add(item(e));
         }
-        return Reply.json(Json.obj("items", items, "partial", complete ? 0 : 1));
-    }
-
-    private boolean searchWalk(String dir, String needle, int max, List<FsEntry> found, long[] visited, long deadline) throws IOException {
-        List<FsEntry> kids = store.list(dir, false);
-        FileSort.sort(kids, FileSort.Order.NAME, true);
-        for (FsEntry k : kids) {
-            if (++visited[0] > 50000 || System.nanoTime() > deadline || found.size() >= max) {
-                return false;
-            }
-            String full = FsPath.join(dir, k.name);
-            if (k.name.toLowerCase(Locale.US).contains(needle)) {
-                k.path = FsPath.clean(full);
-                found.add(k);
-            }
-            if (k.dir && !searchWalk(full, needle, max, found, visited, deadline)) {
-                return false;
-            }
-        }
-        return true;
+        return Reply.json(Json.obj("items", items, "partial", res.partial ? 1 : 0));
     }
 
     private Reply recent(Map<String, String> q) {
