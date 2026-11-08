@@ -9,52 +9,38 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
-import android.os.SystemClock;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Phone side. A tiny server that answers "GET /s?c=CODE" with a JSON status.
+ * The always-on part. On the phone it answers the tablet; on the tablet it only
+ * runs if file sharing is switched on.
  *
- * Battery notes: no wake lock, no Wi-Fi lock, no timers that wake the CPU. The
- * accept thread sleeps in accept() until the tablet asks. The idle check uses a
- * Handler, which only runs while the phone is awake anyway. If the tablet has
- * not asked for 2 hours the service stops itself.
+ * Battery notes: no wake lock, no Wi-Fi lock, no timers. The accept thread sleeps
+ * in accept() until someone connects, and worker threads exist only while a
+ * request is being served (the pool keeps none idle for more than 20 s).
  */
 public class SenderService extends Service {
     /** Read by the activity to show running / stopped. */
     static volatile boolean active;
+    /** Phone: while now is before this, a new tablet may pair itself. */
+    static volatile long pairUntil;
 
     private static final String CHANNEL = "sender";
     private static final String ACTION_STOP = "com.tj.linkmeter.STOP";
-    private static final long IDLE_LIMIT_MS = 2L * 60 * 60 * 1000;
 
-    private final Handler main = new Handler(Looper.getMainLooper());
     private volatile boolean running;
     private volatile ServerSocket server;
-    private volatile long lastRequest;
-    private String code = "";
-
-    private final Runnable idleCheck = new Runnable() {
-        @Override
-        public void run() {
-            long idle = SystemClock.elapsedRealtime() - lastRequest;
-            if (idle >= IDLE_LIMIT_MS) {
-                stopSelf();
-            } else {
-                main.postDelayed(this, IDLE_LIMIT_MS - idle);
-            }
-        }
-    };
+    private ThreadPoolExecutor pool;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -66,30 +52,28 @@ public class SenderService extends Service {
         if (!running) {
             running = true;
             active = true;
-            code = Cfg.ensureCode(this);
-            lastRequest = SystemClock.elapsedRealtime();
+            pool = new ThreadPoolExecutor(0, 4, 20, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
             Thread t = new Thread(this::serve, "linkmeter-accept");
             t.start();
-            main.postDelayed(idleCheck, IDLE_LIMIT_MS);
         }
-        // Not sticky: if Android kills it, it stays stopped instead of
-        // restarting in the background and burning battery.
-        return START_NOT_STICKY;
+        // Sticky: if Android ever stops it, it comes back by itself.
+        return START_STICKY;
     }
 
     private void startInForeground() {
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(
-                CHANNEL, "LinkMeter sender", NotificationManager.IMPORTANCE_MIN));
+                CHANNEL, "LinkMeter", NotificationManager.IMPORTANCE_MIN));
         PendingIntent open = PendingIntent.getActivity(
                 this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop = PendingIntent.getService(
                 this, 1, new Intent(this, SenderService.class).setAction(ACTION_STOP),
                 PendingIntent.FLAG_IMMUTABLE);
+        boolean phone = Cfg.PHONE.equals(Cfg.mode(this));
         Notification n = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_launcher)
-                .setContentTitle("LinkMeter is sharing phone status")
-                .setContentText("Stops by itself after 2 h with no tablet")
+                .setContentTitle(phone ? "LinkMeter is ready for the tablet" : "LinkMeter is sharing files")
+                .setContentText("Tap to open")
                 .setContentIntent(open)
                 .setOngoing(true)
                 .addAction(new Notification.Action.Builder(
@@ -107,15 +91,22 @@ public class SenderService extends Service {
         try {
             ss = new ServerSocket();
             ss.setReuseAddress(true);
-            ss.bind(new InetSocketAddress(Cfg.PORT), 4);
+            ss.bind(new InetSocketAddress(Cfg.PORT), 8);
             server = ss;
         } catch (IOException e) {
-            main.post(() -> stopSelf()); // port busy or blocked: give up cleanly
+            active = false;
+            running = false;
+            stopSelf(); // port busy or blocked: give up cleanly
             return;
         }
         while (running) {
-            try (Socket s = ss.accept()) {
-                handle(s);
+            try {
+                final Socket s = ss.accept();
+                try {
+                    pool.execute(() -> serveOne(s));
+                } catch (RejectedExecutionException busy) {
+                    closeQuietly(s); // all four workers are busy: drop this one
+                }
             } catch (IOException e) {
                 if (!running) {
                     break;
@@ -124,62 +115,35 @@ public class SenderService extends Service {
         }
     }
 
-    /** One request at a time is plenty: each is a few hundred bytes. */
-    private void handle(Socket s) throws IOException {
-        s.setSoTimeout(1500);
-        InputStream in = s.getInputStream();
-        byte[] buf = new byte[256];
-        int n = 0;
-        while (n < buf.length) {
-            int r = in.read(buf, n, buf.length - n);
-            if (r < 0) {
-                break;
+    private void serveOne(Socket s) {
+        try {
+            Http.Req r = Http.read(s);
+            OutputStream out = new BufferedOutputStream(s.getOutputStream(), 16 * 1024);
+            try {
+                Api.handle(getApplicationContext(), r, out);
+            } catch (RuntimeException e) {
+                Http.err(out, 500, String.valueOf(e));
             }
-            n += r;
-            if (hasNewline(buf, n)) {
-                break;
-            }
-        }
-        String text = new String(buf, 0, n, StandardCharsets.ISO_8859_1);
-        String first = text.split("\r?\n", 2)[0];
-        String want = "GET /s?c=";
-        boolean ok = false;
-        if (first.startsWith(want)) {
-            int end = first.indexOf(' ', want.length());
-            String tok = end > 0 ? first.substring(want.length(), end) : first.substring(want.length());
-            ok = MessageDigest.isEqual(
-                    tok.getBytes(StandardCharsets.UTF_8), code.getBytes(StandardCharsets.UTF_8));
-        }
-        OutputStream out = s.getOutputStream();
-        if (!ok) {
-            out.write("HTTP/1.0 403 Forbidden\r\nConnection: close\r\n\r\n"
-                    .getBytes(StandardCharsets.US_ASCII));
             out.flush();
-            return;
+        } catch (IOException ignored) {
+            // The other side went away or sent something odd. Nothing to do.
+        } finally {
+            closeQuietly(s);
         }
-        lastRequest = SystemClock.elapsedRealtime();
-        byte[] body = Status.json(this).getBytes(StandardCharsets.UTF_8);
-        String head = "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
-                + body.length + "\r\nConnection: close\r\n\r\n";
-        out.write(head.getBytes(StandardCharsets.US_ASCII));
-        out.write(body);
-        out.flush();
     }
 
-    private static boolean hasNewline(byte[] b, int n) {
-        for (int i = 0; i < n; i++) {
-            if (b[i] == '\n') {
-                return true;
-            }
+    private static void closeQuietly(Socket s) {
+        try {
+            s.close();
+        } catch (IOException ignored) {
+            // already closed
         }
-        return false;
     }
 
     @Override
     public void onDestroy() {
         running = false;
         active = false;
-        main.removeCallbacks(idleCheck);
         ServerSocket ss = server;
         if (ss != null) {
             try {
@@ -187,6 +151,9 @@ public class SenderService extends Service {
             } catch (IOException ignored) {
                 // already closed
             }
+        }
+        if (pool != null) {
+            pool.shutdownNow();
         }
         super.onDestroy();
     }

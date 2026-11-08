@@ -3,7 +3,9 @@ package com.tj.linkmeter;
 import android.content.Context;
 import android.content.SharedPreferences;
 import java.security.SecureRandom;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
 /** Everything the app remembers lives here. Tiny on purpose. */
 final class Cfg {
@@ -25,26 +27,68 @@ final class Cfg {
         sp(c).edit().putString("mode", mode).apply();
     }
 
-    /** 4-digit pairing code. The phone makes one; the tablet has it typed in. */
-    static String code(Context c) {
-        return sp(c).getString("code", "");
-    }
+    // ------------------------------------------------------------ trust
 
-    static void setCode(Context c, String code) {
-        sp(c).edit().putString("code", code).apply();
-    }
-
-    /** Phone side: make a code the first time, then keep it. */
-    static String ensureCode(Context c) {
-        String code = code(c);
-        if (code.length() != 4) {
-            code = String.format(Locale.US, "%04d", new SecureRandom().nextInt(10000));
-            setCode(c, code);
+    /**
+     * This device's own secret. The tablet sends it with every request. The phone
+     * keeps the secrets of the tablets it trusts. No numbers are ever typed.
+     */
+    static String token(Context c) {
+        SharedPreferences p = sp(c);
+        String t = p.getString("token", "");
+        if (t.length() != 32) {
+            byte[] b = new byte[16];
+            new SecureRandom().nextBytes(b);
+            StringBuilder sb = new StringBuilder();
+            for (byte x : b) {
+                sb.append(String.format(Locale.US, "%02x", x));
+            }
+            t = sb.toString();
+            p.edit().putString("token", t).apply();
         }
-        return code;
+        return t;
     }
 
-    /** Tablet side: phone address typed by hand. Empty means "use the hotspot gateway". */
+    /** Tablet: make a fresh secret. The phone must pair with it again. */
+    static void resetToken(Context c) {
+        sp(c).edit().remove("token").apply();
+    }
+
+    /** Phone: secrets of paired tablets. */
+    static Set<String> trusted(Context c) {
+        return new HashSet<>(sp(c).getStringSet("trusted", new HashSet<String>()));
+    }
+
+    static void addTrusted(Context c, String token) {
+        Set<String> s = trusted(c);
+        s.add(token);
+        sp(c).edit().putStringSet("trusted", s).apply();
+    }
+
+    static void clearTrusted(Context c) {
+        sp(c).edit().remove("trusted").remove("tabIp").remove("tabTok").apply();
+    }
+
+    /** Phone: the tablet that last talked to us, so the phone can browse the tablet's files. */
+    static void setTablet(Context c, String ip, String token) {
+        SharedPreferences p = sp(c);
+        if (ip.equals(p.getString("tabIp", "")) && token.equals(p.getString("tabTok", ""))) {
+            return;
+        }
+        p.edit().putString("tabIp", ip).putString("tabTok", token).apply();
+    }
+
+    static String tabletIp(Context c) {
+        return sp(c).getString("tabIp", "");
+    }
+
+    static String tabletToken(Context c) {
+        return sp(c).getString("tabTok", "");
+    }
+
+    // ------------------------------------------------------------ tablet options
+
+    /** Tablet: phone address typed by hand. Empty means "use the hotspot gateway". */
     static String host(Context c) {
         return sp(c).getString("host", "");
     }
@@ -53,7 +97,7 @@ final class Cfg {
         sp(c).edit().putString("host", host).apply();
     }
 
-    /** Tablet side: how often to ask the phone. 5 s by default. */
+    /** Tablet: how often to ask the phone while the screen is open. 5 s by default. */
     static long intervalMs(Context c) {
         return sp(c).getLong("interval", 5000L);
     }
@@ -68,5 +112,34 @@ final class Cfg {
 
     static void setKeepOn(Context c, boolean on) {
         sp(c).edit().putBoolean("keepOn", on).apply();
+    }
+
+    /** Tablet: also run the file server so the phone can browse this tablet. */
+    static boolean shareFiles(Context c) {
+        return sp(c).getBoolean("share", false);
+    }
+
+    static void setShareFiles(Context c, boolean on) {
+        sp(c).edit().putBoolean("share", on).apply();
+    }
+
+    // ------------------------------------------------------------ phone options
+
+    /** Phone: start the sender when the phone boots. */
+    static boolean autoStart(Context c) {
+        return sp(c).getBoolean("autostart", true);
+    }
+
+    static void setAutoStart(Context c, boolean on) {
+        sp(c).edit().putBoolean("autostart", on).apply();
+    }
+
+    /** Phone: switch on the battery-saving profile by itself when the tablet connects. */
+    static boolean ecoAuto(Context c) {
+        return sp(c).getBoolean("ecoAuto", true);
+    }
+
+    static void setEcoAuto(Context c, boolean on) {
+        sp(c).edit().putBoolean("ecoAuto", on).apply();
     }
 }
