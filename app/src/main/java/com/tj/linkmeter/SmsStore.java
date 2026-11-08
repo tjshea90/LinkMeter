@@ -199,8 +199,7 @@ final class SmsStore {
         if (byKey.isEmpty()) {
             fromMessages(byKey, ids, max);
         }
-        idsByKey.clear();
-        idsByKey.putAll(ids);
+        idsByKey.putAll(ids); // not cleared: a short look at the newest conversations must not forget the older ones
         List<Sms.Thread> out = new ArrayList<>(byKey.values());
         Collections.sort(out, new Comparator<Sms.Thread>() {
             @Override
