@@ -1,13 +1,31 @@
 name: build-apk
 
-# Every push to main builds the APK and publishes it as the "latest" release,
-# so it can be downloaded straight onto the phone or the tablet.
-# Pushes to Claude session branches (ccr-*) only compile-check the code and attach the APK to
-# the run as an artifact; they never touch the "latest" release.
+# Every push to main, and to a Claude session branch (ccr-*), is built and tested.
+#   - A good build pushed to main is released.
+#   - A good build pushed to a session branch is first merged into main, as a fast-forward and only if that is
+#     safe (see "Decide what to do" below), and then released. Nobody has to say "merge it".
+# Releases are numbered: tag v<versionName>, e.g. v0.2.45, with LinkMeter-0.2.45.apk attached (and the same file
+# as LinkMeter.apk, so https://github.com/<repo>/releases/latest/download/LinkMeter.apk is always the newest).
+# The version is versionBase in gradle.properties plus the run number of this workflow.
+# A release is made only if the app changed since the previous release, and not if the commit message has
+# [no-release]. A commit with [no-merge] or [wip] in its message stays off main.
 on:
   push:
     branches: [main, 'ccr-*']
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only report what would be merged and released"
+        type: boolean
+        default: false
+      rehearse:
+        description: "Try the release as a draft that is deleted at once; merge nothing"
+        type: boolean
+        default: false
+      force_release:
+        description: "Release even if the app did not change since the last release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -16,8 +34,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Work out the version
+        id: ver
+        run: |
+          base=$(sed -n 's/^versionBase=//p' gradle.properties | head -n 1)
+          test -n "$base"
+          echo "version=${base}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -36,19 +63,185 @@ jobs:
       - name: Build release APK
         run: ./gradlew --no-daemon assembleRelease
 
-      - name: Publish to the latest release
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name the APK and check its version
         run: |
-          cp app/build/outputs/apk/release/app-release.apk LinkMeter.apk
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest LinkMeter.apk \
-            --target "$GITHUB_SHA" \
-            --title "LinkMeter (latest build)" \
-            --notes "Built from ${GITHUB_SHA::7}. Install the same APK on the phone and the tablet."
+          v='${{ steps.ver.outputs.version }}'
+          cp app/build/outputs/apk/release/app-release.apk "LinkMeter-$v.apk"
+          aapt2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)
+          got=$("$aapt2" dump badging "LinkMeter-$v.apk" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n 1)
+          echo "APK version: $got (release version: $v)"
+          test "$got" = "$v"
 
       - uses: actions/upload-artifact@v4
         with:
           name: LinkMeter-apk
-          path: LinkMeter.apk
+          path: LinkMeter-*.apk
+
+  # The tests that need no Android: the phone-settings decisions and the H.264 header fix (tools/test.sh).
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install ffmpeg (the header fix is checked against real video)
+        run: |
+          for i in 1 2 3; do
+            if sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; then break; fi
+            sleep 15
+          done
+          ffmpeg -hide_banner -encoders | grep -q libx264
+
+      - name: Offline tests
+        run: tools/test.sh
+
+  release:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One release job at a time, so two quick pushes cannot race each other into main or into a tag.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ needs.build.outputs.version }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      REHEARSE: ${{ inputs.rehearse }}
+      FORCE: ${{ inputs.force_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # every branch and tag, to compare with main and to list changes since the last release
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: LinkMeter-apk
+
+      - name: Decide what to do
+        id: decide
+        run: |
+          set -euo pipefail
+          ref="$GITHUB_REF_NAME"
+          sha="$(git rev-parse HEAD)"
+          git fetch --quiet origin main || true
+          main="$(git rev-parse -q --verify refs/remotes/origin/main || echo none)"
+          msg="$(git log -1 --format=%B "$sha")"
+          merge=false
+          release=false
+          why=""
+          if [ "$main" = none ]; then
+            why="there is no main branch to merge into"
+          elif [ "$ref" = main ]; then
+            why="this is a push to main"
+          elif [[ "$ref" == ccr-* ]]; then
+            if [ "$sha" = "$main" ]; then
+              why="main already is this commit"
+            elif git merge-base --is-ancestor "$sha" "$main"; then
+              why="main already contains this commit"
+            elif ! git merge-base --is-ancestor "$main" "$sha"; then
+              why="main has changes this branch does not have, so it is not a fast-forward: merge by hand"
+            elif git diff --name-only "$main" "$sha" | grep -qE '^(\.github/|app/debug\.keystore$)'; then
+              why="the change touches the workflows or the signing key: merge by hand"
+            elif git diff "$main" "$sha" -- app/build.gradle | grep -qE '^[+-][[:space:]]*applicationId'; then
+              why="the application id changes: merge by hand"
+            elif printf '%s' "$msg" | grep -qiE '\[(no-merge|wip)\]'; then
+              why="the commit message says not to merge it"
+            else
+              merge=true
+              why="safe: the build and the tests passed and main can be fast-forwarded to this commit"
+            fi
+          else
+            why="$ref is not main or a session branch"
+          fi
+
+          rwhy="not releasing"
+          if [ "$ref" = main ] || [ "$merge" = true ]; then
+            prev="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1 || true)"
+            if [ -z "$prev" ] && git rev-parse -q --verify refs/tags/latest > /dev/null; then
+              prev=latest # the old unnumbered release, used once as the starting point
+            fi
+            if [ "$FORCE" = true ]; then
+              release=true
+              rwhy="a release was asked for"
+            elif printf '%s' "$msg" | grep -qiE '\[no-release\]'; then
+              rwhy="the commit message says no release"
+            elif [ -n "$prev" ] && git diff --quiet "$prev" "$sha" -- app gradle build.gradle settings.gradle gradle.properties; then
+              rwhy="nothing in the app changed since $prev"
+            else
+              release=true
+              rwhy="the app changed since ${prev:-the start}"
+            fi
+          fi
+
+          if [ "$DRY_RUN" = true ]; then
+            echo "Dry run: would merge=$merge release=$release"
+            if [ "$merge" = true ]; then
+              git push --dry-run origin "$sha:refs/heads/main"
+            fi
+            merge=false
+            release=false
+          fi
+          if [ "$REHEARSE" = true ]; then
+            merge=false
+            release=true
+            rwhy="rehearsal: a draft release is made and deleted at once"
+          fi
+
+          {
+            echo "merge=$merge"
+            echo "release=$release"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### What this run did"
+            echo "- branch \`$ref\`, commit \`${sha::7}\`, version \`$VERSION\`"
+            echo "- merge into main: **$merge** ($why)"
+            echo "- release: **$release** ($rwhy)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "merge=$merge ($why)"
+          echo "release=$release ($rwhy)"
+
+      - name: Merge into main
+        if: steps.decide.outputs.merge == 'true'
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/main"
+          echo "- main is now at \`$(git rev-parse --short HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the numbered release
+        if: steps.decide.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          tag="v$VERSION"
+          apk="LinkMeter-$VERSION.apk"
+          test -f "$apk"
+          prev="$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -vx "$tag" | head -n 1 || true)"
+          if [ -z "$prev" ] && git rev-parse -q --verify refs/tags/latest > /dev/null; then
+            prev=latest
+          fi
+          {
+            echo "LinkMeter $VERSION, built from \`${sha::7}\`."
+            echo
+            echo "**Install:** download \`$apk\` and open it on the phone and on the tablet. On the tablet, Control > Update phone from this tablet puts it on the phone."
+            echo
+            echo "**Changes since ${prev:-the first build}:**"
+            git log --no-merges --pretty='- %s' ${prev:+$prev..}"$sha" | sed -e 's/^- checkpoint: /- /' -e 's/ \[no-release\]//' | head -n 80
+          } > notes.md
+          cp "$apk" LinkMeter.apk # the same file under a fixed name
+          if [ "$REHEARSE" = true ]; then
+            gh release create "$tag-rehearsal" "$apk" --draft --target "$sha" --title "rehearsal $VERSION" --notes-file notes.md
+            gh release delete "$tag-rehearsal" --yes
+            echo "Rehearsal worked: a draft release was created with the APK and notes, and deleted again."
+            echo "- rehearsal: draft release created and deleted" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh release create "$tag" "$apk" LinkMeter.apk --target "$sha" --title "LinkMeter $VERSION" --notes-file notes.md
+            # One-time clean-up of the old unnumbered release; it fails harmlessly once it is gone.
+            gh release delete latest --yes --cleanup-tag || true
+            echo "- released: https://github.com/${GITHUB_REPOSITORY}/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
+          fi

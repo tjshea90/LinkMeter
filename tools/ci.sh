@@ -6,6 +6,7 @@
 set -u
 cd "$(dirname "$0")/.."
 msg="${1:-checkpoint}"
+[ -n "${NO_RELEASE:-}" ] && msg="$msg [no-release]" # intermediate save: merged into main when good, but no release
 tools/handoff-check.sh || true
 echo "- $(date -u +%Y-%m-%dT%H:%M:%SZ) $msg" >> CHECKPOINTS.md
 git add -A

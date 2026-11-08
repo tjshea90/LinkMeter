@@ -40,3 +40,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T06:43:52Z phone settings decisions moved into a pure ProfilePlan with offline tests (scenarios plus 5000 random round trips); tools/test.sh runs all offline tests
 - 2026-11-08T06:46:58Z Options naming, plain arrow on the number pad, decoder list cached, clearer status while the still shows; handoff rewritten for the new remote screen, phone settings session, tests and field-test checklist
 - 2026-11-08T06:48:04Z options panel: no phantom Custom highlight, rebuilds happen after the touch that caused them
+- 2026-11-08T16:09:02Z release pipeline: numbered releases (v0.2.N), tests gate every build, good session builds merge into main by themselves when safe; decision gate tested offline (24 cases)
