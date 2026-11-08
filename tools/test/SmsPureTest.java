@@ -36,6 +36,7 @@ public final class SmsPureTest {
         merging();
         encoding();
         wholeMessages();
+        fitting();
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }
@@ -530,6 +531,113 @@ public final class SmsPureTest {
                 ok &= gp.type.equals(a.type) && gp.name.equals(a.name) && gp.location.equals(a.name) && Arrays.equals(gp.data, a.data);
             }
             check(ok, "random message " + round + " reads back exactly");
+        }
+    }
+
+    // ---------------------------------------------------------------- shrinking pictures to the carrier's limit
+
+    /** A stand-in for the real shrinker: the result grows with the pixel size and the quality, like a JPEG. */
+    static final class FakeShrink implements MmsFit.Shrinker {
+        int calls;
+        boolean unreadable;
+
+        @Override
+        public byte[] shrink(byte[] image, int maxSide, int quality) {
+            calls++;
+            if (unreadable) {
+                return null;
+            }
+            return new byte[Math.max(1, maxSide * quality / 20)];
+        }
+    }
+
+    interface Call {
+        void run() throws Exception;
+    }
+
+    static String messageOf(Call c) {
+        try {
+            c.run();
+            return "(no error)";
+        } catch (Throwable t) {
+            return String.valueOf(t.getMessage());
+        }
+    }
+
+    static MmsPdu.Part part(String type, String name, int size) {
+        return new MmsPdu.Part(type, name, new byte[size], "", false);
+    }
+
+    static long sum(List<MmsPdu.Part> l) {
+        long t = 0;
+        for (MmsPdu.Part p : l) {
+            t += p.data.length;
+        }
+        return t;
+    }
+
+    static void fitting() throws Exception {
+        long budget = 300 * 1024;
+        FakeShrink sh = new FakeShrink();
+        // small enough: untouched, the shrinker is not even asked
+        List<MmsPdu.Part> small = Arrays.asList(part("image/jpeg", "a.jpg", 100_000), part("application/pdf", "b.pdf", 50_000));
+        List<MmsPdu.Part> same = MmsFit.fit(small, 100, budget, sh);
+        check(same.size() == 2 && same.get(0) == small.get(0) && same.get(1) == small.get(1) && sh.calls == 0, "fit: a message that fits is left alone");
+        // too big: pictures are shrunk until it fits, the file is untouched, the order and names are kept
+        List<MmsPdu.Part> big = Arrays.asList(part("image/jpeg", "photo one.jpg", 4_000_000), part("application/pdf", "doc.pdf", 20_000), part("image/png", "shot.png", 3_000_000));
+        List<MmsPdu.Part> fitted = MmsFit.fit(big, 200, budget, sh);
+        check(fitted.size() == 3 && sum(fitted) <= budget - MmsFit.OVERHEAD - 200, "fit: shrunk to the budget: " + sum(fitted));
+        check(fitted.get(1) == big.get(1) && fitted.get(0).type.equals("image/jpeg") && fitted.get(2).type.equals("image/jpeg"), "fit: the file is untouched, pictures become JPEGs");
+        check(fitted.get(0).name.equals("photo one.jpg") && fitted.get(2).name.equals("shot.jpg"), "fit: names keep their order, a PNG becomes .jpg: " + fitted.get(2).name);
+        // the gentlest step that works is used
+        FakeShrink g = new FakeShrink();
+        List<MmsPdu.Part> one = Arrays.asList(part("image/jpeg", "p.jpg", 5_000_000));
+        List<MmsPdu.Part> r1 = MmsFit.fit(one, 0, 1_200_000, g);
+        check(r1.get(0).data.length == 1600 * 80 / 20 && g.calls == 1, "fit: with a big limit the first, gentlest step is enough: " + r1.get(0).data.length + " " + g.calls);
+        // a picture that is already smaller than the shrunk one is kept
+        List<MmsPdu.Part> tiny = Arrays.asList(part("image/jpeg", "t.jpg", 100), part("application/pdf", "f.pdf", 290_000));
+        check(MmsFit.fit(tiny, 0, budget, sh).get(0) == tiny.get(0) || MmsFit.fit(tiny, 0, budget, sh).get(0).data.length <= 100, "fit: never makes a picture bigger");
+        List<MmsPdu.Part> mix = Arrays.asList(part("image/jpeg", "t.jpg", 100), part("image/jpeg", "p.jpg", 5_000_000));
+        List<MmsPdu.Part> mixed = MmsFit.fit(mix, 0, budget, sh);
+        check(mixed.get(0) == mix.get(0) && mixed.get(1).data.length < 100_000, "fit: a small picture beside a big one is kept, never made bigger");
+        // refusals
+        check(messageOf(() -> MmsFit.fit(Arrays.asList(part("application/pdf", "huge.pdf", 5_000_000)), 0, budget, sh)).contains("too big for a picture message"), "fit: a big file cannot be shrunk");
+        check(messageOf(() -> MmsFit.fit(Arrays.asList(part("image/jpeg", "p.jpg", 5_000_000), part("application/pdf", "f.pdf", 310_000)), 0, budget, sh)).contains("too big for a picture message"),
+                "fit: pictures plus a file that alone fills the room: refused before any shrinking");
+        check(messageOf(() -> MmsFit.fit(Arrays.asList(part("image/gif", "anim.gif", 5_000_000)), 0, budget, sh)).contains("too big"), "fit: a GIF is not shrunk");
+        check(messageOf(() -> MmsFit.fit(Arrays.asList(part("image/jpeg", "p.jpg", 5_000_000), part("application/pdf", "f.pdf", 303_000)), 0, budget, sh)).contains("too big even when shrunk"),
+                "fit: pictures plus a big file that leave almost no room");
+        check(messageOf(() -> MmsFit.fit(Arrays.asList(part("image/jpeg", "p.jpg", 1000)), 400 * 1024, budget, sh)).contains("too big"), "fit: a text that alone fills the message");
+        FakeShrink bad = new FakeShrink();
+        bad.unreadable = true;
+        check(messageOf(() -> MmsFit.fit(Arrays.asList(part("image/jpeg", "p.jpg", 5_000_000)), 0, budget, bad)).contains("could not be read"), "fit: a picture that cannot be read");
+        check(messageOf(() -> MmsFit.fit(Arrays.asList(part("image/jpeg", "p.jpg", 50_000_000)), 0, 4608, sh)).contains("too big even when shrunk"), "fit: a limit nothing can meet");
+        // random: whenever it succeeds the result fits and keeps the order, files and count
+        Random rnd = new Random(77);
+        for (int round = 0; round < 800; round++) {
+            List<MmsPdu.Part> in = new ArrayList<>();
+            for (int i = 0; i < 1 + rnd.nextInt(4); i++) {
+                String[] types = {"image/jpeg", "image/png", "image/gif", "application/pdf", "video/mp4"};
+                String type = types[rnd.nextInt(types.length)];
+                in.add(part(type, "f" + i + "." + type.substring(type.indexOf('/') + 1), 1 + rnd.nextInt(rnd.nextBoolean() ? 400_000 : 6_000_000)));
+            }
+            long lim = new long[] {100 * 1024, 300 * 1024, 600 * 1024, 1_200_000, 3_000_000}[rnd.nextInt(5)];
+            long text = rnd.nextInt(2000);
+            try {
+                List<MmsPdu.Part> out = MmsFit.fit(in, text, lim, new FakeShrink());
+                boolean ok = out.size() == in.size() && sum(out) <= lim - MmsFit.OVERHEAD - text;
+                for (int i = 0; i < in.size(); i++) {
+                    if (!MmsFit.shrinkable(in.get(i))) {
+                        ok &= out.get(i) == in.get(i);
+                    } else {
+                        ok &= out.get(i).data.length <= in.get(i).data.length || out.get(i) == in.get(i);
+                    }
+                }
+                check(ok, "random fit " + round + " fits and keeps everything else");
+            } catch (IOException e) {
+                // refusing is allowed; what matters is that nothing was claimed to fit when it does not
+                check(sum(in) > lim - MmsFit.OVERHEAD - text, "random fit " + round + ": refused only when it did not fit as it was");
+            }
         }
     }
 }

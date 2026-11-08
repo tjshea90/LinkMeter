@@ -15,6 +15,7 @@ final class PhoneTab extends Tab {
     private TextView seen;
     private TextView version;
     private TextView phonePerm;
+    private TextView textsInfo;
     private Button toggle;
 
     private final Runnable tick = new Runnable() {
@@ -87,6 +88,27 @@ final class PhoneTab extends Tab {
         col.addView(Ui.button(act, "Allow all files access", v -> act.fixStorageAccess()),
                 Ui.lp(act, 6));
 
+        col.addView(Ui.text(act, "Texts", 16, Ui.FG, true), Ui.lp(act, 20));
+        CheckBox texts = new CheckBox(act);
+        texts.setText("Let the tablet use my texts");
+        texts.setTextColor(Ui.FG);
+        texts.setChecked(Cfg.textsOn(act));
+        texts.setOnCheckedChangeListener((view, checked) -> {
+            Cfg.setTextsOn(act, checked);
+            if (checked && !SmsAccess.note(act).isEmpty()) {
+                allowTexts();
+            }
+            refresh();
+        });
+        col.addView(texts, Ui.lp(act, 4));
+        textsInfo = Ui.text(act, "", 13, Ui.DIM, false);
+        col.addView(textsInfo, Ui.lp(act, 2));
+        col.addView(Ui.button(act, "Allow texts access", v -> allowTexts()), Ui.lp(act, 6));
+        col.addView(Ui.text(act, "Off until you switch it on. When on, only the tablet you paired can read your texts and send texts "
+                + "and pictures through this phone. Chats that use RCS (\"chat features\" in Google Messages) are kept inside that app "
+                + "and cannot be seen here; turn chat features off there to see those conversations as plain texts.", 12, Ui.DIM, false),
+                Ui.lp(act, 4));
+
         CheckBox boot = new CheckBox(act);
         boot.setText("Start automatically when the phone boots");
         boot.setTextColor(Ui.FG);
@@ -143,6 +165,31 @@ final class PhoneTab extends Tab {
         }, "linkmeter-restore").start();
     }
 
+    /** Gets the texts permissions: through Shizuku if it is ready, otherwise through Android's own permission prompt. */
+    private void allowTexts() {
+        if (Priv.ready()) {
+            final android.content.Context app = act.getApplicationContext();
+            Toast.makeText(act, "Allowing texts access…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                String r;
+                try {
+                    r = SmsAccess.grant(app);
+                } catch (java.io.IOException e) {
+                    r = "Couldn't allow texts access: " + e.getMessage();
+                }
+                final String fr = r;
+                act.ui.post(() -> {
+                    showResult("Texts access", fr);
+                    refresh();
+                });
+            }, "linkmeter-sms-grant").start();
+        } else {
+            act.requestPermissions(SmsAccess.PERMS, 7);
+            Toast.makeText(act, "If Android says the setting is restricted, start Shizuku and tap this again, or allow restricted "
+                    + "settings in this app's info page.", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void restartModem() {
         final android.content.Context app = act.getApplicationContext();
         Toast.makeText(act, "Restarting the modem…", Toast.LENGTH_SHORT).show();
@@ -180,6 +227,10 @@ final class PhoneTab extends Tab {
         String last = Updater.lastResult(act);
         version.setText("App version " + Updater.versionName(act) + " (code " + Updater.versionCode(act)
                 + ")" + (last.isEmpty() ? "" : ". Last update from the tablet: " + last));
+        String missing = SmsAccess.note(act);
+        textsInfo.setText(!Cfg.textsOn(act) ? "Off. The tablet cannot see your texts."
+                : missing.isEmpty() ? "On. The paired tablet can read your texts and send texts and pictures through this phone."
+                : "On, but not ready. " + missing);
         files.setText(Files.hasAccess(act) ? "All files access is allowed."
                 : "All files access is not allowed yet (needed for the Files tab).");
     }

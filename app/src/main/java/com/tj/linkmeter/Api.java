@@ -128,6 +128,12 @@ final class Api {
             default:
                 if (r.path.startsWith("/fs/")) {
                     Files.serve(c, r, out); // every file request (the list is in FsApi)
+                } else if (r.path.startsWith("/sms/")) {
+                    if (phone) {
+                        SmsService.serve(c, r, out); // texts: private, off unless the user switched it on (see SmsApi)
+                    } else {
+                        Http.err(out, 404, "not a phone");
+                    }
                 } else {
                     Http.err(out, 404, "unknown request");
                 }

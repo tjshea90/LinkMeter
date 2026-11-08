@@ -23,6 +23,16 @@ session's transcript.
   plainly: band locks are impossible on this firmware (the modem ignores `setSystemSelectionChannels`); only 5G on/off works. Remaining ideas if they care:
   Samsung's hidden service menu (`*#2263#`; can be opened through the remote screen) and MediaTek's engineer mode, both often removed on Verizon.
 
+**2026-11-08 (latest): Texts: the Android PHONE side (C3) is written and saved for CI to compile; the Texts TAB (C4) is NEXT.**
+- C3 files (Android only; offline `javac` shows only missing Android classes): `SmsAccess` (permissions + `grant` through Shizuku: `appops set ... ACCESS_RESTRICTED_SETTINGS allow`, `pm grant` READ_SMS/SEND_SMS/READ_CONTACTS),
+  `SmsStore` (conversations view + canonical addresses + sms/mms/part/addr tables, contacts; every column read by name; fallback to grouping the newest texts if the view is unreadable),
+  `SmsSender` (SMS via `sendMultipartTextMessage`; picture/group messages via `MmsPdu` + `MmsFit` + a cache file served by `ShareProvider` + `sendMultimediaMessage`), `SmsResultReceiver` (manifest, not exported:
+  sent/delivered/failed -> `SmsOutbox.advance`), `SmsBackend` (implements `SmsApi.Backend`), `SmsService` (singletons, `/sms/` entry), `ImageScale` (EXIF-aware JPEG shrinking), `Cfg.textsOn` (default OFF),
+  PhoneTab section "Texts" (switch, status, "Allow texts access"), manifest permissions, `Api` routes `/sms/` for phones only. Pure and tested: `MmsFit` (fits pictures to the carrier's MMS limit), `SmsOutbox.advance`.
+- NOT yet seen on a device. UNKNOWN: does `pm grant` + the appop work for this sideloaded app on the Samsung A15 (Android 16)? is the conversations view readable? does Verizon accept our hand-built MMS?
+  If grants fail the Phone tab says why; fallback idea: read through the shell (`content query --uri content://sms`).
+- C4 TO DO: `TextsTab` (see the C4 line in the block below) and the 8th tab in `MainActivity`.
+
 **2026-11-08 (later): Texts protocol layer (C2) is built and tested; the Android phone side (C3) and the Texts tab (C4) are NEXT.**
 - Done and in `tools/test.sh`: `SmsJson`, `SmsOutbox`, `SmsStaging`, `SmsApi` (+ `SmsHttp`, `FsHttp.write` split out), `RemoteSms`; `SmsProtocolTest` ~10,400 checks over a real
   socket against a fake phone, 49 deliberate breakages caught. Route list and decisions: `docs/FILES_AND_TEXTS_PLAN.md` ("Texts protocol"). No "mark read" route (only the default SMS

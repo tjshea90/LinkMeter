@@ -169,6 +169,15 @@ final class Cfg {
         sp(c).edit().putBoolean("screenCtl", on).apply();
     }
 
+    /** Phone: may the paired tablet read and send texts through this phone? OFF until the user switches it on. */
+    static boolean textsOn(Context c) {
+        return sp(c).getBoolean("textsOn", false);
+    }
+
+    static void setTextsOn(Context c, boolean on) {
+        sp(c).edit().putBoolean("textsOn", on).apply();
+    }
+
     /** Phone: switch on the battery-saving profile by itself when the tablet connects. */
     static boolean ecoAuto(Context c) {
         return sp(c).getBoolean("ecoAuto", true);

@@ -19,6 +19,11 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
 
+    <!-- Phone side, only used when the user switches on "Let the tablet use my texts": read and send texts, read contact names. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
@@ -66,6 +71,11 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- Hears how a text or picture message went (sent, failed, delivered). Not exported: only our own PendingIntents reach it. -->
+        <receiver
+            android:name=".SmsResultReceiver"
+            android:exported="false" />
 
         <!-- specialUse has no time limit (dataSync services are cut off after
              6 hours on Android 15+), which is why it is used here. -->

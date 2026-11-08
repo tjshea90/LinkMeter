@@ -170,6 +170,32 @@ final class SmsOutbox {
         }
     }
 
+    /**
+     * Like {@link #setState} for results that can arrive in any order and more than once (one per part of a long text, then the
+     * delivery report): a message is never moved backwards. FAILED applies unless it was already delivered; SENT only while it is
+     * still sending; DELIVERED unless it failed.
+     */
+    synchronized void advance(String id, int state, String error) {
+        for (Sms.Msg m : entries) {
+            if (m.id.equals(id)) {
+                boolean apply;
+                if (state == Sms.STATE_FAILED) {
+                    apply = m.state != Sms.STATE_DELIVERED;
+                } else if (state == Sms.STATE_SENT) {
+                    apply = m.state == Sms.STATE_SENDING || m.state == Sms.STATE_NONE;
+                } else if (state == Sms.STATE_DELIVERED) {
+                    apply = m.state != Sms.STATE_FAILED;
+                } else {
+                    apply = true;
+                }
+                if (apply) {
+                    setState(id, state, error);
+                }
+                return;
+            }
+        }
+    }
+
     synchronized List<Sms.Msg> all() {
         List<Sms.Msg> out = new ArrayList<>();
         for (Sms.Msg m : entries) {

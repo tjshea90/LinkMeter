@@ -756,6 +756,34 @@ public final class SmsProtocolTest {
             ob.setState(e2.id, Sms.STATE_DELIVERED, "");
             ob.setState(e1.id, Sms.STATE_FAILED, "boom \"x\"");
 
+            // results that arrive in any order never move a message backwards (on an outbox of its own)
+            File dirA = Files.createTempDirectory("outboxA").toFile();
+            try {
+                SmsOutbox oa = new SmsOutbox(dirA, clock);
+                Sms.Msg adv = oa.add(msg("", "adv", "+1999", true, "advance", T0 + 5000), new ArrayList<File>());
+                oa.advance(adv.id, Sms.STATE_DELIVERED, "");
+                oa.advance(adv.id, Sms.STATE_SENT, "");
+                check(oa.forKey("adv").get(0).state == Sms.STATE_DELIVERED, "outbox: a late 'sent' does not undo 'delivered'");
+                oa.advance(adv.id, Sms.STATE_FAILED, "late failure");
+                check(oa.forKey("adv").get(0).state == Sms.STATE_DELIVERED && oa.forKey("adv").get(0).error.isEmpty(), "outbox: a late failure does not undo 'delivered'");
+                Sms.Msg adv2 = oa.add(msg("", "adv2", "+1998", true, "advance 2", T0 + 5001), new ArrayList<File>());
+                oa.advance(adv2.id, Sms.STATE_SENT, "");
+                check(oa.forKey("adv2").get(0).state == Sms.STATE_SENT, "outbox: sending moves to sent");
+                oa.advance(adv2.id, Sms.STATE_FAILED, "no service");
+                check(oa.forKey("adv2").get(0).state == Sms.STATE_FAILED && oa.forKey("adv2").get(0).error.equals("no service"), "outbox: a failure after 'sent' is shown");
+                oa.advance(adv2.id, Sms.STATE_SENT, "");
+                oa.advance(adv2.id, Sms.STATE_DELIVERED, "");
+                check(oa.forKey("adv2").get(0).state == Sms.STATE_FAILED, "outbox: neither a late 'sent' nor 'delivered' undoes a failure");
+                oa.advance("nothing", Sms.STATE_SENT, "");
+                Sms.Msg adv3 = oa.add(msg("", "adv3", "+1997", true, "advance 3", T0 + 5002), new ArrayList<File>());
+                oa.advance(adv3.id, Sms.STATE_SENT, "");
+                oa.advance(adv3.id, Sms.STATE_SENT, "");
+                oa.advance(adv3.id, Sms.STATE_DELIVERED, "");
+                check(oa.forKey("adv3").get(0).state == Sms.STATE_DELIVERED, "outbox: sent, sent again, then delivered");
+            } finally {
+                deleteTree(dirA);
+            }
+
             // the log survives a restart
             SmsOutbox again = new SmsOutbox(dir, clock);
             List<Sms.Msg> all = again.all();
