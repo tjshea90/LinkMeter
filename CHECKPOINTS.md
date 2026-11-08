@@ -31,3 +31,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T05:23:05Z touch helper start-up: skip stray output before the verdict, report the helper's own output if it ends early, show the phone's reason as plain text; note the rotation risk
 - 2026-11-08T05:23:52Z touch connection: phone drops a silent connection after 3 minutes (tablet keepalive is every minute)
 - 2026-11-08T05:38:43Z handoff: branch merged into main at the user's request; next steps are the device field test
+- 2026-11-08T06:16:42Z remove the dead network-adb buttons, AdbClient and the adb_tcp_setup action (user asked)

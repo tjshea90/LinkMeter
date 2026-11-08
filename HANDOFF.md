@@ -29,7 +29,6 @@ build of that merge. The code compiles green in CI. **Nothing in it has run on a
       comes from the CI run number, so the new build is newer than the 0.2.25 on the devices), and field-tests with the
       checklist in "Remote screen control", reporting the status line text.
    b. Fix what the test shows. The likely trouble spots are listed there, each with a remedy.
-   c. The user has not answered the open question about the two dead network-adb buttons (open item 5).
 5. Branch rule for cloud sessions: develop and push only on the designated `ccr-*` branch, and merge into `main` only when the
    user says so (a fast-forward push of the branch to `main` publishes `latest`; the head commit of that push must not contain
    `[skip ci]`). Start every session with `git fetch --all && git branch -r && git log --oneline main..origin/<newest ccr-*
@@ -81,13 +80,11 @@ Built, not yet confirmed on the devices: hotspot band chooser + restart, battery
 the API route, Guard auto-undo, signal fallback through Shizuku (the "no signal" meter on Home), and the whole Screen
 tab (first version: pictures + slow taps; second version: live video + live touch, see its own section below).
 
-Dead end, confirmed on the user's phone: "Start Shizuku from the tablet" over network adb. The phone refused with
-`Failed to set property 'persist.adb.tcp.port'`, so LinkMeter cannot turn network adb on, and `adb tcpip 5555` from a computer
-only lasts until the next reboot. The two buttons (Control tab: "Set up network adb" and "Start Shizuku", with AdbClient
-behind them) still exist and do nothing useful on this phone. The previous session offered: (1) keep the tablet-hotspot
-trick (join the phone to the tablet's hotspot once so it reconnects by itself after a restart), (2) start Shizuku over a
-USB cable with the tablet as host (needs an OTG cable and tablet host mode, untested), (3) remove the two dead buttons.
-The user has not answered.
+Removed 2026-11-08 at the user's request: the "Set up network adb" and "Start Shizuku" buttons (Control tab), AdbClient and the
+phone action `adb_tcp_setup`. They could not work on this phone: it refuses `Failed to set property 'persist.adb.tcp.port'`,
+so LinkMeter cannot turn network adb on, and `adb tcpip 5555` from a computer only lasts until the next reboot. After a phone
+restart Shizuku still has to be started the usual way (computer over USB, or the tablet-hotspot trick: join the phone to the
+tablet's hotspot once so it reconnects by itself).
 
 Open items, in order:
 1. Field test of the live remote control (this session's work), see "Remote screen control".
@@ -97,8 +94,7 @@ Open items, in order:
 3. Speed test servers: Cloudflare first, then Hetzner (ash-speed) and OVH as fallbacks after HTTP 429 and timeouts
    hit the user's connection. The two fallbacks are unverified. Upload exists on Cloudflare only.
 4. Ask the user what his BandLock app already does to change bands.
-5. Ask the user which option they want for the dead network-adb buttons (see "Dead end" above).
-6. Keep HANDOFF.md current; run `tools/checkpoint.sh` after each change.
+5. Keep HANDOFF.md current; run `tools/checkpoint.sh` after each change.
 
 ## Probe results from the user's phone (first real data)
 
@@ -304,7 +300,7 @@ because they cut the link). `airplane_off` also exists.
 
 app/src/main/java/com/tj/linkmeter: Cfg (prefs, trust), Http/Client (sockets), Api (router), SenderService (service),
 BootReceiver, Status, Priv/Actions/Eco/Cells/ShellMain/Saved/Guard/Notice (privileged and safety), SpeedTest, Files, Net,
-Call (tablet helpers), Updater (tablet-driven phone update), AdbClient (network adb, dead end), Ui, MeterView, SpeedView, Tab,
+Call (tablet helpers), Updater (tablet-driven phone update), Ui, MeterView, SpeedView, Tab,
 HomeTab/SpeedTab/BandsTab/ControlTab/FilesTab/SettingsTab/PhoneTab/ScreenTab, MainActivity.
 Remote screen: Screen (phone), ScreenTab, VideoStream, CtlChannel, AspectSurfaceView, PhoneScreenView (tablet), ShellMain `inject`.
 Tools: `tools/checkpoint.sh` (log, commit, push with retries), `tools/ci.sh` (same, then watches the build with gh),

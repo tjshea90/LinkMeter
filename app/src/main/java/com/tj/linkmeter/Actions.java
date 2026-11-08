@@ -69,8 +69,6 @@ final class Actions {
                 return setup(c);
             case "restore":
                 return restoreAll(c);
-            case "adb_tcp_setup":
-                return adbTcpSetup();
             case "restart_modem":
                 return report(Priv.run("cmd phone restart-modem", 30),
                         "Modem restart requested. Mobile data comes back in a minute or so.");
@@ -200,32 +198,6 @@ final class Actions {
                     : "Forced to 4G. The phone is now on " + typesText(target) + ".";
         }
         return "The phone did not accept the change.\n" + s.out;
-    }
-
-    /**
-     * Tries to make the phone's adb listen on the network (port 5555), also after a reboot, so the
-     * tablet can start Shizuku without a Wi-Fi connection. Reports what the phone allowed.
-     */
-    private static String adbTcpSetup() throws IOException {
-        Priv.Result r = Priv.run("setprop persist.adb.tcp.port 5555 2>&1; echo \"set persist: $?\"; "
-                + "setprop service.adb.tcp.port 5555 2>&1; echo \"set service: $?\"; "
-                + "echo \"persist.adb.tcp.port=$(getprop persist.adb.tcp.port)\"; "
-                + "echo \"service.adb.tcp.port=$(getprop service.adb.tcp.port)\"; "
-                + "echo \"adb_enabled=$(settings get global adb_enabled)\"; "
-                + "echo listening:; (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep 5555", 20);
-        boolean persist = r.out.contains("persist.adb.tcp.port=5555");
-        boolean listening = r.out.matches("(?s).*listening:\\s*\\n.*5555.*");
-        StringBuilder sb = new StringBuilder(r.out).append("\n\n");
-        if (listening) {
-            sb.append("The phone is listening for network adb now. Try Start Shizuku from the tablet.");
-        } else if (persist) {
-            sb.append("The phone accepted the setting, so it should listen after its next restart. "
-                    + "It is not listening yet. Restart the phone, then try Start Shizuku from the tablet.");
-        } else {
-            sb.append("The phone did not let LinkMeter turn on network adb. It can be turned on once from a "
-                    + "computer with: adb tcpip 5555 (that lasts until the phone restarts).");
-        }
-        return sb.toString();
     }
 
     /** Saves the hotspot's current band the first time, then changes it. */
