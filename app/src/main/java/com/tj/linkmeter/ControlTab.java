@@ -69,6 +69,21 @@ final class ControlTab extends Tab {
                         "The phone shuts down. You will need to switch it on by hand.",
                         "poweroff"))));
 
+        col.addView(heading("Hotspot Wi-Fi band"), Ui.lp(act, 18));
+        col.addView(row(
+                Ui.button(act, "2.4 GHz", v -> send("hotspot_band_2", "Setting 2.4 GHz", 40000)),
+                Ui.button(act, "5 GHz", v -> send("hotspot_band_5", "Setting 5 GHz", 40000)),
+                Ui.button(act, "Auto", v -> send("hotspot_band_auto", "Setting auto", 40000))));
+        col.addView(row(
+                Ui.button(act, "Show current", v -> send("hotspot_info", "Reading", 40000)),
+                Ui.button(act, "Restart hotspot", v -> confirm("Restart the hotspot?",
+                        "The tablet loses its connection for about 10 seconds and reconnects when "
+                                + "the hotspot is back. If it doesn't come back, turn the hotspot on "
+                                + "at the phone.", "hotspot_restart"))));
+        col.addView(Ui.text(act, "Pick a band, then restart the hotspot to use it. 2.4 GHz reaches "
+                + "further and may cause less interference with the phone's mobile signal; 5 GHz is "
+                + "faster. This is experimental on Samsung phones.", 12, Ui.DIM, false), Ui.lp(act, 4));
+
         col.addView(heading("Setup and diagnostics"), Ui.lp(act, 18));
         col.addView(row(
                 Ui.button(act, "Prepare phone", v -> send("setup", "Preparing the phone", 40000)),

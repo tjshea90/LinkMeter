@@ -21,11 +21,14 @@ final class Actions {
 
     /** These cut the link to the tablet, so the phone answers first and acts a moment later. */
     static boolean isDelayed(String name) {
-        return name.equals("airplane_on") || name.equals("hotspot_off") || name.equals("poweroff");
+        return name.equals("airplane_on") || name.equals("hotspot_off") || name.equals("poweroff")
+                || name.equals("hotspot_restart");
     }
 
-    private static String delayedCommand(String name) {
+    private static String delayedCommand(Context c, String name) {
         switch (name) {
+            case "hotspot_restart":
+                return Cells.mainCommand(c, "hotspot-restart");
             case "airplane_on":
                 return "cmd connectivity airplane-mode enable";
             case "hotspot_off":
@@ -37,11 +40,12 @@ final class Actions {
         }
     }
 
-    static void later(final String name) {
+    static void later(final Context c, final String name) {
+        final Context app = c.getApplicationContext();
         new Thread(() -> {
             try {
                 Thread.sleep(800);
-                Priv.run(delayedCommand(name), 40);
+                Priv.run(delayedCommand(app, name), 60);
             } catch (IOException | InterruptedException ignored) {
                 // the tablet has already lost the link; nothing to report to
             }
@@ -63,6 +67,14 @@ final class Actions {
                 return Eco.restore(c);
             case "setup":
                 return setup(c);
+            case "hotspot_info":
+                return Cells.shellMain(c, "hotspot-info").out;
+            case "hotspot_band_2":
+                return Cells.shellMain(c, "hotspot-band 2").out;
+            case "hotspot_band_5":
+                return Cells.shellMain(c, "hotspot-band 5").out;
+            case "hotspot_band_auto":
+                return Cells.shellMain(c, "hotspot-band auto").out;
             case "net_get":
                 return netGet(c);
             case "net_lte":

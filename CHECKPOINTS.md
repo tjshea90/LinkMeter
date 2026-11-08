@@ -17,3 +17,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T01:53:44Z speed test: small upload send buffer and two streams so upload shows the real speed, not buffer fill
 - 2026-11-08T02:03:18Z update the phone app from the tablet over the hotspot; automatic version numbers
 - 2026-11-08T02:04:49Z handoff: document tablet-driven phone updates
+- 2026-11-08T02:06:52Z hotspot Wi-Fi band chooser (experimental) and restart; docs for tablet-driven updates

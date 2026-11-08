@@ -51,6 +51,9 @@ public final class ShellMain {
         if (a.length == 0) {
             return "ERR no command";
         }
+        if (a[0].startsWith("hotspot-")) {
+            return hotspot(a);
+        }
         TelephonyManager tm = telephony();
         switch (a[0]) {
             case "info":
@@ -98,7 +101,8 @@ public final class ShellMain {
         }
     }
 
-    private static TelephonyManager telephony() throws Exception {
+    /** The system context, wrapped so calls are made as the shell package. Create it once per run. */
+    private static Context shellContext() throws Exception {
         if (Looper.myLooper() == null) {
             try {
                 Looper.prepareMainLooper();
@@ -110,7 +114,11 @@ public final class ShellMain {
         Class<?> at = Class.forName("android.app.ActivityThread");
         Object thread = at.getMethod("systemMain").invoke(null);
         Context base = (Context) at.getMethod("getSystemContext").invoke(thread);
-        Context ctx = new ShellContext(base);
+        return new ShellContext(base);
+    }
+
+    private static TelephonyManager telephony() throws Exception {
+        Context ctx = shellContext();
         Constructor<TelephonyManager> k;
         try {
             k = TelephonyManager.class.getConstructor(Context.class);
@@ -202,6 +210,151 @@ public final class ShellMain {
             }
         }
         return sb.toString().trim();
+    }
+
+    // ------------------------------------------------------------ hotspot Wi-Fi band
+
+    /** WifiManager built by hand so that its calls carry the shell package name. */
+    private static Object wifiManager(Context ctx) throws Exception {
+        Object binder = Class.forName("android.os.ServiceManager")
+                .getMethod("getService", String.class).invoke(null, "wifi");
+        Object iwifi = Class.forName("android.net.wifi.IWifiManager$Stub")
+                .getMethod("asInterface", android.os.IBinder.class).invoke(null, binder);
+        for (Constructor<?> k : android.net.wifi.WifiManager.class.getDeclaredConstructors()) {
+            Class<?>[] p = k.getParameterTypes();
+            if (p.length == 3 && p[0] == Context.class && p[2] == Looper.class) {
+                k.setAccessible(true);
+                return k.newInstance(ctx, iwifi, Looper.getMainLooper());
+            }
+        }
+        throw new NoSuchMethodException("WifiManager(Context, IWifiManager, Looper)");
+    }
+
+    private static String hotspot(String[] a) throws Exception {
+        Context ctx = shellContext();
+        switch (a[0]) {
+            case "hotspot-info":
+                return hotspotInfo(ctx);
+            case "hotspot-band":
+                return hotspotBand(ctx, a.length > 1 ? a[1] : "");
+            case "hotspot-restart":
+                return hotspotRestart(ctx);
+            default:
+                return "ERR unknown command";
+        }
+    }
+
+    private static String hotspotInfo(Context ctx) throws Exception {
+        Object wm = wifiManager(ctx);
+        Object cfg = call(wm, "getSoftApConfiguration");
+        StringBuilder sb = new StringBuilder("OK hotspot\n");
+        sb.append("band=").append(call(cfg, "getBand")).append(" (1 = 2.4 GHz, 2 = 5 GHz, 3 = either)\n");
+        sb.append("channel=").append(call(cfg, "getChannel")).append('\n');
+        sb.append("security=").append(call(cfg, "getSecurityType")).append('\n');
+        try {
+            sb.append("bands=").append(java.util.Arrays.toString((int[]) call(cfg, "getBands"))).append('\n');
+        } catch (Throwable ignored) {
+            // older Android: only getBand exists
+        }
+        return sb.toString().trim();
+    }
+
+    /** arg: 2 (2.4 GHz), 5 (5 GHz) or auto (either). Saves the setting; restart the hotspot to apply it. */
+    private static String hotspotBand(Context ctx, String arg) throws Exception {
+        int band;
+        switch (arg) {
+            case "2":
+                band = 1;
+                break;
+            case "5":
+                band = 2;
+                break;
+            case "auto":
+                band = 3;
+                break;
+            default:
+                return "ERR band must be 2, 5 or auto";
+        }
+        Object wm = wifiManager(ctx);
+        Object cfg = call(wm, "getSoftApConfiguration");
+        Class<?> bc = Class.forName("android.net.wifi.SoftApConfiguration$Builder");
+        Object builder = bc.getConstructor(cfg.getClass()).newInstance(cfg);
+        bc.getMethod("setBand", int.class).invoke(builder, band);
+        Object updated = bc.getMethod("build").invoke(builder);
+        Object ok = call(wm, "setSoftApConfiguration", updated);
+        return Boolean.TRUE.equals(ok)
+                ? "OK saved; restart the hotspot to use it"
+                : "ERR the phone refused the new hotspot settings";
+    }
+
+    /** Stops the Wi-Fi hotspot and starts it again, so a changed band takes effect. */
+    private static String hotspotRestart(Context ctx) throws Exception {
+        Class<?> tmc = Class.forName("android.net.TetheringManager");
+        Constructor<?> k = null;
+        for (Constructor<?> c : tmc.getDeclaredConstructors()) {
+            Class<?>[] p = c.getParameterTypes();
+            if (p.length == 2 && p[0] == Context.class
+                    && p[1] == java.util.function.Supplier.class) {
+                k = c;
+                break;
+            }
+        }
+        if (k == null) {
+            return "ERR no TetheringManager(Context, Supplier) on this phone";
+        }
+        k.setAccessible(true);
+        final android.os.IBinder binder = (android.os.IBinder) Class.forName("android.os.ServiceManager")
+                .getMethod("getService", String.class).invoke(null, "tethering");
+        Object tm = k.newInstance(ctx, new java.util.function.Supplier<android.os.IBinder>() {
+            @Override
+            public android.os.IBinder get() {
+                return binder;
+            }
+        });
+        final int wifi = 0; // TetheringManager.TETHERING_WIFI
+        call(tm, "stopTethering", wifi);
+        Thread.sleep(3000);
+        Method start = null;
+        for (Method m : tm.getClass().getMethods()) {
+            Class<?>[] p = m.getParameterTypes();
+            if (m.getName().equals("startTethering") && p.length == 3 && p[0] == int.class) {
+                start = m;
+                break;
+            }
+        }
+        if (start == null) {
+            return "ERR the hotspot was stopped but this phone has no startTethering(int, Executor, callback); "
+                    + "turn it on again on the phone";
+        }
+        final CountDownLatch latch = new CountDownLatch(1);
+        final String[] outcome = new String[1];
+        Object cb = java.lang.reflect.Proxy.newProxyInstance(start.getParameterTypes()[2].getClassLoader(),
+                new Class<?>[] {start.getParameterTypes()[2]}, new java.lang.reflect.InvocationHandler() {
+                    @Override
+                    public Object invoke(Object proxy, Method m, Object[] args) {
+                        if (m.getName().equals("onTetheringStarted")) {
+                            outcome[0] = "OK the hotspot is back on";
+                            latch.countDown();
+                        } else if (m.getName().equals("onTetheringFailed")) {
+                            outcome[0] = "ERR the hotspot failed to start (code "
+                                    + (args != null && args.length > 0 ? args[0] : "?")
+                                    + "); turn it on again on the phone";
+                            latch.countDown();
+                        }
+                        return null;
+                    }
+                });
+        Executor direct = new Executor() {
+            @Override
+            public void execute(Runnable r) {
+                r.run();
+            }
+        };
+        start.invoke(tm, wifi, direct, cb);
+        if (!latch.await(20, TimeUnit.SECONDS)) {
+            return "ERR no answer when starting the hotspot; check the phone";
+        }
+        return outcome[0];
     }
 
     private static String unwrap(Throwable t) {

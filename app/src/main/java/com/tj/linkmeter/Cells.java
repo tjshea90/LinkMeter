@@ -43,9 +43,13 @@ final class Cells {
 
     /** Runs a ShellMain command as the shell user (see ShellMain for the commands). */
     static Priv.Result shellMain(Context c, String args) throws IOException {
-        String cmd = "CLASSPATH=$(pm path " + c.getPackageName() + " | head -1 | cut -d: -f2) "
+        return Priv.run(mainCommand(c, args), 40);
+    }
+
+    /** The shell command line that starts ShellMain with the given arguments. */
+    static String mainCommand(Context c, String args) {
+        return "CLASSPATH=$(pm path " + c.getPackageName() + " | head -1 | cut -d: -f2) "
                 + "app_process /system/bin com.tj.linkmeter.ShellMain " + args;
-        return Priv.run(cmd, 40);
     }
 
     // ------------------------------------------------------------ survey
