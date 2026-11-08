@@ -45,6 +45,17 @@ real values), band lock (the modem ACCEPTED a lock request), Probe, Prepare phon
 Built, not yet confirmed on the devices: hotspot band chooser + restart, battery saver profile, Force 4G / Allow 5G
 via the API route, Guard auto-undo, signal fallback through Shizuku (the "no signal" meter on Home).
 
+Added after the last refresh (built green, NOT field-tested):
+- Screen tab (tablet) + Screen.java (phone): picture of the phone screen about every 0.5 s via `screencap` through
+  Shizuku (JPEG, X-Size header carries the real pixel size), taps/swipes/long-press/keys, text, Wake/Sleep, and a PIN
+  unlock (digits only, used once, never stored or logged; typed as keyevents after a swipe up, and only if
+  KeyguardManager says the phone is locked). Phone setting "Let the tablet see and control this screen" (on by default).
+- Start Shizuku from the tablet (Control tab): `AdbClient` is a small ADB client (plain protocol 0x01000000, RSA key
+  made once, "Allow USB debugging?" prompt the first time) that connects to the phone's adb on TCP 5555 over the
+  hotspot and runs Shizuku's start.sh. `adb_tcp_setup` tries to set persist.adb.tcp.port / service.adb.tcp.port from
+  the Shizuku shell and reports. Open question: stock Android may not let the shell set those, and `adb tcpip 5555`
+  from a computer lasts only until reboot, so it may not help after a restart. The setup report will tell.
+
 Open items, in order:
 1. Tablet-driven phone update. The phone (v0.2.23) failed with `cmd: Failure calling service package: Failed
    transaction (2147483646)` because the installer's output went to a file on shared storage. Fixed in Updater.install
