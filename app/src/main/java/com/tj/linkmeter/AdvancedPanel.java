@@ -165,7 +165,7 @@ final class AdvancedPanel {
 
         LinearLayout top = new LinearLayout(c);
         top.setOrientation(LinearLayout.HORIZONTAL);
-        top.addView(Ui.text(c, "Remote screen settings", 18, Ui.FG, true),
+        top.addView(Ui.text(c, "Remote screen options", 18, Ui.FG, true),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         top.addView(Ui.button(c, "Done", v -> finish()));
         col.addView(top);

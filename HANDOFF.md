@@ -8,31 +8,37 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08, session "Faster remote control update"**: MERGED into `main` (the user said "merge it"), so `latest` is the
-build of that merge. The code compiles green in CI. **Nothing in it has run on a device yet.**
+**2026-11-08, second session "Faster remote control update"**: the work is on branch `ccr-ae02e85b-7bro73` and is NOT merged
+to `main` yet (`main` has the first remote-control fix only). It compiles green in CI and the offline tests pass
+(`tools/test.sh`). **None of the new interface or phone-settings code has run on a device yet.**
 
-1. What happened. The previous session (`session_01UWi8ZxcnuAwP2jZg1uh8Gh`) built the faster remote control (commit
-   `14b3e12`, published as `latest`) and died of "Prompt is too long" (970K tokens in a 500K window) before it wrote any
-   of it down or told the user. Nothing was lost: `git log`, `CHECKPOINTS.md` and the section "Remote screen control"
-   below are the record.
-2. Bug found by reading the code (CI cannot catch this kind): `Api.handle` never routed `/screen/video` or `/screen/ctl`,
-   so in `14b3e12` both answered 404 and the tablet silently used Pictures and one-process-per-tap input. The live video and
-   the live touch never ran. Fixed in `Api.java`; the fix is in the current `latest`.
-3. Hardening: screenrecord is stopped when the tablet leaves (it only writes when the picture changes, so it used to keep
-   running on a still screen); a touch connection that drops mid-gesture lifts the finger; the touch helper only lives while
-   the Screen tab is open; picture capture no longer blocks touch; if video cannot start, the tablet shows screenrecord's own
-   error text; the status line shows fps and kbit/s; the touch channel has a keepalive and reconnects on the next
-   finger-down; SPS/PPS that arrive alone are merged into the next picture; a stalled decoder restarts the stream instead of
-   skipping frames.
-4. NEXT, in order:
-   a. The user installs the new `latest` APK on the tablet, then Control > "Update phone from this tablet" (the version code
-      comes from the CI run number, so the new build is newer than the 0.2.25 on the devices), and field-tests with the
-      checklist in "Remote screen control", reporting the status line text.
-   b. Fix what the test shows. The likely trouble spots are listed there, each with a remedy.
-5. Branch rule for cloud sessions: develop and push only on the designated `ccr-*` branch, and merge into `main` only when the
-   user says so (a fast-forward push of the branch to `main` publishes `latest`; the head commit of that push must not contain
-   `[skip ci]`). Start every session with `git fetch --all && git branch -r && git log --oneline main..origin/<newest ccr-*
-   branch>` so work that sits on an unmerged branch is not mistaken for missing.
+What the user said after trying the first build: the live remote control "works very well"; it fell back to Pictures once or
+twice; once it said "the decoder stopped taking video" and the picture only came back when they moved a finger (a reconnect
+whose first picture the tablet decoder held back until more frames came). They asked for, and the branch now has:
+1. Advanced video options (resolution, bitrate limit, decoder, low-delay tuning, pictures speed, speed numbers). A frames per
+   second cap for LIVE VIDEO is not possible: the phone's `screenrecord` has no such option (see "Remote screen control").
+2. A new interface: a column of buttons on each side of the picture, never over it (the old bottom bar covered the phone's own
+   navigation bar), a typing mode that opens the tablet's keyboard without covering the picture, a number pad for the PIN, and an
+   Options panel.
+3. The decoder problem: the stream header is rewritten so the decoder does not hold pictures back (`SpsFix`), low-latency hints,
+   and a sharp still picture whenever the phone's screen stops changing.
+4. While the remote screen is open the phone keeps its screen on for at least 2 minutes, dims to the lowest brightness, and puts
+   everything back afterwards (`RemoteProfile`, with its decisions in `ProfilePlan`).
+5. The two dead network-adb buttons, `AdbClient` and the `adb_tcp_setup` action are gone.
+
+NEXT, in order: (a) ask the user whether to merge the branch into `main` (that publishes `latest`); (b) the user updates both
+devices and field-tests with the checklist in "Remote screen control", then reports what the Options panel's "Copy this
+information" button gives; (c) fix what it shows.
+
+Earlier the same day (first session, `session_01UWi8ZxcnuAwP2jZg1uh8Gh` and the one after it): the first version of the live
+remote control (commit `14b3e12`) was written by a session that died of "Prompt is too long" before writing it down; the next
+session found that `Api.handle` never routed `/screen/video` and `/screen/ctl` (they answered 404, so the tablet silently used
+Pictures), fixed that, hardened the video and touch paths, and merged it into `main` as `latest` (`088cc22`).
+
+Branch rule for cloud sessions: develop and push only on the designated `ccr-*` branch, and merge into `main` only when the
+user says so (a fast-forward push of the branch to `main` publishes `latest`; the head commit of that push must not contain
+`[skip ci]`). Start every session with `git fetch --all && git branch -r && git log --oneline main..origin/<newest ccr-*
+branch>` so work that sits on an unmerged branch is not mistaken for missing.
 
 ## What it is
 
@@ -68,7 +74,9 @@ older estimate, kept for the unconfirmed rows.
 | Cell survey | Cells.survey (parses `dumpsys telephony.registry`) | Shizuku | LOW until probed (text format unverified) |
 | Band lock | Cells.applyBands, ShellMain | Shizuku + modem cooperation | EXPERIMENTAL |
 | Screen tab, Pictures mode (raw screencap to JPEG) and slow taps | Screen.frame, ScreenTab | Shizuku | medium |
-| Screen tab, live H.264 video + live touch + full screen + quality | Screen.video/ctl, VideoStream, CtlChannel, ShellMain inject | Shizuku (screenrecord, app_process helper) | LOW until field-tested |
+| Screen tab, live H.264 video + live touch (first version) | Screen.video/ctl, VideoStream, CtlChannel, ShellMain inject | Shizuku (screenrecord, app_process helper) | CONFIRMED by the user: works very well |
+| Screen tab, new interface (side bars, typing, number pad, Options, sharp still, header fix) | ScreenTab, RemoteLayout, TypingView, PinPad, AdvancedPanel, SpsFix | same | LOW until field-tested |
+| Phone screen kept on and dimmed during remote use, restored after | RemoteProfile, ProfilePlan, Eco | Shizuku (`settings put system ...`) | LOW until field-tested (logic tested offline) |
 
 ## Where things stand (latest, replaces the old "open issue" note)
 
@@ -76,9 +84,11 @@ Working on the user's devices: pairing, Home meters, Speed test (download ok; up
 carrier uplink, not the test), Files, Restore everything (verified), ShellMain telephony helper (Read lock info shows
 real values), band lock (the modem ACCEPTED a lock request), Probe, Prepare phone, and (confirmed 2026-11-08) updating
 the phone from the tablet: "Update phone from this tablet" worked, both devices were on 0.2.25 and the phone said "Success".
+Also confirmed 2026-11-08: the live remote control (video + live touch, build `088cc22`) "works very well", with the
+occasional fall back to Pictures and one "decoder stopped taking video" that cleared when a finger moved (see the section below).
 Built, not yet confirmed on the devices: hotspot band chooser + restart, battery saver profile, Force 4G / Allow 5G via
-the API route, Guard auto-undo, signal fallback through Shizuku (the "no signal" meter on Home), and the whole Screen
-tab (first version: pictures + slow taps; second version: live video + live touch, see its own section below).
+the API route, Guard auto-undo, signal fallback through Shizuku (the "no signal" meter on Home), and everything added to the
+remote screen on the unmerged branch (new interface, Options, typing, header fix, sharp still, phone screen kept on and dimmed).
 
 Removed 2026-11-08 at the user's request: the "Set up network adb" and "Start Shizuku" buttons (Control tab), AdbClient and the
 phone action `adb_tcp_setup`. They could not work on this phone: it refuses `Failed to set property 'persist.adb.tcp.port'`,
@@ -87,7 +97,8 @@ restart Shizuku still has to be started the usual way (computer over USB, or the
 tablet's hotspot once so it reconnects by itself).
 
 Open items, in order:
-1. Field test of the live remote control (this session's work), see "Remote screen control".
+1. Merge the branch (needs the user's say-so), then field test the new remote screen interface and the phone-settings
+   session, see "Remote screen control".
 2. Bands tab was rebuilt: grid of LTE (29) and NR (27) band buttons, a status card with Keep / Clear and a countdown,
    "Now using" from a scan 6 s after each lock. Needs a field test: which bands the modem accepts, which gives the best
    upload (the user's goal is better indoor upload; the phone sat on LTE band 66 with sinr about 4; try 13, 5, 2, 4).
@@ -135,12 +146,11 @@ devices is manual; after that only the tablet needs a manual install. NOT yet te
 
 ## Remote screen control (Screen tab): design, protocol, risks, field test
 
-The user's request (2026-11-08): the screen share was "very laggy"; wanted it faster, a full-screen control mode, and
-quality options. Design copied from scrcpy: live hardware video plus a persistent touch channel, instead of one screenshot
-and one `input` process per event. Everything needs Shizuku on the phone and the setting "Let the tablet see and control
-this screen" (on by default). Nothing runs unless the tablet's Screen tab is open.
+Design copied from scrcpy: live hardware video plus a persistent touch channel, instead of one screenshot and one `input`
+process per event. Everything needs Shizuku on the phone and the phone setting "Let the tablet see and control this screen"
+(on by default). Nothing runs unless the tablet's Screen tab is open.
 
-Phone side (`Screen.java`, routed in `Api.handle`; every route needs the paired token):
+### Phone side (`Screen.java`, routed in `Api.handle`; every route needs the paired token)
 - `GET /screen/video?w=<px>&br=<bit/s>`: a long reply. Headers `X-Size: <phoneW>x<phoneH>` and `X-Video: <w>x<h>` (both video
   sides are multiples of 16). Body = packets `[int32 big-endian length][length bytes of Annex-B H.264]`. A negative length means
   "the next -length bytes are a UTF-8 message" (why video could not start; it ends the stream). Length 0 is ignored.
@@ -149,48 +159,110 @@ Phone side (`Screen.java`, routed in `Api.handle`; every route needs the paired 
   and a keyframe). Packets are cut by timing: when no more bytes are readable 3 ms after a read, what has been read is sent
   as one packet (a guess that one encoder write is one frame). A watcher thread ends screenrecord when the tablet closes the
   connection. Two quick failures in a row send the screenrecord error text and end the stream.
-- `GET /screen/ctl`: a long connection. The tablet sends lines `d x y`, `m x y`, `u x y` (finger down, move, up, in the
-  phone's pixels), `k code` (only the keys in `Screen.KEYS`), `p` (keepalive, ignored). The phone feeds them to
-  `ShellMain inject`: a helper started with `app_process` as the shell user that calls `InputManager.injectInputEvent` by
-  reflection (a few ms per event instead of a new `input` process, a few hundred ms). The helper is started with `exec` and
-  lives only while a touch connection is open. If a connection ends while a finger is down, the phone lifts the finger.
-- `GET /screen/frame?w=&q=`: Pictures mode. `screencap` raw (16-byte header: width, height, format, dataspace, then RGBA) is
-  scaled and sent as JPEG; it falls back to `screencap -p` into a file. One-shot actions `/screen/tap|swipe|key|on|off|text|pin|state`
-  are the slow path used when the touch channel is not up.
+- `GET /screen/ctl`: a long connection. The tablet sends lines `d x y`, `m x y`, `u x y` (finger down, move, up, in the phone's
+  pixels), `k code` (keys in `Screen.KEYS`: home, back, volume, power, menu, recents, sleep, wake, arrows, enter, tab, escape,
+  backspace, delete, page and home/end keys), `t <hex>` (typed text, 4 hex digits per character, at most 60 characters per
+  line), `p` (keepalive, every minute, also renews the session lease). The phone feeds them to `ShellMain inject`, a helper
+  started with `app_process` as the shell user: touches become `MotionEvent`s through `InputManager.injectInputEvent` (a few
+  ms each instead of a new `input` process), text becomes the key events the system keyboard map gives for each character
+  (characters it has no key for are skipped; newline is Enter). The helper is started with `exec`, lives only while a touch
+  connection is open, and a connection that ends while a finger is down lifts the finger. A silent connection is dropped after
+  3 minutes.
+- `GET /screen/frame?w=&q=`: Pictures mode and the sharp still. `screencap` raw (16-byte header: width, height, format,
+  dataspace, then RGBA) is scaled and sent as JPEG; it falls back to `screencap -p` into a file. One-shot actions
+  `/screen/tap|swipe|key|on|off|text|pin` are the slow path used when the touch channel is not up. `/screen/state` answers
+  `{"on":..,"locked":..,"prof":..}` and is polled every 3 s while the tab is open (it also renews the session lease).
+- `POST /screen/profile?keep=<ms>&dim=<0..255 or -1>` starts or updates the phone-side session, `POST ?end=1` ends it, `GET`
+  says what it is doing. See "The phone while the remote screen is open".
 
-Tablet side (`ScreenTab`, `VideoStream`, `CtlChannel`, `AspectSurfaceView`, `PhoneScreenView`):
-- Video mode: a MediaCodec H.264 decoder renders straight onto a SurfaceView and every decoded buffer is released at once
-  (no queue). SPS/PPS that arrive alone are held and sent in front of the next picture. If the decoder stops taking input the
-  stream is ended and restarted (clean keyframe). Chips: Video / Pictures and Fast / Balanced / Sharp (video 540 / 720 / 1080
-  px wide at 1.5 / 3 / 8 Mbit/s; pictures 360 / 540 / 720 px at JPEG quality 40 / 55 / 70). "Full" gives full screen with a
-  small bar (Exit, Back, Home, Recents, Wake, Sleep, Unlock); the tablet's Back key leaves full screen.
-- If video shows no picture within 8 s, or the phone refuses, the tab switches itself to Pictures for that visit and says why
-  (the saved choice stays Video). While live the status line reads `Live video, <quality> . N fps . N kbit/s`.
-- Touch: a gesture is sent over the live channel if it was up when the finger went down; otherwise one finished tap or swipe
-  is sent when the finger lifts, and the channel is retried on the next finger-down (not more often than every 5 s).
+### Tablet side
+- Layout (`RemoteLayout`): the picture in the middle and a 56 dp column of buttons on each side, so no button is ever over the
+  picture. Left: Apps (recents), Home, Back, volume up and down, and at the bottom the speed numbers. Right: Type, Wake/Sleep,
+  Unlock (lit when the phone is locked), Options, Full/Exit. On the user's tablet (600x973 px) a portrait phone picture leaves
+  unused room on both sides anyway. A header with the picture mode, the quality preset and the status line is shown except in full
+  screen and while typing. Icons are drawn in code (`Icons`, looked at with `tools/test/IconSheet.java`).
+- Full screen: system bars hidden WITHOUT the "layout" flags (they stop the window shrinking when the keyboard opens) and hidden
+  again when the window regains focus. Back leaves full screen.
+- Typing: Type hides the tab bar and header, swaps the right column for Done, Enter, Backspace, Tab and arrow keys, and opens
+  the tablet's keyboard on an invisible `TypingView` that forwards characters (as `t` lines) and keys (`k` lines) as they are
+  typed, with suggestions switched off. `RemoteLayout` keeps the picture at the size it had and anchored at the top, so only
+  the bottom of it, where the phone's own keyboard and navigation bar are, goes under the tablet's keyboard. Closing the
+  keyboard with its own Back button ends typing mode by itself. A physical keyboard works too. Only characters the phone's
+  keyboard map has a key for can be typed (Latin letters, digits, punctuation).
+- PIN: an in-app number pad (`PinPad`), so unlocking never needs the keyboard. Sent once to `/screen/pin`, never stored.
+- Tapping the picture of a sleeping phone wakes it (an option).
+- Video (`VideoStream`): a MediaCodec decoder on the SurfaceView, every decoded buffer released at once. Parameter sets that
+  arrive alone are held and sent with the next picture. With "tuning" (default): the SPS is rewritten by `SpsFix` so the
+  decoder is told pictures come out in order and few are kept, and low-latency hints are set (including MediaTek-unknown
+  vendor keys, which are ignored if unknown); a decoder that refuses the hints is started plain. In Automatic mode, if pictures
+  arrive but the decoder shows none for 8 s, the tab retries once without tuning before falling back to Pictures. If the decoder
+  stops taking input for 3 s the stream restarts (clean keyframe). A lost stream reconnects quietly after 0.6 s and the last
+  picture stays on screen; after 3 failures a note appears.
+- Sharp still: when no video packet has arrived for 450 ms, one JPEG (at least 720 px wide, quality 75) is fetched from
+  `/screen/frame` and shown over the video, so a screen that stopped changing never depends on the decoder letting go of its
+  last pictures. It goes away 120 ms (or 4 packets) after the screen moves again. Both views fit the phone's own shape, so
+  touches map exactly.
+- Pictures mode: JPEGs one after another (at most N per second if set). If video shows no picture within 8 s or the phone
+  refuses, the tab uses Pictures for that visit and says why (the saved choice stays).
+- Options panel (`AdvancedPanel`, drawn inside the app over the picture): mode, quality preset (Saver / Fast / Balanced / Sharp /
+  Custom), video width, video bitrate limit, pictures width / quality / per second, sharp still on or off, speed numbers, low-delay
+  tuning (Automatic / Always / Never), decoder choice, how long to keep the phone's screen on, phone brightness, sleep on leave,
+  tap to wake, "Put the phone's screen settings back now", and an Information box with "Copy this information" (decoder, stream
+  header before and after the fix, rates, last problem, phone settings) for bug reports. Settings are in `ScreenPrefs`.
+  The video bitrate is the phone's encoder TARGET (`--bit-rate`); busy screens can briefly go above it (the Information box
+  shows the peak of the last 10 s).
+- A frames-per-second CAP for live video does not exist: `screenrecord` has no option for it (only size and bit rate), and the
+  encoder's frame rate follows the phone's display. What would unlock it (and a hard bitrate cap, live bitrate changes, on-demand
+  keyframes, and frames repeated while the screen is still): an encoder of our own inside `ShellMain` (a virtual display plus
+  `MediaCodec` with `max-fps-to-encoder`, `repeat-previous-frame-after`, CBR), the way scrcpy does it. It needs hidden display
+  APIs that cannot be tried in the sandbox, so make it an opt-in engine that falls back to screenrecord on any error.
 
-Field test (the user does this with both devices in hand; this sandbox cannot):
-1. Put the same build on both devices (tablet: Control > Update phone from this tablet). Screen tab, Video.
-2. Expect a picture in about 2 s and a status line with fps. Report the exact status text, how it feels when tapping, and
-   anything black or garbled. If it fell back to Pictures, copy the reason (it includes screenrecord's own error if it ran).
-3. Try Fast / Balanced / Sharp, Full, tap, long-press, scroll, Back/Home/Recents, Wake/Sleep, then leave the tab.
-4. After leaving the tab, check on the phone (Shizuku shell or Probe) that nothing lingers:
+### The phone while the remote screen is open (`RemoteProfile`, decisions in `ProfilePlan`)
+- On entering the tab the tablet sends `/screen/profile?keep=<ms>&dim=<level>`: the phone makes sure `screen_off_timeout` is at
+  least `keep` (default 2 min; unchanged if it is already longer) and sets `screen_brightness_mode=0` and `screen_brightness` to
+  the chosen level (default 0, the lowest). The tablet's picture is not dimmed: it comes from the screen contents.
+- On leaving the tab (or the app going to the background) it sends `?end=1` and the phone puts the settings back.
+- Safety (the user's own settings): the originals are saved before anything changes; a setting is only put back if it still has
+  the value we gave it (a value the user changed by hand meanwhile is kept); if the tablet disappears (no request for 60 s and no
+  stream open) the phone restores by itself; a service restart restores anything left over; the tablet sends begin and end
+  through one ordered queue so "end" can never overtake "begin".
+- The battery saver (`Eco`) also sets a 15 s screen timeout. While a session owns the timeout Eco leaves it alone and remembers
+  the original; when the session ends the timeout goes back to Eco's value if Eco is on. Both take the `Eco.class` lock.
+- If the phone ignores `settings put system screen_brightness` (Samsung may use another key) the Options panel shows what the
+  phone kept ("Brightness is ... (it was ...)"). Brightness 0 may be clamped to the phone's minimum or look black on an AMOLED
+  panel; "Very low" is the next choice.
+
+### Tests (offline, in this sandbox)
+`tools/test.sh` runs: `tools/test/ProfilePlanTest.java` (the phone-settings decisions: explicit scenarios plus 5000 random
+begin / change / end stories that must give the phone back exactly as it was) and `tools/test-spsfix.sh` (SpsFix against real
+x264 streams of many kinds, checked by ffmpeg's own header parser and decoder). Android code itself can only be compiled by CI.
+
+### Field test (the user does this with both devices in hand; this sandbox cannot)
+1. Put the same build on both devices (install on the tablet, then Control > Update phone from this tablet). Open Screen.
+2. The phone's brightness should drop and its screen should stay on for 2 minutes; the picture on the tablet stays normal. Leave
+   the tab: brightness and the timeout should go back to what they were (check the phone's Display settings).
+3. Options > Information: note the decoder name and the stream line (profile, reorder, buffer) before and after. Report them.
+4. Move around, stop, wait: the picture should stay correct when the phone's screen goes still (the sharp still shows after
+   about half a second). Leave the phone alone for a minute and touch it again.
+5. Type: tap Type, type in a phone text field with the tablet keyboard, use Enter and Backspace; check the picture stays big and
+   the left column stays usable; close the keyboard with its own Back button.
+6. Full screen: the phone's own navigation bar must be visible and tappable; try the PIN pad on a locked phone.
+7. Options: change width and bitrate, watch the speed numbers; try another decoder; try Pictures mode and its speed limit.
+8. After leaving the tab, check on the phone (Shizuku shell or Probe) that nothing lingers:
    `ps -A | grep -E "screenrecord|app_process"` should show no screenrecord and no `ShellMain inject`.
 
-Likely trouble spots, with the remedy to try:
-- The picture stays a few frames behind, or the last change never appears when the screen goes still: the MTK decoder is
-  holding frames (screenrecord only writes when the picture changes). Try vendor low-latency keys on the decoder format
-  (the tablet is API 29, so `KEY_LOW_LATENCY` does not exist; look for the MediaTek key), or ask the phone for a repeat
-  frame. Pictures mode is the safe fallback meanwhile.
-- Smeared or garbled picture after fast motion: a frame was split by the 3 ms timing guess. Fix: let the tablet cut the
-  stream into pictures by parsing NAL units (a slice with `first_mb_in_slice == 0` starts a new picture) instead.
+### Likely trouble spots, with the remedy to try
+- The picture still sticks until the screen changes: look at Information (does the stream line say "reorder 0, buffer 1" after
+  the fix?), try the other decoder in Options, try "Never" and "Always" for tuning. Next ideas: replay the first keyframe with a
+  changed `idr_pic_id` to push the decoder, or the own-encoder engine (frames repeated while the screen is still).
+- Smeared or garbled picture after fast motion: a frame was split by the 3 ms timing guess. Fix: let the tablet cut the stream
+  into pictures by parsing NAL units (a slice with `first_mb_in_slice == 0` starts a new picture) instead.
 - A hiccup every 3 minutes: the screenrecord restart. Expected; could be hidden by starting the next one early.
-- Touch lands a few pixels off: screenrecord letterboxes when the phone's shape is not an exact multiple of 16; map touches
-  through the letterbox if it matters.
-- The phone is rotated while streaming: the stream keeps the size it started with, so the picture and the touch mapping go
-  wrong until the tab is left and re-entered. Fix if it matters: restart the stream when the phone's size changes.
-- screenrecord refuses on this Samsung build (the status line will say what it printed): the last resort is a scrcpy-style
-  server in ShellMain (virtual display + MediaCodec through hidden APIs), a bigger piece of work.
+- The phone is rotated while streaming: the stream keeps the size it started with, so the picture and the touch mapping go wrong
+  until the tab is left and re-entered. Fix if it matters: restart the stream when the phone's size changes.
+- Typed text goes wrong with some keyboards (composing text): `TypingView` turns suggestions off and replaces drafts by deleting
+  and retyping; if a keyboard still misbehaves, look at which InputConnection call it uses.
+- screenrecord refuses on this Samsung build (the status line will say what it printed): the last resort is the own-encoder engine.
 
 ## Safety: getting the phone back if a change breaks mobile data
 
@@ -222,6 +294,11 @@ NOT yet tested on the phone. First real test should be done with the phone in ha
   `tools/ci.sh` does the same with `gh`, which worked read-only here but is not the sanctioned route.
 - `javac` exists but there is no Android jar. `cd app/src/main/java && javac -proc:none -d <scratch> <files>` still finds
   syntax errors and misspelled app-internal names: ignore errors whose `symbol:` is an Android, org.json or Shizuku class.
+- Offline tests: `tools/test.sh` (see "Remote screen control"). This sandbox has `ffmpeg` with libx264 and the `trace_headers`
+  filter, which is how SpsFix is checked against real streams and ffmpeg's own parser. Pure logic should live in classes
+  without Android imports (SpsFix, ProfilePlan, Icons) so it can be tested here. To look at the icons:
+  `javac -d <scratch> app/src/main/java/com/tj/linkmeter/Icons.java tools/test/IconSheet.java` then
+  `java -cp <scratch> com.tj.linkmeter.IconSheet <scratch>/sheet.png` and open the PNG.
 - CI compiles but cannot see a route, a permission or a lock that is simply missing. Trace each new feature end to end
   (tablet request -> `Api.handle` -> handler -> reply -> tablet parse) before calling it done.
 - Keep one session's context small: a session that read and wrote about 970K tokens died of "Prompt is too long".
@@ -233,7 +310,7 @@ Header `X-Token: <32 hex>`. The tablet's token is its own secret; the phone keep
 paired tablets. Phone endpoints: `/s` (status), `/pair` (POST, only while the 2-minute Pair window
 is open), `/act?name=` (POST), `/probe`, `/speed/{start,stop,status}`, `/cells`, `/band?set=`,
 `/band/keep`, `/bandinfo`, `/apk` (POST, tablet-driven update), and the screen routes
-`/screen/{state,frame,video,ctl,tap,swipe,key,on,off,text,pin}` (see "Remote screen control").
+`/screen/{state,frame,video,ctl,profile,tap,swipe,key,on,off,text,pin}` (see "Remote screen control").
 Every route except `/pair` is checked against the paired token in `Api.handle` before the router's `switch`, and a route that
 `Screen.serve` (or any handler) knows but the `switch` does not list answers 404: add new routes in both places.
 
@@ -302,6 +379,8 @@ app/src/main/java/com/tj/linkmeter: Cfg (prefs, trust), Http/Client (sockets), A
 BootReceiver, Status, Priv/Actions/Eco/Cells/ShellMain/Saved/Guard/Notice (privileged and safety), SpeedTest, Files, Net,
 Call (tablet helpers), Updater (tablet-driven phone update), Ui, MeterView, SpeedView, Tab,
 HomeTab/SpeedTab/BandsTab/ControlTab/FilesTab/SettingsTab/PhoneTab/ScreenTab, MainActivity.
-Remote screen: Screen (phone), ScreenTab, VideoStream, CtlChannel, AspectSurfaceView, PhoneScreenView (tablet), ShellMain `inject`.
+Remote screen, phone: Screen (routes), RemoteProfile and ProfilePlan (screen kept on and dimmed, restored), ShellMain `inject`.
+Remote screen, tablet: ScreenTab (the tab), RemoteLayout, BarColumn, BarButton, Icons (layout and buttons), TypingView, PinPad,
+AdvancedPanel, ScreenPrefs (settings), VideoStream, SpsFix (decoder), CtlChannel, AspectSurfaceView, PhoneScreenView.
 Tools: `tools/checkpoint.sh` (log, commit, push with retries), `tools/ci.sh` (same, then watches the build with gh),
-`tools/handoff-check.sh` (warns when this file is stale). `CHECKPOINTS.md` is the append-only log they write.
+`tools/handoff-check.sh` (warns when this file is stale), `tools/test.sh` (offline tests). `CHECKPOINTS.md` is the append-only log they write.

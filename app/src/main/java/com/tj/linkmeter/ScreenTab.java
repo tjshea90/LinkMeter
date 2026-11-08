@@ -37,8 +37,8 @@ import org.json.JSONObject;
  * See and control the phone's screen from the tablet.
  *
  * Layout (see RemoteLayout): the picture in the middle and a column of buttons on each side, never over
- * the picture. Typing opens the tablet's keyboard without shrinking the picture. Settings (picture quality,
- * bitrate, decoder, what the phone does while you use this) are in the Settings panel.
+ * the picture. Typing opens the tablet's keyboard without shrinking the picture. The options (picture quality,
+ * bitrate, decoder, what the phone does while you use this) are in the Options panel.
  *
  * Video mode: the phone's hardware encoder streams H.264 and this tablet's hardware decoder shows it. When
  * the phone's screen stops changing, a sharp still picture is shown, so a still screen never depends on
@@ -234,7 +234,7 @@ final class ScreenTab extends Tab {
         rightNormal.addView(keysBtn);
         rightNormal.addView(powerBtn);
         rightNormal.addView(unlockBtn);
-        rightNormal.addView(new BarButton(act, Icons.Kind.SLIDERS, "Settings", v -> showAdvanced()));
+        rightNormal.addView(new BarButton(act, Icons.Kind.SLIDERS, "Options", v -> showAdvanced()));
         rightNormal.addView(fullBtn);
 
         rightTyping = new BarColumn(act, item);
@@ -608,10 +608,10 @@ final class ScreenTab extends Tab {
         });
     }
 
-    /** Asks the phone to keep its screen on a while and dim it, as set in Settings. */
+    /** Asks the phone to keep its screen on a while and dim it, as set in Options. */
     private void beginProfile() {
         if (prefs.keepIndex() == 0 && prefs.dimIndex() == ScreenPrefs.DIM_NAMES.length - 1) {
-            profileText = "Not changing the phone's screen settings (turned off in Settings).";
+            profileText = "Not changing the phone's screen settings (turned off in Options).";
             return;
         }
         profileCall("POST", "/screen/profile?" + prefs.profileQuery(), (ok, text) -> {
@@ -856,6 +856,9 @@ final class ScreenTab extends Tab {
                 }
                 still.setFrame(f.bmp, f.w, f.h);
                 still.setVisibility(View.VISIBLE);
+                if (!gotFrame) {
+                    setStatus("Live video · showing a sharp picture until the phone's screen changes");
+                }
                 stillHideAt = 0;
                 stillShownSeq = packetSeq;
                 stillVisible = true;

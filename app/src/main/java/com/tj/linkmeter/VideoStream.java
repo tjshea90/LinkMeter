@@ -80,8 +80,13 @@ final class VideoStream {
         this.ev = ev;
     }
 
-    /** Names of this tablet's H.264 decoders, for the choice in the advanced settings. */
-    static List<String> decoders() {
+    private static List<String> decoderNames;
+
+    /** Names of this tablet's H.264 decoders, for the choice in the advanced settings. Looked up once. */
+    static synchronized List<String> decoders() {
+        if (decoderNames != null) {
+            return decoderNames;
+        }
         List<String> out = new ArrayList<>();
         try {
             for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
@@ -98,6 +103,7 @@ final class VideoStream {
         } catch (RuntimeException ignored) {
             // no list: the default decoder is still used
         }
+        decoderNames = out;
         return out;
     }
 

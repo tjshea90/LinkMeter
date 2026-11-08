@@ -51,7 +51,7 @@ final class PinPad {
         };
         paint.run();
 
-        String[][] rows = {{"1", "2", "3"}, {"4", "5", "6"}, {"7", "8", "9"}, {"⌫", "0", "OK"}};
+        String[][] rows = {{"1", "2", "3"}, {"4", "5", "6"}, {"7", "8", "9"}, {"←", "0", "OK"}};
         for (String[] row : rows) {
             LinearLayout r = new LinearLayout(c);
             r.setOrientation(LinearLayout.HORIZONTAL);
@@ -64,7 +64,7 @@ final class PinPad {
                             paint.run();
                             done.unlock(p);
                         }
-                    } else if (key.equals("⌫")) {
+                    } else if (key.equals("←")) {
                         if (pin.length() > 0) {
                             pin.setLength(pin.length() - 1);
                         }
