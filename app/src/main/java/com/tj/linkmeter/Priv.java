@@ -126,10 +126,18 @@ final class Priv {
     /** Shizuku keeps newProcess private in current versions, so it is called by reflection. */
     private static Process start(String[] cmd) throws IOException {
         try {
-            Method m = Shizuku.class.getDeclaredMethod("newProcess",
-                    String[].class, String[].class, String.class);
-            m.setAccessible(true);
-            return (Process) m.invoke(null, cmd, null, null);
+            Method found = null;
+            for (Method m : Shizuku.class.getDeclaredMethods()) {
+                if (m.getName().equals("newProcess") && m.getParameterTypes().length == 3) {
+                    found = m;
+                    break;
+                }
+            }
+            if (found == null) {
+                throw new NoSuchMethodException("Shizuku.newProcess(cmd, env, dir)");
+            }
+            found.setAccessible(true);
+            return (Process) found.invoke(null, cmd, null, null);
         } catch (ReflectiveOperationException e) {
             throw new IOException("Shizuku could not start the command: " + e);
         }

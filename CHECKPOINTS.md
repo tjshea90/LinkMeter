@@ -8,3 +8,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T00:41:09Z stage 3: speed test on the phone with gauge screen on the tablet
 - 2026-11-08T00:45:30Z stage 4: file manager in both directions, phone screen moved into tabs
 - 2026-11-08T00:50:25Z stage 5: cell survey, experimental band lock via ShellMain, 4G toggle through the telephony API
+- 2026-11-08T00:52:46Z handoff rewrite, sturdier Shizuku newProcess lookup
