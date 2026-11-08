@@ -24,7 +24,16 @@ session's transcript.
   built-in printf, `echo`/`printf` are programs); pipe it. Test a new command with `bash -c "enable -n printf; ..."` against a big fake input.
 - Next: the user reinstalls (v0.2.60) and runs "Find the best upload" again: now the rows should say obeyed / NOT obeyed per band and the
   tab should list the carriers. If locks are NOT obeyed the upload differences between rows are noise (the spread seen above, 2.9 to 7.5,
-  would be the noise level). Idea not built yet: repeat the best two or three settings once more and compare the averages.
+  would be the noise level).
+- SECOND PASS (v0.2.61, tested, not yet seen on the phone): `BandSweep` got a 4-argument constructor (`confirm`); the tab has a ticked box
+  "Measure the best three again". After the main pass the three settings with the highest number are re-run once (lock, wait, upload test,
+  in plan order so 5G is switched as little as possible). `Row.samples` holds every measurement and `Row.up` is their average; those rows are
+  `finalist`s and, once a second pass has happened, ONLY finalists can be the best (`BandSweep.bestOf`), so a lucky single number of a
+  setting that was not re-checked cannot win. A failed second check keeps the first number and says why; fewer than two measured settings
+  means no second pass; Stop works at every moment. Row text: `upload 5.5 Mbit/s (4.0 and 7.0)`; summary: `(average of 2 checks)`.
+  Also fixed: Stop pressed while the upload test was being started now stops that test before the phone is put back (a new invariant).
+  Tests: BandSweepTest grew to about 23,000 checks (scripted measurements, a lucky winner, an unchecked higher number, failed checks, a stop at
+  every moment, 600 random phones) and seven deliberate breakages of the new logic are each caught.
 
 **2026-11-08 (earlier): the Bands tab, from the user's question.** The user: "The band lock only
 shows that the phone can see a single band. Is this accurate? Then it says the modem accepted the lock when I try different

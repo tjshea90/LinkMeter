@@ -101,8 +101,12 @@ final class BandSweep {
         String verdict = "";
         /** The bands the phone was on, in words. */
         String using = "";
-        /** Upload in Mbit/s, -1 if it could not be measured. */
+        /** Upload in Mbit/s, -1 if it could not be measured. With more than one check: their average. */
         double up = -1;
+        /** Every upload measured for this setting, in Mbit/s. */
+        final List<Double> samples = new ArrayList<>();
+        /** One of the settings that were measured a second time (only these can be the best once that has happened). */
+        boolean finalist;
         double ping = -1;
         int rsrp = Integer.MIN_VALUE;
         String note = "";
@@ -111,9 +115,26 @@ final class BandSweep {
             this.step = step;
         }
 
+        /** Adds a measurement; up becomes the average of all of them. */
+        void add(double mbit) {
+            samples.add(mbit);
+            double sum = 0;
+            for (double v : samples) {
+                sum += v;
+            }
+            up = sum / samples.size();
+        }
+
         String line(boolean best) {
             StringBuilder sb = new StringBuilder(best ? "★ " : "  ").append(step.label).append("\n    ");
             sb.append(up >= 0 ? String.format(Locale.US, "upload %.1f Mbit/s", up) : "no upload result");
+            if (samples.size() > 1) {
+                sb.append(" (");
+                for (int i = 0; i < samples.size(); i++) {
+                    sb.append(i == 0 ? "" : i == samples.size() - 1 ? " and " : ", ").append(String.format(Locale.US, "%.1f", samples.get(i)));
+                }
+                sb.append(")");
+            }
             if (ping >= 0) {
                 sb.append(String.format(Locale.US, ", ping %.0f ms", ping));
             }
@@ -140,14 +161,25 @@ final class BandSweep {
     private boolean running;
     private boolean cancelled;
     private boolean finishing;
+    /** After the main pass, measure the best three settings once more. */
+    private final boolean confirm;
+    private boolean confirming;
+    private final List<Integer> queue = new ArrayList<>();
+    private int queuePos = -1;
     private boolean originalFiveGOff;
     private boolean fiveGOff;
     private Row row;
 
     BandSweep(Link link, Listener ui, List<SweepPlan.Step> steps) {
+        this(link, ui, steps, false);
+    }
+
+    /** confirm: after all the steps, the best three are measured once more and only those can be the best. */
+    BandSweep(Link link, Listener ui, List<SweepPlan.Step> steps, boolean confirm) {
         this.link = link;
         this.ui = ui;
         this.steps = steps;
+        this.confirm = confirm;
     }
 
     boolean running() {
@@ -159,11 +191,25 @@ final class BandSweep {
     }
 
     int best() {
+        return bestOf(rows);
+    }
+
+    /** The best row: the highest upload, among the settings that were measured twice if a second pass was made. */
+    static int bestOf(List<Row> rows) {
+        boolean anyFinalist = false;
+        for (Row r : rows) {
+            anyFinalist |= r.finalist;
+        }
         double[] up = new double[rows.size()];
         for (int i = 0; i < up.length; i++) {
-            up[i] = rows.get(i).up;
+            Row r = rows.get(i);
+            up[i] = anyFinalist && !r.finalist ? -1 : r.up;
         }
         return BandCheck.best(up);
+    }
+
+    private static String join(String a, String b) {
+        return a.isEmpty() ? b : a + "; " + b;
     }
 
     private void publish() {
@@ -196,8 +242,27 @@ final class BandSweep {
     }
 
     private void next() {
-        if (cancelled || ++index >= steps.size()) {
+        if (cancelled) {
             finish();
+            return;
+        }
+        if (confirming) {
+            if (++queuePos >= queue.size()) {
+                finish();
+                return;
+            }
+            row = rows.get(queue.get(queuePos));
+            publish();
+            say(row.step, "setting up");
+            setFiveG(row.step);
+            return;
+        }
+        if (++index >= steps.size()) {
+            if (startConfirming()) {
+                next();
+            } else {
+                finish();
+            }
             return;
         }
         SweepPlan.Step s = steps.get(index);
@@ -208,8 +273,38 @@ final class BandSweep {
         setFiveG(s);
     }
 
+    /**
+     * One 8-second upload test is noisy (one phone gave 2.9 to 7.5 Mbit/s on different bands), so the three best settings are
+     * measured once more. Only those can then be the best, by their average. They are visited in plan order so 5G is switched
+     * as little as possible. False if there is nothing to compare (fewer than two settings gave a number).
+     */
+    private boolean startConfirming() {
+        if (!confirm) {
+            return false;
+        }
+        List<Integer> measured = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).up >= 0) {
+                measured.add(i);
+            }
+        }
+        if (measured.size() < 2) {
+            return false;
+        }
+        measured.sort((a, b) -> Double.compare(rows.get(b).up, rows.get(a).up)); // best first; a tie keeps the plan order
+        List<Integer> top = new ArrayList<>(measured.subList(0, Math.min(3, measured.size())));
+        java.util.Collections.sort(top);
+        for (int i : top) {
+            rows.get(i).finalist = true;
+        }
+        queue.addAll(top);
+        confirming = true;
+        return true;
+    }
+
     private void say(SweepPlan.Step s, String what) {
-        ui.progress("Step " + (index + 1) + " of " + steps.size() + ": " + s.label + " — " + what);
+        ui.progress((confirming ? "Checking again " + (queuePos + 1) + " of " + queue.size()
+                : "Step " + (index + 1) + " of " + steps.size()) + ": " + s.label + " — " + what);
     }
 
     /** Switches 5G on or off if this step needs it, then goes on to the lock. */
@@ -246,8 +341,12 @@ final class BandSweep {
                 return;
             }
             if (!ok) {
-                row.verdict = "rejected";
-                row.note = text;
+                if (confirming) {
+                    row.note = join(row.note, "second check: the modem refused the lock: " + text);
+                } else {
+                    row.verdict = "rejected";
+                    row.note = text;
+                }
                 publish();
                 next();
                 return;
@@ -279,22 +378,37 @@ final class BandSweep {
                     nrStillOn |= c.nr();
                 }
                 boolean fiveGWrong = Boolean.FALSE.equals(s.fiveG) && nrStillOn;
-                row.using = usingText(rs);
-                row.rsrp = obs.rsrp;
+                if (!confirming) {
+                    row.using = usingText(rs);
+                    row.rsrp = obs.rsrp;
+                }
                 boolean settled = v.verdict == BandCheck.Verdict.OBEYED && !fiveGWrong;
                 if (settled || waited >= 22000 || (v.verdict == BandCheck.Verdict.UNKNOWN && waited >= 10000)) {
-                    row.verdict = v.verdict == BandCheck.Verdict.OBEYED ? (s.spec.isEmpty() ? "" : "obeyed")
+                    String verdict = v.verdict == BandCheck.Verdict.OBEYED ? (s.spec.isEmpty() ? "" : "obeyed")
                             : v.verdict == BandCheck.Verdict.NOT_OBEYED ? "NOT obeyed" : "can't tell";
-                    if (fiveGWrong) {
-                        row.note = "5G was still on";
+                    if (confirming) {
+                        // the first check's verdict stays; a second check that differs is said so
+                        if (!verdict.equals(row.verdict) || fiveGWrong) {
+                            row.note = join(row.note, "second check: " + (verdict.isEmpty() ? "no lock" : verdict)
+                                    + (fiveGWrong ? ", 5G was still on" : ""));
+                        }
+                    } else {
+                        row.verdict = verdict;
+                        if (fiveGWrong) {
+                            row.note = "5G was still on";
+                        }
                     }
                     publish();
                     measure(s);
                     return;
                 }
             } else if (waited >= 22000) {
-                row.verdict = "can't tell";
-                row.note = ok ? "" : text;
+                if (confirming) {
+                    row.note = join(row.note, "second check: the phone could not be read");
+                } else {
+                    row.verdict = "can't tell";
+                    row.note = ok ? "" : text;
+                }
                 publish();
                 measure(s);
                 return;
@@ -312,7 +426,8 @@ final class BandSweep {
         say(s, "measuring upload");
         link.startUpload((ok, text, v) -> {
             if (cancelled) {
-                finish();
+                // Stop was pressed while the request was on its way: the test may have started, so it is stopped before the phone is put back
+                link.stopUpload((a, b, c) -> finish());
                 return;
             }
             if (!ok) {
@@ -336,11 +451,12 @@ final class BandSweep {
                 if (u.phase == 4) { // done
                     // a test that finished with a warning and no speed did not measure 0: it measured nothing
                     boolean unmeasured = u.up <= 0 && !u.warn.isEmpty();
-                    row.up = unmeasured ? -1 : u.up;
-                    row.ping = u.ping;
                     if (unmeasured) {
-                        row.note = (row.note.isEmpty() ? "" : row.note + "; ") + u.warn;
+                        row.note = join(row.note, u.warn);
+                    } else {
+                        row.add(u.up);
                     }
+                    row.ping = u.ping;
                     publish();
                     afterStep(s);
                     return;
@@ -454,17 +570,14 @@ final class BandSweep {
                         + "upload numbers are all about the same, the locks are probably doing nothing.");
             }
         }
-        double[] up = new double[rows.size()];
-        for (int i = 0; i < up.length; i++) {
-            up[i] = rows.get(i).up;
-        }
-        int best = BandCheck.best(up);
+        int best = bestOf(rows);
         if (best >= 0 && !rows.isEmpty() && rows.get(0).up > 0 && best != 0) {
             double times = rows.get(best).up / rows.get(0).up;
             if (times >= 1.3) {
+                int n = rows.get(best).samples.size();
                 sb.append(sb.length() > 0 ? "\n" : "").append(String.format(Locale.US,
-                        "Best: %s, upload %.1f Mbit/s: %.1f times what the phone chooses by itself (%.1f).",
-                        rows.get(best).step.label, rows.get(best).up, times, rows.get(0).up));
+                        "Best: %s, upload %.1f Mbit/s%s: %.1f times what the phone chooses by itself (%.1f).",
+                        rows.get(best).step.label, rows.get(best).up, n > 1 ? " (average of " + n + " checks)" : "", times, rows.get(0).up));
             }
         }
         return sb.toString();

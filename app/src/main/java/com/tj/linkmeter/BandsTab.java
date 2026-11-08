@@ -51,6 +51,7 @@ final class BandsTab extends Tab {
     private EditText lteList;
     private EditText nrList;
     private CheckBox fiveGOffBox;
+    private CheckBox confirmBox;
     private Button sweepBtn;
     private Button stopBtn;
     private Button useBestBtn;
@@ -210,7 +211,8 @@ final class BandsTab extends Tab {
         col.addView(Ui.text(act, "Find the best upload", 18, Ui.FG, true), Ui.lp(act, 16));
         col.addView(Ui.text(act, "Tries the settings below one after another. For each it asks the modem, waits until the "
                 + "phone has really moved (checked against the carriers it is using), then measures the phone's upload on "
-                + "its mobile data for about 10 seconds. At the end the phone is put back as it was, and you pick the "
+                + "its mobile data for about 10 seconds. One test is noisy, so the best three are then measured once more "
+                + "and the best of those wins by its average. At the end the phone is put back as it was, and you pick the "
                 + "best. About half a minute per setting. Leave the phone where you will use it.", 12, Ui.DIM, false),
                 Ui.lp(act, 4));
         col.addView(Ui.text(act, "4G bands to try (numbers, separated by commas)", 12, Ui.FG, false), Ui.lp(act, 10));
@@ -225,6 +227,11 @@ final class BandsTab extends Tab {
         fiveGOffBox.setTextColor(Ui.FG);
         fiveGOffBox.setChecked(true);
         col.addView(fiveGOffBox, Ui.lp(act, 6));
+        confirmBox = new CheckBox(act);
+        confirmBox.setText("Measure the best three again (more reliable, about 1½ minutes longer)");
+        confirmBox.setTextColor(Ui.FG);
+        confirmBox.setChecked(true);
+        col.addView(confirmBox, Ui.lp(act, 6));
         LinearLayout row = new LinearLayout(act);
         row.setOrientation(LinearLayout.HORIZONTAL);
         sweepBtn = Ui.button(act, "Start", v -> startSweep());
@@ -265,7 +272,7 @@ final class BandsTab extends Tab {
             public void rows(List<BandSweep.Row> rows, int best, boolean running) {
                 renderRows(rows, best, running);
             }
-        }, plan);
+        }, plan, confirmBox.isChecked());
         say("Starting a comparison of " + plan.size() + " settings. Any band lock is cleared first.", true);
         sweep.start();
     }

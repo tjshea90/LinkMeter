@@ -41,6 +41,11 @@ public final class BandSweepTest {
         boolean uploadWillFail;
         boolean uploadWarns; // the speed test finishes, says it could not measure the upload, and leaves the number at 0
         boolean uploadZero; // the speed test finishes and really measured 0.0
+        double[] script; // the k-th speed test (0, 1, 2, ...) measures script[k] (the last one repeats), instead of what the band gives
+        final java.util.Set<Integer> warnOn = new java.util.HashSet<>(); // the k-th speed test cannot measure the upload
+        int started; // speed tests started so far
+        double sample = Double.NaN;
+        boolean sampleWarns;
         int maxUploads;
         // how this phone behaves
         boolean obeys = true;
@@ -53,6 +58,7 @@ public final class BandSweepTest {
         boolean undoesLocks; // its safety net clears a lock soon after it is made
         boolean noServiceOnLock = false; // a locked band that is not there: no data
         int stopCalls;
+        int strayAtRestore; // the band lock was cleared while a speed test was still running
 
         void at(long time, Runnable r) {
             tasks.add(r);
@@ -152,6 +158,9 @@ public final class BandSweepTest {
                     d.done(false, "the modem rejected the band setting", null);
                     return;
                 }
+                if (spec.isEmpty() && uploadsRunning > 0) {
+                    strayAtRestore++;
+                }
                 lock = spec;
                 lockSetAt = now;
                 if (undoesLocks && !spec.isEmpty()) {
@@ -171,6 +180,9 @@ public final class BandSweepTest {
             at(now + latency, () -> {
                 uploadsRunning++;
                 maxUploads = Math.max(maxUploads, uploadsRunning);
+                sample = script == null ? Double.NaN : script[Math.min(started, script.length - 1)];
+                sampleWarns = warnOn.contains(started);
+                started++;
                 uploadStartedAt = now;
                 uploadWillFail = radio().carriers.isEmpty();
                 at(now + 12000, () -> uploadsRunning = Math.max(0, uploadsRunning - 1));
@@ -185,12 +197,12 @@ public final class BandSweepTest {
                     d.done(true, "ok", new BandSweep.Upload(3, 0, 0, 1.0, ""));
                 } else if (uploadWillFail) {
                     d.done(true, "ok", new BandSweep.Upload(5, 0, 0, 0, "ping: no network"));
-                } else if (uploadWarns) {
+                } else if (uploadWarns || sampleWarns) {
                     d.done(true, "ok", new BandSweep.Upload(4, 0, 60, 0, "", "Upload could not be measured: SocketTimeoutException: timeout"));
                 } else if (uploadZero) {
                     d.done(true, "ok", new BandSweep.Upload(4, 0.0, 60, 0, "", ""));
                 } else {
-                    d.done(true, "ok", new BandSweep.Upload(4, upload(), 60, 0, ""));
+                    d.done(true, "ok", new BandSweep.Upload(4, Double.isNaN(sample) ? upload() : sample, 60, 0, ""));
                 }
             });
         }
@@ -228,6 +240,7 @@ public final class BandSweepTest {
 
     static final class Rec implements BandSweep.Listener {
         int progress;
+        final List<String> texts = new ArrayList<>();
         int lastRows;
         int best = -1;
         boolean runningAtEnd = true;
@@ -235,6 +248,7 @@ public final class BandSweepTest {
         @Override
         public void progress(String text) {
             progress++;
+            texts.add(text);
         }
 
         @Override
@@ -253,6 +267,27 @@ public final class BandSweepTest {
         check(!p.awake, tag + ": the tablet may sleep again");
         check(!r.runningAtEnd, tag + ": the table says it is over");
         check(p.maxUploads <= 1, tag + ": only one speed test at a time");
+        check(p.strayAtRestore == 0, tag + ": no speed test is left running when the phone is put back (" + p.strayAtRestore + ")");
+        int finalists = 0;
+        for (BandSweep.Row row : s.rows()) {
+            check(row.samples.size() <= 2, tag + ": no setting is measured more than twice (" + row.samples.size() + ")");
+            finalists += row.finalist ? 1 : 0;
+            if (row.samples.size() > 1) {
+                check(row.finalist, tag + ": only a checked setting has two measurements");
+            }
+            if (!row.samples.isEmpty()) {
+                double sum = 0;
+                for (double v : row.samples) {
+                    sum += v;
+                }
+                check(Math.abs(row.up - sum / row.samples.size()) < 1e-9, tag + ": the number shown is the average of the measurements");
+            }
+        }
+        check(finalists <= 3, tag + ": at most three settings are measured again (" + finalists + ")");
+    }
+
+    static boolean near(double a, double b) {
+        return Math.abs(a - b) < 1e-9;
     }
 
     public static void main(String[] args) {
@@ -451,6 +486,136 @@ public final class BandSweepTest {
             } else {
                 check(!s.running() && p.lock.isEmpty() && !p.awake, "random " + seed + ": over, unlocked, awake released");
             }
+        }
+        // 12. the second pass: B5 wins the first pass by luck, B66 wins on average
+        {
+            Sim p = new Sim();
+            // plan: as it is now, 5G off, B13, B5, B66 (five measurements); the best three are measured again in plan order: 5G off, B5, B66
+            p.script = new double[] {0.3, 4.0, 3.1, 6.2, 4.0, 4.2, 2.0, 7.0};
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5, 66}, new int[0], true), true);
+            s.start();
+            p.run();
+            over("second pass", p, s, r, false);
+            check(s.rows().size() == 5, "second pass: still five rows: " + s.rows().size());
+            check(p.started == 8, "second pass: eight speed tests in all (5 + 3): " + p.started);
+            check(s.rows().get(1).finalist && s.rows().get(3).finalist && s.rows().get(4).finalist
+                    && !s.rows().get(0).finalist && !s.rows().get(2).finalist, "second pass: the three best first-pass settings are the ones checked");
+            check(s.rows().get(0).samples.size() == 1 && s.rows().get(2).samples.size() == 1, "second pass: the others are not measured again");
+            check(near(s.rows().get(3).up, 4.1) && near(s.rows().get(4).up, 5.5) && near(s.rows().get(1).up, 4.1),
+                    "second pass: the averages are 4.1, 4.1 and 5.5: " + s.rows().get(1).up + ", " + s.rows().get(3).up + ", " + s.rows().get(4).up);
+            check(s.best() == 4, "second pass: B66 is the best by average although B5 won the first pass: " + s.best());
+            String line = s.rows().get(4).line(true);
+            check(line.contains("upload 5.5 Mbit/s (4.0 and 7.0)"), "second pass: the row shows both numbers: " + line);
+            String sum = BandSweep.summary(s.rows());
+            check(sum.contains("Best: 4G band B66, 5G off, upload 5.5 Mbit/s (average of 2 checks)"), "second pass: the summary says how it was found: " + sum);
+            boolean first = false;
+            boolean last = false;
+            for (String t : r.texts) {
+                first |= t.startsWith("Checking again 1 of 3: ");
+                last |= t.startsWith("Checking again 3 of 3: ");
+            }
+            check(first && last, "second pass: the progress line says which check it is on");
+        }
+        // 13. a setting that was not checked cannot be the best, even if its single number is higher than every average
+        {
+            Sim p = new Sim();
+            p.script = new double[] {0.3, 4.0, 3.9, 4.2, 4.1, 1.0, 1.0, 1.0}; // B13 (3.9) just misses the three; the three then average 2.5, 2.6, 2.55
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5, 66}, new int[0], true), true);
+            s.start();
+            p.run();
+            over("unchecked", p, s, r, false);
+            check(!s.rows().get(2).finalist && near(s.rows().get(2).up, 3.9), "unchecked: B13 was not measured again and keeps 3.9");
+            check(s.best() == 3 && near(s.rows().get(3).up, 2.6), "unchecked: the best is the best of the checked ones (B5, 2.6), not B13's 3.9: " + s.best());
+        }
+        // 14. a second check that cannot be measured keeps the first number, and says so
+        {
+            Sim p = new Sim();
+            p.script = new double[] {0.3, 4.0, 3.1, 6.2, 4.0, 4.2, 2.0, 7.0};
+            p.warnOn.add(6); // the second check of B5
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5, 66}, new int[0], true), true);
+            s.start();
+            p.run();
+            over("failed check", p, s, r, false);
+            BandSweep.Row b5 = s.rows().get(3);
+            check(b5.samples.size() == 1 && near(b5.up, 6.2) && b5.note.contains("could not be measured") && b5.finalist,
+                    "failed check: B5 keeps its first number and the note says why: " + b5.line(false));
+            check(s.best() == 3, "failed check: B5 (6.2) still beats B66's average (5.5): " + s.best());
+        }
+        // 15. nothing to compare (one setting only): no second pass
+        {
+            Sim p = new Sim();
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[0], new int[0], false), true);
+            s.start();
+            p.run();
+            over("nothing to compare", p, s, r, false);
+            boolean again = false;
+            for (String t : r.texts) {
+                again |= t.startsWith("Checking again");
+            }
+            check(!again && p.started == s.rows().size(), "nothing to compare: no second pass (" + p.started + " tests, " + s.rows().size() + " rows)");
+        }
+        // 16. stopped at every moment of a run with a second pass: always put back, nothing new starts after the stop
+        for (long stopAt = 0; stopAt < 400000; stopAt += 2900) {
+            Sim p = new Sim();
+            p.script = new double[] {0.3, 4.0, 3.1, 6.2, 4.0, 4.2, 2.0, 7.0};
+            Rec r = new Rec();
+            final BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5, 66}, new int[] {77}, true), true);
+            final int[] startedAtStop = {-1};
+            final int[] rowsAtStop = {-1};
+            p.at(stopAt, () -> {
+                startedAtStop[0] = p.started;
+                rowsAtStop[0] = s.rows().size();
+                s.cancel();
+            });
+            s.start();
+            p.run();
+            over("second pass stopped at " + stopAt, p, s, r, false);
+            check(rowsAtStop[0] < 0 || s.rows().size() == rowsAtStop[0], "second pass stopped at " + stopAt + ": no new row after the stop");
+            // a test that was already on its way when Stop was pressed may still be started; no second one after it
+            check(startedAtStop[0] < 0 || p.started <= startedAtStop[0] + 1, "second pass stopped at " + stopAt + ": no new speed test after the stop ("
+                    + startedAtStop[0] + " at the stop, " + p.started + " at the end)");
+        }
+        // 17. random phones with a second pass
+        for (int seed = 1000; seed < 1600; seed++) {
+            Random rnd = new Random(seed);
+            Sim p = new Sim();
+            p.fiveGOff = rnd.nextInt(3) == 0;
+            boolean original = p.fiveGOff;
+            p.obeys = rnd.nextInt(3) != 0;
+            p.moveDelay = rnd.nextInt(30000);
+            p.latency = 50 + rnd.nextInt(2000);
+            p.rejectLocks = rnd.nextInt(10) == 0;
+            p.loseSwitchReply = rnd.nextInt(6) == 0;
+            p.switchFails = rnd.nextInt(8) == 0;
+            p.undoesLocks = rnd.nextInt(10) == 0;
+            p.noServiceOnLock = rnd.nextInt(8) == 0;
+            double[] script = new double[12];
+            for (int i = 0; i < script.length; i++) {
+                script[i] = rnd.nextInt(10) == 0 ? 0.0 : rnd.nextInt(80) / 10.0;
+            }
+            p.script = script;
+            for (int i = 0; i < 12; i++) {
+                if (rnd.nextInt(8) == 0) {
+                    p.warnOn.add(i);
+                }
+            }
+            Rec r = new Rec();
+            int[] lte = new int[1 + rnd.nextInt(5)];
+            for (int i = 0; i < lte.length; i++) {
+                lte[i] = new int[] {13, 5, 66, 2, 4, 12}[rnd.nextInt(6)];
+            }
+            int[] nr = rnd.nextBoolean() ? new int[] {77} : new int[0];
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(lte, nr, rnd.nextBoolean()), true);
+            if (rnd.nextInt(2) == 0) {
+                p.at(rnd.nextInt(400000), s::cancel);
+            }
+            s.start();
+            p.run();
+            over("random second pass " + seed, p, s, r, original);
         }
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);
