@@ -33,3 +33,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T05:38:43Z handoff: branch merged into main at the user's request; next steps are the device field test
 - 2026-11-08T06:16:42Z remove the dead network-adb buttons, AdbClient and the adb_tcp_setup action (user asked)
 - 2026-11-08T06:24:52Z SpsFix: rewrites the H.264 header so the tablet decoder does not hold pictures back; tested offline against real x264 streams and ffmpeg's own parser (412 checks)
+- 2026-11-08T06:27:08Z phone side: remote session profile (screen stays on 2+ min, lowest brightness, restored afterwards, battery-saver aware), typed text and editing keys over the touch channel

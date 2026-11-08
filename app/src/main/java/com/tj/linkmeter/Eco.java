@@ -28,6 +28,7 @@ final class Eco {
         {"global", "tether_offload_disabled", "0"},
         {"system", "screen_off_timeout", "15000"},
     };
+    private static final int TIMEOUT = 4; // index of screen_off_timeout in PROFILE
     private static final long IDLE_MS = 10 * 60 * 1000L;
     private static final Handler H = new Handler(Looper.getMainLooper());
 
@@ -37,6 +38,11 @@ final class Eco {
     private static boolean timerSet;
 
     private Eco() {}
+
+    /** The short screen timeout the battery saver uses, in milliseconds (as text). */
+    static String timeoutMs() {
+        return PROFILE[TIMEOUT][2];
+    }
 
     private static SharedPreferences prefs(Context c) {
         return c.getApplicationContext().getSharedPreferences("eco", Context.MODE_PRIVATE);
@@ -144,6 +150,12 @@ final class Eco {
                 }
             }
         }
+        // A remote session may have raised the screen timeout: remember the value from before it, and leave
+        // the timeout alone for now (the session puts it back to our value when it ends).
+        boolean remoteTimeout = RemoteProfile.ownsTimeout(c);
+        if (remoteTimeout) {
+            orig[TIMEOUT] = RemoteProfile.originalTimeout(c);
+        }
         // Save the originals before changing anything, so a crash half-way can still be undone.
         SharedPreferences.Editor e = prefs(c).edit();
         for (int i = 0; i < PROFILE.length; i++) {
@@ -155,6 +167,9 @@ final class Eco {
 
         StringBuilder wr = new StringBuilder();
         for (int i = 0; i < PROFILE.length; i++) {
+            if (i == TIMEOUT && remoteTimeout) {
+                continue;
+            }
             if (!PROFILE[i][2].equals(orig[i])) {
                 wr.append("settings put ").append(PROFILE[i][0]).append(' ')
                         .append(PROFILE[i][1]).append(' ').append(PROFILE[i][2]).append("; ");

@@ -260,6 +260,8 @@ public final class ShellMain {
                     int code = Integer.parseInt(p[1]);
                     inj.invoke(im, key(now, KeyEvent.ACTION_DOWN, code), 0);
                     inj.invoke(im, key(now, KeyEvent.ACTION_UP, code), 0);
+                } else if (p[0].equals("t")) {
+                    typeText(im, inj, p[1]);
                 } else {
                     int action = p[0].equals("d") ? MotionEvent.ACTION_DOWN
                             : (p[0].equals("m") ? MotionEvent.ACTION_MOVE : MotionEvent.ACTION_UP);
@@ -278,6 +280,32 @@ public final class ShellMain {
             }
         }
         return "OK bye";
+    }
+
+    /**
+     * Types text: "t" followed by hex, 4 digits per character. Each character becomes the key events the
+     * system keyboard map gives for it (capitals include Shift). Characters that map has no key for are
+     * skipped; a newline is the Enter key.
+     */
+    private static void typeText(Object im, Method inj, String hex) throws Exception {
+        KeyCharacterMap map = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD);
+        for (int i = 0; i + 4 <= hex.length(); i += 4) {
+            char c = (char) Integer.parseInt(hex.substring(i, i + 4), 16);
+            long now = SystemClock.uptimeMillis();
+            if (c == '\n') {
+                inj.invoke(im, key(now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER), 0);
+                inj.invoke(im, key(now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER), 0);
+                continue;
+            }
+            KeyEvent[] events = map.getEvents(new char[] {c});
+            if (events == null) {
+                continue;
+            }
+            for (KeyEvent e : events) {
+                inj.invoke(im, new KeyEvent(now, now, e.getAction(), e.getKeyCode(), 0, e.getMetaState(),
+                        KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD), 0);
+            }
+        }
     }
 
     private static KeyEvent key(long now, int action, int code) {

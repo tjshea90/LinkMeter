@@ -65,6 +65,7 @@ public class SenderService extends Service {
             if (Cfg.PHONE.equals(Cfg.mode(this))) {
                 Eco.onServiceStart(getApplicationContext());
                 Updater.cleanup(getApplicationContext());
+                RemoteProfile.recover(getApplicationContext());
             }
         }
         // Sticky: if Android ever stops it, it comes back by itself.

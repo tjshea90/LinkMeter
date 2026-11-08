@@ -18,6 +18,7 @@ import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.io.ByteArrayOutputStream;
@@ -33,8 +34,19 @@ import java.nio.charset.StandardCharsets;
  * The PIN is checked to be digits, used once, and never stored or logged.
  */
 final class Screen {
-    /** Keys the tablet may press: home, back, volume, power, menu, recents, sleep, wake. */
-    private static final int[] KEYS = {3, 4, 24, 25, 26, 82, 187, 223, 224};
+    /**
+     * Keys the tablet may press: home, back, volume, power, menu, recents, sleep, wake, and the keys used
+     * to type and move around (arrows, enter, tab, escape, backspace, delete, page and home/end keys).
+     */
+    private static final int[] KEYS = {3, 4, 24, 25, 26, 82, 187, 223, 224,
+        19, 20, 21, 22, 23, 61, 66, 67, 92, 93, 111, 112, 122, 123};
+
+    /** Video and touch connections that are open right now. While any is open the tablet is still there. */
+    private static final AtomicInteger OPEN = new AtomicInteger();
+
+    static int openStreams() {
+        return OPEN.get();
+    }
 
     private Screen() {}
 
@@ -66,14 +78,20 @@ final class Screen {
     }
 
     static void serve(Context c, Http.Req r, OutputStream out) throws IOException {
+        if ("/screen/profile".equals(r.path)) {
+            profile(c, r, out); // before the switch check: ending a session must always work
+            return;
+        }
         if (!Cfg.screenControl(c)) {
             Http.err(out, 403, "Screen control is turned off on the phone.");
             return;
         }
+        RemoteProfile.seen();
         PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
         KeyguardManager km = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
         if ("/screen/state".equals(r.path)) {
-            Http.json(out, 200, "{\"on\":" + pm.isInteractive() + ",\"locked\":" + km.isKeyguardLocked() + "}");
+            Http.json(out, 200, "{\"on\":" + pm.isInteractive() + ",\"locked\":" + km.isKeyguardLocked()
+                    + ",\"prof\":" + RemoteProfile.isOn(c) + "}");
             return;
         }
         if (!Priv.ready()) {
@@ -86,10 +104,20 @@ final class Screen {
                     frame(c, r, out, pm);
                     break;
                 case "/screen/video":
-                    video(c, r, out, pm);
+                    OPEN.incrementAndGet();
+                    try {
+                        video(c, r, out, pm);
+                    } finally {
+                        OPEN.decrementAndGet();
+                    }
                     break;
                 case "/screen/ctl":
-                    ctl(c, r, out);
+                    OPEN.incrementAndGet();
+                    try {
+                        ctl(c, r, out);
+                    } finally {
+                        OPEN.decrementAndGet();
+                    }
                     break;
                 case "/screen/tap":
                     run(out, "input tap " + num(r, "x") + " " + num(r, "y"), "Tapped.");
@@ -131,6 +159,32 @@ final class Screen {
                     Http.err(out, 404, "unknown request");
                     break;
             }
+        } catch (IllegalArgumentException e) {
+            Http.err(out, 400, String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * The remote session's effect on the phone: POST ?keep=ms&dim=0..255 starts or updates it, POST ?end=1
+     * puts everything back, GET says what it is doing. See RemoteProfile.
+     */
+    private static void profile(Context c, Http.Req r, OutputStream out) throws IOException {
+        try {
+            if ("POST".equals(r.method)) {
+                if (!Priv.ready()) {
+                    Http.err(out, 409, "The phone can't do that: " + Priv.stateText(Priv.state()) + ".");
+                } else if ("1".equals(r.q("end"))) {
+                    ok(out, RemoteProfile.end(c));
+                } else if (!Cfg.screenControl(c)) {
+                    Http.err(out, 403, "Screen control is turned off on the phone.");
+                } else {
+                    ok(out, RemoteProfile.begin(c, r.qLong("keep", 0), (int) r.qLong("dim", -1)));
+                }
+            } else {
+                ok(out, RemoteProfile.status(c));
+            }
+        } catch (IOException e) {
+            Http.err(out, 409, String.valueOf(e.getMessage()));
         } catch (IllegalArgumentException e) {
             Http.err(out, 400, String.valueOf(e.getMessage()));
         }
@@ -187,7 +241,12 @@ final class Screen {
     private static Process injector;
     private static OutputStream injectorIn;
     private static String injectorErr = "";
-    private static final Pattern CTL = Pattern.compile("^(?:[dmu] \\d{1,5} \\d{1,5}|k \\d{1,3})$");
+    /**
+     * Lines the tablet may send: d/m/u x y (finger down, move, up), k code (a key), p (still here), and
+     * t followed by hex digits, 4 per character (typed text).
+     */
+    private static final Pattern CTL = Pattern.compile(
+            "^(?:[dmu] \\d{1,5} \\d{1,5}|k \\d{1,3}|p|t [0-9a-f]{4,800})$");
 
     private static synchronized boolean injectorReady(Context c) {
         try {
@@ -294,15 +353,23 @@ final class Screen {
                 if (!CTL.matcher(line).matches()) {
                     continue;
                 }
-                if (line.startsWith("k ") && !allowedKey(Integer.parseInt(line.substring(2)))) {
+                char ch = line.charAt(0);
+                if (ch == 'p') {
+                    RemoteProfile.seen(); // the tablet is still there; nothing to inject
                     continue;
                 }
+                if (ch == 'k' && !allowedKey(Integer.parseInt(line.substring(2)))) {
+                    continue;
+                }
+                if (ch == 't' && line.length() % 4 != 2) {
+                    continue; // "t " and then whole characters of 4 hex digits
+                }
                 inject(line);
-                if (line.charAt(0) != 'k') {
+                if (ch == 'd' || ch == 'm' || ch == 'u') {
                     String[] q = line.split(" ");
                     lx = Integer.parseInt(q[1]);
                     ly = Integer.parseInt(q[2]);
-                    down = line.charAt(0) != 'u';
+                    down = ch != 'u';
                 }
             }
         } finally {
