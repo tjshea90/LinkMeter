@@ -19,9 +19,11 @@ java -cp "$out" com.tj.linkmeter.PowerSequenceTest || fail=1
 echo "== Bands (carrier list, lock check, plan) and the band comparison run, against simulated phones"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/RadioState.java app/src/main/java/com/tj/linkmeter/BandCheck.java \
   app/src/main/java/com/tj/linkmeter/SweepPlan.java app/src/main/java/com/tj/linkmeter/BandSweep.java \
-  tools/test/BandToolsTest.java tools/test/BandSweepTest.java || fail=1
+  tools/test/BandToolsTest.java tools/test/BandSweepTest.java tools/test/SurveyCommandTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.BandToolsTest || fail=1
 java -cp "$out" com.tj.linkmeter.BandSweepTest || fail=1
+echo "== Scan command (the real shell command, against a 400 KB fake dump, the way Android's shell runs it)"
+java -cp "$out" com.tj.linkmeter.SurveyCommandTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

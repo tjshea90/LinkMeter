@@ -58,6 +58,19 @@ final class RadioState {
     /** The carrier list's own text when it was there but nothing could be read from it (so it can be looked at). */
     String rawConfigs = "";
 
+    /** Separates the two parts of the survey's output: the cell list, then the lines this class reads. */
+    static final String EXTRA_MARKER = "##EXTRA";
+
+    /**
+     * The shell command whose output Cells.survey hands to parse(). Two plain pipelines that each ask dumpsys themselves.
+     * NOT one dump held in a variable and handed to printf: the dump is far over 128 KB (the most one argument can hold),
+     * and Android's shell has no built-in printf, so that failed with "Argument list too long" and the whole scan came back
+     * empty. tools/test/SurveyCommandTest.java runs this command against a 400 KB fake dump with the built-in printf off.
+     */
+    static final String SURVEY_COMMAND = "dumpsys telephony.registry 2>&1 | grep -iE 'CellInfo|mServiceState' | cut -c1-9000 | head -8; "
+            + "echo '" + EXTRA_MARKER + "'; "
+            + "dumpsys telephony.registry 2>&1 | grep -E 'mPhysicalChannelConfigs|mTelephonyDisplayInfo' | cut -c1-6000 | head -4";
+
     private static final Pattern CFG_START = Pattern.compile("m(?:Cell)?ConnectionStatus=");
     private static final Pattern DISPLAY = Pattern.compile("overrideNetwork=([A-Za-z_0-9]+)");
     private static final Pattern CA = Pattern.compile("[Uu]singCarrierAggregation=(true|false)");

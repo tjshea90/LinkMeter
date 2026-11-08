@@ -8,7 +8,25 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (newest): the Bands tab, from the user's question (changed, NOT yet seen on a device).** The user: "The band lock only
+**2026-11-08 (newest): first field result of "Find the best upload", and a regression of MINE found by the user's screenshot.**
+- The run works on the phone: all 7 settings were measured, the phone was put back, "Use the best" appeared. Upload (one 8 s sample each,
+  5G was on at the start): as it is now 2.6, 5G off 4.2, B13 4.2, B5 2.9, B66 7.5, B2 6.5, B4 5.4 Mbit/s. One sample each is NOISY, and the
+  locks could not be checked (below), so these numbers do not yet prove that a band lock does anything.
+- BUG (v0.2.57 to v0.2.59, fixed in v0.2.60): every row said "carriers not listed", and the tab's own scan said "No cells were listed.
+  sh: /system/bin/printf: Argument list too long". My new `Cells.survey()` held the whole `dumpsys telephony.registry` output in a shell
+  variable (`D=$(dumpsys ...)`) and passed it to `printf '%s\n' "$D"`. Bash has a built-in printf, so nothing showed it offline; Android's
+  shell has NONE, printf is a separate program, one argument may be at most 128 KB, and the dump is bigger. The plain "Scan cells" button
+  was broken by the same change. Fix: two direct pipelines (`dumpsys ... | grep ...`, as the first version had) in the single constant
+  `RadioState.SURVEY_COMMAND`. NEW `tools/test/SurveyCommandTest.java` runs that exact command in bash with the built-in printf turned off
+  (`enable -n printf`) against a 400 KB fake dump, shows that the old form fails with the phone's own error (so the test can fail), and
+  fails the build if any app source holds `$(dumpsys` in a variable again.
+- LESSON for every phone-side shell command: never put a big output in a shell variable or an argument (limit 128 KB per argument, no
+  built-in printf, `echo`/`printf` are programs); pipe it. Test a new command with `bash -c "enable -n printf; ..."` against a big fake input.
+- Next: the user reinstalls (v0.2.60) and runs "Find the best upload" again: now the rows should say obeyed / NOT obeyed per band and the
+  tab should list the carriers. If locks are NOT obeyed the upload differences between rows are noise (the spread seen above, 2.9 to 7.5,
+  would be the noise level). Idea not built yet: repeat the best two or three settings once more and compare the averages.
+
+**2026-11-08 (earlier): the Bands tab, from the user's question.** The user: "The band lock only
 shows that the phone can see a single band. Is this accurate? Then it says the modem accepted the lock when I try different
 bands. I can get both 4G LTE and 5G UW, but my 5G UW is so weak that the upload speed is almost 0. I want to try different bands
 for better upload." Phone: SM-S156V (Verizon A15 5G, MediaTek, "Samsung RIL"), see "Probe results".

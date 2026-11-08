@@ -62,11 +62,8 @@ final class Cells {
     static String survey() throws IOException {
         // The cell list (the cell the phone is registered on, and a few it measured) AND, after the marker, the carriers the
         // radio is really using (several with carrier aggregation or 5G) and the label the phone shows for them.
-        Priv.Result r = Priv.run("D=$(dumpsys telephony.registry 2>&1); "
-                + "printf '%s\\n' \"$D\" | grep -iE 'CellInfo|mServiceState' | cut -c1-9000 | head -8; "
-                + "echo '##EXTRA'; "
-                + "printf '%s\\n' \"$D\" | grep -E 'mPhysicalChannelConfigs|mTelephonyDisplayInfo' | cut -c1-6000 | head -4", 25);
-        int marker = r.out.indexOf("##EXTRA");
+        Priv.Result r = Priv.run(RadioState.SURVEY_COMMAND, 25);
+        int marker = r.out.indexOf(RadioState.EXTRA_MARKER);
         String cellPart = marker >= 0 ? r.out.substring(0, marker) : r.out;
         // This phone hides each cell's channel in the cell list but shows the serving one here.
         Matcher ch = Pattern.compile("mChannelNumber=(\\d+)").matcher(cellPart);
