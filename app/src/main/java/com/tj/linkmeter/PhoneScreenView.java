@@ -19,7 +19,15 @@ final class PhoneScreenView extends View {
         void touch(int action, int x, int y);
     }
 
-    private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+    /**
+     * Draws the picture and nothing else, so never give it a translucent colour: a Paint's alpha applies to bitmaps
+     * too. The picture used to be drawn with the same Paint as the touch marker (50% alpha), which left every picture
+     * after the first touch at half brightness: the screen looked as if it were dimming about half a second after it
+     * stopped changing, when the sharp still picture took over from the video.
+     */
+    private final Paint picturePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    /** The touch marker, the dimming rectangle behind a message, and the message text. */
+    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF dst = new RectF();
     private Bitmap bmp;
     private int phoneW;
@@ -73,7 +81,7 @@ final class PhoneScreenView extends View {
             float h = bmp.getHeight() * s;
             dst.set((getWidth() - w) / 2f, (getHeight() - h) / 2f, (getWidth() + w) / 2f,
                     (getHeight() + h) / 2f);
-            cv.drawBitmap(bmp, null, dst, paint);
+            cv.drawBitmap(bmp, null, dst, picturePaint);
             if (!note.isEmpty()) {
                 paint.setColor(0xB0000000);
                 cv.drawRect(dst, paint);

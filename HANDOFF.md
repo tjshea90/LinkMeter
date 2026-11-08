@@ -8,6 +8,19 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
+**2026-11-08 (latest): the "dimming" was a drawing bug in `PhoneScreenView`, not the tablet and not the phone (fixed, NOT yet seen
+on a device).** The user clarified: the tablet's backlight never dimmed; the PICTURE of the phone dims "as though the phone
+screen is about to turn off". `PhoneScreenView.onDraw` drew the phone's picture with the same `Paint` that draws the touch
+marker (`paint.setColor(0x80FFFFFF)`, 50% alpha). A Paint's alpha applies to bitmaps too, and nothing set it back, so after the
+first touch on a `PhoneScreenView` every picture it drew was at half brightness. The sharp still (a `PhoneScreenView` on top of
+the video, shown 450 ms after the screen stops changing, and it takes touches) and Pictures mode both use it: so a tap during a
+pause, then the next pause, showed the still dimmed. That also fits "after a very short time of not actively using it" and why
+the very first version (no still) never had it. Fix: the picture has its own `picturePaint`. `tools/test/test_paint_alpha.py`
+(in `tools/test.sh`) fails if a Paint that draws a bitmap is ever given a colour or alpha; it flags the old code. The earlier
+guesses (an OEM power manager on the tablet, the phone's own timeout) were wrong; the tablet keep-awake with its wake lock and
+Information line stay as harmless extras. See "Field test" item 12.
+
+
 **2026-11-08 (even later): the user's report on v0.2.51, "the screen still dims quickly on the tablet, and a lot of times the
 sleep button doesn't work". Changed in code, NOT yet seen on a device; read "Field test" items 11 and 12.**
 - Sleep. Found by reading the code (no device here): the phone answered "Screen off." as soon as `input keyevent 223` exited,
@@ -21,14 +34,10 @@ sleep button doesn't work". Changed in code, NOT yet seen on a device; read "Fie
   shows "The phone's screen is off. Tap Wake." (also when the phone falls asleep by itself); a failed press is retried once and
   then shown in a toast; a touch within 1.5 s after Sleep does not wake the phone; the server has 16 workers and answers 503
   "busy" instead of hanging up.
-- Tablet dimming. v0.2.51 already held `FLAG_KEEP_SCREEN_ON` while the Screen tab is shown and I could find no bug in it (checked:
-  the default of `Cfg.getBool` is honoured, `onPause`/`onResume` call `setHoldAwake` in the right order, no other code clears the
-  flag). The cause on the user's tablet is therefore still UNKNOWN: an old APK on the tablet? an OEM power manager? Added: a
-  second request through the view flag, a bright-screen wake lock that is renewed while the tab is open and runs out by itself
-  after 10 minutes (permission `WAKE_LOCK`), the tablet's and the phone's versions at the top of Options, and an Information line
-  "Tablet screen: held on by the Screen tab (window flag set, wake lock held); Android's own screen timeout N s, brightness ..,
-  battery saver ..". If it still dims, ask for that Information text: flag set + wake lock held + still dimming means the tablet's
-  own firmware overrides apps.
+- Tablet dimming: superseded, see the block above (it was the picture, not the tablet). What this round added anyway: a second
+  keep-awake request (view flag), a bright-screen wake lock renewed while the Screen tab is open and expiring by itself after 10
+  minutes (permission `WAKE_LOCK`), the tablet and phone versions at the top of Options, and an Information line "Tablet screen:
+  held on by the Screen tab (window flag set, wake lock held); Android's own screen timeout N s, brightness .., battery saver ..".
 
 **2026-11-08 (later): the user's field report on v0.2.47 is fixed in code, released as v0.2.51 (NOT yet seen on a device).** Report: the picture
 sometimes showed blocks of old and new screen mixed while a page loaded (screenshot), and the TABLET dimmed after a short idle.
@@ -302,7 +311,8 @@ x264 streams of many kinds, checked by ffmpeg's own header parser and decoder) a
 (`tools/test/AnnexBFramerTest.java` + `test_framer.py`: AnnexBFramer against ffprobe's picture boundaries on real x264 streams
 and against streams built by hand; fed as pictures, merged, in odd pieces, byte by byte, without hints, with hints inside start
 codes, with false hints in the middle of pictures (every wrong picture must be followed by a damage report), joined mid-picture,
-with junk in front, and fuzzed). Android code itself can only be compiled by CI.
+with junk in front, and fuzzed) and `tools/test/test_paint_alpha.py` (a static check: a Paint that draws a bitmap must never be
+given a colour or alpha, the bug that dimmed the picture). Android code itself can only be compiled by CI.
 
 ### Field test (the user does this with both devices in hand; this sandbox cannot)
 1. Put the same build on both devices (install on the tablet, then Control > Update phone from this tablet). Open Screen.
@@ -329,8 +339,10 @@ with junk in front, and fuzzed). Android code itself can only be compiled by CI.
    sleep…", then within about two seconds the picture is replaced by "The phone's screen is off. Tap Wake." and the phone's
    screen is really off; Wake brings the picture back within a couple of seconds. Touching the picture just after Sleep must not
    wake the phone. If a press fails a toast says why ("The phone did not go to sleep ..."): write the text down.
-12. If the tablet still dims: Options > Information > "Tablet screen: ..." line, and the top of Options (it says which
-   build the tablet and the phone run). Flag set, wake lock held, Android timeout N s, and it still dims = the tablet's own firmware.
+12. The picture dimming (the real report): in Live video, stop moving until the sharp still takes over, TAP the picture, stop
+   again, and again. The still must look as bright as the live picture every time (before the fix it came back at half brightness
+   after the first such tap). The same in Pictures mode. If the picture still looks dimmer after a pause, Options > Information
+   and the top of Options (builds) help: also try Options > "Show a sharp still picture" off to see whether the still is the cause.
 
 ### Likely trouble spots, with the remedy to try
 - The picture still sticks until the screen changes: look at Information (does the stream line say "reorder 0, buffer 1" after

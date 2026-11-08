@@ -17,6 +17,8 @@ echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"
 tools/test-framer.sh || fail=1
+echo "== Paint check (a picture must never be drawn with a translucent Paint: it once dimmed the tablet's picture)"
+python3 tools/test/test_paint_alpha.py || fail=1
 echo "== Release decision (the pipeline's safety gate, taken from .github/workflows/build.yml)"
 python3 tools/test/test_release_decision.py || fail=1
 if [ "$fail" -ne 0 ]; then
