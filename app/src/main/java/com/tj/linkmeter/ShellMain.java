@@ -32,6 +32,9 @@ import java.util.function.Consumer;
  *   nt-set MASK          set them
  *   bands-set lte:5,12   restrict the modem to those bands (";" separates networks)
  *   bands-clear          remove any band restriction
+ *   radio-cycle          switch the radio off for a few seconds and on again (the modem then searches for a network from
+ *                        scratch, which is when a band restriction is applied); the radio is always switched back on
+ *   radio-on             make sure the radio is on
  *   sleep [nodoze]       put the device to sleep through the power service (nodoze: skip the Always-On Display)
  *
  * Output starts with OK or ERR. Hidden-API checks do not apply in this process,
@@ -84,6 +87,10 @@ public final class ShellMain {
                 return bandsSet(tm, a.length > 1 ? a[1] : "");
             case "bands-clear":
                 return bandsSet(tm, "");
+            case "radio-cycle":
+                return radioCycle(tm);
+            case "radio-on":
+                return radioOn(tm);
             default:
                 return "ERR unknown command";
         }
@@ -349,20 +356,67 @@ public final class ShellMain {
 
     // ------------------------------------------------------------ hotspot Wi-Fi band
 
-    /** WifiManager built by hand so that its calls carry the shell package name. */
-    private static Object wifiManager(Context ctx) throws Exception {
+    /**
+     * The Wi-Fi service itself (IWifiManager), reached through its binder. WifiManager is not built by hand any more: its
+     * constructor changes between Android versions and had no match on Android 16 ("NoSuchMethodException: WifiManager(Context,
+     * IWifiManager, Looper)"), which is why changing the hotspot band failed there.
+     */
+    private static Object wifiService() throws Exception {
         Object binder = Class.forName("android.os.ServiceManager")
                 .getMethod("getService", String.class).invoke(null, "wifi");
-        Object iwifi = Class.forName("android.net.wifi.IWifiManager$Stub")
+        if (binder == null) {
+            throw new IllegalStateException("this phone has no Wi-Fi service");
+        }
+        return Class.forName("android.net.wifi.IWifiManager$Stub")
                 .getMethod("asInterface", android.os.IBinder.class).invoke(null, binder);
-        for (Constructor<?> k : android.net.wifi.WifiManager.class.getDeclaredConstructors()) {
-            Class<?>[] p = k.getParameterTypes();
-            if (p.length == 3 && p[0] == Context.class && p[2] == Looper.class) {
-                k.setAccessible(true);
-                return k.newInstance(ctx, iwifi, Looper.getMainLooper());
+    }
+
+    /**
+     * Calls a method of the Wi-Fi service by name. The service's methods end with the caller's package name (and sometimes a
+     * feature id); they are filled in as the shell ("com.android.shell", null), so the call works whatever the exact signature.
+     */
+    private static Object wifiCall(Object iwifi, String name, Object... args) throws Exception {
+        Method best = null;
+        StringBuilder have = new StringBuilder();
+        for (Method m : iwifi.getClass().getMethods()) {
+            if (!m.getName().equals(name)) {
+                continue;
+            }
+            Class<?>[] p = m.getParameterTypes();
+            have.append(m.getName()).append(java.util.Arrays.toString(p)).append(' ');
+            if (p.length < args.length) {
+                continue;
+            }
+            boolean ok = true;
+            for (int i = 0; i < args.length; i++) {
+                if (args[i] != null && !p[i].isInstance(args[i])) {
+                    ok = false;
+                }
+            }
+            for (int i = args.length; i < p.length; i++) {
+                if (p[i].isPrimitive()) {
+                    ok = false;
+                }
+            }
+            if (ok && (best == null || p.length < best.getParameterTypes().length)) {
+                best = m;
             }
         }
-        throw new NoSuchMethodException("WifiManager(Context, IWifiManager, Looper)");
+        if (best == null) {
+            throw new NoSuchMethodException(name + " with " + args.length + " arguments on " + iwifi.getClass().getName()
+                    + (have.length() == 0 ? " (no method of that name)" : " (it has: " + have.toString().trim() + ")"));
+        }
+        Class<?>[] p = best.getParameterTypes();
+        Object[] full = new Object[p.length];
+        System.arraycopy(args, 0, full, 0, args.length);
+        boolean packageGiven = false;
+        for (int i = args.length; i < p.length; i++) {
+            if (p[i] == String.class && !packageGiven) {
+                full[i] = "com.android.shell";
+                packageGiven = true;
+            }
+        }
+        return best.invoke(iwifi, full);
     }
 
     private static String hotspot(String[] a) throws Exception {
@@ -380,8 +434,7 @@ public final class ShellMain {
     }
 
     private static String hotspotInfo(Context ctx) throws Exception {
-        Object wm = wifiManager(ctx);
-        Object cfg = call(wm, "getSoftApConfiguration");
+        Object cfg = wifiCall(wifiService(), "getSoftApConfiguration");
         StringBuilder sb = new StringBuilder("OK hotspot\n");
         sb.append("band=").append(call(cfg, "getBand")).append(" (1 = 2.4 GHz, 2 = 5 GHz, 3 = either)\n");
         sb.append("channel=").append(call(cfg, "getChannel")).append('\n');
@@ -410,13 +463,13 @@ public final class ShellMain {
             default:
                 return "ERR band must be 2, 5 or auto";
         }
-        Object wm = wifiManager(ctx);
-        Object cfg = call(wm, "getSoftApConfiguration");
+        Object wm = wifiService();
+        Object cfg = wifiCall(wm, "getSoftApConfiguration");
         Class<?> bc = Class.forName("android.net.wifi.SoftApConfiguration$Builder");
         Object builder = bc.getConstructor(cfg.getClass()).newInstance(cfg);
         bc.getMethod("setBand", int.class).invoke(builder, band);
         Object updated = bc.getMethod("build").invoke(builder);
-        Object ok = call(wm, "setSoftApConfiguration", updated);
+        Object ok = wifiCall(wm, "setSoftApConfiguration", updated);
         return Boolean.TRUE.equals(ok)
                 ? "OK saved; restart the hotspot to use it"
                 : "ERR the phone refused the new hotspot settings";
@@ -496,6 +549,50 @@ public final class ShellMain {
         Throwable c = (t instanceof InvocationTargetException && t.getCause() != null)
                 ? t.getCause() : t;
         return c.toString();
+    }
+
+    /**
+     * Switches the radio off, waits, and on again, so the modem searches for a network from scratch. A band restriction
+     * (setSystemSelectionChannels) tells the modem which bands to SEARCH, so a phone that is already connected keeps its
+     * band until it searches again. Airplane mode is not used: it would also take the Wi-Fi hotspot, and the tablet, away.
+     * The radio is ALWAYS asked to come back on, twice if need be.
+     */
+    private static String radioCycle(TelephonyManager tm) throws Exception {
+        Method set = find(tm.getClass(), "setRadioPower", 1);
+        if (set == null) {
+            return "ERR this phone has no setRadioPower(boolean)";
+        }
+        String problem = null;
+        try {
+            set.invoke(tm, Boolean.FALSE);
+            Thread.sleep(4000);
+        } catch (Throwable t) {
+            problem = unwrap(t);
+        }
+        Object on = null;
+        for (int i = 0; i < 3 && !Boolean.TRUE.equals(on); i++) {
+            try {
+                on = set.invoke(tm, Boolean.TRUE);
+            } catch (Throwable t) {
+                problem = unwrap(t);
+            }
+            if (!Boolean.TRUE.equals(on)) {
+                Thread.sleep(1500);
+            }
+        }
+        if (!Boolean.TRUE.equals(on)) {
+            return "ERR the radio could not be switched back on (" + problem + "). Turn airplane mode on and off.";
+        }
+        return "OK the radio was switched off for 4 seconds and on again" + (problem == null ? "" : " (" + problem + ")");
+    }
+
+    private static String radioOn(TelephonyManager tm) throws Exception {
+        Method set = find(tm.getClass(), "setRadioPower", 1);
+        if (set == null) {
+            return "ERR this phone has no setRadioPower(boolean)";
+        }
+        Object on = set.invoke(tm, Boolean.TRUE);
+        return Boolean.TRUE.equals(on) ? "OK the radio is on" : "ERR the phone did not switch the radio on";
     }
 
     /** spec looks like "lte:5,12;nr:5,71". An empty spec clears the restriction. */

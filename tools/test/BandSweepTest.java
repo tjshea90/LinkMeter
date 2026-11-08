@@ -59,6 +59,12 @@ public final class BandSweepTest {
         boolean noServiceOnLock = false; // a locked band that is not there: no data
         int stopCalls;
         int strayAtRestore; // the band lock was cleared while a speed test was still running
+        boolean researchApplies; // a lock only takes effect when the phone searches again (research())
+        boolean researchFails; // the request to search again fails
+        long radioDownUntil = -1; // no service until then (the phone is searching)
+        String appliedSpec = ""; // the restriction the modem is really using, for a phone that applies on a search
+        int researches;
+        long searchMs = 12000; // how long the phone has no service while it searches
 
         void at(long time, Runnable r) {
             tasks.add(r);
@@ -80,15 +86,30 @@ public final class BandSweepTest {
             }
         }
 
+        /** The restriction the phone is really under: what it was asked, once it has moved (or searched again). */
+        String effectiveLock() {
+            if (!obeys) {
+                return "";
+            }
+            if (researchApplies) {
+                return appliedSpec;
+            }
+            return now - lockSetAt >= moveDelay ? lock : "";
+        }
+
         RadioState radio() {
             RadioState s = new RadioState();
-            boolean moved = obeys && now - lockSetAt >= moveDelay && !lock.isEmpty();
+            if (now < radioDownUntil) {
+                return s; // searching: no service
+            }
+            String eff = effectiveLock();
+            boolean moved = !eff.isEmpty();
             boolean nr = !fiveGOff;
-            if (moved && lock.startsWith("lte:")) {
+            if (moved && eff.startsWith("lte:")) {
                 if (noServiceOnLock) {
                     return s; // nothing to be on
                 }
-                int b = Integer.parseInt(lock.substring(4).split(",")[0]);
+                int b = Integer.parseInt(eff.substring(4).split(",")[0]);
                 s.carriers.add(new RadioState.Carrier("LTE", b, 1000, 10000, true));
             } else {
                 s.carriers.add(new RadioState.Carrier("LTE", 66, 66611, 20000, true));
@@ -217,6 +238,21 @@ public final class BandSweepTest {
         }
 
         @Override
+        public void research(BandSweep.Done<Void> d) {
+            at(now + latency, () -> {
+                researches++;
+                if (researchFails) {
+                    d.done(false, "the phone would not do it", null);
+                    return;
+                }
+                radioDownUntil = now + searchMs; // switching the radio off and on and finding a network takes a while
+                final long until = radioDownUntil;
+                at(until, () -> appliedSpec = lock); // the search ends under whatever restriction is in force by then
+                d.done(true, "OK", null);
+            });
+        }
+
+        @Override
         public void lockSpec(BandSweep.Done<String> d) {
             at(now + latency, () -> d.done(true, "ok", lock));
         }
@@ -268,6 +304,7 @@ public final class BandSweepTest {
         check(!r.runningAtEnd, tag + ": the table says it is over");
         check(p.maxUploads <= 1, tag + ": only one speed test at a time");
         check(p.strayAtRestore == 0, tag + ": no speed test is left running when the phone is put back (" + p.strayAtRestore + ")");
+        check(!p.researchApplies || p.appliedSpec.isEmpty(), tag + ": the phone is back on its own bands (" + p.appliedSpec + ")");
         int finalists = 0;
         for (BandSweep.Row row : s.rows()) {
             check(row.samples.size() <= 2, tag + ": no setting is measured more than twice (" + row.samples.size() + ")");
@@ -616,6 +653,135 @@ public final class BandSweepTest {
             s.start();
             p.run();
             over("random second pass " + seed, p, s, r, original);
+        }
+        // 18. a phone that applies a lock only when it searches again: without searching every lock is "not obeyed" (and the rest are
+        // skipped once that is plain); with searching every lock is obeyed
+        {
+            Sim p = new Sim();
+            p.researchApplies = true;
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5, 66}, new int[0], true), false, false);
+            s.start();
+            p.run();
+            over("no search", p, s, r, false);
+            check(s.rows().size() == 4 && p.researches == 0, "no search: B13 and B5 were not obeyed, B66 was skipped: " + s.rows().size() + " rows");
+            check(s.rows().get(2).verdict.equals("NOT obeyed") && s.rows().get(3).verdict.equals("NOT obeyed"), "no search: both are not obeyed");
+            String sum = s.summary();
+            check(sum.contains("searches for a network again") && sum.contains("Skipped 1 more band lock"), "no search: the summary says what to try: " + sum);
+
+            Sim q = new Sim();
+            q.researchApplies = true;
+            Rec r2 = new Rec();
+            BandSweep s2 = new BandSweep(q, r2, SweepPlan.build(new int[] {13, 5, 66}, new int[0], true), false, true);
+            s2.start();
+            q.run();
+            over("searching", q, s2, r2, false);
+            check(s2.rows().size() == 5, "searching: all five settings were measured: " + s2.rows().size());
+            for (int i = 2; i < 5; i++) {
+                check(s2.rows().get(i).verdict.equals("obeyed"), "searching: lock " + i + " was obeyed: " + s2.rows().get(i).line(false));
+            }
+            check(s2.rows().get(s2.best()).step.spec.equals("lte:5"), "searching: B5 is the best: " + s2.best());
+            check(q.researches >= 4, "searching: one search per lock and one to put the phone back (" + q.researches + ")");
+            check(s2.summary().contains("Every lock was obeyed"), "searching: the summary: " + s2.summary());
+        }
+        // 18b. a slow search (service is back after 45 s): the run waits for it instead of measuring a dead connection
+        {
+            Sim p = new Sim();
+            p.researchApplies = true;
+            p.searchMs = 45000;
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5}, new int[0], true), false, true);
+            s.start();
+            p.run();
+            over("slow search", p, s, r, false);
+            check(s.rows().size() == 4, "slow search: all four settings were measured: " + s.rows().size());
+            boolean sawService = false;
+            for (String t : r.texts) {
+                sawService |= t.contains("waiting for the phone to find service");
+            }
+            check(sawService, "slow search: the progress line says it is waiting for service");
+            for (int i = 2; i < 4; i++) {
+                BandSweep.Row row = s.rows().get(i);
+                check(row.verdict.equals("obeyed") && row.up > 0, "slow search: lock " + i + " obeyed and measured on a live connection: " + row.line(false));
+            }
+        }
+        // 19. a phone that ignores locks even after searching: the rest are skipped, and a lock that was not obeyed is never "the best"
+        {
+            Sim p = new Sim();
+            p.obeys = false;
+            p.script = new double[] {1.0, 1.4, 9.0, 8.0}; // the not-obeyed rows happen to measure the most
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5, 66, 2}, new int[0], true), false, true);
+            s.start();
+            p.run();
+            over("ignores after search", p, s, r, false);
+            check(s.rows().size() == 4, "ignores after search: now, 5G off, and two locks, the rest skipped: " + s.rows().size());
+            check(s.best() >= 0 && s.best() <= 1, "ignores after search: the best is one of the settings that really differ, not a lock that did nothing: " + s.best());
+            String sum = s.summary();
+            check(sum.contains("even after searching again") && sum.contains("spread is the noise") && sum.contains("Skipped 2 more band locks"),
+                    "ignores after search: the summary: " + sum);
+            check(!sum.contains("Best: 4G band"), "ignores after search: no lock is named best: " + sum);
+        }
+        // 20. asking the phone to search again fails: noted, the run goes on and ends clean
+        {
+            Sim p = new Sim();
+            p.researchFails = true;
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13}, new int[0], true), false, true);
+            s.start();
+            p.run();
+            over("search fails", p, s, r, false);
+            check(s.rows().get(s.rows().size() - 1).note.contains("could not make the phone search again"), "search fails: the row says so");
+        }
+        // 21. stopped at every moment of a run that searches again: always put back, nothing new starts after the stop
+        for (long stopAt = 0; stopAt < 500000; stopAt += 3700) {
+            Sim p = new Sim();
+            p.researchApplies = true;
+            Rec r = new Rec();
+            final BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5, 66}, new int[] {77}, true), true, true);
+            final int[] rowsAtStop = {-1};
+            p.at(stopAt, () -> {
+                rowsAtStop[0] = s.rows().size();
+                s.cancel();
+            });
+            s.start();
+            p.run();
+            over("search, stopped at " + stopAt, p, s, r, false);
+            check(rowsAtStop[0] < 0 || s.rows().size() == rowsAtStop[0], "search, stopped at " + stopAt + ": no new row after the stop");
+        }
+        // 22. random phones that search again
+        for (int seed = 2000; seed < 2500; seed++) {
+            Random rnd = new Random(seed);
+            Sim p = new Sim();
+            p.fiveGOff = rnd.nextInt(3) == 0;
+            boolean original = p.fiveGOff;
+            p.obeys = rnd.nextInt(3) != 0;
+            p.researchApplies = rnd.nextBoolean();
+            p.researchFails = rnd.nextInt(8) == 0;
+            p.latency = 50 + rnd.nextInt(2000);
+            p.rejectLocks = rnd.nextInt(10) == 0;
+            p.loseSwitchReply = rnd.nextInt(6) == 0;
+            p.switchFails = rnd.nextInt(8) == 0;
+            p.undoesLocks = rnd.nextInt(10) == 0;
+            p.noServiceOnLock = rnd.nextInt(8) == 0;
+            double[] script = new double[12];
+            for (int i = 0; i < script.length; i++) {
+                script[i] = rnd.nextInt(10) == 0 ? 0.0 : rnd.nextInt(80) / 10.0;
+            }
+            p.script = script;
+            Rec r = new Rec();
+            int[] lte = new int[1 + rnd.nextInt(5)];
+            for (int i = 0; i < lte.length; i++) {
+                lte[i] = new int[] {13, 5, 66, 2, 4, 12}[rnd.nextInt(6)];
+            }
+            int[] nr = rnd.nextBoolean() ? new int[] {77} : new int[0];
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(lte, nr, rnd.nextBoolean()), rnd.nextBoolean(), true);
+            if (rnd.nextInt(2) == 0) {
+                p.at(rnd.nextInt(500000), s::cancel);
+            }
+            s.start();
+            p.run();
+            over("random search " + seed, p, s, r, original);
         }
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);

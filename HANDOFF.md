@@ -8,7 +8,27 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (newest): BIG REQUEST in progress: polished file manager, attach to phone apps, Texts (SMS/MMS).**
+**2026-11-08 (newest): field results for the Bands tab and the hotspot band, and the fixes (v0.2.62).**
+- With the scan fixed (v0.2.61) the run showed `NOT obeyed` for EVERY lock: the phone (Samsung A15 5G, Verizon, Android 16) stayed on
+  B66 + B48 even when asked for B66 only. So `setSystemSelectionChannels` is acknowledged and ignored AS APPLIED. Upload was 0.7 to 2.8
+  Mbit/s on identical bands (the noise), signal about -104 dBm. The user asked "does this mean I can't lock bands".
+- Reasoning: Android's HAL describes that request as "which bands the modem's background SCAN acts on", so a phone that is already
+  connected may keep its band until it searches again, and nothing made it search. NEW (untested on the phone): `ShellMain radio-cycle`
+  (`TelephonyManager.setRadioPower(false)`, 4 s, then true, retried; airplane mode is NOT used because it would also drop the hotspot and
+  the tablet), action `radio_cycle`, `radio-on` called by Restore everything, `BandSweep` option `research` (checkbox "Make the phone
+  search again after each lock", default on, waits up to 70 s for service) and a manual button "Make the phone search again". If the
+  phone STILL says NOT obeyed after a search, treat band locks as impossible on this firmware (carrier-locked), and say so; the
+  remaining levers are 5G on/off, the phone's position/signal, and Samsung's own service menu (`*#2263#`, often removed on Verizon).
+- The run is now honest when locks are ignored: after two NOT obeyed locks the remaining locks are skipped; a NOT obeyed row can never
+  be "the best" (`Row.effective()`); the summary shows the spread of the rows that were not obeyed ("that spread is the noise") and
+  names a best only if its carriers differ from the phone's own. Tests: BandSweepTest about 35,800 checks, six breakages caught.
+- Hotspot band (Control tab, 2.4 / 5 GHz): `NoSuchMethodException: WifiManager(Context, IWifiManager, Looper)` on Android 16. ShellMain
+  no longer builds a WifiManager: it calls the `IWifiManager` binder directly (`wifiService`, `wifiCall` fills in the package name), so
+  the constructor shape no longer matters. NOT yet seen working: Samsung may keep its own hotspot settings. `hotspotRestart` still builds
+  a `TetheringManager(Context, Supplier)` by reflection and may need the same treatment if "Restart hotspot" fails. NOTE for the user:
+  the hotspot's Wi-Fi band changes only the tablet-to-phone link, not the mobile upload.
+
+**2026-11-08 (later): BIG REQUEST in progress: polished file manager, attach to phone apps, Texts (SMS/MMS).**
 The user asked (after the Bands work, v0.2.61 is the last release before this): send and receive SMS on the tablet with easy
 photo/file attachments; attach tablet photos/files to ANY app on the phone while using it remotely; revamp the Files tab into a
 polished file manager (copy/paste/delete, thumbnails, like File Manager +) so files move easily between phone and tablet.

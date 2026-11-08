@@ -52,6 +52,7 @@ final class BandsTab extends Tab {
     private EditText nrList;
     private CheckBox fiveGOffBox;
     private CheckBox confirmBox;
+    private CheckBox researchBox;
     private Button sweepBtn;
     private Button stopBtn;
     private Button useBestBtn;
@@ -126,6 +127,10 @@ final class BandsTab extends Tab {
         row.addView(Ui.button(act, "Scan cells", v -> scan(true)), Ui.weight());
         row.addView(Ui.button(act, "Read lock info", v -> info()), Ui.weight());
         col.addView(row, Ui.lp(act, 8));
+        col.addView(Ui.button(act, "Make the phone search again", v -> searchAgain()), Ui.lp(act, 4));
+        col.addView(Ui.text(act, "A band lock only tells the modem which bands to search, so the phone may keep the band it is "
+                + "on until it searches again. Lock a band, press this, wait about 30 seconds, then Scan cells.", 12, Ui.DIM, false),
+                Ui.lp(act, 2));
 
         cellsText = Ui.text(act, "", 12, Ui.FG, false);
         cellsText.setTypeface(Typeface.MONOSPACE);
@@ -232,6 +237,12 @@ final class BandsTab extends Tab {
         confirmBox.setTextColor(Ui.FG);
         confirmBox.setChecked(true);
         col.addView(confirmBox, Ui.lp(act, 6));
+        researchBox = new CheckBox(act);
+        researchBox.setText("Make the phone search again after each lock (the phone loses mobile data for about 30 s per "
+                + "lock; a lock may only apply when the phone searches for a network)");
+        researchBox.setTextColor(Ui.FG);
+        researchBox.setChecked(true);
+        col.addView(researchBox, Ui.lp(act, 6));
         LinearLayout row = new LinearLayout(act);
         row.setOrientation(LinearLayout.HORIZONTAL);
         sweepBtn = Ui.button(act, "Start", v -> startSweep());
@@ -272,7 +283,7 @@ final class BandsTab extends Tab {
             public void rows(List<BandSweep.Row> rows, int best, boolean running) {
                 renderRows(rows, best, running);
             }
-        }, plan, confirmBox.isChecked());
+        }, plan, confirmBox.isChecked(), researchBox.isChecked());
         say("Starting a comparison of " + plan.size() + " settings. Any band lock is cleared first.", true);
         sweep.start();
     }
@@ -290,7 +301,7 @@ final class BandsTab extends Tab {
             return;
         }
         StringBuilder sb = new StringBuilder();
-        String summary = running ? "" : BandSweep.summary(lastRows);
+        String summary = running ? "" : (sweep != null ? sweep.summary() : BandSweep.summary(lastRows));
         if (!summary.isEmpty()) {
             sb.append(summary).append("\n\n");
         }
@@ -444,6 +455,12 @@ final class BandsTab extends Tab {
         });
     }
 
+    /** Switches the phone's radio off for a few seconds and on again, so it searches for a network from scratch. */
+    private void searchAgain() {
+        say("Making the phone search again… it loses mobile data for a short while.", true);
+        Call.run(act, "POST", "/act?name=radio_cycle", 50000, (ok, text, json) -> say(text, ok));
+    }
+
     private void info() {
         say("Asking the phone…", true);
         Call.run(act, "GET", "/bandinfo", 50000, (ok, text, json) -> say(text, ok));
@@ -543,7 +560,10 @@ final class BandsTab extends Tab {
             if (!lockSpec.isEmpty() && (after || (result != null && result.getText().length() == 0))) {
                 BandCheck.Result v = BandCheck.verify(lockSpec, rs.carriers);
                 say((v.verdict == BandCheck.Verdict.OBEYED ? "✓ " : v.verdict == BandCheck.Verdict.NOT_OBEYED ? "✗ " : "? ")
-                        + v.text, v.verdict != BandCheck.Verdict.NOT_OBEYED);
+                        + v.text + (v.verdict == BandCheck.Verdict.NOT_OBEYED
+                        ? "\nA lock may only apply when the phone searches again: press \"Make the phone search again\", wait "
+                                + "about 30 seconds, then Scan cells." : ""),
+                        v.verdict != BandCheck.Verdict.NOT_OBEYED);
             }
         }
         paintStatus();

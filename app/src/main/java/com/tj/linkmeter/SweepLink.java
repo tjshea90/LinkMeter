@@ -76,6 +76,11 @@ final class SweepLink implements BandSweep.Link {
     }
 
     @Override
+    public void research(final BandSweep.Done<Void> d) {
+        Call.run(act, "POST", "/act?name=radio_cycle", 45000, (ok, text, json) -> d.done(ok, text, null));
+    }
+
+    @Override
     public void later(long ms, Runnable r) {
         act.ui.postDelayed(r, ms);
     }

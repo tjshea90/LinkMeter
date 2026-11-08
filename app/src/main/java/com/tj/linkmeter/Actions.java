@@ -69,6 +69,14 @@ final class Actions {
                 return setup(c);
             case "restore":
                 return restoreAll(c);
+            case "radio_cycle": {
+                // for the band lock: the modem applies a restriction when it SEARCHES, so make it search again
+                Priv.Result r = Cells.shellMain(c, "radio-cycle");
+                if (!r.out.contains("OK ")) {
+                    throw new IOException(firstLine(r.out));
+                }
+                return firstLine(r.out);
+            }
             case "restart_modem":
                 return report(Priv.run("cmd phone restart-modem", 30),
                         "Modem restart requested. Mobile data comes back in a minute or so.");
@@ -242,6 +250,11 @@ final class Actions {
             }
         } catch (IOException e) {
             sb.append("Band lock: ").append(e.getMessage()).append('\n');
+        }
+        try {
+            Cells.shellMain(c, "radio-on"); // a band test may have been cut off while the radio was off
+        } catch (IOException ignored) {
+            // nothing more to do here
         }
         long saved = Saved.types(c);
         long target = saved > 0 ? saved : DEFAULT_TYPES;

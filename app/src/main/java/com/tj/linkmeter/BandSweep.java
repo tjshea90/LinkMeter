@@ -86,6 +86,12 @@ final class BandSweep {
         /** The lock the phone has right now ("" = none). */
         void lockSpec(Done<String> d);
 
+        /**
+         * Makes the phone search for a network again (its radio is switched off and on). A band lock tells the modem which bands to
+         * SEARCH, so a phone that is already connected may keep its band until it searches again. ok = it was done.
+         */
+        void research(Done<Void> d);
+
         void later(long ms, Runnable r);
 
         long now();
@@ -123,6 +129,11 @@ final class BandSweep {
                 sum += v;
             }
             up = sum / samples.size();
+        }
+
+        /** Does this row measure the setting it names? A lock that was not obeyed just measured the phone's own choice again. */
+        boolean effective() {
+            return step.spec.isEmpty() || !verdict.equals("NOT obeyed");
         }
 
         String line(boolean best) {
@@ -163,6 +174,19 @@ final class BandSweep {
     private boolean finishing;
     /** After the main pass, measure the best three settings once more. */
     private final boolean confirm;
+    /** After a lock, make the phone search again, because that is when the modem applies a band restriction. */
+    private final boolean research;
+    /** A band lock is set on the phone right now. */
+    private boolean lockApplied;
+    /** The phone has listed its carriers at least once (so an empty list later means "no service yet", not "cannot list"). */
+    private boolean listedBefore;
+    /** The last look found no carriers on a phone that had listed them before. */
+    private boolean noService;
+    /** How long poll() waits for the phone to settle on this step. */
+    private long waitLimit = 22000;
+    private int ignoredLocks;
+    private int obeyedLocks;
+    private int skippedLocks;
     private boolean confirming;
     private final List<Integer> queue = new ArrayList<>();
     private int queuePos = -1;
@@ -176,10 +200,21 @@ final class BandSweep {
 
     /** confirm: after all the steps, the best three are measured once more and only those can be the best. */
     BandSweep(Link link, Listener ui, List<SweepPlan.Step> steps, boolean confirm) {
+        this(link, ui, steps, confirm, false);
+    }
+
+    /** research: after each lock the phone is made to search again (its radio off and on) before it is checked and measured. */
+    BandSweep(Link link, Listener ui, List<SweepPlan.Step> steps, boolean confirm, boolean research) {
         this.link = link;
         this.ui = ui;
         this.steps = steps;
         this.confirm = confirm;
+        this.research = research;
+    }
+
+    /** Two locks in a row were not obeyed and none was: the phone ignores locks, another one would only repeat the same test. */
+    private boolean locksIgnored() {
+        return ignoredLocks >= 2 && obeyedLocks == 0;
     }
 
     boolean running() {
@@ -194,7 +229,10 @@ final class BandSweep {
         return bestOf(rows);
     }
 
-    /** The best row: the highest upload, among the settings that were measured twice if a second pass was made. */
+    /**
+     * The best row: the highest upload, among the settings that were measured twice if a second pass was made. A lock that was
+     * not obeyed is never the best: it only measured the phone's own choice again, and "using" it would change nothing.
+     */
     static int bestOf(List<Row> rows) {
         boolean anyFinalist = false;
         for (Row r : rows) {
@@ -203,7 +241,7 @@ final class BandSweep {
         double[] up = new double[rows.size()];
         for (int i = 0; i < up.length; i++) {
             Row r = rows.get(i);
-            up[i] = anyFinalist && !r.finalist ? -1 : r.up;
+            up[i] = !r.effective() || (anyFinalist && !r.finalist) ? -1 : r.up;
         }
         return BandCheck.best(up);
     }
@@ -257,15 +295,25 @@ final class BandSweep {
             setFiveG(row.step);
             return;
         }
-        if (++index >= steps.size()) {
-            if (startConfirming()) {
-                next();
-            } else {
-                finish();
+        SweepPlan.Step s;
+        while (true) {
+            if (++index >= steps.size()) {
+                if (startConfirming()) {
+                    next();
+                } else {
+                    finish();
+                }
+                return;
             }
-            return;
+            s = steps.get(index);
+            if (!s.spec.isEmpty() && locksIgnored()) {
+                if (++skippedLocks == 1) {
+                    ui.progress("The phone ignores band locks: skipping the rest of them…");
+                }
+                continue;
+            }
+            break;
         }
-        SweepPlan.Step s = steps.get(index);
         row = new Row(s);
         rows.add(row);
         publish();
@@ -284,7 +332,7 @@ final class BandSweep {
         }
         List<Integer> measured = new ArrayList<>();
         for (int i = 0; i < rows.size(); i++) {
-            if (rows.get(i).up >= 0) {
+            if (rows.get(i).up >= 0 && rows.get(i).effective()) {
                 measured.add(i);
             }
         }
@@ -351,6 +399,26 @@ final class BandSweep {
                 next();
                 return;
             }
+            boolean wasLocked = lockApplied;
+            lockApplied = !s.spec.isEmpty();
+            if (research && (lockApplied || wasLocked)) {
+                // the modem applies a band restriction when it searches: make it search (this also puts the phone back on its own bands after a lock)
+                say(s, "making the phone search again");
+                link.research((ok2, text2, v2) -> {
+                    if (cancelled) {
+                        finish();
+                        return;
+                    }
+                    if (!ok2) {
+                        row.note = join(row.note, "could not make the phone search again: " + text2);
+                    }
+                    waitLimit = 70000; // service is gone for a while, then comes back
+                    final long t1 = link.now();
+                    link.later(8000, () -> poll(s, t1));
+                });
+                return;
+            }
+            waitLimit = 22000;
             long wait = switched5g ? 10000 : (s.spec.isEmpty() ? 1500 : 4000); // the modem needs a few seconds to move
             final long t0 = link.now();
             link.later(wait, () -> poll(s, t0));
@@ -363,7 +431,7 @@ final class BandSweep {
             finish();
             return;
         }
-        say(s, "waiting for the phone to move");
+        say(s, noService ? "waiting for the phone to find service" : "waiting for the phone to move");
         link.observe((ok, text, obs) -> {
             if (cancelled) {
                 finish();
@@ -372,6 +440,11 @@ final class BandSweep {
             long waited = link.now() - t0;
             if (ok && obs != null) {
                 RadioState rs = obs.state;
+                if (!rs.carriers.isEmpty()) {
+                    listedBefore = true;
+                }
+                // a phone that has listed its carriers and now lists none has no service yet: that is waited out, not "cannot tell"
+                noService = rs.carriers.isEmpty() && listedBefore;
                 BandCheck.Result v = BandCheck.verify(s.spec, rs.carriers);
                 boolean nrStillOn = false;
                 for (RadioState.Carrier c : rs.carriers) {
@@ -383,7 +456,7 @@ final class BandSweep {
                     row.rsrp = obs.rsrp;
                 }
                 boolean settled = v.verdict == BandCheck.Verdict.OBEYED && !fiveGWrong;
-                if (settled || waited >= 22000 || (v.verdict == BandCheck.Verdict.UNKNOWN && waited >= 10000)) {
+                if (settled || waited >= waitLimit || (v.verdict == BandCheck.Verdict.UNKNOWN && !listedBefore && waited >= 10000)) {
                     String verdict = v.verdict == BandCheck.Verdict.OBEYED ? (s.spec.isEmpty() ? "" : "obeyed")
                             : v.verdict == BandCheck.Verdict.NOT_OBEYED ? "NOT obeyed" : "can't tell";
                     if (confirming) {
@@ -394,6 +467,13 @@ final class BandSweep {
                         }
                     } else {
                         row.verdict = verdict;
+                        if (!s.spec.isEmpty()) {
+                            if (verdict.equals("NOT obeyed")) {
+                                ignoredLocks++;
+                            } else if (verdict.equals("obeyed")) {
+                                obeyedLocks++;
+                            }
+                        }
                         if (fiveGWrong) {
                             row.note = "5G was still on";
                         }
@@ -402,7 +482,7 @@ final class BandSweep {
                     measure(s);
                     return;
                 }
-            } else if (waited >= 22000) {
+            } else if (waited >= waitLimit) {
                 if (confirming) {
                     row.note = join(row.note, "second check: the phone could not be read");
                 } else {
@@ -506,7 +586,15 @@ final class BandSweep {
         }
         finishing = true;
         ui.progress("Putting the phone back as it was…");
-        link.setLock("", (ok, text, v) -> restoreFiveG());
+        link.setLock("", (ok, text, v) -> {
+            if (research && lockApplied) {
+                lockApplied = false;
+                ui.progress("Making the phone search again, so it is back on its own bands…");
+                link.research((a, t, x) -> restoreFiveG());
+            } else {
+                restoreFiveG();
+            }
+        });
     }
 
     /** Asks the phone (it may have changed even if a reply was lost) and switches 5G back only if it differs. */
@@ -532,6 +620,19 @@ final class BandSweep {
 
     /** What the finished table says, in plain words: were locks obeyed at all, and how much better is the best one. */
     static String summary(List<Row> rows) {
+        return summary(rows, false, 0);
+    }
+
+    /** This run's summary: whether it searched again after each lock, and how many locks it skipped as pointless. */
+    String summary() {
+        return summary(rows, research, skippedLocks);
+    }
+
+    private static boolean sameSituation(Row a, Row b) {
+        return !a.using.isEmpty() && !a.using.startsWith("carriers not listed") && a.using.equals(b.using);
+    }
+
+    static String summary(List<Row> rows, boolean searchedAgain, int skippedLocks) {
         int locks = 0;
         int obeyed = 0;
         int notObeyed = 0;
@@ -557,9 +658,32 @@ final class BandSweep {
             if (rejected == locks) {
                 sb.append("The modem rejected every band lock: this phone does not take band locks from here.");
             } else if (notObeyed == locks - rejected && notObeyed > 0 && obeyed == 0) {
-                sb.append("The phone did not obey any of the band locks it acknowledged: it keeps its own bands, so locking "
-                        + "bands from here will not change what it uses. The upload numbers below mostly show the noise "
-                        + "of the connection.");
+                if (searchedAgain) {
+                    sb.append("The phone did not obey any band lock, even after searching again: it keeps its own bands, so "
+                            + "locking bands from here will not change what it uses. Only 5G on or off does.");
+                } else {
+                    sb.append("The phone did not obey any of the band locks it acknowledged. A lock may only apply when the phone "
+                            + "searches for a network again: tick \"Make the phone search again after each lock\" and run it "
+                            + "again. If it still stays on its own bands, band locks cannot change what this phone uses; only "
+                            + "5G on or off does.");
+                }
+                // the rows that were not obeyed are all the same connection: how far apart they are is the noise
+                double lo = Double.MAX_VALUE;
+                double hi = -1;
+                int n = 0;
+                for (Row r : rows) {
+                    if (!r.effective()) {
+                        for (double v : r.samples) {
+                            lo = Math.min(lo, v);
+                            hi = Math.max(hi, v);
+                            n++;
+                        }
+                    }
+                }
+                if (n >= 2) {
+                    sb.append(String.format(Locale.US, "\nThe %d tests of locks that were not obeyed are the same connection "
+                            + "measured again and again: %.1f to %.1f Mbit/s. That spread is the noise.", n, lo, hi));
+                }
             } else if (obeyed == locks) {
                 sb.append("Every lock was obeyed, so each number is for the band named.");
             } else if (obeyed > 0) {
@@ -570,8 +694,12 @@ final class BandSweep {
                         + "upload numbers are all about the same, the locks are probably doing nothing.");
             }
         }
+        if (skippedLocks > 0) {
+            sb.append(sb.length() > 0 ? "\n" : "").append("Skipped ").append(skippedLocks).append(skippedLocks == 1 ? " more band lock"
+                    : " more band locks").append(": the phone had ignored the first ones.");
+        }
         int best = bestOf(rows);
-        if (best >= 0 && !rows.isEmpty() && rows.get(0).up > 0 && best != 0) {
+        if (best >= 0 && !rows.isEmpty() && rows.get(0).up > 0 && best != 0 && !sameSituation(rows.get(best), rows.get(0))) {
             double times = rows.get(best).up / rows.get(0).up;
             if (times >= 1.3) {
                 int n = rows.get(best).samples.size();
