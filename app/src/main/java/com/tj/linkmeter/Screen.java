@@ -140,10 +140,10 @@ final class Screen {
                     break;
                 }
                 case "/screen/on":
-                    run(out, "input keyevent 224", "Screen on.");
+                    power(out, pm, true);
                     break;
                 case "/screen/off":
-                    run(out, "input keyevent 223", "Screen off.");
+                    power(out, pm, false);
                     break;
                 case "/screen/text": {
                     String t = body(r, 120);
@@ -199,6 +199,45 @@ final class Screen {
             throw new IllegalArgumentException("bad " + key);
         }
         return v;
+    }
+
+    /**
+     * Wakes or sleeps the phone and checks that it really happened. A key press that exits cleanly can still do
+     * nothing, and the tablet used to be told "Screen off." anyway. If the phone has not followed after a second
+     * and a half, the power key is tried as well; that key toggles, so it is only pressed while the phone is still
+     * in the wrong state. The answer says what the screen really is ("on") so the tablet need not guess.
+     */
+    private static void power(OutputStream out, PowerManager pm, boolean wantOn) throws IOException {
+        String problem = "";
+        try {
+            int[] keys = {wantOn ? 224 : 223, 26};
+            for (int key : keys) {
+                if (pm.isInteractive() == wantOn) {
+                    break;
+                }
+                try {
+                    Priv.Result res = Priv.run("input keyevent " + key, 10);
+                    if (!res.ok()) {
+                        problem = res.out;
+                        continue;
+                    }
+                } catch (IOException e) {
+                    problem = String.valueOf(e.getMessage()); // Shizuku went away in the middle of it
+                    continue;
+                }
+                for (int i = 0; i < 15 && pm.isInteractive() != wantOn; i++) {
+                    Thread.sleep(100);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (pm.isInteractive() == wantOn) {
+            Http.json(out, 200, "{\"ok\":true,\"on\":" + wantOn + ",\"out\":\"" + (wantOn ? "Screen on." : "Screen off.") + "\"}");
+        } else {
+            Http.err(out, 409, "The phone did not " + (wantOn ? "wake up" : "go to sleep")
+                    + (problem.isEmpty() ? " (it was told twice)." : ": " + problem));
+        }
     }
 
     private static void run(OutputStream out, String cmd, String okText) throws IOException {

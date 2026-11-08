@@ -87,6 +87,10 @@ final class ScreenTab extends Tab {
     private boolean waitingForScreen;
     private int mode;
     private boolean phoneOn = true;
+    /** The rules for the Sleep / Wake button and for believing answers about the phone's screen (tested offline). */
+    private final PhonePower power = new PhonePower();
+    /** When Sleep was last confirmed: a touch just after it must not wake the phone again. */
+    private long sleptAt;
     private boolean phoneLocked;
     /** The phone's app version from its last answer: null = it has not answered yet, "" = an older phone that does not say. */
     private String phoneVersion;
@@ -569,16 +573,12 @@ final class ScreenTab extends Tab {
                     return;
                 }
                 if (ok && json != null) {
-                    phoneOn = json.optBoolean("on", true);
                     phoneLocked = json.optBoolean("locked", false);
                     phoneVersion = json.optString("vn", "");
-                    paintBars();
+                    applyPoll(json.optBoolean("on", true));
+                    paintBars(); // the lock state may have changed too
                     if (phoneOn && waitingForScreen && mode == 0 && video == null && surfaceReady) {
-                        waitingForScreen = false;
-                        if (note != null) {
-                            note.setVisibility(View.GONE);
-                        }
-                        startVideo();
+                        phoneWokeUp();
                     }
                 }
                 act.ui.postDelayed(this, 3000);
@@ -773,7 +773,8 @@ final class ScreenTab extends Tab {
         video = null;
         lastError = why;
         if (screenOff) {
-            phoneOn = false;
+            power.forceOff();
+            phoneOn = power.on();
             waitingForScreen = true;
             paintBars();
             showNote("The phone's screen is off.\nTap Wake.");
@@ -1057,15 +1058,14 @@ final class ScreenTab extends Tab {
             return;
         }
         if (f.bmp != null) {
-            phoneOn = true;
+            applyPoll(true);
             pics.setFrame(f.bmp, f.w, f.h);
             note.setVisibility(View.GONE);
             setStatus((fellBack ? "Pictures (video was not available) · " : "Pictures · ")
                     + ScreenPrefs.PRESETS[prefs.preset()] + ". Drag on the picture to control the phone.");
         } else {
             if (f.off) {
-                phoneOn = false;
-                paintBars();
+                applyPoll(false);
             }
             showNote(f.note);
             setStatus(f.off ? "The phone's screen is off." : f.note);
@@ -1127,9 +1127,9 @@ final class ScreenTab extends Tab {
             swallow = false;
             if (!phoneOn && prefs.tapToWake()) {
                 swallow = true; // this touch only wakes the phone
-                wake();
-                phoneOn = true;
-                paintBars();
+                if (SystemClock.elapsedRealtime() - sleptAt > 1500) { // a stray touch right after Sleep must not undo it
+                    wake();
+                }
                 return;
             }
             fbX = x;
@@ -1227,21 +1227,106 @@ final class ScreenTab extends Tab {
         }
     }
 
+    /** The Sleep / Wake button. */
     private void togglePower() {
-        if (phoneOn) {
-            post("/screen/off");
-            woke = false;
-            phoneOn = false;
-        } else {
-            wake();
-            phoneOn = true;
-        }
-        paintBars();
+        pressPower(power.press(SystemClock.elapsedRealtime()));
     }
 
+    /** Wakes a sleeping phone (the PIN pad and a tap on its picture use this); nothing happens if it is on. */
     private void wake() {
-        woke = true;
-        post("/screen/on");
+        pressPower(power.wake(SystemClock.elapsedRealtime()));
+    }
+
+    /**
+     * Puts the phone to sleep or wakes it, as PhonePower decided. The button shows the new state at once; the phone
+     * checks that its screen really followed (and tries the power key if it did not) and says so.
+     */
+    private void pressPower(boolean accepted) {
+        phoneOn = power.on();
+        paintBars();
+        if (!accepted) {
+            return; // the last press is still being carried out, or there was nothing to do
+        }
+        final boolean wantOn = power.wanted();
+        woke = wantOn;
+        setStatus(wantOn ? "Waking the phone…" : "Putting the phone to sleep…");
+        sendPower(wantOn, 0);
+    }
+
+    private void sendPower(final boolean wantOn, final int attempt) {
+        Call.run(act, "POST", wantOn ? "/screen/on" : "/screen/off", 30000, (ok, text, json) -> {
+            long now = SystemClock.elapsedRealtime();
+            if (!ok && attempt == 0) {
+                // a network hiccup or a slow phone: once more
+                act.ui.postDelayed(() -> sendPower(wantOn, 1), 500);
+                return;
+            }
+            PhonePower.Change change = null;
+            if (ok) {
+                change = power.confirmed(json != null && json.has("on") ? json.optBoolean("on") : wantOn, now);
+            } else {
+                power.failed(now);
+            }
+            phoneOn = power.on();
+            if (!shown) {
+                return;
+            }
+            paintBars();
+            if (change == PhonePower.Change.WENT_OFF) {
+                sleptAt = now;
+                phoneWentOff();
+            } else if (change == PhonePower.Change.WOKE) {
+                phoneWokeUp();
+            } else {
+                setStatus(text);
+                Toast.makeText(act, text, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    /** An answer about the phone's screen (the state timer, or a picture): see PhonePower for why some are not believed. */
+    private void applyPoll(boolean on) {
+        boolean was = phoneOn;
+        PhonePower.Change change = power.poll(on, SystemClock.elapsedRealtime());
+        phoneOn = power.on();
+        if (phoneOn != was) {
+            paintBars(); // (pictures arrive many times a second: only repaint when something changed)
+        }
+        if (change == PhonePower.Change.WENT_OFF) {
+            phoneWentOff();
+        } else if (change == PhonePower.Change.WOKE) {
+            phoneWokeUp();
+        }
+    }
+
+    /**
+     * The phone's screen is off (it was put to sleep, or fell asleep by itself). Say so and stop the video, instead of
+     * leaving the last picture up as if the phone were awake: screenrecord sends nothing while the display is off, so
+     * nothing else would ever tell this tab, and Sleep looked as if it had done nothing.
+     */
+    private void phoneWentOff() {
+        waitingForScreen = true;
+        if (mode == 0) {
+            stopVideo();
+            hideStill();
+        }
+        showNote("The phone's screen is off.\nTap Wake.");
+        setStatus("The phone's screen is off.");
+    }
+
+    /** The phone's screen is on again: bring the picture back. */
+    private void phoneWokeUp() {
+        if (!waitingForScreen) {
+            return;
+        }
+        waitingForScreen = false;
+        if (note != null) {
+            note.setVisibility(View.GONE);
+        }
+        if (shown && mode == 0 && video == null && surfaceReady) {
+            setStatus("Starting video…");
+            startVideo();
+        }
     }
 
     // ------------------------------------------------------------ PIN and settings panels
@@ -1249,8 +1334,6 @@ final class ScreenTab extends Tab {
     private void showPin() {
         if (!phoneOn) {
             wake();
-            phoneOn = true;
-            paintBars();
         }
         View pad = PinPad.build(act, new PinPad.Done() {
             @Override
@@ -1310,6 +1393,23 @@ final class ScreenTab extends Tab {
             @Override
             public void tabletAwakeChanged() {
                 applyAwake();
+            }
+
+            @Override
+            public String versionsText() {
+                String mine = Updater.versionName(act);
+                String theirs = phoneVersion == null ? "has not answered yet"
+                        : phoneVersion.isEmpty() ? "has an older build" : "has " + phoneVersion;
+                String t = "LinkMeter " + mine + " on this tablet, the phone " + theirs + ".";
+                if (phoneVersion != null && !phoneVersion.equals(mine)) {
+                    t += " The builds differ: put the newest on the tablet, then Control > Update phone from this tablet.";
+                }
+                return t;
+            }
+
+            @Override
+            public String awakeText() {
+                return act.awakeReport();
             }
 
             @Override
@@ -1389,6 +1489,7 @@ final class ScreenTab extends Tab {
                 .append(tuneOff ? " (switched off for this visit because the decoder showed nothing)" : "").append('\n');
         sb.append(diagText.isEmpty() ? "Stream: not started yet" : diagText).append('\n');
         sb.append("Now: ").append(fps).append(" fps, ").append(kbps).append(" kbit/s, peak ").append(peak).append(" kbit/s\n");
+        sb.append(act.awakeReport()).append('\n');
         sb.append("Touch channel: ").append(ctlText).append('\n');
         sb.append("Phone screen: ").append(phoneOn ? "on" : "off").append(phoneLocked ? ", locked" : "").append('\n');
         sb.append("Last video problem: ").append(lastError.isEmpty() ? "none" : lastError).append('\n');

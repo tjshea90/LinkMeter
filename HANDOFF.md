@@ -8,21 +8,27 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (even later), IN PROGRESS: the user's report on v0.2.51: "the screen still dims quickly on the tablet, and a
-lot of times the sleep button doesn't work".** What I found (code reading only, no device) and what I am doing:
-- Sleep: the Sleep button sends `input keyevent 223` and the phone answers "Screen off." as soon as that command exits, without
-  checking that the phone slept. The tablet only relabels the button, so with the live video the last frame stays on screen as if
-  the phone were awake (screenrecord sends nothing while the display is off, so nothing tells the tablet). The tablet's
-  `phoneOn` is flipped optimistically and overwritten by a 3 s poll that can still carry the old answer. The phone's server also
-  drops a connection silently when all 8 workers are busy (`SenderService`). Plan: phone checks `isInteractive()` and retries with
-  the power key and answers truthfully; tablet state machine `PhonePower` (tested offline) with a settle window, `phoneWentOff()`
-  that stops the video and shows "The phone's screen is off. Tap Wake.", retries and visible errors; 16 workers and a 503 reply.
-- Tablet dimming: v0.2.51 holds `FLAG_KEEP_SCREEN_ON` while the Screen tab is shown (checked: `Cfg.getBool` default honoured,
-  lifecycle calls `setHoldAwake` right). Cause on the user's tablet still unknown (old APK on the tablet? an OEM power manager?).
-  Plan: also a timed SCREEN_BRIGHT wake lock and the view flag, an Information line with the window flag, wake lock, Android's own
-  screen timeout, brightness and battery saver, and the tablet and phone versions at the top of Options.
-- Ask the user for the Information text ("Copy this information") if the dimming persists after this.
-
+**2026-11-08 (even later): the user's report on v0.2.51, "the screen still dims quickly on the tablet, and a lot of times the
+sleep button doesn't work". Changed in code, NOT yet seen on a device; read "Field test" items 11 and 12.**
+- Sleep. Found by reading the code (no device here): the phone answered "Screen off." as soon as `input keyevent 223` exited,
+  without checking that it slept; the tablet only relabelled the button, so with live video the last frame stayed up as if the
+  phone were awake (screenrecord sends nothing while the display is off, so nothing told the tablet); `phoneOn` was flipped
+  optimistically and overwritten by a 3 s poll that could still carry the old answer; and the phone's server dropped a connection
+  silently when all 8 workers were busy. Now: `Screen.power` checks `PowerManager.isInteractive()` after the key, retries with
+  the power key (which toggles, so only while the state is still wrong) and answers `{"ok":true,"on":bool,"out":..}` or a 409
+  that says it did not work; tablet `PhonePower` (pure, `tools/test/PhonePowerTest.java`) decides what to believe (no answer
+  about the phone's state counts while a press is in flight or for 3 s after it); `ScreenTab.phoneWentOff()` stops the video and
+  shows "The phone's screen is off. Tap Wake." (also when the phone falls asleep by itself); a failed press is retried once and
+  then shown in a toast; a touch within 1.5 s after Sleep does not wake the phone; the server has 16 workers and answers 503
+  "busy" instead of hanging up.
+- Tablet dimming. v0.2.51 already held `FLAG_KEEP_SCREEN_ON` while the Screen tab is shown and I could find no bug in it (checked:
+  the default of `Cfg.getBool` is honoured, `onPause`/`onResume` call `setHoldAwake` in the right order, no other code clears the
+  flag). The cause on the user's tablet is therefore still UNKNOWN: an old APK on the tablet? an OEM power manager? Added: a
+  second request through the view flag, a bright-screen wake lock that is renewed while the tab is open and runs out by itself
+  after 10 minutes (permission `WAKE_LOCK`), the tablet's and the phone's versions at the top of Options, and an Information line
+  "Tablet screen: held on by the Screen tab (window flag set, wake lock held); Android's own screen timeout N s, brightness ..,
+  battery saver ..". If it still dims, ask for that Information text: flag set + wake lock held + still dimming means the tablet's
+  own firmware overrides apps.
 
 **2026-11-08 (later): the user's field report on v0.2.47 is fixed in code, released as v0.2.51 (NOT yet seen on a device).** Report: the picture
 sometimes showed blocks of old and new screen mixed while a page loaded (screenshot), and the TABLET dimmed after a short idle.
@@ -117,6 +123,7 @@ older estimate, kept for the unconfirmed rows.
 | Screen tab, live H.264 video + live touch (first version) | Screen.video/ctl, VideoStream, CtlChannel, ShellMain inject | Shizuku (screenrecord, app_process helper) | CONFIRMED by the user: works very well |
 | Screen tab, new interface (side bars, typing, number pad, Options, sharp still, header fix) | ScreenTab, RemoteLayout, TypingView, PinPad, AdvancedPanel, SpsFix | same | LOW until field-tested |
 | Screen tab: exact picture cutting, restart on damage, tablet stays awake | AnnexBFramer, VideoStream, ScreenTab, Screen.video, MainActivity | same | LOW until field-tested (offline tests pass) |
+| Screen tab: Sleep / Wake that checks itself, "phone is off" state, backup wake lock, busy reply | PhonePower, ScreenTab, Screen.power, MainActivity, SenderService | same | LOW until field-tested (offline tests pass) |
 | Phone screen kept on and dimmed during remote use, restored after | RemoteProfile, ProfilePlan, Eco | Shizuku (`settings put system ...`) | LOW until field-tested (logic tested offline) |
 
 ## Where things stand (latest, replaces the old "open issue" note)
@@ -212,8 +219,12 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
   3 minutes.
 - `GET /screen/frame?w=&q=`: Pictures mode and the sharp still. `screencap` raw (16-byte header: width, height, format,
   dataspace, then RGBA) is scaled and sent as JPEG; it falls back to `screencap -p` into a file. One-shot actions
-  `/screen/tap|swipe|key|on|off|text|pin` are the slow path used when the touch channel is not up. `/screen/state` answers
-  `{"on":..,"locked":..,"prof":..}` and is polled every 3 s while the tab is open (it also renews the session lease).
+  `/screen/tap|swipe|key|text|pin` are the slow path used when the touch channel is not up. `/screen/on` and `/screen/off` wake and
+  sleep the phone and CHECK it (`Screen.power`): key 224 / 223, wait up to 1.5 s for `isInteractive()` to follow, then the power
+  key (26, a toggle) if it is still wrong; reply `{"ok":true,"on":<real state>,"out":..}`, or 409 "did not wake up / go to
+  sleep". `/screen/state` answers `{"on":..,"locked":..,"prof":..,"vn":"<app version>"}` and is polled every 3 s while the tab is
+  open (it also renews the session lease). The phone's server (`SenderService`) has 16 workers and no queue; when all are busy it
+  answers 503 "busy" (it used to hang up silently). The video and touch connections each hold a worker for as long as they are open.
 - `POST /screen/profile?keep=<ms>&dim=<0..255 or -1>` starts or updates the phone-side session, `POST ?end=1` ends it, `GET`
   says what it is doing. See "The phone while the remote screen is open".
 
@@ -284,7 +295,9 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
 
 ### Tests (offline, in this sandbox)
 `tools/test.sh` runs: `tools/test/ProfilePlanTest.java` (the phone-settings decisions: explicit scenarios plus 5000 random
-begin / change / end stories that must give the phone back exactly as it was) and `tools/test-spsfix.sh` (SpsFix against real
+begin / change / end stories that must give the phone back exactly as it was), `tools/test/PhonePowerTest.java` (the Sleep / Wake
+button rules: stale answers are not believed, failures revert, a lost reply is corrected later; 3000 random stories) and
+`tools/test-spsfix.sh` (SpsFix against real
 x264 streams of many kinds, checked by ffmpeg's own header parser and decoder) and `tools/test-framer.sh`
 (`tools/test/AnnexBFramerTest.java` + `test_framer.py`: AnnexBFramer against ffprobe's picture boundaries on real x264 streams
 and against streams built by hand; fed as pictures, merged, in odd pieces, byte by byte, without hints, with hints inside start
@@ -312,6 +325,12 @@ with junk in front, and fuzzed). Android code itself can only be compiled by CI.
 10. The tablet's screen: open Screen, leave the tablet untouched for longer than its screen timeout (the phone can be changing
    meanwhile): it must stay on and bright. Switch Options > "Keep this tablet's screen on and bright" off and it should dim
    as before. Leaving the tab hands the screen back to Android's timeout.
+11. Sleep and Wake, ten times each, in Live video and in Pictures mode: after Sleep the status line says "Putting the phone to
+   sleep…", then within about two seconds the picture is replaced by "The phone's screen is off. Tap Wake." and the phone's
+   screen is really off; Wake brings the picture back within a couple of seconds. Touching the picture just after Sleep must not
+   wake the phone. If a press fails a toast says why ("The phone did not go to sleep ..."): write the text down.
+12. If the tablet still dims: Options > Information > "Tablet screen: ..." line, and the top of Options (it says which
+   build the tablet and the phone run). Flag set, wake lock held, Android timeout N s, and it still dims = the tablet's own firmware.
 
 ### Likely trouble spots, with the remedy to try
 - The picture still sticks until the screen changes: look at Information (does the stream line say "reorder 0, buffer 1" after
@@ -487,7 +506,7 @@ Call (tablet helpers), Updater (tablet-driven phone update), Ui, MeterView, Spee
 HomeTab/SpeedTab/BandsTab/ControlTab/FilesTab/SettingsTab/PhoneTab/ScreenTab, MainActivity.
 Remote screen, phone: Screen (routes), RemoteProfile and ProfilePlan (screen kept on and dimmed, restored), ShellMain `inject`.
 Remote screen, tablet: ScreenTab (the tab), RemoteLayout, BarColumn, BarButton, Icons (layout and buttons), TypingView, PinPad,
-AdvancedPanel, ScreenPrefs (settings), VideoStream, AnnexBFramer (cuts the stream into pictures), SpsFix (decoder),
+AdvancedPanel, ScreenPrefs (settings), PhonePower (Sleep / Wake rules), VideoStream, AnnexBFramer (cuts the stream into pictures), SpsFix (decoder),
 CtlChannel, AspectSurfaceView, PhoneScreenView.
 Tools: `tools/checkpoint.sh` (log, commit, push with retries), `tools/ci.sh` (same, then watches the build with gh),
 `tools/handoff-check.sh` (warns when this file is stale), `tools/test.sh` (offline tests, including

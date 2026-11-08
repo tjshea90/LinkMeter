@@ -59,7 +59,8 @@ public class SenderService extends Service {
         if (!running) {
             running = true;
             active = true;
-            pool = new ThreadPoolExecutor(0, 8, 20, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
+            // Two of these are taken for as long as the tablet's Screen tab is open (video and touch), so there is room.
+            pool = new ThreadPoolExecutor(0, 16, 20, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
             Thread t = new Thread(this::serve, "linkmeter-accept");
             t.start();
             if (Cfg.PHONE.equals(Cfg.mode(this))) {
@@ -125,7 +126,7 @@ public class SenderService extends Service {
                 try {
                     pool.execute(() -> serveOne(s));
                 } catch (RejectedExecutionException busy) {
-                    closeQuietly(s); // all four workers are busy: drop this one
+                    refuseBusy(s); // every worker is busy: say so instead of just hanging up
                 }
             } catch (IOException e) {
                 if (!running) {
@@ -133,6 +134,33 @@ public class SenderService extends Service {
                 }
             }
         }
+    }
+
+    /**
+     * Tells a caller that every worker is busy (it used to be dropped without a word, which looked like a dead phone).
+     * Done on a thread of its own so the accept loop never waits. The caller is left to finish sending its request
+     * first: closing a socket with unread data resets the connection, and the answer would be lost.
+     */
+    private static void refuseBusy(final Socket s) {
+        Thread t = new Thread(() -> {
+            try {
+                s.setSoTimeout(1500);
+                OutputStream out = new BufferedOutputStream(s.getOutputStream(), 1024);
+                Http.err(out, 503, "The phone is busy with other requests. Try again in a moment.");
+                out.flush();
+                s.shutdownOutput();
+                byte[] junk = new byte[512];
+                while (s.getInputStream().read(junk) > 0) {
+                    // the request that will not be served
+                }
+            } catch (IOException ignored) {
+                // the caller is gone, or did not finish within a second and a half
+            } finally {
+                closeQuietly(s);
+            }
+        }, "linkmeter-busy");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void serveOne(Socket s) {

@@ -154,6 +154,8 @@ final class Http {
                 return "Not Found";
             case 409:
                 return "Conflict";
+            case 503:
+                return "Service Unavailable";
             default:
                 return "Error";
         }

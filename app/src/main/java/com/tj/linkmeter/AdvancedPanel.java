@@ -30,6 +30,12 @@ final class AdvancedPanel {
         /** The "keep this tablet's screen on" choice changed: apply it now. */
         void tabletAwakeChanged();
 
+        /** Which LinkMeter builds the tablet and the phone run (a phone left on an older build explains a lot). */
+        String versionsText();
+
+        /** What this tablet is doing about its own screen timeout right now. */
+        String awakeText();
+
         String diagnostics();
 
         String phoneText();
@@ -177,6 +183,7 @@ final class AdvancedPanel {
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         top.addView(Ui.button(c, "Done", v -> finish()));
         col.addView(top);
+        col.addView(note(host.versionsText()), Ui.lp(c, 2));
 
         // ---------------------------------------------------------------- picture
         col.addView(heading("Picture"));
@@ -261,6 +268,7 @@ final class AdvancedPanel {
         col.addView(note("You only watch the phone here, so the tablet gets no touches. Without this it dims and "
                 + "switches off after its normal screen timeout. It is only kept on while this tab is open."),
                 Ui.lp(c, 2));
+        col.addView(note(host.awakeText()), Ui.lp(c, 4));
 
         // ---------------------------------------------------------------- phone
         col.addView(heading("The phone while you use this"));

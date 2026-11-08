@@ -2,6 +2,7 @@ package com.tj.linkmeter;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -9,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.View;
@@ -120,6 +122,17 @@ public class MainActivity extends Activity {
 
     /** A tab (the Screen tab) asks for the tablet to stay awake while it is shown, on top of the Settings choice. */
     private boolean holdAwake;
+    /** For the Screen tab only: a second, independent way of keeping the screen bright. Renewed while it is wanted. */
+    private PowerManager.WakeLock awakeLock;
+    private static final long WAKE_LOCK_MS = 10 * 60 * 1000L;
+    private final Runnable renewLock = new Runnable() {
+        @Override
+        public void run() {
+            if (holdAwake && resumed) {
+                holdLock(true);
+            }
+        }
+    };
 
     void setHoldAwake(boolean on) {
         holdAwake = on;
@@ -127,11 +140,68 @@ public class MainActivity extends Activity {
     }
 
     void applyKeepOn() {
-        if (Cfg.TABLET.equals(Cfg.mode(this)) && (Cfg.keepOn(this) || holdAwake)) {
+        boolean tablet = Cfg.TABLET.equals(Cfg.mode(this));
+        boolean keep = tablet && (Cfg.keepOn(this) || holdAwake);
+        if (keep) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
+        getWindow().getDecorView().setKeepScreenOn(keep); // the same wish through the view, in case the flag gets lost
+        holdLock(tablet && holdAwake);
+    }
+
+    /**
+     * A bright-screen wake lock for as long as the Screen tab is open. It is only a backup for the window flag
+     * above. It runs out by itself after ten minutes unless renewed, so it can never be left on by mistake.
+     */
+    @SuppressWarnings("deprecation")
+    private void holdLock(boolean on) {
+        try {
+            ui.removeCallbacks(renewLock);
+            if (on) {
+                if (awakeLock == null) {
+                    PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                    awakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "linkmeter:remote-screen");
+                    awakeLock.setReferenceCounted(false);
+                }
+                awakeLock.acquire(WAKE_LOCK_MS);
+                ui.postDelayed(renewLock, WAKE_LOCK_MS / 2);
+            } else if (awakeLock != null && awakeLock.isHeld()) {
+                awakeLock.release();
+            }
+        } catch (RuntimeException ignored) {
+            // no wake lock on this tablet: the window flag still does the job
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        holdLock(false);
+        super.onDestroy();
+    }
+
+    /** For the Information box: what this tablet is doing about its own screen timeout, and what Android has set. */
+    String awakeReport() {
+        StringBuilder sb = new StringBuilder("Tablet screen: ");
+        sb.append(holdAwake ? "held on by the Screen tab" : "not held on by the Screen tab");
+        sb.append(" (window flag ")
+                .append((getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0 ? "set" : "not set")
+                .append(", wake lock ").append(awakeLock != null && awakeLock.isHeld() ? "held" : "not held").append(')');
+        try {
+            int timeout = Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT, -1);
+            int level = Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, -1);
+            int auto = Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE, 0);
+            sb.append("; Android's own screen timeout ").append(timeout < 0 ? "unknown" : (timeout / 1000) + " s");
+            sb.append(", brightness ").append(level < 0 ? "unknown" : level + " of 255").append(auto == 1 ? " (automatic)" : "");
+        } catch (RuntimeException ignored) {
+            // the settings could not be read
+        }
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null) {
+            sb.append(", battery saver ").append(pm.isPowerSaveMode() ? "ON" : "off");
+        }
+        return sb.toString();
     }
 
     // ---------------------------------------------------------------- screens
