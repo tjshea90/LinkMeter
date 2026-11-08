@@ -8,6 +8,16 @@ import android.net.wifi.WifiManager;
 final class Net {
     private Net() {}
 
+    /** The other device: on the tablet that is the phone; on the phone it is the tablet that last connected. */
+    static String peerHost(Context c) {
+        return Cfg.PHONE.equals(Cfg.mode(c)) ? Cfg.tabletIp(c) : phoneHost(c);
+    }
+
+    /** The secret the other device expects. The tablet's own secret is the shared one. */
+    static String peerToken(Context c) {
+        return Cfg.PHONE.equals(Cfg.mode(c)) ? Cfg.tabletToken(c) : Cfg.token(c);
+    }
+
     /** The phone's address: the typed one, or the Wi-Fi gateway (the phone, while on its hotspot). */
     static String phoneHost(Context c) {
         String typed = Cfg.host(c);

@@ -15,40 +15,29 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One activity, built in code (no layout files, no libraries).
- *
- * Phone role: a short control screen (start, pair, options).
- * Tablet role: tabs. Only the tab on screen does any work, and only while the
- * app is in front.
+ * One activity, built in code (no layout files). Both roles use a row of tabs at the
+ * bottom. Only the tab on screen does any work, and only while the app is in front.
  */
 public class MainActivity extends Activity {
     private static final int REQ_PERMS = 1;
+    private static final int REQ_STORAGE = 3;
 
     /** Shared with the tabs. */
     final Handler ui = new Handler(Looper.getMainLooper());
 
     private boolean resumed;
-
-    // Tablet shell
     private FrameLayout content;
     private Tab[] tabs;
     private Button[] bar;
     private Tab cur;
     private int index;
-
-    // Phone screen
-    private TextView pState;
-    private TextView pPriv;
-    private Button pToggle;
 
     // ---------------------------------------------------------------- lifecycle
 
@@ -78,8 +67,6 @@ public class MainActivity extends Activity {
         applyKeepOn();
         if (cur != null) {
             cur.onShow();
-        } else if (Cfg.PHONE.equals(Cfg.mode(this))) {
-            refreshPhone();
         }
     }
 
@@ -101,34 +88,29 @@ public class MainActivity extends Activity {
         tabs = null;
         bar = null;
         content = null;
-        pState = null;
-        pPriv = null;
-        pToggle = null;
 
         String mode = Cfg.mode(this);
         View root;
         if (Cfg.TABLET.equals(mode)) {
-            root = buildTablet();
+            root = buildTabs(new Tab[] {new HomeTab(this), new SpeedTab(this),
+                    new ControlTab(this), new FilesTab(this), new SettingsTab(this)});
         } else if (Cfg.PHONE.equals(mode)) {
-            root = buildPhone();
+            root = buildTabs(new Tab[] {new PhoneTab(this), new FilesTab(this)});
         } else {
             root = buildChooser();
         }
         setContentView(root);
         if (cur != null && resumed) {
-            // select() already ran in buildTablet() before the view was attached
             cur.onShow();
         }
         if (resumed) {
             applyKeepOn();
-            if (cur == null && Cfg.PHONE.equals(mode)) {
-                refreshPhone();
-            }
         }
     }
 
     void chooseRole(String role) {
         Cfg.setMode(this, role);
+        index = 0;
         render();
     }
 
@@ -140,20 +122,14 @@ public class MainActivity extends Activity {
                 15, Ui.DIM, false), Ui.lp(this, 8));
         col.addView(Ui.button(this, "This is the PHONE", v -> chooseRole(Cfg.PHONE)), Ui.lp(this, 24));
         col.addView(Ui.button(this, "This is the TABLET", v -> chooseRole(Cfg.TABLET)), Ui.lp(this, 8));
-        return framed(Ui.scroll(this, col));
-    }
-
-    private View framed(View v) {
         FrameLayout f = new FrameLayout(this);
         f.setBackgroundColor(Ui.BG);
-        f.addView(v, new FrameLayout.LayoutParams(
+        f.addView(Ui.scroll(this, col), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return f;
     }
 
-    // ---------------------------------------------------------------- tablet shell
-
-    private View buildTablet() {
+    private View buildTabs(Tab[] t) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Ui.BG);
@@ -166,13 +142,13 @@ public class MainActivity extends Activity {
         barRow.setOrientation(LinearLayout.HORIZONTAL);
         barRow.setBackgroundColor(Ui.CARD);
 
-        tabs = new Tab[] {new HomeTab(this), new SpeedTab(this), new ControlTab(this),
-                new SettingsTab(this)};
+        tabs = t;
         bar = new Button[tabs.length];
         for (int i = 0; i < tabs.length; i++) {
             final int idx = i;
-            Button b = Ui.button(this, tabs[i].title(), v -> select(idx));
-            b.setTextSize(13);
+            Button b = Ui.button(this, tabs[i].title(), v -> showTab(idx, true));
+            b.setTextSize(12);
+            b.setPadding(0, b.getPaddingTop(), 0, b.getPaddingBottom());
             barRow.addView(b, Ui.weight());
             bar[i] = b;
         }
@@ -182,13 +158,8 @@ public class MainActivity extends Activity {
         if (index >= tabs.length) {
             index = 0;
         }
-        // Not resumed yet from this method's point of view: show the tab's views only.
         showTab(index, false);
         return root;
-    }
-
-    private void select(int i) {
-        showTab(i, true);
     }
 
     private void showTab(int i, boolean start) {
@@ -207,50 +178,9 @@ public class MainActivity extends Activity {
         }
     }
 
-    // ---------------------------------------------------------------- phone screen
+    // ---------------------------------------------------------------- phone actions
 
-    private View buildPhone() {
-        LinearLayout col = Ui.column(this);
-        col.addView(Ui.text(this, "LinkMeter · phone", 24, Ui.FG, true));
-        pState = Ui.text(this, "", 16, Ui.FG, false);
-        col.addView(pState, Ui.lp(this, 12));
-        pToggle = Ui.button(this, "", v -> toggleSender());
-        col.addView(pToggle, Ui.lp(this, 8));
-
-        col.addView(Ui.button(this, "Pair tablet (open for 2 minutes)", v -> pairTablet()),
-                Ui.lp(this, 8));
-        col.addView(Ui.text(this, "Pair once. After that the tablet connects by itself, "
-                + "with no numbers to type.", 13, Ui.DIM, false), Ui.lp(this, 4));
-        col.addView(Ui.button(this, "Forget all tablets", v -> {
-            Cfg.clearTrusted(this);
-            Toast.makeText(this, "All tablets forgotten.", Toast.LENGTH_SHORT).show();
-        }), Ui.lp(this, 8));
-
-        col.addView(Ui.text(this, "Phone helper (Shizuku)", 16, Ui.FG, true), Ui.lp(this, 20));
-        pPriv = Ui.text(this, "", 13, Ui.DIM, false);
-        col.addView(pPriv, Ui.lp(this, 2));
-        col.addView(Ui.button(this, "Allow LinkMeter in Shizuku", v -> Priv.requestPermission(2)),
-                Ui.lp(this, 6));
-        col.addView(Ui.text(this, "Needed for the tablet's Control tab: airplane mode, hotspot off, "
-                + "power off, 4G toggle, battery saver. Start Shizuku first (it stops when the "
-                + "phone reboots).", 12, Ui.DIM, false), Ui.lp(this, 4));
-
-        CheckBox boot = new CheckBox(this);
-        boot.setText("Start automatically when the phone boots");
-        boot.setTextColor(Ui.FG);
-        boot.setChecked(Cfg.autoStart(this));
-        boot.setOnCheckedChangeListener((view, checked) -> Cfg.setAutoStart(this, checked));
-        col.addView(boot, Ui.lp(this, 16));
-
-        col.addView(Ui.button(this, "Battery settings for this app", v -> openBatterySettings()),
-                Ui.lp(this, 12));
-        col.addView(Ui.text(this, "Tip: set this app to Unrestricted battery use so Android never "
-                + "stops it while the screen is off.", 13, Ui.DIM, false), Ui.lp(this, 4));
-        col.addView(Ui.button(this, "Switch role", v -> chooseRole("")), Ui.lp(this, 24));
-        return framed(Ui.scroll(this, col));
-    }
-
-    private void pairTablet() {
+    void pairTablet() {
         SenderService.pairUntil = SystemClock.elapsedRealtime() + 120000L;
         if (!SenderService.active) {
             toggleSender();
@@ -258,7 +188,7 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "Open LinkMeter on the tablet now.", Toast.LENGTH_LONG).show();
     }
 
-    private void toggleSender() {
+    void toggleSender() {
         if (SenderService.active) {
             stopService();
             ui.postDelayed(this::refreshPhone, 400);
@@ -290,6 +220,8 @@ public class MainActivity extends Activity {
             // shows "no permission" for the cell meter.
             startService();
             ui.postDelayed(this::refreshPhone, 400);
+        } else if (req == REQ_STORAGE && tabs != null) {
+            showTab(index, true);
         }
     }
 
@@ -302,18 +234,12 @@ public class MainActivity extends Activity {
     }
 
     private void refreshPhone() {
-        if (pState == null || pToggle == null) {
-            return;
-        }
-        boolean on = SenderService.active;
-        pState.setText(on ? "Ready. The tablet can connect." : "Stopped.");
-        pToggle.setText(on ? "Stop" : "Start");
-        if (pPriv != null) {
-            pPriv.setText(Priv.stateText(Priv.state()));
+        if (cur instanceof PhoneTab) {
+            ((PhoneTab) cur).refresh();
         }
     }
 
-    private void openBatterySettings() {
+    void openBatterySettings() {
         try {
             startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
         } catch (RuntimeException e) {
@@ -327,6 +253,25 @@ public class MainActivity extends Activity {
                     Uri.parse("package:" + getPackageName())));
         } catch (RuntimeException ignored) {
             // No settings screen to open; nothing more to try.
+        }
+    }
+
+    /** Android 11+: the "All files access" page. Android 10 and older: the storage permission prompt. */
+    void fixStorageAccess() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (RuntimeException e) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                } catch (RuntimeException ignored) {
+                    openAppInfo();
+                }
+            }
+        } else {
+            requestPermissions(new String[] {Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_STORAGE);
         }
     }
 }

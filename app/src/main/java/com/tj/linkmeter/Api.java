@@ -63,6 +63,13 @@ final class Api {
                     Http.err(out, 404, "not a phone");
                 }
                 break;
+            case "/fs/ls":
+            case "/fs/get":
+            case "/fs/put":
+            case "/fs/mkdir":
+            case "/fs/rm":
+                Files.serve(c, r, out);
+                break;
             case "/speed/start":
             case "/speed/stop":
             case "/speed/status":
