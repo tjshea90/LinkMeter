@@ -88,6 +88,8 @@ final class ScreenTab extends Tab {
     private int mode;
     private boolean phoneOn = true;
     private boolean phoneLocked;
+    /** The phone's app version from its last answer: null = it has not answered yet, "" = an older phone that does not say. */
+    private String phoneVersion;
     private int failures;
     private String statusMsg = "Connecting…";
     private String profileText = "";
@@ -554,6 +556,7 @@ final class ScreenTab extends Tab {
                 if (ok && json != null) {
                     phoneOn = json.optBoolean("on", true);
                     phoneLocked = json.optBoolean("locked", false);
+                    phoneVersion = json.optString("vn", "");
                     paintBars();
                     if (phoneOn && waitingForScreen && mode == 0 && video == null && surfaceReady) {
                         waitingForScreen = false;
@@ -1295,6 +1298,10 @@ final class ScreenTab extends Tab {
         StringBuilder sb = new StringBuilder();
         sb.append("LinkMeter ").append(version).append(" on ").append(Build.MODEL).append(", Android ")
                 .append(Build.VERSION.RELEASE).append('\n');
+        sb.append("Phone app: ").append(phoneVersion == null ? "the phone has not answered yet"
+                : phoneVersion.isEmpty() ? "version not reported (the phone has an older build than this tablet)"
+                : phoneVersion.equals(version) ? phoneVersion + " (same as this tablet)"
+                : phoneVersion + " (this tablet has " + version + ")").append('\n');
         sb.append("Mode: ").append(mode == 0 ? "live video" : "still pictures").append(fellBack ? " (fell back)" : "")
                 .append(", preset ").append(ScreenPrefs.PRESETS[prefs.preset()])
                 .append(": video ").append(prefs.vidWidth()).append(" px at ").append(prefs.vidKbps()).append(" kbit/s, pictures ")

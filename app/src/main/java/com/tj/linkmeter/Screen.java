@@ -90,8 +90,10 @@ final class Screen {
         PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
         KeyguardManager km = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
         if ("/screen/state".equals(r.path)) {
+            // "vn" is this phone's app version, so the tablet can tell if the phone was left on an older build.
+            String vn = Updater.versionName(c).replaceAll("[^0-9A-Za-z._-]", "");
             Http.json(out, 200, "{\"on\":" + pm.isInteractive() + ",\"locked\":" + km.isKeyguardLocked()
-                    + ",\"prof\":" + RemoteProfile.isOn(c) + "}");
+                    + ",\"prof\":" + RemoteProfile.isOn(c) + ",\"vn\":\"" + vn + "\"}");
             return;
         }
         if (!Priv.ready()) {

@@ -42,3 +42,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T06:48:04Z options panel: no phantom Custom highlight, rebuilds happen after the touch that caused them
 - 2026-11-08T16:09:02Z release pipeline: numbered releases (v0.2.N), tests gate every build, good session builds merge into main by themselves when safe; decision gate tested offline (24 cases)
 - 2026-11-08T16:21:14Z handoff and CLAUDE.md describe numbered releases and the automatic merge; unused screen settings removed from Cfg
+- 2026-11-08T16:27:25Z Information box shows the app version on the tablet and on the phone (the phone sends vn in /screen/state), so a phone left on an older build is obvious in bug reports

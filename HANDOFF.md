@@ -206,7 +206,9 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
   Custom), video width, video bitrate limit, pictures width / quality / per second, sharp still on or off, speed numbers, low-delay
   tuning (Automatic / Always / Never), decoder choice, how long to keep the phone's screen on, phone brightness, sleep on leave,
   tap to wake, "Put the phone's screen settings back now", and an Information box with "Copy this information" (decoder, stream
-  header before and after the fix, rates, last problem, phone settings) for bug reports. Settings are in `ScreenPrefs`.
+  header before and after the fix, rates, last problem, phone settings, and the app version on the tablet and on the phone:
+  the phone says its version in the `vn` field of `/screen/state`, builds before 0.2.47 do not, and then the box says "version
+  not reported (older build)", the usual sign that the phone was not updated) for bug reports. Settings are in `ScreenPrefs`.
   The video bitrate is the phone's encoder TARGET (`--bit-rate`); busy screens can briefly go above it (the Information box
   shows the peak of the last 10 s).
 - A frames-per-second CAP for live video does not exist: `screenrecord` has no option for it (only size and bit rate), and the
@@ -292,7 +294,12 @@ Three jobs run on every push to `main` or `ccr-*` (and on manual runs):
 - `tools/test/test_release_decision.py` runs the real "Decide what to do" script, taken out of the workflow file, in
   throwaway git repositories (24 cases). Change the gate only together with that test. `actionlint` (`pip install
   actionlint-py`) lints workflow files.
-- The unnumbered `latest` release of the old pipeline is deleted by the first numbered release; the step
+- Proof so far (2026-11-08): the hand merge of this branch into `main` made release `v0.2.46` (assets `LinkMeter-0.2.46.apk` and
+  `LinkMeter.apk`, notes from the commit subjects, old `latest` release and tag deleted). Expected for the first FULLY automatic
+  cycle (a plain push to the session branch, nothing by hand): the commit that added the phone-app-version line to the
+  Information box makes the pipeline fast-forward `main` to it and publish `v0.2.47`. If this line still says "expected",
+  look at the run of that commit and at the releases page, and fix whatever stopped it.
+- The unnumbered `latest` release of the old pipeline was deleted by the first numbered release (`v0.2.46`); the step
   `gh release delete latest ... || true` in the workflow can be removed afterwards.
 - If `main` moved so a branch is not a fast-forward, the run says so in its summary; look at what is on `main`, then merge by
   hand. Actions on Node 20 print a deprecation warning (GitHub forces Node 24); bump their versions when it becomes an error.
