@@ -38,6 +38,9 @@ public class MainActivity extends Activity {
     private Button[] bar;
     private Tab cur;
     private int index;
+    private View tabBar;
+    /** If set, Back runs this instead of leaving the app (used to leave full screen). */
+    Runnable backHandler;
 
     // ---------------------------------------------------------------- lifecycle
 
@@ -67,6 +70,28 @@ public class MainActivity extends Activity {
         applyKeepOn();
         if (cur != null) {
             cur.onShow();
+        }
+    }
+
+    /** Full screen: hides the tab bar and the system bars so a tab can use the whole display. */
+    void setFullscreen(boolean on) {
+        if (tabBar != null) {
+            tabBar.setVisibility(on ? View.GONE : View.VISIBLE);
+        }
+        getWindow().getDecorView().setSystemUiVisibility(on
+                ? (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+                : View.SYSTEM_UI_FLAG_VISIBLE);
+    }
+
+    @Override
+    public void onBackPressed() {
+        Runnable h = backHandler;
+        if (h != null) {
+            h.run();
+        } else {
+            super.onBackPressed();
         }
     }
 
@@ -153,6 +178,7 @@ public class MainActivity extends Activity {
             barRow.addView(b, Ui.weight());
             bar[i] = b;
         }
+        tabBar = barRow;
         root.addView(barRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 

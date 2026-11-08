@@ -30,6 +30,8 @@ final class Client {
         long length = -1;
         /** The X-Size header, if the other device sent one. */
         String size = "";
+        /** The X-Video header (size of the encoded video), if any. */
+        String video = "";
         InputStream in;
 
         @Override
@@ -96,6 +98,8 @@ final class Client {
                     first = false;
                 } else if (l.isEmpty()) {
                     return;
+                } else if (l.toLowerCase(Locale.US).startsWith("x-video:")) {
+                    st.video = l.substring(8).trim();
                 } else if (l.toLowerCase(Locale.US).startsWith("x-size:")) {
                     st.size = l.substring(7).trim();
                 } else if (l.toLowerCase(Locale.US).startsWith("content-length:")) {

@@ -135,6 +135,24 @@ final class Cfg {
     }
 
     /** Phone: switch on the battery-saving profile by itself when the tablet connects. */
+    /** Tablet: screen view mode, 0 = video (fast), 1 = pictures (compatible). */
+    static int screenMode(Context c) {
+        return sp(c).getInt("scrMode", 0);
+    }
+
+    static void setScreenMode(Context c, int m) {
+        sp(c).edit().putInt("scrMode", m).apply();
+    }
+
+    /** Tablet: screen quality, 0 = fast, 1 = balanced, 2 = sharp. */
+    static int screenQuality(Context c) {
+        return sp(c).getInt("scrQual", 1);
+    }
+
+    static void setScreenQuality(Context c, int q) {
+        sp(c).edit().putInt("scrQual", q).apply();
+    }
+
     /** Phone: may the paired tablet see and control the screen? On by default. */
     static boolean screenControl(Context c) {
         return sp(c).getBoolean("screenCtl", true);

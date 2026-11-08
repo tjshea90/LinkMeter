@@ -29,6 +29,8 @@ final class Http {
         String token = "";
         long length;
         InetAddress peer;
+        /** The connection, for handlers that stream or need a different timeout. */
+        Socket sock;
         /** Positioned at the first byte of the body. */
         InputStream body;
         final Map<String, String> query = new HashMap<>();
@@ -107,6 +109,7 @@ final class Http {
             }
         }
         r.peer = s.getInetAddress();
+        r.sock = s;
         r.body = in;
         return r;
     }
@@ -167,6 +170,13 @@ final class Http {
             throws IOException {
         String h = "HTTP/1.0 " + code + " " + reason(code) + "\r\nContent-Type: " + type
                 + "\r\nContent-Length: " + len + "\r\n" + extra + "\r\nConnection: close\r\n\r\n";
+        out.write(h.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    /** Starts a reply whose length is not known: the body runs until the connection closes. */
+    static void headOpen(OutputStream out, String type, String extra) throws IOException {
+        String h = "HTTP/1.0 200 OK\r\nContent-Type: " + type + "\r\n" + extra
+                + "Connection: close\r\n\r\n";
         out.write(h.getBytes(StandardCharsets.US_ASCII));
     }
 

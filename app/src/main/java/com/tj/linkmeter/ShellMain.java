@@ -3,6 +3,13 @@ package com.tj.linkmeter;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.view.InputDevice;
+import android.view.KeyCharacterMap;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import java.lang.reflect.Constructor;
@@ -53,6 +60,9 @@ public final class ShellMain {
         }
         if (a[0].startsWith("hotspot-")) {
             return hotspot(a);
+        }
+        if (a[0].equals("inject")) {
+            return inject();
         }
         TelephonyManager tm = telephony();
         switch (a[0]) {
@@ -210,6 +220,69 @@ public final class ShellMain {
             }
         }
         return sb.toString().trim();
+    }
+
+    // ------------------------------------------------------------ live touch input
+
+    /**
+     * Stays running and injects touches and keys as lines arrive on stdin:
+     * "d x y" (finger down), "m x y" (move), "u x y" (up), "k code" (key press).
+     * A new process for every tap (the `input` command) takes a few hundred milliseconds;
+     * this answers in a few.
+     */
+    private static String inject() throws Exception {
+        Context ctx = shellContext();
+        Object im = ctx.getSystemService("input");
+        if (im == null) {
+            return "ERR no input service";
+        }
+        Method inj = null;
+        for (Method m : im.getClass().getMethods()) {
+            Class<?>[] p = m.getParameterTypes();
+            if (m.getName().equals("injectInputEvent") && p.length == 2 && p[1] == int.class) {
+                inj = m;
+                break;
+            }
+        }
+        if (inj == null) {
+            return "ERR this phone has no injectInputEvent(event, mode)";
+        }
+        System.out.println("OK ready");
+        System.out.flush();
+        BufferedReader r = new BufferedReader(new InputStreamReader(System.in));
+        long down = 0;
+        String line;
+        while ((line = r.readLine()) != null) {
+            String[] p = line.trim().split(" ");
+            try {
+                long now = SystemClock.uptimeMillis();
+                if (p[0].equals("k")) {
+                    int code = Integer.parseInt(p[1]);
+                    inj.invoke(im, key(now, KeyEvent.ACTION_DOWN, code), 0);
+                    inj.invoke(im, key(now, KeyEvent.ACTION_UP, code), 0);
+                } else {
+                    int action = p[0].equals("d") ? MotionEvent.ACTION_DOWN
+                            : (p[0].equals("m") ? MotionEvent.ACTION_MOVE : MotionEvent.ACTION_UP);
+                    if (action == MotionEvent.ACTION_DOWN) {
+                        down = now;
+                    }
+                    MotionEvent e = MotionEvent.obtain(down, now, action,
+                            Float.parseFloat(p[1]), Float.parseFloat(p[2]), 0);
+                    e.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+                    inj.invoke(im, e, 0);
+                    e.recycle();
+                }
+            } catch (Throwable t) {
+                System.out.println("ERR " + unwrap(t));
+                System.out.flush();
+            }
+        }
+        return "OK bye";
+    }
+
+    private static KeyEvent key(long now, int action, int code) {
+        return new KeyEvent(now, now, action, code, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0,
+                InputDevice.SOURCE_KEYBOARD);
     }
 
     // ------------------------------------------------------------ hotspot Wi-Fi band

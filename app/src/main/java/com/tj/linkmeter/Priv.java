@@ -123,6 +123,14 @@ final class Priv {
         return res;
     }
 
+    /** Starts a long-running shell command and returns it. The caller must destroy the process. */
+    static Process spawn(String shellCmd) throws IOException {
+        if (state() != READY) {
+            throw new IOException(stateText(state()));
+        }
+        return start(new String[] {"sh", "-c", shellCmd});
+    }
+
     /** Shizuku keeps newProcess private in current versions, so it is called by reflection. */
     private static Process start(String[] cmd) throws IOException {
         try {

@@ -15,9 +15,8 @@ import android.view.View;
  */
 final class PhoneScreenView extends View {
     interface Listener {
-        void tap(int x, int y);
-
-        void swipe(int x1, int y1, int x2, int y2, int ms);
+        /** action: 0 = finger down, 1 = move, 2 = up. x and y are in the phone's own pixels. */
+        void touch(int action, int x, int y);
     }
 
     private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
@@ -27,9 +26,8 @@ final class PhoneScreenView extends View {
     private int phoneH;
     private String note = "Connecting…";
     private Listener listener;
-    private float downX;
-    private float downY;
-    private long downT;
+    private boolean tracking;
+    private long lastMove;
     private float markX = -1;
     private float markY = -1;
 
@@ -108,39 +106,31 @@ final class PhoneScreenView extends View {
         if (bmp == null || listener == null || phoneW <= 0 || dst.width() <= 0) {
             return true;
         }
+        int x = toPhone(e.getX(), dst.left, dst.width(), phoneW);
+        int y = toPhone(e.getY(), dst.top, dst.height(), phoneH);
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                downX = e.getX();
-                downY = e.getY();
-                downT = e.getEventTime();
-                return true;
-            case MotionEvent.ACTION_UP: {
-                if (!dst.contains(downX, downY)) {
-                    return true;
-                }
-                float dx = e.getX() - downX;
-                float dy = e.getY() - downY;
-                long dt = e.getEventTime() - downT;
-                int x1 = toPhone(downX, dst.left, dst.width(), phoneW);
-                int y1 = toPhone(downY, dst.top, dst.height(), phoneH);
-                float slop = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 12,
-                        getResources().getDisplayMetrics());
-                markX = downX;
-                markY = downY;
-                invalidate();
-                if (Math.hypot(dx, dy) < slop) {
-                    if (dt > 500) {
-                        listener.swipe(x1, y1, x1, y1, (int) Math.min(dt, 2500)); // long press
-                    } else {
-                        listener.tap(x1, y1);
-                    }
-                } else {
-                    int x2 = toPhone(e.getX(), dst.left, dst.width(), phoneW);
-                    int y2 = toPhone(e.getY(), dst.top, dst.height(), phoneH);
-                    listener.swipe(x1, y1, x2, y2, (int) Math.max(80, Math.min(dt, 1200)));
+                tracking = dst.contains(e.getX(), e.getY());
+                if (tracking) {
+                    markX = e.getX();
+                    markY = e.getY();
+                    invalidate();
+                    listener.touch(0, x, y);
                 }
                 return true;
-            }
+            case MotionEvent.ACTION_MOVE:
+                if (tracking && e.getEventTime() - lastMove >= 25) {
+                    lastMove = e.getEventTime();
+                    listener.touch(1, x, y);
+                }
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (tracking) {
+                    tracking = false;
+                    listener.touch(2, x, y);
+                }
+                return true;
             default:
                 return true;
         }

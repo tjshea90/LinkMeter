@@ -59,7 +59,7 @@ public class SenderService extends Service {
         if (!running) {
             running = true;
             active = true;
-            pool = new ThreadPoolExecutor(0, 4, 20, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
+            pool = new ThreadPoolExecutor(0, 8, 20, TimeUnit.SECONDS, new SynchronousQueue<Runnable>());
             Thread t = new Thread(this::serve, "linkmeter-accept");
             t.start();
             if (Cfg.PHONE.equals(Cfg.mode(this))) {
