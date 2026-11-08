@@ -32,3 +32,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T05:23:52Z touch connection: phone drops a silent connection after 3 minutes (tablet keepalive is every minute)
 - 2026-11-08T05:38:43Z handoff: branch merged into main at the user's request; next steps are the device field test
 - 2026-11-08T06:16:42Z remove the dead network-adb buttons, AdbClient and the adb_tcp_setup action (user asked)
+- 2026-11-08T06:24:52Z SpsFix: rewrites the H.264 header so the tablet decoder does not hold pictures back; tested offline against real x264 streams and ffmpeg's own parser (412 checks)
