@@ -31,6 +31,9 @@ for better upload." Phone: SM-S156V (Verizon A15 5G, MediaTek, "Samsung RIL"), s
   and how much better the best is than the phone's own choice. Stops by itself if the phone's safety net undoes a lock.
   Tests: `tools/test/BandToolsTest.java` and `BandSweepTest.java` (simulated phones that obey, ignore, reject, lose replies, run
   out of data, and are stopped at every moment; whatever happens, no lock and 5G as before).
+  A speed test that finishes with a warning ("Upload could not be measured: ...") leaves its upload number at 0 on the phone; the
+  run reads that warning (`SweepLink` passes `warn`, `BandSweep.Upload.warn`) and shows "no upload result" plus the reason, never a
+  false "0.0 Mbit/s" (a really measured 0.0 still shows as 0.0). v0.2.57 has this wrong; the next release has it right.
 - UNKNOWN until the user tries it: (a) whether this phone prints `mPhysicalChannelConfigs` in a form `RadioState` reads (the
   parser is tolerant; if not, the tab shows the raw text and Probe has it: adapt the parser to that text); (b) whether this
   modem obeys `setSystemSelectionChannels` at all (the run answers that with measurements); (c) whether `net_lte` (Force 4G) works on

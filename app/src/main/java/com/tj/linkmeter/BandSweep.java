@@ -47,13 +47,20 @@ final class BandSweep {
         final double ping;
         final double live;
         final String error;
+        /** Why a test that finished has no upload number ("" = none). The phone leaves the number at 0 then, which is not a measurement. */
+        final String warn;
 
         Upload(int phase, double up, double ping, double live, String error) {
+            this(phase, up, ping, live, error, "");
+        }
+
+        Upload(int phase, double up, double ping, double live, String error, String warn) {
             this.phase = phase;
             this.up = up;
             this.ping = ping;
             this.live = live;
             this.error = error;
+            this.warn = warn == null ? "" : warn;
         }
     }
 
@@ -327,8 +334,13 @@ final class BandSweep {
             }
             if (ok && u != null) {
                 if (u.phase == 4) { // done
-                    row.up = u.up;
+                    // a test that finished with a warning and no speed did not measure 0: it measured nothing
+                    boolean unmeasured = u.up <= 0 && !u.warn.isEmpty();
+                    row.up = unmeasured ? -1 : u.up;
                     row.ping = u.ping;
+                    if (unmeasured) {
+                        row.note = (row.note.isEmpty() ? "" : row.note + "; ") + u.warn;
+                    }
                     publish();
                     afterStep(s);
                     return;

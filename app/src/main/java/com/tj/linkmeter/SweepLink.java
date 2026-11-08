@@ -56,7 +56,8 @@ final class SweepLink implements BandSweep.Link {
         Call.run(act, "GET", "/speed/status", 6000, (ok, text, json) -> {
             if (ok && json != null) {
                 d.done(true, text, new BandSweep.Upload(json.optInt("phase"), json.optDouble("up", -1),
-                        json.optDouble("ping", -1), json.optDouble("live", 0), json.optString("error", "")));
+                        json.optDouble("ping", -1), json.optDouble("live", 0), json.optString("error", ""),
+                        json.optString("warn", "")));
             } else {
                 d.done(false, text, null);
             }

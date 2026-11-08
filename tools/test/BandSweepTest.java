@@ -39,6 +39,8 @@ public final class BandSweepTest {
         int uploadsRunning;
         long uploadStartedAt = -1;
         boolean uploadWillFail;
+        boolean uploadWarns; // the speed test finishes, says it could not measure the upload, and leaves the number at 0
+        boolean uploadZero; // the speed test finishes and really measured 0.0
         int maxUploads;
         // how this phone behaves
         boolean obeys = true;
@@ -183,6 +185,10 @@ public final class BandSweepTest {
                     d.done(true, "ok", new BandSweep.Upload(3, 0, 0, 1.0, ""));
                 } else if (uploadWillFail) {
                     d.done(true, "ok", new BandSweep.Upload(5, 0, 0, 0, "ping: no network"));
+                } else if (uploadWarns) {
+                    d.done(true, "ok", new BandSweep.Upload(4, 0, 60, 0, "", "Upload could not be measured: SocketTimeoutException: timeout"));
+                } else if (uploadZero) {
+                    d.done(true, "ok", new BandSweep.Upload(4, 0.0, 60, 0, "", ""));
                 } else {
                     d.done(true, "ok", new BandSweep.Upload(4, upload(), 60, 0, ""));
                 }
@@ -320,6 +326,39 @@ public final class BandSweepTest {
             over("no service", p, s, r, false);
             BandSweep.Row last = s.rows().get(s.rows().size() - 1);
             check(last.up < 0 && last.note.contains("no data"), "no service: the row says no data: " + last.line(false));
+        }
+        // 5b. the speed test could not measure the upload (it says so and leaves 0): that is "no result" with the reason, never "0.0 Mbit/s",
+        // and a row with no result is never called the best
+        {
+            Sim p = new Sim();
+            p.uploadWarns = true;
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13}, new int[0], true));
+            s.start();
+            p.run();
+            over("upload warns", p, s, r, false);
+            check(s.rows().size() == 3, "upload warns: three rows: " + s.rows().size());
+            for (BandSweep.Row row : s.rows()) {
+                check(row.up < 0 && row.note.contains("could not be measured") && row.line(false).contains("no upload result"),
+                        "upload warns: no number, and the reason is shown: " + row.line(false));
+            }
+            check(s.best() < 0, "upload warns: nothing is called best when nothing was measured: " + s.best());
+            check(!BandSweep.summary(s.rows()).contains("Best:"), "upload warns: the summary names no best");
+        }
+        // 5c. a measured speed of zero (what a very weak connection really gives) is a result, not a failure: it is shown as 0.0
+        {
+            Sim p = new Sim();
+            p.uploadZero = true;
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {5}, new int[0], false));
+            s.start();
+            p.run();
+            over("measured zero", p, s, r, false);
+            check(s.rows().size() == 2, "measured zero: two rows: " + s.rows().size());
+            for (BandSweep.Row row : s.rows()) {
+                check(row.up == 0 && row.line(false).contains("upload 0.0 Mbit/s") && row.note.isEmpty(),
+                        "measured zero: shown as a number, not as a failure: " + row.line(false));
+            }
         }
         // 6. the phone's safety net undoes a lock: the run stops, and the phone is as it was
         {
