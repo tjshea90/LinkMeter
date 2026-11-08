@@ -37,18 +37,27 @@ Treat everything below as "written and built, not field-tested".
 | Cell survey | Cells.survey (parses `dumpsys telephony.registry`) | Shizuku | LOW until probed (text format unverified) |
 | Band lock | Cells.applyBands, ShellMain | Shizuku + modem cooperation | EXPERIMENTAL |
 
-## Open issue right now (read this before anything else)
+## Where things stand (latest, replaces the old "open issue" note)
 
-First field test: the user installed the APK on both devices; the phone toast said "open LinkMeter on
-the tablet" but pairing never happened, and the tablet's Home said "Tablet isn't on Wi-Fi" while it was.
-Cause (probable): HomeTab gated all networking on `WifiInfo.getNetworkId() != -1`, which this tablet
-(Android 10 MediaTek ROM) apparently does not report. Fix pushed (build 42433328029, green): `Net.phoneHost`
-now takes the default route of the Wi-Fi network (ConnectivityManager/LinkProperties), then DhcpInfo, and
-HomeTab tries the phone whenever an address is known. New diagnostics:
-- Tablet Home, small line under the status: `Phone address <ip> (typed|route|dhcp)` plus tablet Wi-Fi dBm.
-- Phone tab: `Requests received: N. Last: <ip> <path>: <result> at <time>` (Api.note), refreshed every 2 s.
-Waiting for the user to reinstall on both devices and report those two lines. Read them to tell apart:
-no address found / tablet cannot reach the phone / phone refuses pairing / Pair window closed.
+Working on the user's devices: pairing, Home meters, Speed test (download ok; upload is limited by the user's weak
+carrier uplink, not the test), Files, Restore everything (verified), ShellMain telephony helper (Read lock info shows
+real values), band lock (the modem ACCEPTED a lock request), Probe, Prepare phone.
+Built, not yet confirmed on the devices: hotspot band chooser + restart, battery saver profile, Force 4G / Allow 5G
+via the API route, Guard auto-undo, signal fallback through Shizuku (the "no signal" meter on Home).
+
+Open items, in order:
+1. Tablet-driven phone update. The phone (v0.2.23) failed with `cmd: Failure calling service package: Failed
+   transaction (2147483646)` because the installer's output went to a file on shared storage. Fixed in Updater.install
+   (output through a pipe, stdin from /dev/null, second method `cat file | pm install -S size`). The phone's OWN
+   installer is the broken part, so the new build must be installed on the phone BY HAND once; after that the
+   tablet's "Update phone from this tablet" should work. The Control tab now shows "Last update on the phone: ...".
+2. Bands tab was rebuilt: grid of LTE (29) and NR (27) band buttons, a status card with Keep / Clear and a countdown,
+   "Now using" from a scan 6 s after each lock. Needs a field test: which bands the modem accepts, which gives the best
+   upload (the user's goal is better indoor upload; the phone sat on LTE band 66 with sinr about 4; try 13, 5, 2, 4).
+3. Speed test servers: Cloudflare first, then Hetzner (ash-speed) and OVH as fallbacks after HTTP 429 and timeouts
+   hit the user's connection. The two fallbacks are unverified. Upload exists on Cloudflare only.
+4. Ask the user what his BandLock app already does to change bands.
+5. Keep HANDOFF.md current; run `tools/ci.sh` after each change (use `[skip ci]` in docs-only commits).
 
 ## Probe results from the user's phone (first real data)
 
