@@ -135,9 +135,14 @@ final class Updater {
     /** Installing replaces this very app, which kills it mid-command, so the result goes to a file. */
     private static void install(final File apk) {
         File log = new File(apk.getParentFile(), "install.log");
-        final String cmd = "{ cp '" + apk.getAbsolutePath() + "' /data/local/tmp/lm-update.apk"
-                + " && pm install -r /data/local/tmp/lm-update.apk; rm -f /data/local/tmp/lm-update.apk; } > '"
-                + log.getAbsolutePath() + "' 2>&1";
+        // The installer hands its output channels to the system, and a file on shared storage was
+        // refused ("Failed transaction"). So its output goes through a pipe, its input is empty, and
+        // a second way (streaming the file in) is tried if the first one fails.
+        final String tmp = "/data/local/tmp/lm-update.apk";
+        final String cmd = "{ cp '" + apk.getAbsolutePath() + "' " + tmp
+                + " && { pm install -r " + tmp + " < /dev/null 2>&1"
+                + " || cat " + tmp + " | pm install -r -S " + apk.length() + " 2>&1; }"
+                + "; rm -f " + tmp + "; } 2>&1 | cat > '" + log.getAbsolutePath() + "'";
         new Thread(() -> {
             try {
                 Thread.sleep(800); // let the answer reach the tablet first

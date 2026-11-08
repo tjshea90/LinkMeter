@@ -42,6 +42,10 @@ final class Status {
                     o.put("tmp", temp / 10.0);
                 }
             }
+            String upd = Updater.lastResult(c);
+            if (!upd.isEmpty()) {
+                o.put("upd", upd.length() > 200 ? upd.substring(0, 200) : upd);
+            }
             o.put("vc", Updater.versionCode(c));
             o.put("vn", Updater.versionName(c));
             o.put("priv", Priv.state());

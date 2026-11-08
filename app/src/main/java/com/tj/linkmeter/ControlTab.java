@@ -25,6 +25,7 @@ final class ControlTab extends Tab {
     private TextView version;
     private long phoneCode = -1;
     private String phoneName = "";
+    private String phoneUpd = "";
 
     ControlTab(MainActivity a) {
         super(a);
@@ -129,6 +130,7 @@ final class ControlTab extends Tab {
             }
             phoneCode = json.optLong("vc", -1);
             phoneName = json.optString("vn", "");
+            phoneUpd = json.optString("upd", "");
             paintVersion();
             int priv = json.optInt("priv", 0);
             String eco = json.optBoolean("eco", false) ? " Battery saver is on." : "";
@@ -162,7 +164,8 @@ final class ControlTab extends Tab {
         }
         version.setText("Tablet app " + ownVersion() + "   ·   Phone app "
                 + (phoneCode >= 0 ? phoneName + " (code " + phoneCode + ")"
-                : "not read yet, or too old to update this way"));
+                : "not read yet, or too old to update this way")
+                + (phoneUpd.isEmpty() ? "" : "\nLast update on the phone: " + phoneUpd));
     }
 
     /** Sends this tablet's installed copy of the app to the phone, which installs it over itself. */
