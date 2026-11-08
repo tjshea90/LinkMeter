@@ -22,8 +22,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Installs the Android SDK and accepts its licences on the runner.
+      # The runner already has the Android SDK. This only accepts its licences.
+      # (packages: '' skips the "tools" package, which no longer exists and
+      # made the default install fail.)
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - uses: gradle/actions/setup-gradle@v4
 
