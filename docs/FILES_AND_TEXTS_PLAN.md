@@ -95,8 +95,15 @@ Every route needs the paired token (like `/fs/*`). While the phone's switch "Let
 * `POST /sms/send` JSON `{"to":["+1555.."],"text":"","subject":"","att":["id",..]}` -> `{"ok":true,"id":"o12"}` or `{"ok":false,"error":".."}`; one recipient and no attachment = SMS (multipart if long), else MMS
 * `GET /sms/part?id=&s=` -> bytes of a message part (an image is scaled to `s` px and sent as JPEG when `s` is given)
 * `GET /sms/contacts?q=` -> `{"people":[{"name","number"}]}` (at most 20)
-* `POST /sms/read?key=` -> `{"ok":true}` (marks the conversation read)
 Group conversations: the key is the members' keys sorted and joined with ",".
+There is NO "mark as read" route: only the phone's default messaging app may write the messages database, so unread comes from the phone's own state
+(read in its own Messages app) and the tablet remembers locally which threads it has opened.
+Built and tested: `Sms` (data), `SmsJson` (wire format), `SmsOutbox` (the tablet's record of what it sent: JSON lines + copies of pictures in the app's files dir,
+limits 1000 messages / 90 days / 60 MB), `SmsStaging` (files waiting for a send, 25 MB each, an hour), `SmsApi` + `SmsHttp` (phone side logic and wire glue),
+`RemoteSms` (tablet side client). `SmsApi.Backend` is what the Android phone code must implement (switch, permissions, reading the database, contacts, parts,
+sending, scaling); the tablet gets `RemoteSms.Off` / `RemoteSms.TooOld` for a switched-off or too-old phone.
+Known limitation to tell the user: chats in Google Messages with RCS ("chat features") live only in that app, not in the Android SMS database, so the tablet
+cannot see them; turning chat features off in Google Messages makes those conversations plain texts that the tablet can read and send.
 
 ## Test strategy
 Everything with logic is pure Java and tested offline (`tools/test.sh`): paths, kinds, sorting, clipboard, store + engine (temp dirs,
@@ -117,6 +124,6 @@ stay thin.
 - [x] A3 Files tab UI written and CI-compiled (FilesTab, FileBrowser, Transfers, FileDialogs, Thumbs, FileIcon, FilesPrefs, ShareProvider); released; waiting for the user's field test
 - [x] B attach from the remote screen: paperclip button in the Screen tab, AttachDialog (recent photos + system picker), Attach (upload to Pictures/Movies/Music/Download `/LinkMeter` + media scan); CI-compiled; waiting for the user's field test
 - [x] C1 Texts pure parts: PhoneNumbers, Sms, SmsMerge, MmsPdu + SmsPureTest (~2,000 checks, MMS bytes read back by an independent decoder written in the test, 37 deliberate breakages caught), in tools/test.sh
-- [ ] C2 Texts protocol: SmsApi + SmsHttp + RemoteSms tested over a real socket against a fake backend (see "Texts protocol" above)
+- [x] C2 Texts protocol: SmsApi + SmsHttp + RemoteSms + SmsOutbox + SmsStaging + SmsJson tested over a real socket against a fake phone (SmsProtocolTest ~10,400 checks, 49 deliberate breakages caught), in tools/test.sh
 - [ ] C3 Texts phone side: SmsAccess (grant), SmsStore (read), SmsSender (SMS/MMS), outbox log, status PendingIntents, `/sms/` route in Api, switch in PhoneTab, manifest
 - [ ] C4 Texts tablet UI (TextsTab), release

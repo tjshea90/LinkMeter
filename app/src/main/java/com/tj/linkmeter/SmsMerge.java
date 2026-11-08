@@ -75,8 +75,14 @@ final class SmsMerge {
             if (t == null) {
                 t = new Sms.Thread();
                 t.key = m.key;
-                t.name = PhoneNumbers.pretty(m.address);
-                t.addresses.add(m.address);
+                StringBuilder name = new StringBuilder();
+                for (String a : m.address.split(",")) { // a group's message lists everybody, comma separated
+                    if (!a.trim().isEmpty()) {
+                        t.addresses.add(a.trim());
+                        name.append(name.length() > 0 ? ", " : "").append(PhoneNumbers.pretty(a));
+                    }
+                }
+                t.name = name.toString();
                 t.count = counts.get(e.getKey());
                 byKey.put(t.key, t);
             }

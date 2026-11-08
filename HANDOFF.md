@@ -23,6 +23,21 @@ session's transcript.
   plainly: band locks are impossible on this firmware (the modem ignores `setSystemSelectionChannels`); only 5G on/off works. Remaining ideas if they care:
   Samsung's hidden service menu (`*#2263#`; can be opened through the remote screen) and MediaTek's engineer mode, both often removed on Verizon.
 
+**2026-11-08 (later): Texts protocol layer (C2) is built and tested; the Android phone side (C3) and the Texts tab (C4) are NEXT.**
+- Done and in `tools/test.sh`: `SmsJson`, `SmsOutbox`, `SmsStaging`, `SmsApi` (+ `SmsHttp`, `FsHttp.write` split out), `RemoteSms`; `SmsProtocolTest` ~10,400 checks over a real
+  socket against a fake phone, 49 deliberate breakages caught. Route list and decisions: `docs/FILES_AND_TEXTS_PLAN.md` ("Texts protocol"). No "mark read" route (only the default SMS
+  app can write the database).
+- C3 TO DO (Android, CI-compiled only): implement `SmsApi.Backend` as `SmsBackend` using: `SmsAccess` (switch in prefs, default OFF, `Saved`-style; permission checks; `grant()` through
+  `Priv`/Shizuku: `appops set com.tj.linkmeter ACCESS_RESTRICTED_SETTINGS allow` then `pm grant com.tj.linkmeter android.permission.READ_SMS` / `SEND_SMS` / `READ_CONTACTS`; if grants
+  fail, a fallback is reading through the shell with `content query --uri content://sms` which the shell user may do), `SmsStore` (threads from `content://mms-sms/conversations?simple=true` +
+  `content://mms-sms/canonical-addresses`, SMS `content://sms`, MMS `content://mms` + `/part` + `/addr`; keys via `PhoneNumbers.threadKey`, names via `ContactsContract.PhoneLookup`; `stamp()`
+  = newest date + counts), `SmsSender` (SMS: `SmsManager.sendMultipartTextMessage` with sent/delivery PendingIntents carrying the outbox id -> a receiver that calls
+  `SmsOutbox.setState`; MMS: `MmsPdu.sendReq` + a cache file served through `ShareProvider` + `SmsManager.sendMultimediaMessage`; fit images to the carrier's `maxMessageSize`).
+  A singleton (`SmsService`) holds the `SmsOutbox` (files dir) and `SmsStaging` (cache dir) and builds `SmsApi`; `Api.handle` routes the `/sms/` prefix next to `/fs/` through
+  `SmsHttp.serve`. Manifest: READ_SMS, SEND_SMS, READ_CONTACTS (+ the receiver). PhoneTab: the switch "Let the tablet use my texts" (default off) and a status line.
+- C4 TO DO: `TextsTab` (8th tab "Texts"; conversation list, thread bubbles with thumbnails via `RemoteSms.part(id, 160, ...)`, composer reusing the Attach picker, new message with
+  contact search, poll `RemoteSms.stamp()` every few seconds while open; show `RemoteSms.Off` / `TooOld` / permission notes plainly; tell the user about RCS chats not being visible).
+
 **2026-11-08 (earlier today): Phase B (Attach) built; Phase C (Texts) has its pure parts done and tested; the phone side and the tablet screen are NEXT.**
 - Phase B (paperclip in the Screen tab -> `AttachDialog` -> `Attach` uploads into the phone's Pictures/Movies/Music/Download `/LinkMeter`, media scan) is
   CI-compiled and merged; released with this checkpoint. UNKNOWN until the user tries it: whether the phone's pickers show the files at once, and how the

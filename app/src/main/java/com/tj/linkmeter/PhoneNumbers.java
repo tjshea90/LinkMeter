@@ -45,6 +45,22 @@ final class PhoneNumbers {
         return d;
     }
 
+    /** The key of a conversation with one or several people: their keys, without repeats, sorted, joined with commas. */
+    static String threadKey(java.util.List<String> addresses) {
+        java.util.TreeSet<String> keys = new java.util.TreeSet<>();
+        for (String a : addresses) {
+            String k = key(a);
+            if (!k.isEmpty()) {
+                keys.add(k);
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String k : keys) {
+            sb.append(sb.length() > 0 ? "," : "").append(k);
+        }
+        return sb.toString();
+    }
+
     /** Is this something a person could type as a phone number? (At least 3 digits, only digits, spaces and + ( ) - . ) */
     static boolean looksLikeNumber(String input) {
         if (input == null) {

@@ -1,5 +1,6 @@
 package com.tj.linkmeter;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,6 +25,15 @@ final class Sms {
         boolean image() {
             return type.startsWith("image/");
         }
+
+        Part copy() {
+            Part c = new Part();
+            c.id = id;
+            c.type = type;
+            c.name = name;
+            c.size = size;
+            return c;
+        }
     }
 
     static final class Msg {
@@ -43,6 +53,24 @@ final class Sms {
         boolean unread;
         boolean mms;
         final List<Part> parts = new ArrayList<>();
+
+        Msg copy() {
+            Msg c = new Msg();
+            c.id = id;
+            c.key = key;
+            c.address = address;
+            c.body = body;
+            c.time = time;
+            c.mine = mine;
+            c.state = state;
+            c.error = error;
+            c.unread = unread;
+            c.mms = mms;
+            for (Part p : parts) {
+                c.parts.add(p.copy());
+            }
+            return c;
+        }
     }
 
     static final class Thread {
@@ -71,5 +99,63 @@ final class Sms {
             t.providerId = providerId;
             return t;
         }
+    }
+
+    /** What the phone says about the Texts feature. */
+    static final class State {
+        /** False when the phone's app is too old to know the Texts routes at all. */
+        boolean supported = true;
+        /** The switch "Let the tablet use my texts" in the phone's app. */
+        boolean on;
+        /** The phone's permissions: reading texts, sending texts, reading the contacts. */
+        boolean read;
+        boolean send;
+        boolean contacts;
+        /** A sentence about what is missing, "" when all is well. */
+        String note = "";
+    }
+
+    /** A contact: a name and one number. */
+    static final class Person {
+        String name = "";
+        String number = "";
+    }
+
+    /** A file the tablet put on the phone to be sent with a message. */
+    static final class Staged {
+        String id = "";
+        String name = "";
+        String type = "";
+        long size;
+        File file;
+    }
+
+    /** A message on its way out, as the phone's sender gets it. */
+    static final class Outgoing {
+        /** Numbers in the form for sending ({@link PhoneNumbers#forSending}). */
+        final List<String> to = new ArrayList<>();
+        String subject = "";
+        String text = "";
+        final List<Staged> files = new ArrayList<>();
+    }
+
+    /** The bytes of one part of a message. */
+    static final class PartData {
+        String type = "";
+        String name = "";
+        byte[] bytes = new byte[0];
+    }
+
+    /** One conversation in full: who it is with, and its messages oldest first. */
+    static final class Convo {
+        final Thread head = new Thread();
+        final List<Msg> msgs = new ArrayList<>();
+    }
+
+    /** The answer to a send. */
+    static final class SendResult {
+        boolean ok;
+        String id = "";
+        String error = "";
     }
 }

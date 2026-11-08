@@ -9,7 +9,11 @@ final class FsHttp {
     private FsHttp() {}
 
     static void serve(FsApi api, Http.Req r, OutputStream out) throws IOException {
-        FsApi.Reply rep = api.handle(r.path, r.query, r.rangeStart, r.body, r.length);
+        write(api.handle(r.path, r.query, r.rangeStart, r.body, r.length), out);
+    }
+
+    /** Sends a reply: a small body, or a file (a stream with its length), or the tail of a file for a ranged request. */
+    static void write(FsApi.Reply rep, OutputStream out) throws IOException {
         if (rep.stream == null) {
             Http.send(out, rep.code, rep.type, rep.body);
             return;
