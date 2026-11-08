@@ -14,6 +14,7 @@ final class PhoneTab extends Tab {
     private TextView files;
     private TextView seen;
     private TextView version;
+    private TextView phonePerm;
     private Button toggle;
 
     private final Runnable tick = new Runnable() {
@@ -64,6 +65,11 @@ final class PhoneTab extends Tab {
             Cfg.clearTrusted(act);
             Toast.makeText(act, "All tablets forgotten.", Toast.LENGTH_SHORT).show();
         }), Ui.lp(act, 8));
+
+        col.addView(Ui.text(act, "Phone permission (for the signal meter)", 16, Ui.FG, true), Ui.lp(act, 20));
+        phonePerm = Ui.text(act, "", 13, Ui.DIM, false);
+        col.addView(phonePerm, Ui.lp(act, 2));
+        col.addView(Ui.button(act, "Allow phone permission", v -> act.requestPhonePermission()), Ui.lp(act, 6));
 
         col.addView(Ui.text(act, "Phone helper (Shizuku)", 16, Ui.FG, true), Ui.lp(act, 20));
         priv = Ui.text(act, "", 13, Ui.DIM, false);
@@ -159,6 +165,11 @@ final class PhoneTab extends Tab {
             seen.setText("Requests received: " + Api.hits + ". Last: " + Api.lastNote + " at "
                     + java.text.DateFormat.getTimeInstance().format(new java.util.Date(Api.lastAt)));
         }
+        phonePerm.setText(act.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED
+                ? "Allowed. The tablet can read the phone's signal."
+                : "Not allowed. The signal is read through Shizuku instead; allow it here for the "
+                        + "most reliable reading.");
         String last = Updater.lastResult(act);
         version.setText("App version " + Updater.versionName(act) + " (code " + Updater.versionCode(act)
                 + ")" + (last.isEmpty() ? "" : ". Last update from the tablet: " + last));

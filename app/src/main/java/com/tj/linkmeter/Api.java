@@ -90,6 +90,7 @@ final class Api {
             case "/cells":
             case "/band":
             case "/band/keep":
+            case "/band/status":
             case "/bandinfo":
                 if (phone) {
                     bands(c, r, out);
@@ -156,6 +157,9 @@ final class Api {
                     Cells.keep();
                     Http.json(out, 200, "{\"ok\":true,\"out\":\"Lock kept.\"}");
                     break;
+                case "/band/status":
+                    Http.json(out, 200, Cells.status());
+                    break;
                 default: {
                     String set = r.q("set");
                     if (!"POST".equals(r.method) || !set.matches("[a-z0-9,;:]*")) {
@@ -164,14 +168,17 @@ final class Api {
                     }
                     String res = Cells.applyBands(c, set);
                     if (res.contains("OK ")) {
-                        Http.json(out, 200, "{\"ok\":true,\"out\":" + JSONObject.quote(res) + "}");
+                        JSONObject j = new JSONObject(Cells.status());
+                        j.put("ok", true);
+                        j.put("out", res);
+                        Http.json(out, 200, j.toString());
                     } else {
                         Http.err(out, 409, res);
                     }
                     break;
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | org.json.JSONException e) {
             Http.err(out, 409, String.valueOf(e.getMessage()));
         }
     }

@@ -225,6 +225,11 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Asks for the phone permission that lets the app read the cell signal. */
+    void requestPhonePermission() {
+        requestPermissions(new String[] {Manifest.permission.READ_PHONE_STATE}, REQ_PERMS);
+    }
+
     void startService() {
         startForegroundService(new Intent(this, SenderService.class));
     }

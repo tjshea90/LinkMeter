@@ -3,6 +3,7 @@ package com.tj.linkmeter;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -38,6 +39,9 @@ final class Cells {
     };
 
     private static volatile Runnable pending;
+    private static volatile String lockSpec = "";
+    private static volatile boolean kept;
+    private static volatile long revertAt;
 
     private Cells() {}
 
@@ -179,20 +183,47 @@ final class Cells {
         Priv.Result r = shellMain(c, spec.isEmpty() ? "bands-clear" : "bands-set '" + spec + "'");
         boolean ok = r.out.contains("OK ");
         if (ok && !spec.isEmpty()) {
+            lockSpec = spec;
+            kept = false;
+            revertAt = SystemClock.elapsedRealtime() + REVERT_MS;
             armRevert(c);
             Guard.arm(c);
-        } else {
-            keep();
+        } else if (ok) {
+            clearState();
         }
         return r.out;
     }
 
+    /** What is locked right now, for the tablet: {"lock":"lte:5","kept":false,"left":97}. */
+    static String status() {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("lock", lockSpec);
+            o.put("kept", kept);
+            o.put("left", (kept || lockSpec.isEmpty()) ? 0
+                    : Math.max(0, (revertAt - SystemClock.elapsedRealtime()) / 1000));
+        } catch (JSONException ignored) {
+            // plain values only
+        }
+        return o.toString();
+    }
+
+    /** The lock is gone (cleared by hand, undone by the timer, or by Restore). */
+    static void clearState() {
+        cancelRevert();
+        lockSpec = "";
+        kept = false;
+        revertAt = 0;
+    }
+
     private static void armRevert(Context c) {
         final Context app = c.getApplicationContext();
-        keep();
+        cancelRevert();
         Runnable undo = () -> new Thread(() -> {
             try {
-                shellMain(app, "bands-clear");
+                if (shellMain(app, "bands-clear").out.contains("OK ")) {
+                    clearState();
+                }
             } catch (IOException ignored) {
                 // Shizuku is off; nothing more can be done from here
             }
@@ -201,12 +232,19 @@ final class Cells {
         H.postDelayed(undo, REVERT_MS);
     }
 
-    /** The tablet confirmed that data works: leave the lock in place. */
-    static void keep() {
+    private static void cancelRevert() {
         Runnable p = pending;
         if (p != null) {
             H.removeCallbacks(p);
             pending = null;
+        }
+    }
+
+    /** The tablet confirmed that data works: leave the lock in place. */
+    static void keep() {
+        cancelRevert();
+        if (!lockSpec.isEmpty()) {
+            kept = true;
         }
     }
 }

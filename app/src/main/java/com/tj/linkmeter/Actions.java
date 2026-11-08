@@ -237,7 +237,9 @@ final class Actions {
             Priv.Result r = Cells.shellMain(c, "bands-clear");
             sb.append("Band lock: ").append(r.out.contains("OK ") ? "cleared."
                     : "could not be cleared (" + firstLine(r.out) + ").").append('\n');
-            Cells.keep();
+            if (r.out.contains("OK ")) {
+                Cells.clearState();
+            }
         } catch (IOException e) {
             sb.append("Band lock: ").append(e.getMessage()).append('\n');
         }
