@@ -8,7 +8,18 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (newest): user's field test of the band search (v0.2.63 screenshots) and the fix; Texts (Phase C) continues below.**
+**2026-11-08 (NEWEST): TEXTS ARE BUILT END TO END (phone side + Texts tab), CI-compiled, released as v0.2.75 (verified on GitHub, built from 055d9db); NOT yet seen on a device. The Files tab (v0.2.68), Attach (v0.2.70) and the band fix (v0.2.71) are also waiting for the user's field test.**
+- New this block: `TextsTab` (8th tab) + `TextThread` (bubbles, composer, Attach through `AttachDialog.choose`), `TextTime` (pure: list times, day headings; tested), MainActivity registers the tab.
+- HOW THE USER TURNS IT ON: update BOTH apps (tablet: Control > Update phone from this tablet); on the PHONE: LinkMeter > Phone tab > switch on "Let the tablet use my texts" (it asks Shizuku for the SMS permissions,
+  or tap "Allow texts access"); then the tablet's Texts tab. Off by default; only the paired tablet can ask.
+- THINGS TO TELL THE USER (limits by design): (1) RCS chats (Google Messages "chat features") are NOT in Android's SMS database, so they are not visible; turning chat features off makes them plain texts.
+  (2) Android lets only the default messaging app write the messages database, so what the TABLET sends is kept in LinkMeter's own record on the phone (`SmsOutbox`) and shown in the tablet's Texts tab, but it will not
+  appear in the phone's own Messages history (the recipient does get it, and replies arrive in both). (3) Picture messages: our own MMS encoder; the carrier may refuse it (the Texts tab then shows the reason);
+  pictures are shrunk to the carrier's size limit.
+- UNKNOWN until the devices answer: Shizuku grants for a sideloaded app on Android 16, whether the conversations view and MMS tables are readable, whether Verizon takes our MMS, how the tab feels on 600 px.
+  Debug hints: the phone's Phone tab shows the Texts status line; the tablet shows the phone's reasons verbatim (`SmsApi` error texts, `SmsResultReceiver.smsError/mmsError`).
+
+**2026-11-08 (field fix, released as v0.2.71): the user's v0.2.63 screenshots of the band search, and the fix.**
 - The user ran "Find the best upload" with "search again after each lock" on. Result: every lock `NOT obeyed` (phone stayed on B66 + B48), upload 2.6 to
   5.6 Mbit/s = noise, and every row said `could not make the phone search again: Couldn't reach the phone: Software caused connection abort`. Meaning: the
   radio restart (`setRadioPower` off 4 s, on) takes the phone's HOTSPOT down with it, so the tablet's request died with an aborted connection. My summary
@@ -22,17 +33,6 @@ session's transcript.
 - STILL UNKNOWN: whether this phone obeys a lock after a CONFIRMED search. If the next run says "even after searching again" with confirmed searches, tell the user
   plainly: band locks are impossible on this firmware (the modem ignores `setSystemSelectionChannels`); only 5G on/off works. Remaining ideas if they care:
   Samsung's hidden service menu (`*#2263#`; can be opened through the remote screen) and MediaTek's engineer mode, both often removed on Verizon.
-
-**2026-11-08 (newest of all): TEXTS ARE BUILT END TO END (phone side + Texts tab), CI-compiled, released as the next numbered release; NOT yet seen on a device.**
-- New this block: `TextsTab` (8th tab) + `TextThread` (bubbles, composer, Attach through `AttachDialog.choose`), `TextTime` (pure: list times, day headings; tested), MainActivity registers the tab.
-- HOW THE USER TURNS IT ON: update BOTH apps (tablet: Control > Update phone from this tablet); on the PHONE: LinkMeter > Phone tab > switch on "Let the tablet use my texts" (it asks Shizuku for the SMS permissions,
-  or tap "Allow texts access"); then the tablet's Texts tab. Off by default; only the paired tablet can ask.
-- THINGS TO TELL THE USER (limits by design): (1) RCS chats (Google Messages "chat features") are NOT in Android's SMS database, so they are not visible; turning chat features off makes them plain texts.
-  (2) Android lets only the default messaging app write the messages database, so what the TABLET sends is kept in LinkMeter's own record on the phone (`SmsOutbox`) and shown in the tablet's Texts tab, but it will not
-  appear in the phone's own Messages history (the recipient does get it, and replies arrive in both). (3) Picture messages: our own MMS encoder; the carrier may refuse it (the Texts tab then shows the reason);
-  pictures are shrunk to the carrier's size limit.
-- UNKNOWN until the devices answer: Shizuku grants for a sideloaded app on Android 16, whether the conversations view and MMS tables are readable, whether Verizon takes our MMS, how the tab feels on 600 px.
-  Debug hints: the phone's Phone tab shows the Texts status line; the tablet shows the phone's reasons verbatim (`SmsApi` error texts, `SmsResultReceiver.smsError/mmsError`).
 
 **2026-11-08 (before that): Texts: the Android PHONE side (C3) was written and saved for CI to compile; the Texts TAB (C4) was NEXT.**
 - C3 files (Android only; offline `javac` shows only missing Android classes): `SmsAccess` (permissions + `grant` through Shizuku: `appops set ... ACCESS_RESTRICTED_SETTINGS allow`, `pm grant` READ_SMS/SEND_SMS/READ_CONTACTS),
