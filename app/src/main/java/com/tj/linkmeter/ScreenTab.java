@@ -91,6 +91,14 @@ final class ScreenTab extends Tab {
     private final PhonePower power = new PhonePower();
     /** When Sleep was last confirmed: a touch just after it must not wake the phone again. */
     private long sleptAt;
+    /** The phone's display state from its last answer: 1 off, 2 on, 3 doze (Always-On Display), 0 unknown. */
+    private int phoneDisplay;
+    /** What the phone said it did the last time it was told to sleep or wake (for the Information box). */
+    private String lastPowerText = "";
+    /** The phone's own "awake" answer to the last state check (null: none yet), apart from what the buttons show. */
+    private Boolean lastPollAwake;
+    /** Solid black over the picture while the phone's screen is off, so the last frame cannot look like a live screen. */
+    private View cover;
     private boolean phoneLocked;
     /** The phone's app version from its last answer: null = it has not answered yet, "" = an older phone that does not say. */
     private String phoneVersion;
@@ -193,6 +201,9 @@ final class ScreenTab extends Tab {
         still = new PhoneScreenView(act);
         still.setListener(this::touch);
         still.setVisibility(View.GONE);
+        cover = new View(act);
+        cover.setBackgroundColor(0xFF000000);
+        cover.setVisibility(View.GONE); // not clickable, so a tap on it still reaches the picture below (tap to wake)
         note = Ui.text(act, "", 15, Ui.FG, false);
         note.setGravity(Gravity.CENTER);
         note.setBackgroundColor(0xB0000000);
@@ -219,6 +230,7 @@ final class ScreenTab extends Tab {
         stage.addView(vid, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER));
         stage.addView(still, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        stage.addView(cover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         stage.addView(note, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER));
         stage.addView(typingView, new FrameLayout.LayoutParams(1, 1));
@@ -534,6 +546,7 @@ final class ScreenTab extends Tab {
             return;
         }
         note.setVisibility(View.GONE);
+        cover.setVisibility(View.GONE);
         hideStill();
         boolean v = mode == 0;
         vid.setVisibility(v ? View.VISIBLE : View.GONE);
@@ -575,8 +588,13 @@ final class ScreenTab extends Tab {
                 if (ok && json != null) {
                     phoneLocked = json.optBoolean("locked", false);
                     phoneVersion = json.optString("vn", "");
+                    phoneDisplay = json.optInt("ds", 0);
+                    lastPollAwake = json.optBoolean("on", true);
                     applyPoll(json.optBoolean("on", true));
                     paintBars(); // the lock state may have changed too
+                    if (!phoneOn && waitingForScreen) {
+                        showOff(); // the wording depends on the display state, which may have just become known
+                    }
                     if (phoneOn && waitingForScreen && mode == 0 && video == null && surfaceReady) {
                         phoneWokeUp();
                     }
@@ -777,8 +795,7 @@ final class ScreenTab extends Tab {
             phoneOn = power.on();
             waitingForScreen = true;
             paintBars();
-            showNote("The phone's screen is off.\nTap Wake.");
-            setStatus("The phone's screen is off.");
+            showOff();
             return;
         }
         final boolean damaged = quickResync;
@@ -1066,9 +1083,11 @@ final class ScreenTab extends Tab {
         } else {
             if (f.off) {
                 applyPoll(false);
+                showOff();
+            } else {
+                showNote(f.note);
+                setStatus(f.note);
             }
-            showNote(f.note);
-            setStatus(f.off ? "The phone's screen is off." : f.note);
         }
     }
 
@@ -1254,10 +1273,18 @@ final class ScreenTab extends Tab {
     }
 
     private void sendPower(final boolean wantOn, final int attempt) {
-        Call.run(act, "POST", wantOn ? "/screen/on" : "/screen/off", 30000, (ok, text, json) -> {
+        final String target = wantOn ? "/screen/on" : "/screen/off" + (prefs.sleepFullOff() ? "?nodoze=1" : "");
+        Call.run(act, "POST", target, 30000, (ok, text, json) -> {
             long now = SystemClock.elapsedRealtime();
-            if (!ok && attempt == 0) {
-                // a network hiccup or a slow phone: once more
+            String what = wantOn ? "Wake" : "Sleep";
+            if (json != null && json.has("ds")) {
+                phoneDisplay = json.optInt("ds", phoneDisplay);
+            }
+            lastPowerText = json != null && json.has("how") ? what + ": " + json.optString("how")
+                    : (ok ? what + ": done" : what + " failed: " + text);
+            if (!ok && attempt == 0 && json == null) {
+                // no answer at all (a network hiccup): once more. An answer from the phone that says no is NOT repeated:
+                // pressing the power key again could undo a Sleep that was only slow.
                 act.ui.postDelayed(() -> sendPower(wantOn, 1), 500);
                 return;
             }
@@ -1310,8 +1337,59 @@ final class ScreenTab extends Tab {
             stopVideo();
             hideStill();
         }
-        showNote("The phone's screen is off.\nTap Wake.");
-        setStatus("The phone's screen is off.");
+        showOff();
+    }
+
+    /** The phone's display state as words (see Screen.displayState on the phone). */
+    private static String displayName(int ds) {
+        switch (ds) {
+            case 1:
+                return "off";
+            case 2:
+                return "on";
+            case 3:
+                return "dozing (Always-On Display)";
+            case 4:
+                return "dozing, suspended";
+            case 5:
+                return "VR";
+            case 6:
+                return "on, suspended";
+            default:
+                return "unknown";
+        }
+    }
+
+    /**
+     * The phone's screen is off: black out the picture (the last frame would be a bright lock screen that looks like a
+     * phone that is still on) and say so, in words that fit the display state the phone reported.
+     */
+    private void showOff() {
+        if (cover != null) {
+            cover.setVisibility(View.VISIBLE);
+        }
+        if (hud != null) {
+            hud.setText(""); // the speed numbers of a stream that has stopped
+        }
+        if (phoneDisplay == 3 || phoneDisplay == 4) {
+            showNote("The phone is asleep, but its Always-On Display is showing.\nTap Wake.");
+            setStatus("The phone is asleep (Always-On Display).");
+        } else if (phoneDisplay == 2 || phoneDisplay == 6) {
+            showNote("Android says the phone is asleep, but its display is on.\nTap Wake.");
+            setStatus("The phone says it is asleep, but its display is on.");
+        } else {
+            showNote("The phone's screen is off.\nTap Wake.");
+            setStatus("The phone's screen is off.");
+        }
+    }
+
+    private void hideOff() {
+        if (cover != null) {
+            cover.setVisibility(View.GONE);
+        }
+        if (note != null) {
+            note.setVisibility(View.GONE);
+        }
     }
 
     /** The phone's screen is on again: bring the picture back. */
@@ -1320,9 +1398,7 @@ final class ScreenTab extends Tab {
             return;
         }
         waitingForScreen = false;
-        if (note != null) {
-            note.setVisibility(View.GONE);
-        }
+        hideOff();
         if (shown && mode == 0 && video == null && surfaceReady) {
             setStatus("Starting video…");
             startVideo();
@@ -1492,6 +1568,9 @@ final class ScreenTab extends Tab {
         sb.append(act.awakeReport()).append('\n');
         sb.append("Touch channel: ").append(ctlText).append('\n');
         sb.append("Phone screen: ").append(phoneOn ? "on" : "off").append(phoneLocked ? ", locked" : "").append('\n');
+        sb.append("Phone says: ").append(lastPollAwake == null ? "nothing yet" : (lastPollAwake ? "awake" : "asleep"))
+                .append(", display ").append(displayName(phoneDisplay)).append('\n');
+        sb.append("Last Sleep/Wake: ").append(lastPowerText.isEmpty() ? "none yet" : lastPowerText).append('\n');
         sb.append("Last video problem: ").append(lastError.isEmpty() ? "none" : lastError).append('\n');
         sb.append("Video restarts because a picture arrived damaged: ").append(resyncs).append('\n');
         sb.append("Phone settings: ").append(profileText).append('\n');

@@ -32,6 +32,7 @@ import java.util.function.Consumer;
  *   nt-set MASK          set them
  *   bands-set lte:5,12   restrict the modem to those bands (";" separates networks)
  *   bands-clear          remove any band restriction
+ *   sleep [nodoze]       put the device to sleep through the power service (nodoze: skip the Always-On Display)
  *
  * Output starts with OK or ERR. Hidden-API checks do not apply in this process,
  * which is why reflection works here.
@@ -64,6 +65,9 @@ public final class ShellMain {
         if (a[0].equals("inject")) {
             return inject();
         }
+        if (a[0].equals("sleep")) {
+            return sleep(a.length > 1 && a[1].equals("nodoze"));
+        }
         TelephonyManager tm = telephony();
         switch (a[0]) {
             case "info":
@@ -83,6 +87,36 @@ public final class ShellMain {
             default:
                 return "ERR unknown command";
         }
+    }
+
+    /**
+     * Puts the device to sleep by asking the power service directly, as the power button's handler does, instead of
+     * pressing a key (a key press can be treated differently on each phone, and the power key toggles). With nodoze the
+     * display goes fully dark instead of showing the Always-On Display. Needs DEVICE_POWER, which the shell user has.
+     */
+    private static String sleep(boolean noDoze) throws Exception {
+        Object binder = Class.forName("android.os.ServiceManager").getMethod("getService", String.class)
+                .invoke(null, "power");
+        if (binder == null) {
+            return "ERR there is no power service";
+        }
+        Object power = Class.forName("android.os.IPowerManager$Stub")
+                .getMethod("asInterface", Class.forName("android.os.IBinder")).invoke(null, binder);
+        Method go = null;
+        for (Method m : power.getClass().getMethods()) {
+            Class<?>[] p = m.getParameterTypes();
+            if (m.getName().equals("goToSleep") && p.length == 3 && p[0] == long.class && p[1] == int.class
+                    && p[2] == int.class) {
+                go = m;
+                break;
+            }
+        }
+        if (go == null) {
+            return "ERR this phone has no goToSleep(time, reason, flags)";
+        }
+        // reason 0 = GO_TO_SLEEP_REASON_APPLICATION; flag 1 = GO_TO_SLEEP_FLAG_NO_DOZE
+        go.invoke(power, Long.valueOf(SystemClock.uptimeMillis()), Integer.valueOf(0), Integer.valueOf(noDoze ? 1 : 0));
+        return "OK";
     }
 
     /** A package name the system will accept for the shell user (uid 2000). */

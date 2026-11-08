@@ -6,9 +6,11 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.view.Display;
 import android.view.WindowManager;
 import java.io.BufferedReader;
 import java.io.DataInputStream;
@@ -93,7 +95,7 @@ final class Screen {
             // "vn" is this phone's app version, so the tablet can tell if the phone was left on an older build.
             String vn = Updater.versionName(c).replaceAll("[^0-9A-Za-z._-]", "");
             Http.json(out, 200, "{\"on\":" + pm.isInteractive() + ",\"locked\":" + km.isKeyguardLocked()
-                    + ",\"prof\":" + RemoteProfile.isOn(c) + ",\"vn\":\"" + vn + "\"}");
+                    + ",\"prof\":" + RemoteProfile.isOn(c) + ",\"ds\":" + displayState(c) + ",\"vn\":\"" + vn + "\"}");
             return;
         }
         if (!Priv.ready()) {
@@ -140,10 +142,10 @@ final class Screen {
                     break;
                 }
                 case "/screen/on":
-                    power(out, pm, true);
+                    power(c, r, out, pm, true);
                     break;
                 case "/screen/off":
-                    power(out, pm, false);
+                    power(c, r, out, pm, false);
                     break;
                 case "/screen/text": {
                     String t = body(r, 120);
@@ -201,42 +203,87 @@ final class Screen {
         return v;
     }
 
-    /**
-     * Wakes or sleeps the phone and checks that it really happened. A key press that exits cleanly can still do
-     * nothing, and the tablet used to be told "Screen off." anyway. If the phone has not followed after a second
-     * and a half, the power key is tried as well; that key toggles, so it is only pressed while the phone is still
-     * in the wrong state. The answer says what the screen really is ("on") so the tablet need not guess.
-     */
-    private static void power(OutputStream out, PowerManager pm, boolean wantOn) throws IOException {
-        String problem = "";
+    /** The display's own state: 1 off, 2 on, 3 doze (the Always-On Display), 4 doze suspended, 5 VR, 6 on suspended; 0 unknown. */
+    private static int displayState(Context c) {
         try {
-            int[] keys = {wantOn ? 224 : 223, 26};
-            for (int key : keys) {
-                if (pm.isInteractive() == wantOn) {
-                    break;
+            DisplayManager dm = (DisplayManager) c.getSystemService(Context.DISPLAY_SERVICE);
+            Display d = dm == null ? null : dm.getDisplay(Display.DEFAULT_DISPLAY);
+            return d == null ? 0 : d.getState();
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** Runs one shell command for Sleep or Wake; what happened, in a few words, for the trace. */
+    private static String press(String cmd) {
+        try {
+            Priv.Result res = Priv.run(cmd, 10);
+            return res.ok() ? "done" : (res.out.isEmpty() ? "failed" : res.out);
+        } catch (IOException e) {
+            return String.valueOf(e.getMessage()); // Shizuku went away in the middle of it
+        }
+    }
+
+    /**
+     * Wakes or sleeps the phone with the steps in PowerSequence (the exact methods first, each checked, the power key last
+     * and only if needed; tested on a computer with a simulated phone). The answer says what the phone really is afterwards
+     * ("on" = awake, "ds" = the display state) and what was tried ("how"), so a Sleep that "does nothing" can be understood
+     * from the tablet. With ?nodoze=1 the display goes fully dark instead of showing the Always-On Display.
+     */
+    private static void power(final Context c, Http.Req r, OutputStream out, final PowerManager pm, final boolean wantOn)
+            throws IOException {
+        final boolean noDoze = !wantOn && "1".equals(r.q("nodoze"));
+        PowerSequence.Result res;
+        try {
+            res = PowerSequence.run(new PowerSequence.Phone() {
+                @Override
+                public boolean awake() {
+                    return pm.isInteractive();
                 }
-                try {
-                    Priv.Result res = Priv.run("input keyevent " + key, 10);
-                    if (!res.ok()) {
-                        problem = res.out;
-                        continue;
+
+                @Override
+                public boolean dozing() {
+                    int ds = displayState(c);
+                    return ds == 3 || ds == 4;
+                }
+
+                @Override
+                public String pressKey(int keyCode) {
+                    return press("input keyevent " + keyCode);
+                }
+
+                @Override
+                public String sleepService(boolean nd) {
+                    try {
+                        Priv.Result sr = Priv.run(Cells.mainCommandExec(c, "sleep" + (nd ? " nodoze" : "")), 10);
+                        return sr.out.isEmpty() ? "no answer" : sr.out;
+                    } catch (IOException e) {
+                        return "ERR " + e.getMessage();
                     }
-                } catch (IOException e) {
-                    problem = String.valueOf(e.getMessage()); // Shizuku went away in the middle of it
-                    continue;
                 }
-                for (int i = 0; i < 15 && pm.isInteractive() != wantOn; i++) {
-                    Thread.sleep(100);
+
+                @Override
+                public void pause(long ms) throws InterruptedException {
+                    Thread.sleep(ms);
                 }
-            }
+
+                @Override
+                public long now() {
+                    return SystemClock.elapsedRealtime();
+                }
+            }, wantOn, noDoze);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            Http.err(out, 409, "The request was interrupted.");
+            return;
         }
-        if (pm.isInteractive() == wantOn) {
-            Http.json(out, 200, "{\"ok\":true,\"on\":" + wantOn + ",\"out\":\"" + (wantOn ? "Screen on." : "Screen off.") + "\"}");
+        String state = ",\"on\":" + pm.isInteractive() + ",\"ds\":" + displayState(c)
+                + ",\"how\":" + org.json.JSONObject.quote(res.how);
+        if (res.reached) {
+            Http.json(out, 200, "{\"ok\":true,\"out\":\"" + (wantOn ? "Screen on." : "Screen off.") + "\"" + state + "}");
         } else {
-            Http.err(out, 409, "The phone did not " + (wantOn ? "wake up" : "go to sleep")
-                    + (problem.isEmpty() ? " (it was told twice)." : ": " + problem));
+            Http.json(out, 409, "{\"err\":" + org.json.JSONObject.quote("The phone did not "
+                    + (wantOn ? "wake up" : "stay asleep") + ": " + res.how) + state + "}");
         }
     }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# All the offline tests: the phone-settings decisions, the Sleep / Wake button rules, the H.264 header fix, the H.264
+# All the offline tests: the phone-settings decisions, the Sleep / Wake button rules and steps, the H.264 header fix, the H.264
 # picture cutter and the release pipeline's safety gate.
 # (The rest of the app can only be compiled by GitHub Actions; there is no Android SDK here.)
 # Exits non-zero if anything fails: the release pipeline uses that to decide whether a build is good.
@@ -13,6 +13,9 @@ java -cp "$out" com.tj.linkmeter.ProfilePlanTest || fail=1
 echo "== PhonePower (the Sleep / Wake button rules)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhonePower.java tools/test/PhonePowerTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhonePowerTest || fail=1
+echo "== PowerSequence (the phone's Sleep / Wake steps, against a simulated phone)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PowerSequence.java tools/test/PowerSequenceTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.PowerSequenceTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

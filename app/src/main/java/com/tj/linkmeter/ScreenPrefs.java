@@ -190,6 +190,15 @@ final class ScreenPrefs {
         Cfg.setBool(c, "sleepLeave", v);
     }
 
+    /** Sleep turns the phone's display fully off, not just to its Always-On Display (which looks like a phone that stayed on). */
+    boolean sleepFullOff() {
+        return Cfg.getBool(c, "sleepFullOff", true);
+    }
+
+    void setSleepFullOff(boolean v) {
+        Cfg.setBool(c, "sleepFullOff", v);
+    }
+
     boolean tapToWake() {
         return Cfg.getBool(c, "tapWake", true);
     }
@@ -216,6 +225,7 @@ final class ScreenPrefs {
         setDimIndex(0);
         setSleepOnLeave(true);
         setTapToWake(true);
+        setSleepFullOff(true);
         setTabletAwake(true);
     }
 }

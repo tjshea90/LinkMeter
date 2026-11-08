@@ -292,6 +292,8 @@ final class AdvancedPanel {
                 Ui.lp(c, 2));
         col.addView(check("Turn the phone's screen off when I leave (if I woke it from here)", prefs.sleepOnLeave(),
                 prefs::setSleepOnLeave), Ui.lp(c, 6));
+        col.addView(check("Sleep turns the phone's display fully off (not the Always-On Display)", prefs.sleepFullOff(),
+                prefs::setSleepFullOff));
         col.addView(check("Wake a sleeping phone when I tap the picture", prefs.tapToWake(), prefs::setTapToWake));
         phoneInfo = Ui.text(c, host.phoneText(), 12, Ui.DIM, false);
         col.addView(phoneInfo, Ui.lp(c, 6));
