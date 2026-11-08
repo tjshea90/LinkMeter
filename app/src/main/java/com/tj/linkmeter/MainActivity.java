@@ -166,7 +166,8 @@ public class MainActivity extends Activity {
         barRow.setOrientation(LinearLayout.HORIZONTAL);
         barRow.setBackgroundColor(Ui.CARD);
 
-        tabs = new Tab[] {new HomeTab(this), new ControlTab(this), new SettingsTab(this)};
+        tabs = new Tab[] {new HomeTab(this), new SpeedTab(this), new ControlTab(this),
+                new SettingsTab(this)};
         bar = new Button[tabs.length];
         for (int i = 0; i < tabs.length; i++) {
             final int idx = i;

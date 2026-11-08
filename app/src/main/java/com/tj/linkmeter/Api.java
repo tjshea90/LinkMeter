@@ -63,6 +63,15 @@ final class Api {
                     Http.err(out, 404, "not a phone");
                 }
                 break;
+            case "/speed/start":
+            case "/speed/stop":
+            case "/speed/status":
+                if (phone) {
+                    speed(c, r, out);
+                } else {
+                    Http.err(out, 404, "not a phone");
+                }
+                break;
             default:
                 Http.err(out, 404, "unknown request");
                 break;
@@ -89,6 +98,22 @@ final class Api {
             Http.json(out, 200, "{\"ok\":true,\"out\":" + JSONObject.quote(res) + "}");
         } catch (IOException e) {
             Http.err(out, 409, String.valueOf(e.getMessage()));
+        }
+    }
+
+    private static void speed(Context c, Http.Req r, OutputStream out) throws IOException {
+        switch (r.path) {
+            case "/speed/start":
+                SpeedTest.start(c);
+                Http.json(out, 200, "{\"ok\":true}");
+                break;
+            case "/speed/stop":
+                SpeedTest.stop();
+                Http.json(out, 200, "{\"ok\":true}");
+                break;
+            default:
+                Http.json(out, 200, SpeedTest.json((int) r.qLong("from", 0)));
+                break;
         }
     }
 
