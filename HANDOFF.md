@@ -8,7 +8,7 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (newest): field results for the Bands tab and the hotspot band, and the fixes (v0.2.62).**
+**2026-11-08 (newest): field results for the Bands tab and the hotspot band, and the fixes (released as v0.2.63).**
 - With the scan fixed (v0.2.61) the run showed `NOT obeyed` for EVERY lock: the phone (Samsung A15 5G, Verizon, Android 16) stayed on
   B66 + B48 even when asked for B66 only. So `setSystemSelectionChannels` is acknowledged and ignored AS APPLIED. Upload was 0.7 to 2.8
   Mbit/s on identical bands (the noise), signal about -104 dBm. The user asked "does this mean I can't lock bands".
