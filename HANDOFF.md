@@ -8,7 +8,22 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (newest): Phase B (Attach) built; Phase C (Texts) has its pure parts done and tested; the phone side and the tablet screen are NEXT.**
+**2026-11-08 (newest): user's field test of the band search (v0.2.63 screenshots) and the fix; Texts (Phase C) continues below.**
+- The user ran "Find the best upload" with "search again after each lock" on. Result: every lock `NOT obeyed` (phone stayed on B66 + B48), upload 2.6 to
+  5.6 Mbit/s = noise, and every row said `could not make the phone search again: Couldn't reach the phone: Software caused connection abort`. Meaning: the
+  radio restart (`setRadioPower` off 4 s, on) takes the phone's HOTSPOT down with it, so the tablet's request died with an aborted connection. My summary
+  still said "even after searching again", which was not proven. FIXED (released after this note): `radio_cycle` is now a DELAYED phone action (the phone
+  answers "Sent" first and restarts 800 ms later, like hotspot_restart), it records `cycleState` ("running" / "done" / "failed: why"), the new action
+  `radio_cycle_state` reports it, `BandSweep.searchAgain` waits (up to 90 s, asking every 3 s, failures while the hotspot is down are just "not back yet") until
+  the phone says "done", then polls for service. Only a CONFIRMED search lets the summary say "even after searching again"; an unconfirmed one says "never
+  confirmed ... does not yet prove locks cannot work". The end of a run clears the lock with retries (the phone may be unreachable), searches again, then
+  asks about and restores 5G with retries; a problem is said in the closing message instead of "back as it was". Tests: BandSweepTest ~35,900 checks, 12
+  deliberate breakages caught. THE PHONE APP MUST BE UPDATED for this (Control > Update phone from this tablet): an old phone app still restarts synchronously.
+- STILL UNKNOWN: whether this phone obeys a lock after a CONFIRMED search. If the next run says "even after searching again" with confirmed searches, tell the user
+  plainly: band locks are impossible on this firmware (the modem ignores `setSystemSelectionChannels`); only 5G on/off works. Remaining ideas if they care:
+  Samsung's hidden service menu (`*#2263#`; can be opened through the remote screen) and MediaTek's engineer mode, both often removed on Verizon.
+
+**2026-11-08 (earlier today): Phase B (Attach) built; Phase C (Texts) has its pure parts done and tested; the phone side and the tablet screen are NEXT.**
 - Phase B (paperclip in the Screen tab -> `AttachDialog` -> `Attach` uploads into the phone's Pictures/Movies/Music/Download `/LinkMeter`, media scan) is
   CI-compiled and merged; released with this checkpoint. UNKNOWN until the user tries it: whether the phone's pickers show the files at once, and how the
   dialog feels on the 600 px tablet.

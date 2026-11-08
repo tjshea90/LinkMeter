@@ -19,16 +19,32 @@ final class Actions {
 
     private Actions() {}
 
+    /**
+     * How the last radio restart went, for the tablet to ask after the link is back: "none", "running", "done" (the radio was
+     * switched off and on) or "failed: why". The restart drops the hotspot, so the tablet cannot be told when it ends by the reply.
+     */
+    private static volatile String cycleState = "none";
+
     /** These cut the link to the tablet, so the phone answers first and acts a moment later. */
     static boolean isDelayed(String name) {
         return name.equals("airplane_on") || name.equals("hotspot_off") || name.equals("poweroff")
-                || name.equals("hotspot_restart");
+                || name.equals("hotspot_restart") || name.equals("radio_cycle");
+    }
+
+    /** Called before the reply to a delayed action is sent, so that a question asked right after it gets the right answer. */
+    static void prepareDelayed(String name) {
+        if (name.equals("radio_cycle")) {
+            cycleState = "running";
+        }
     }
 
     private static String delayedCommand(Context c, String name) {
         switch (name) {
             case "hotspot_restart":
                 return Cells.mainCommand(c, "hotspot-restart");
+            case "radio_cycle":
+                // for the band lock: the modem applies a restriction when it SEARCHES, so make it search again
+                return Cells.mainCommand(c, "radio-cycle");
             case "airplane_on":
                 return "cmd connectivity airplane-mode enable";
             case "hotspot_off":
@@ -45,9 +61,15 @@ final class Actions {
         new Thread(() -> {
             try {
                 Thread.sleep(800);
-                Priv.run(delayedCommand(app, name), 60);
-            } catch (IOException | InterruptedException ignored) {
-                // the tablet has already lost the link; nothing to report to
+                Priv.Result r = Priv.run(delayedCommand(app, name), 60);
+                if (name.equals("radio_cycle")) {
+                    cycleState = r.out.contains("OK ") ? "done" : "failed: " + firstLine(r.out);
+                }
+            } catch (IOException | InterruptedException e) {
+                // the tablet has already lost the link; nothing to report to (but a radio restart records how it went)
+                if (name.equals("radio_cycle")) {
+                    cycleState = "failed: " + e.getMessage();
+                }
             }
         }, "linkmeter-delayed").start();
     }
@@ -69,14 +91,8 @@ final class Actions {
                 return setup(c);
             case "restore":
                 return restoreAll(c);
-            case "radio_cycle": {
-                // for the band lock: the modem applies a restriction when it SEARCHES, so make it search again
-                Priv.Result r = Cells.shellMain(c, "radio-cycle");
-                if (!r.out.contains("OK ")) {
-                    throw new IOException(firstLine(r.out));
-                }
-                return firstLine(r.out);
-            }
+            case "radio_cycle_state":
+                return cycleState;
             case "restart_modem":
                 return report(Priv.run("cmd phone restart-modem", 30),
                         "Modem restart requested. Mobile data comes back in a minute or so.");

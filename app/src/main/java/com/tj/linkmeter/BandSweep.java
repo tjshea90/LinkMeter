@@ -87,10 +87,17 @@ final class BandSweep {
         void lockSpec(Done<String> d);
 
         /**
-         * Makes the phone search for a network again (its radio is switched off and on). A band lock tells the modem which bands to
-         * SEARCH, so a phone that is already connected may keep its band until it searches again. ok = it was done.
+         * Asks the phone to search for a network again (its radio is switched off and on). A band lock tells the modem which bands to
+         * SEARCH, so a phone that is already connected may keep its band until it searches again. The restart cuts the hotspot, so
+         * the phone answers FIRST and restarts a moment later: ok = it took the request, nothing more (see researchState).
          */
         void research(Done<Void> d);
+
+        /**
+         * How that restart went: "running", "done" (the radio was switched off and on) or "failed: why". ok = false when the phone
+         * cannot be reached, which is what happens while its radio restarts (the hotspot is down).
+         */
+        void researchState(Done<String> d);
 
         void later(long ms, Runnable r);
 
@@ -187,6 +194,11 @@ final class BandSweep {
     private int ignoredLocks;
     private int obeyedLocks;
     private int skippedLocks;
+    /** Times the phone said it had searched again, and times that did not work or was not confirmed. */
+    private int searchesConfirmed;
+    private int searchesFailed;
+    /** Something that went wrong while the phone was being put back, for the closing message. */
+    private String endNote = "";
     private boolean confirming;
     private final List<Integer> queue = new ArrayList<>();
     private int queuePos = -1;
@@ -403,18 +415,11 @@ final class BandSweep {
             lockApplied = !s.spec.isEmpty();
             if (research && (lockApplied || wasLocked)) {
                 // the modem applies a band restriction when it searches: make it search (this also puts the phone back on its own bands after a lock)
-                say(s, "making the phone search again");
-                link.research((ok2, text2, v2) -> {
-                    if (cancelled) {
-                        finish();
-                        return;
-                    }
-                    if (!ok2) {
-                        row.note = join(row.note, "could not make the phone search again: " + text2);
-                    }
+                say(s, "making the phone search again (the link to it drops for a while)");
+                searchAgain(row, () -> {
                     waitLimit = 70000; // service is gone for a while, then comes back
                     final long t1 = link.now();
-                    link.later(8000, () -> poll(s, t1));
+                    link.later(3000, () -> poll(s, t1));
                 });
                 return;
             }
@@ -423,6 +428,63 @@ final class BandSweep {
             final long t0 = link.now();
             link.later(wait, () -> poll(s, t0));
         });
+    }
+
+    /**
+     * Makes the phone search for a network again and waits until it SAYS it has. The restart cuts the hotspot, so the reply to the
+     * request cannot be waited for (that was the "connection abort" that looked like a failure): the phone answers first, restarts
+     * a moment later, and is asked how it went once the link is back. noteTo: the row that gets a note if it did not work; null at
+     * the end of the run (the note goes to the closing message).
+     */
+    private void searchAgain(final Row noteTo, final Runnable whenDone) {
+        link.research((ok, text, v) -> {
+            if (cancelled && !finishing) {
+                finish();
+                return;
+            }
+            if (!ok) {
+                searchFailed(noteTo, "could not make the phone search again: " + text);
+                whenDone.run();
+                return;
+            }
+            awaitSearch(noteTo, link.now(), whenDone);
+        });
+    }
+
+    private void awaitSearch(final Row noteTo, final long t0, final Runnable whenDone) {
+        String waiting = "waiting for the phone's radio to restart (" + (link.now() - t0) / 1000 + " s)";
+        if (noteTo != null) {
+            say(noteTo.step, waiting);
+        } else {
+            ui.progress("Making the phone search again: " + waiting);
+        }
+        link.later(3000, () -> link.researchState((ok, text, state) -> {
+            if (cancelled && !finishing) {
+                finish();
+                return;
+            }
+            if (ok && "done".equals(state)) {
+                searchesConfirmed++;
+                whenDone.run();
+            } else if (ok && state != null && state.startsWith("failed")) {
+                searchFailed(noteTo, "the phone could not search again: " + state.replaceFirst("^failed:?\\s*", ""));
+                whenDone.run();
+            } else if (link.now() - t0 > 90000) {
+                searchFailed(noteTo, "the phone did not say that it had searched again (no answer for 90 seconds)");
+                whenDone.run();
+            } else {
+                awaitSearch(noteTo, t0, whenDone);
+            }
+        }));
+    }
+
+    private void searchFailed(Row noteTo, String why) {
+        searchesFailed++;
+        if (noteTo != null) {
+            noteTo.note = join(noteTo.note, why);
+        } else {
+            endNote = join(endNote, why);
+        }
     }
 
     /** Asks what the phone is on until it matches what was asked for, or gives up. */
@@ -586,23 +648,60 @@ final class BandSweep {
         }
         finishing = true;
         ui.progress("Putting the phone back as it was…");
+        clearLock(0);
+    }
+
+    /**
+     * Clears the band lock. The phone may not be reachable right now (a stop during its radio restart: the hotspot is down with
+     * the radio), so a failed request is tried again for a while before it is given up.
+     */
+    private void clearLock(final int attempt) {
         link.setLock("", (ok, text, v) -> {
+            if (!ok && attempt < 8) {
+                ui.progress("Waiting for the phone to answer, to clear the band lock…");
+                link.later(5000, () -> clearLock(attempt + 1));
+                return;
+            }
+            if (!ok) {
+                endNote = join(endNote, "the band lock could not be cleared (" + text + ")");
+            }
             if (research && lockApplied) {
                 lockApplied = false;
                 ui.progress("Making the phone search again, so it is back on its own bands…");
-                link.research((a, t, x) -> restoreFiveG());
+                searchAgain(null, this::restoreFiveG);
             } else {
                 restoreFiveG();
             }
         });
     }
 
-    /** Asks the phone (it may have changed even if a reply was lost) and switches 5G back only if it differs. */
     private void restoreFiveG() {
+        restoreFiveG(0);
+    }
+
+    /**
+     * Asks the phone (it may have changed even if a reply was lost) and switches 5G back only if it differs. The phone may still be
+     * reconnecting after its radio restart, so a failed question or switch is tried again a few times before it is given up.
+     */
+    private void restoreFiveG(final int attempt) {
         link.fiveGOff((ok, text, off) -> {
+            if (!ok && attempt < 5) {
+                ui.progress("Waiting for the phone to answer, to put 5G back as it was…");
+                link.later(4000, () -> restoreFiveG(attempt + 1));
+                return;
+            }
             boolean now = ok ? Boolean.TRUE.equals(off) : fiveGOff;
             if (now != originalFiveGOff) {
-                link.switchFiveG(originalFiveGOff, (a, t, o) -> end());
+                link.switchFiveG(originalFiveGOff, (a, t, o) -> {
+                    if (!a && attempt < 5) {
+                        link.later(4000, () -> restoreFiveG(attempt + 1));
+                        return;
+                    }
+                    if (!a) {
+                        endNote = join(endNote, "5G could not be switched " + (originalFiveGOff ? "off" : "on") + " again (" + t + ")");
+                    }
+                    end();
+                });
             } else {
                 end();
             }
@@ -613,7 +712,12 @@ final class BandSweep {
         running = false;
         link.awake(false);
         publish();
-        ui.progress(cancelled ? "Stopped. The phone is back as it was." : "Done. The phone is back as it was. Pick the best below.");
+        String head = cancelled ? "Stopped." : "Done.";
+        if (!endNote.isEmpty()) {
+            ui.progress(head + " The phone may not be back as it was: " + endNote + ". Check the Control tab.");
+        } else {
+            ui.progress(head + " The phone is back as it was." + (cancelled ? "" : " Pick the best below."));
+        }
     }
 
     // ------------------------------------------------------------ words
@@ -623,9 +727,12 @@ final class BandSweep {
         return summary(rows, false, 0);
     }
 
-    /** This run's summary: whether it searched again after each lock, and how many locks it skipped as pointless. */
+    /**
+     * This run's summary. "Searched again" counts only searches the phone confirmed; if searching was asked for and none could be
+     * confirmed, the summary says so instead of claiming that locks were tried on a fresh search.
+     */
     String summary() {
-        return summary(rows, research, skippedLocks);
+        return summary(rows, research && searchesConfirmed > 0, skippedLocks, research && searchesConfirmed == 0 && searchesFailed > 0);
     }
 
     private static boolean sameSituation(Row a, Row b) {
@@ -633,6 +740,11 @@ final class BandSweep {
     }
 
     static String summary(List<Row> rows, boolean searchedAgain, int skippedLocks) {
+        return summary(rows, searchedAgain, skippedLocks, false);
+    }
+
+    /** searchedAgain: the phone confirmed it searched again after a lock. searchFailed: it was asked to, and never confirmed. */
+    static String summary(List<Row> rows, boolean searchedAgain, int skippedLocks, boolean searchFailed) {
         int locks = 0;
         int obeyed = 0;
         int notObeyed = 0;
@@ -661,6 +773,10 @@ final class BandSweep {
                 if (searchedAgain) {
                     sb.append("The phone did not obey any band lock, even after searching again: it keeps its own bands, so "
                             + "locking bands from here will not change what it uses. Only 5G on or off does.");
+                } else if (searchFailed) {
+                    sb.append("The phone did not obey any band lock, but it never confirmed that it searched for a network again "
+                            + "after one (see the notes below), so this does not yet prove that locks cannot work. Press \"Make the "
+                            + "phone search again\" on its own, wait for the phone to come back, then Scan cells.");
                 } else {
                     sb.append("The phone did not obey any of the band locks it acknowledged. A lock may only apply when the phone "
                             + "searches for a network again: tick \"Make the phone search again after each lock\" and run it "

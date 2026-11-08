@@ -65,6 +65,22 @@ public final class BandSweepTest {
         String appliedSpec = ""; // the restriction the modem is really using, for a phone that applies on a search
         int researches;
         long searchMs = 12000; // how long the phone has no service while it searches
+        boolean hotspotDrops; // while the radio restarts the phone cannot be reached at all (the real phone: the hotspot goes with the radio)
+        boolean cycleSilent; // the phone never says how the restart went
+        String cycleResult = "done"; // what it says once the restart is over
+        int stateAsks;
+        long cycleDoneAt = -1; // the radio is back on (and the hotspot with it) from here, but the phone is still registering until radioDownUntil
+        final java.util.Set<Integer> loseSwitchReplyCalls = new java.util.HashSet<>(); // the k-th switch of 5G happens but its reply is lost
+        final java.util.Set<Integer> failFiveGAsks = new java.util.HashSet<>(); // the k-th question about 5G gets no answer
+        int fiveGAsks;
+        int switchOkCount = Integer.MAX_VALUE; // only this many switches of 5G work, the rest fail
+        final java.util.Set<Integer> failSwitchCalls = new java.util.HashSet<>(); // the k-th switch of 5G (0, 1, ...) fails
+        int switchCalls;
+        static final String ABORT = "Couldn't reach the phone: Software caused connection abort";
+
+        boolean linkDown() {
+            return hotspotDrops && now < cycleDoneAt;
+        }
 
         void at(long time, Runnable r) {
             tasks.add(r);
@@ -72,7 +88,13 @@ public final class BandSweepTest {
         }
 
         private <T> void answer(BandSweep.Done<T> d, boolean ok, String text, T value) {
-            at(now + latency, () -> d.done(ok, text, value));
+            at(now + latency, () -> {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
+                d.done(ok, text, value);
+            });
         }
 
         void run() {
@@ -154,7 +176,7 @@ public final class BandSweepTest {
 
         @Override
         public void fiveGOff(BandSweep.Done<Boolean> d) {
-            if (netGetFails) {
+            if (netGetFails || failFiveGAsks.contains(fiveGAsks++)) {
                 answer(d, false, "no answer", null);
             } else {
                 answer(d, true, "Allowed network types: LTE (5G is " + (fiveGOff ? "off)" : "allowed)"), fiveGOff);
@@ -164,10 +186,16 @@ public final class BandSweepTest {
         @Override
         public void switchFiveG(boolean off, BandSweep.Done<Boolean> d) {
             at(now + latency, () -> {
-                if (!switchFails) {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
+                int k = switchCalls++;
+                boolean works = !switchFails && !failSwitchCalls.contains(k) && k < switchOkCount;
+                if (works) {
                     fiveGOff = off;
                 }
-                boolean ok = !switchFails && !loseSwitchReply;
+                boolean ok = works && !loseSwitchReply && !loseSwitchReplyCalls.contains(k);
                 d.done(ok, ok ? (off ? "Forced to 4G." : "5G is allowed again.") : "the phone said no", ok ? Boolean.valueOf(off) : null);
             });
         }
@@ -175,6 +203,10 @@ public final class BandSweepTest {
         @Override
         public void setLock(String spec, BandSweep.Done<Void> d) {
             at(now + latency, () -> {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
                 if (rejectLocks && !spec.isEmpty()) {
                     d.done(false, "the modem rejected the band setting", null);
                     return;
@@ -193,12 +225,22 @@ public final class BandSweepTest {
 
         @Override
         public void observe(BandSweep.Done<BandSweep.Observation> d) {
-            at(now + latency, () -> d.done(true, "ok", new BandSweep.Observation(radio(), -101)));
+            at(now + latency, () -> {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
+                d.done(true, "ok", new BandSweep.Observation(radio(), -101));
+            });
         }
 
         @Override
         public void startUpload(BandSweep.Done<Void> d) {
             at(now + latency, () -> {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
                 uploadsRunning++;
                 maxUploads = Math.max(maxUploads, uploadsRunning);
                 sample = script == null ? Double.NaN : script[Math.min(started, script.length - 1)];
@@ -214,6 +256,10 @@ public final class BandSweepTest {
         @Override
         public void uploadStatus(BandSweep.Done<BandSweep.Upload> d) {
             at(now + latency, () -> {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
                 if (now - uploadStartedAt < 12000) {
                     d.done(true, "ok", new BandSweep.Upload(3, 0, 0, 1.0, ""));
                 } else if (uploadWillFail) {
@@ -231,6 +277,10 @@ public final class BandSweepTest {
         @Override
         public void stopUpload(BandSweep.Done<Void> d) {
             at(now + latency, () -> {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
                 stopCalls++;
                 uploadsRunning = 0;
                 d.done(true, "ok", null);
@@ -240,12 +290,17 @@ public final class BandSweepTest {
         @Override
         public void research(BandSweep.Done<Void> d) {
             at(now + latency, () -> {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
                 researches++;
                 if (researchFails) {
                     d.done(false, "the phone would not do it", null);
                     return;
                 }
                 radioDownUntil = now + searchMs; // switching the radio off and on and finding a network takes a while
+                cycleDoneAt = now + searchMs / 2; // the radio is switched back on half-way; registering takes the rest
                 final long until = radioDownUntil;
                 at(until, () -> appliedSpec = lock); // the search ends under whatever restriction is in force by then
                 d.done(true, "OK", null);
@@ -253,8 +308,28 @@ public final class BandSweepTest {
         }
 
         @Override
+        public void researchState(BandSweep.Done<String> d) {
+            at(now + latency, () -> {
+                stateAsks++;
+                if (linkDown() || cycleSilent) {
+                    d.done(false, ABORT, null);
+                } else if (now < cycleDoneAt) {
+                    d.done(true, "running", "running");
+                } else {
+                    d.done(true, cycleResult, cycleResult);
+                }
+            });
+        }
+
+        @Override
         public void lockSpec(BandSweep.Done<String> d) {
-            at(now + latency, () -> d.done(true, "ok", lock));
+            at(now + latency, () -> {
+                if (linkDown()) {
+                    d.done(false, ABORT, null);
+                    return;
+                }
+                d.done(true, "ok", lock);
+            });
         }
 
         @Override
@@ -696,10 +771,13 @@ public final class BandSweepTest {
             over("slow search", p, s, r, false);
             check(s.rows().size() == 4, "slow search: all four settings were measured: " + s.rows().size());
             boolean sawService = false;
+            boolean sawRestart = false;
             for (String t : r.texts) {
                 sawService |= t.contains("waiting for the phone to find service");
+                sawRestart |= t.contains("waiting for the phone's radio to restart");
             }
-            check(sawService, "slow search: the progress line says it is waiting for service");
+            check(sawRestart, "slow search: the progress line says it is waiting for the radio restart");
+            check(sawService, "slow search: then it says it is waiting for the phone to find service");
             for (int i = 2; i < 4; i++) {
                 BandSweep.Row row = s.rows().get(i);
                 check(row.verdict.equals("obeyed") && row.up > 0, "slow search: lock " + i + " obeyed and measured on a live connection: " + row.line(false));
@@ -733,6 +811,83 @@ public final class BandSweepTest {
             over("search fails", p, s, r, false);
             check(s.rows().get(s.rows().size() - 1).note.contains("could not make the phone search again"), "search fails: the row says so");
         }
+        // 20b. the radio restart drops the hotspot, as on the real phone: the request is answered first, the run waits until the phone
+        // says the restart is over, nothing is called a failure, and 5G is put back
+        {
+            Sim p = new Sim();
+            p.researchApplies = true;
+            p.hotspotDrops = true;
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5}, new int[0], true), true, true);
+            s.start();
+            p.run();
+            over("hotspot drops", p, s, r, false);
+            for (BandSweep.Row row : s.rows()) {
+                check(!row.note.contains("could not") && !row.note.contains("did not say"), "hotspot drops: no note blames the restart: " + row.line(false));
+                check(row.step.spec.isEmpty() || row.verdict.equals("obeyed") || row.verdict.isEmpty(), "hotspot drops: locks were obeyed after the search: " + row.line(false));
+            }
+            check(p.stateAsks >= p.researches, "hotspot drops: the phone was asked how each restart went (" + p.stateAsks + " asks, " + p.researches + " restarts)");
+            check(s.summary().contains("Every lock was obeyed"), "hotspot drops: the summary: " + s.summary());
+            check(r.texts.get(r.texts.size() - 1).startsWith("Done. The phone is back as it was."), "hotspot drops: the closing message: " + r.texts.get(r.texts.size() - 1));
+        }
+        // 20c. a phone that does not confirm the restart (silent, or it reports a failure): noted on the row, never claimed as "searched
+        // again", and the run still ends with the phone put back
+        for (int mode = 0; mode < 2; mode++) {
+            Sim p = new Sim();
+            p.obeys = false;
+            p.hotspotDrops = true;
+            p.cycleSilent = mode == 0;
+            p.cycleResult = mode == 0 ? "done" : "failed: no setRadioPower";
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13, 5, 66}, new int[0], true), false, true);
+            s.start();
+            p.run();
+            over("unconfirmed search " + mode, p, s, r, false);
+            String sum = s.summary();
+            check(!sum.contains("even after searching again"), "unconfirmed search " + mode + ": the summary does not claim a search: " + sum);
+            check(sum.contains("never confirmed"), "unconfirmed search " + mode + ": the summary says it was never confirmed: " + sum);
+            boolean noted = false;
+            for (BandSweep.Row row : s.rows()) {
+                noted |= row.note.contains(mode == 0 ? "did not say that it had searched again" : "could not search again: no setRadioPower");
+            }
+            check(noted, "unconfirmed search " + mode + ": a row says why");
+        }
+        // 20d. the phone cannot switch 5G back at the end: the closing message says so instead of "back as it was"
+        {
+            Sim p = new Sim();
+            p.switchOkCount = 1; // the sweep's own "5G off" works, putting 5G back does not
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13}, new int[0], true), false, false);
+            s.start();
+            p.run();
+            String last = r.texts.get(r.texts.size() - 1);
+            check(!s.running() && last.contains("may not be back as it was") && last.contains("5G could not be switched on again"), "5G stuck off: the closing message says so: " + last);
+        }
+        // 20e. a phone that fails the first attempt to put 5G back (it is still reconnecting): it is tried again and 5G ends as it was
+        {
+            Sim p = new Sim();
+            p.failSwitchCalls.add(1); // call 0 is the sweep's own "5G off", call 1 the first try to put 5G back
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13}, new int[0], true), false, false);
+            s.start();
+            p.run();
+            over("5G put back on the second try", p, s, r, false);
+            check(p.switchCalls >= 3, "5G put back on the second try: it was asked again (" + p.switchCalls + " switches)");
+            check(r.texts.get(r.texts.size() - 1).startsWith("Done. The phone is back as it was."), "5G put back on the second try: the closing message");
+        }
+        // 20f. the reply to the sweep's own "5G off" is lost (so the tablet thinks 5G is still on) and the question at the end gets no answer
+        // once: the question is asked again, the phone says 5G is off, and it is switched back on
+        {
+            Sim p = new Sim();
+            p.loseSwitchReplyCalls.add(0);
+            p.failFiveGAsks.add(1); // ask 0 is at the start, ask 1 the first one at the end
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {13}, new int[0], true), false, false);
+            s.start();
+            p.run();
+            over("5G question asked again", p, s, r, false);
+            check(p.fiveGAsks >= 3, "5G question asked again: " + p.fiveGAsks + " questions");
+        }
         // 21. stopped at every moment of a run that searches again: always put back, nothing new starts after the stop
         for (long stopAt = 0; stopAt < 500000; stopAt += 3700) {
             Sim p = new Sim();
@@ -758,6 +913,9 @@ public final class BandSweepTest {
             p.obeys = rnd.nextInt(3) != 0;
             p.researchApplies = rnd.nextBoolean();
             p.researchFails = rnd.nextInt(8) == 0;
+            p.hotspotDrops = rnd.nextBoolean();
+            p.cycleSilent = rnd.nextInt(12) == 0;
+            p.cycleResult = rnd.nextInt(10) == 0 ? "failed: nope" : "done";
             p.latency = 50 + rnd.nextInt(2000);
             p.rejectLocks = rnd.nextInt(10) == 0;
             p.loseSwitchReply = rnd.nextInt(6) == 0;

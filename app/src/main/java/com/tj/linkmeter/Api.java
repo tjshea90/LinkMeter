@@ -146,6 +146,7 @@ final class Api {
                 Http.err(out, 409, Priv.stateText(Priv.state()));
                 return;
             }
+            Actions.prepareDelayed(name);
             Http.json(out, 200, "{\"ok\":true,\"out\":\"Sent. The phone will do it in a moment.\"}");
             Actions.later(c, name);
             return;

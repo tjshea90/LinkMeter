@@ -457,8 +457,10 @@ final class BandsTab extends Tab {
 
     /** Switches the phone's radio off for a few seconds and on again, so it searches for a network from scratch. */
     private void searchAgain() {
-        say("Making the phone search again… it loses mobile data for a short while.", true);
-        Call.run(act, "POST", "/act?name=radio_cycle", 50000, (ok, text, json) -> say(text, ok));
+        say("Asking the phone to search again…", true);
+        Call.run(act, "POST", "/act?name=radio_cycle", 10000, (ok, text, json) -> say(ok
+                ? "The phone is restarting its radio. The link to it drops for about 30 seconds (the hotspot goes with the radio), "
+                + "then press Scan cells." : text, ok));
     }
 
     private void info() {

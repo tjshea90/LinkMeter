@@ -77,7 +77,19 @@ final class SweepLink implements BandSweep.Link {
 
     @Override
     public void research(final BandSweep.Done<Void> d) {
-        Call.run(act, "POST", "/act?name=radio_cycle", 45000, (ok, text, json) -> d.done(ok, text, null));
+        // the phone answers at once and restarts its radio a moment later (the restart cuts the hotspot, and with it this link)
+        Call.run(act, "POST", "/act?name=radio_cycle", 10000, (ok, text, json) -> d.done(ok, text, null));
+    }
+
+    @Override
+    public void researchState(final BandSweep.Done<String> d) {
+        Call.run(act, "POST", "/act?name=radio_cycle_state", 6000, (ok, text, json) -> {
+            if (!ok && text.contains("unknown action")) {
+                d.done(true, text, "done"); // a phone app from before this question restarted its radio while answering: it is over
+            } else {
+                d.done(ok, text, ok ? text : null);
+            }
+        });
     }
 
     @Override
