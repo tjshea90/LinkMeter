@@ -36,6 +36,17 @@ final class SpeedTest {
     static final int ERROR = 5;
 
     private static final String BASE = "https://speed.cloudflare.com/";
+    /**
+     * Download servers, tried in order. The first that answers is used for the ping and the
+     * download. Cloudflare limits how many tests one connection can run, and a carrier shares one
+     * address between many phones, so a second and third server keep the test working.
+     */
+    private static final String[] DOWN_URLS = {
+        BASE + "__down?bytes=104857600",
+        "https://ash-speed.hetzner.com/100MB.bin",
+        "https://proof.ovh.net/files/1Gb.dat",
+    };
+    private static volatile int server;
     private static final long PHASE_MS = 8000;
     private static final long WARMUP_MS = 1500;
 
@@ -53,6 +64,7 @@ final class SpeedTest {
     private static volatile long usedBytes;
     private static volatile String error = "";
     private static volatile String via = "";
+    private static volatile String warn = "";
 
     private SpeedTest() {}
 
@@ -75,6 +87,8 @@ final class SpeedTest {
             usedBytes = 0;
             error = "";
             via = "";
+            warn = "";
+            server = 0;
             cancel = false;
             phase = PING;
         }
@@ -90,9 +104,8 @@ final class SpeedTest {
         try {
             Network net = cellular(c);
             String route = net != null ? "mobile network" : "default network";
-            double p;
             try {
-                p = ping(net);
+                server = pickServer(net);
             } catch (IOException first) {
                 if (net == null) {
                     throw new IOException("ping: " + describe(first));
@@ -102,25 +115,29 @@ final class SpeedTest {
                 net = null;
                 route = "default network (the mobile-network handle failed: " + describe(first) + ")";
                 try {
-                    p = ping(null);
+                    server = pickServer(null);
                 } catch (IOException second) {
                     throw new IOException("ping: " + describe(second));
                 }
             }
-            pingMs = p;
+            pingMs = ping(net);
             via = route;
-            if (!cancel) {
+            while (!cancel) {
                 try {
                     downMbps = transfer(net, true);
+                    break;
                 } catch (IOException e) {
-                    throw new IOException("download: " + describe(e));
+                    if (cancel || server + 1 >= DOWN_URLS.length) {
+                        throw new IOException("download: " + describe(e));
+                    }
+                    server++; // this server refused: try the next one
                 }
             }
             if (!cancel) {
                 try {
                     upMbps = transfer(net, false);
                 } catch (IOException e) {
-                    throw new IOException("upload: " + describe(e));
+                    warn = "Upload could not be measured: " + describe(e);
                 }
             }
             phase = cancel ? IDLE : DONE;
@@ -131,9 +148,14 @@ final class SpeedTest {
         live = 0;
     }
 
-    /** "SocketTimeoutException: Read timed out": the class name matters when the message is vague. */
+    /** "SocketTimeoutException: timeout": the class name matters when the message is vague. */
     private static String describe(Throwable e) {
-        return e.getClass().getSimpleName() + ": " + e.getMessage();
+        String m = String.valueOf(e.getMessage());
+        if (m.contains("429")) {
+            return "the test server is limiting this connection (HTTP 429, too many tests). "
+                    + "Wait a few minutes and try again";
+        }
+        return e.getClass().getSimpleName() + ": " + m;
     }
 
     /** The mobile-data network, so the test measures it even if Wi-Fi is also connected. */
@@ -237,15 +259,49 @@ final class SpeedTest {
         }
     }
 
-    /** Lowest round trip over several tiny requests on one kept-open connection. */
+    /** A tiny request to server i: Cloudflare has a zero-byte download, the others get a one-byte range. */
+    private static HttpURLConnection tiny(Network net, int i) throws IOException {
+        HttpURLConnection h = open(net, i == 0 ? BASE + "__down?bytes=0" : DOWN_URLS[i], false);
+        if (i != 0) {
+            h.setRequestProperty("Range", "bytes=0-0");
+        }
+        return h;
+    }
+
+    /** The first download server that answers a tiny request. */
+    private static int pickServer(Network net) throws IOException {
+        IOException last = new IOException("no speed server answered");
+        for (int i = 0; i < DOWN_URLS.length && !cancel; i++) {
+            HttpURLConnection h = null;
+            try {
+                h = tiny(net, i);
+                h.setConnectTimeout(4000);
+                h.setReadTimeout(4000);
+                int code = h.getResponseCode();
+                if (code == 200 || code == 206) {
+                    return i;
+                }
+                last = new IOException("speed server replied " + code);
+            } catch (IOException e) {
+                last = e;
+            } finally {
+                if (h != null) {
+                    h.disconnect();
+                }
+            }
+        }
+        throw last;
+    }
+
+    /** Lowest round trip over a few tiny requests on one kept-open connection. */
     private static double ping(Network net) throws IOException {
         double best = Double.MAX_VALUE;
         byte[] buf = new byte[512];
-        for (int i = 0; i < 6 && !cancel; i++) {
+        for (int i = 0; i < 4 && !cancel; i++) {
             long t0 = SystemClock.elapsedRealtimeNanos();
-            HttpURLConnection h = open(net, BASE + "__down?bytes=0", false);
+            HttpURLConnection h = tiny(net, server);
             int code = h.getResponseCode();
-            if (code != 200) {
+            if (code != 200 && code != 206) {
                 h.disconnect();
                 throw new IOException("speed server replied " + code);
             }
@@ -265,7 +321,7 @@ final class SpeedTest {
     private static double transfer(final Network net, final boolean down) throws IOException {
         phase = down ? DOWN : UP;
         BYTES.set(0);
-        final int n = down ? 4 : 2;
+        final int n = down ? 3 : 2;
         final long t0 = SystemClock.elapsedRealtime();
         final long end = t0 + PHASE_MS;
         final String[] fail = new String[1];
@@ -343,7 +399,7 @@ final class SpeedTest {
     private static void pumpDown(Network net, long end) throws IOException {
         byte[] buf = new byte[64 * 1024];
         while (!over(end)) {
-            HttpURLConnection h = open(net, BASE + "__down?bytes=26214400", false);
+            HttpURLConnection h = open(net, DOWN_URLS[server], false);
             try {
                 int code = h.getResponseCode();
                 if (code != 200) {
@@ -366,7 +422,7 @@ final class SpeedTest {
     private static void pumpUp(Network net, long end) throws IOException {
         byte[] buf = new byte[64 * 1024];
         new Random().nextBytes(buf);
-        final int total = 8 * 1024 * 1024;
+        final int total = 32 * 1024 * 1024;
         while (!over(end)) {
             HttpURLConnection h = open(net, BASE + "__up", true);
             try {
@@ -414,6 +470,9 @@ final class SpeedTest {
             o.put("up", round1(upMbps));
             o.put("mb", Math.round(usedBytes / 1e6));
             o.put("via", via);
+            if (!warn.isEmpty()) {
+                o.put("warn", warn);
+            }
             if (!error.isEmpty()) {
                 o.put("error", error);
             }

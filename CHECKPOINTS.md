@@ -21,3 +21,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T02:10:01Z Restore everything (phone, tablet, notification), automatic undo if data stops working, saved originals
 - 2026-11-08T02:23:59Z restore: leave network types alone when LinkMeter hasn't changed them and they already look normal
 - 2026-11-08T02:34:09Z bands: one-tap band grid, persistent lock status with Keep and countdown; signal fallback through Shizuku
+- 2026-11-08T02:46:54Z speed test: fewer requests, fall back to other servers when the first limits the connection (HTTP 429)
