@@ -244,6 +244,15 @@ final class Actions {
         long saved = Saved.types(c);
         long target = saved > 0 ? saved : DEFAULT_TYPES;
         try {
+            if (saved <= 0) {
+                // LinkMeter has not changed the types, so don't touch them if they already look normal.
+                long cur = currentTypes(c);
+                if (cur > 0 && (cur & LTE_BIT) != 0 && (cur & NR_BIT) != 0) {
+                    sb.append("Network types: already normal (").append(typesText(cur))
+                            .append("), left as they are.\n");
+                    return sb.toString();
+                }
+            }
             String err = forceTypes(c, target);
             if (err == null) {
                 Saved.clearTypes(c);
@@ -257,6 +266,16 @@ final class Actions {
             sb.append("Network types: ").append(e.getMessage()).append('\n');
         }
         return sb.toString();
+    }
+
+    /** The allowed network types right now, or -1 if they can't be read. */
+    private static long currentTypes(Context c) {
+        try {
+            long a = parseOk(Cells.shellMain(c, "nt-get").out);
+            return a >= 0 ? a : parseTypes(Priv.run(GET_TYPES, 15).out);
+        } catch (IOException e) {
+            return -1;
+        }
     }
 
     /** Sets the allowed network types to target. Returns null on success, or a message. */
