@@ -61,11 +61,11 @@ final class Actions {
             case "setup":
                 return setup(c);
             case "net_get":
-                return "Allowed network types:\n" + Priv.run(GET_TYPES, 15).out;
+                return netGet(c);
             case "net_lte":
-                return setNr(false);
+                return setNr(c, false);
             case "net_5g":
-                return setNr(true);
+                return setNr(c, true);
             default:
                 throw new IOException("unknown action: " + name);
         }
@@ -91,7 +91,11 @@ final class Actions {
      * Turns 5G on or off by reading the phone's allowed network types, changing only
      * the 5G bit, and writing it back. Nothing is written if the read looks wrong.
      */
-    private static String setNr(boolean allow5g) throws IOException {
+    private static String setNr(Context c, boolean allow5g) throws IOException {
+        String viaApi = setNrViaApi(c, allow5g);
+        if (viaApi != null) {
+            return viaApi;
+        }
         Priv.Result g = Priv.run(GET_TYPES, 15);
         long mask = parseMask(g.out);
         if (mask < 0) {
@@ -118,6 +122,51 @@ final class Actions {
             return allow5g ? "5G is allowed again." : "Forced to 4G (5G turned off).";
         }
         return "The phone did not accept the change.\n" + log.toString().trim();
+    }
+
+    /** The phone's allowed network types, from the telephony API (first choice) or the shell command. */
+    private static String netGet(Context c) throws IOException {
+        long viaApi = parseOk(Cells.shellMain(c, "nt-get").out);
+        if (viaApi >= 0) {
+            return "Allowed network types: " + viaApi + (viaApi != (viaApi & ~NR_BIT)
+                    ? " (5G is allowed)" : " (5G is off)");
+        }
+        return "Allowed network types (shell command):\n" + Priv.run(GET_TYPES, 15).out;
+    }
+
+    /**
+     * The same read-change-verify as {@link #setNr}, but through the phone's own telephony API
+     * (run as the shell user by ShellMain). Returns null if that route isn't available here,
+     * so the caller can try the shell command instead.
+     */
+    private static String setNrViaApi(Context c, boolean allow5g) throws IOException {
+        long mask = parseOk(Cells.shellMain(c, "nt-get").out);
+        if (mask < 0 || (mask & LTE_BIT) == 0) {
+            return null;
+        }
+        long target = allow5g ? (mask | NR_BIT) : (mask & ~NR_BIT);
+        if (target == mask) {
+            return allow5g ? "5G was already allowed." : "5G was already off (4G/LTE mode).";
+        }
+        Priv.Result s = Cells.shellMain(c, "nt-set " + target);
+        long now = parseOk(Cells.shellMain(c, "nt-get").out);
+        if (now == target) {
+            return allow5g ? "5G is allowed again." : "Forced to 4G (5G turned off).";
+        }
+        return "The phone did not accept the change.\n" + s.out;
+    }
+
+    /** Reads "OK 12345" from ShellMain's output. Returns -1 if the output isn't that. */
+    private static long parseOk(String out) {
+        Matcher m = Pattern.compile("(?m)^OK (\\d+)\\s*$").matcher(out);
+        if (!m.find()) {
+            return -1;
+        }
+        try {
+            return Long.parseLong(m.group(1));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /** Finds the network-types bitmask in the command's output. Returns -1 if it can't be trusted. */

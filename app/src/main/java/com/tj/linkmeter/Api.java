@@ -63,6 +63,16 @@ final class Api {
                     Http.err(out, 404, "not a phone");
                 }
                 break;
+            case "/cells":
+            case "/band":
+            case "/band/keep":
+            case "/bandinfo":
+                if (phone) {
+                    bands(c, r, out);
+                } else {
+                    Http.err(out, 404, "not a phone");
+                }
+                break;
             case "/fs/ls":
             case "/fs/get":
             case "/fs/put":
@@ -103,6 +113,40 @@ final class Api {
         try {
             String res = Actions.run(c, name);
             Http.json(out, 200, "{\"ok\":true,\"out\":" + JSONObject.quote(res) + "}");
+        } catch (IOException e) {
+            Http.err(out, 409, String.valueOf(e.getMessage()));
+        }
+    }
+
+    private static void bands(Context c, Http.Req r, OutputStream out) throws IOException {
+        try {
+            switch (r.path) {
+                case "/cells":
+                    Http.json(out, 200, Cells.survey());
+                    break;
+                case "/bandinfo":
+                    Http.json(out, 200, "{\"ok\":true,\"out\":"
+                            + JSONObject.quote(Cells.shellMain(c, "info").out) + "}");
+                    break;
+                case "/band/keep":
+                    Cells.keep();
+                    Http.json(out, 200, "{\"ok\":true,\"out\":\"Lock kept.\"}");
+                    break;
+                default: {
+                    String set = r.q("set");
+                    if (!"POST".equals(r.method) || !set.matches("[a-z0-9,;:]*")) {
+                        Http.err(out, 400, "bad request");
+                        break;
+                    }
+                    String res = Cells.applyBands(c, set);
+                    if (res.contains("OK ")) {
+                        Http.json(out, 200, "{\"ok\":true,\"out\":" + JSONObject.quote(res) + "}");
+                    } else {
+                        Http.err(out, 409, res);
+                    }
+                    break;
+                }
+            }
         } catch (IOException e) {
             Http.err(out, 409, String.valueOf(e.getMessage()));
         }

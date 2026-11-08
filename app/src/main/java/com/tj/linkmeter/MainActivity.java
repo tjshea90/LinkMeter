@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
         String mode = Cfg.mode(this);
         View root;
         if (Cfg.TABLET.equals(mode)) {
-            root = buildTabs(new Tab[] {new HomeTab(this), new SpeedTab(this),
+            root = buildTabs(new Tab[] {new HomeTab(this), new SpeedTab(this), new BandsTab(this),
                     new ControlTab(this), new FilesTab(this), new SettingsTab(this)});
         } else if (Cfg.PHONE.equals(mode)) {
             root = buildTabs(new Tab[] {new PhoneTab(this), new FilesTab(this)});
