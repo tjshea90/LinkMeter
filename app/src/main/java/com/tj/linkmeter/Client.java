@@ -14,9 +14,13 @@ import java.util.Locale;
 final class Client {
     private Client() {}
 
+    /** Called as bytes are sent. It may throw (a cancel): the transfer stops and the exception comes out of {@link #put}. */
     interface Progress {
-        void onBytes(long done);
+        void onBytes(long done) throws IOException;
     }
+
+    /** For tests only: talk to this port instead of {@link Http#PORT}. */
+    static volatile int portOverride = 0;
 
     static final class Resp {
         int code;
@@ -47,7 +51,7 @@ final class Client {
     private static Socket connect(String host, int connectMs, int readMs) throws IOException {
         Socket s = new Socket();
         try {
-            s.connect(new InetSocketAddress(host, Cfg.PORT), connectMs);
+            s.connect(new InetSocketAddress(host, portOverride > 0 ? portOverride : Http.PORT), connectMs);
             s.setSoTimeout(readMs);
             return s;
         } catch (IOException e) {
@@ -62,8 +66,17 @@ final class Client {
 
     private static void writeHead(OutputStream out, String method, String target, String token,
             long bodyLen) throws IOException {
+        writeHead(out, method, target, token, bodyLen, -1);
+    }
+
+    /** rangeStart >= 0 adds "Range: bytes=N-" (only the rest of a file is wanted). */
+    private static void writeHead(OutputStream out, String method, String target, String token,
+            long bodyLen, long rangeStart) throws IOException {
         StringBuilder h = new StringBuilder();
         h.append(method).append(' ').append(target).append(" HTTP/1.0\r\n");
+        if (rangeStart >= 0) {
+            h.append("Range: bytes=").append(rangeStart).append("-\r\n");
+        }
         if (!token.isEmpty()) {
             h.append("X-Token: ").append(token).append("\r\n");
         }
@@ -149,12 +162,18 @@ final class Client {
     /** Starts a GET whose body the caller reads from {@link Stream#in}. Close it when done. */
     static Stream get(String host, String target, String token, int connectMs, int readMs)
             throws IOException {
+        return get(host, target, token, connectMs, readMs, -1);
+    }
+
+    /** Like {@link #get(String, String, String, int, int)} but from byte offset on (the reply is then 206). */
+    static Stream get(String host, String target, String token, int connectMs, int readMs, long offset)
+            throws IOException {
         Socket s = connect(host, connectMs, readMs);
         Stream st = new Stream();
         st.sock = s;
         try {
             OutputStream out = s.getOutputStream();
-            writeHead(out, "GET", target, token, -1);
+            writeHead(out, "GET", target, token, -1, offset > 0 ? offset : -1);
             out.flush();
             st.in = s.getInputStream();
             readHead(st);

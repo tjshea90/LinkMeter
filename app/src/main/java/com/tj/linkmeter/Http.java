@@ -14,7 +14,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import org.json.JSONObject;
 
 /**
  * A very small HTTP/1.0 reader and writer over plain sockets. Plain sockets are
@@ -23,11 +22,16 @@ import org.json.JSONObject;
 final class Http {
     private Http() {}
 
+    /** The port both devices talk on. */
+    static final int PORT = 8765;
+
     static final class Req {
         String method = "";
         String path = "";
         String token = "";
         long length;
+        /** The first byte asked for by "Range: bytes=N-", or -1 when the whole file is wanted. */
+        long rangeStart = -1;
         InetAddress peer;
         /** The connection, for handlers that stream or need a different timeout. */
         Socket sock;
@@ -106,6 +110,13 @@ final class Http {
                 } catch (NumberFormatException ignored) {
                     r.length = 0;
                 }
+            } else if (name.equals("range") && val.toLowerCase(Locale.US).startsWith("bytes=")) {
+                String from = val.substring(6).split("-")[0].trim();
+                try {
+                    r.rangeStart = Long.parseLong(from);
+                } catch (NumberFormatException ignored) {
+                    r.rangeStart = -1;
+                }
             }
         }
         r.peer = s.getInetAddress();
@@ -144,6 +155,8 @@ final class Http {
         switch (code) {
             case 200:
                 return "OK";
+            case 206:
+                return "Partial Content";
             case 400:
                 return "Bad Request";
             case 401:
@@ -197,6 +210,14 @@ final class Http {
     }
 
     static void err(OutputStream out, int code, String msg) throws IOException {
-        json(out, code, "{\"err\":" + JSONObject.quote(msg) + "}");
+        json(out, code, "{\"err\":" + Json.quote(msg) + "}");
+    }
+
+    /** The head of a reply to a ranged request: the bytes from start to the end of a file of total bytes. */
+    static void headPartial(OutputStream out, String type, long start, long total) throws IOException {
+        long len = total - start;
+        String h = "HTTP/1.0 206 Partial Content\r\nContent-Type: " + type + "\r\nContent-Length: " + len
+                + "\r\nContent-Range: bytes " + start + "-" + (total - 1) + "/" + total + "\r\nConnection: close\r\n\r\n";
+        out.write(h.getBytes(StandardCharsets.US_ASCII));
     }
 }

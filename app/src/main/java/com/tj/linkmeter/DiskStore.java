@@ -235,6 +235,53 @@ final class DiskStore implements Store {
         return false; // the engine copies on this device with the same loop it uses between devices
     }
 
+    /**
+     * Copies a file or a whole folder to a path that does not exist yet, on this same storage (the device copying by itself).
+     * Stops with an IOException (and {@link Cancelled} from the progress callback) leaving what was copied so far: the caller removes it.
+     */
+    void copyTree(String from, String to, Progress p) throws IOException {
+        FsEntry e = stat(from);
+        if (e == null) {
+            throw new IOException("not found");
+        }
+        if (stat(to) != null) {
+            throw new IOException("already exists");
+        }
+        if (e.dir && FsPath.isSameOrUnder(to, from)) {
+            throw new IOException("a folder can't be copied into itself");
+        }
+        copyNode(from, to, e, p);
+    }
+
+    private void copyNode(String from, String to, FsEntry e, Progress p) throws IOException {
+        if (e.dir) {
+            mkdirs(to);
+            for (FsEntry k : list(from, false)) {
+                copyNode(FsPath.join(from, k.name), FsPath.join(to, k.name), k, p);
+            }
+        } else {
+            try (InputStream in = read(from, 0)) {
+                write(to, in, e.size, e.time, p);
+            }
+        }
+    }
+
+    /** The number of bytes in a file or in everything below a folder. */
+    long sizeOf(String path) throws IOException {
+        FsEntry e = stat(path);
+        if (e == null) {
+            return 0;
+        }
+        if (!e.dir) {
+            return e.size;
+        }
+        long total = 0;
+        for (Found f : walk(path)) {
+            total += f.dir ? 0 : f.size;
+        }
+        return total;
+    }
+
     /** Free and total bytes of the storage, or {-1, -1}. */
     long[] space() {
         try {

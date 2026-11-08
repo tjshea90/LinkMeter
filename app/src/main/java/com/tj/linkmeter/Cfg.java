@@ -9,7 +9,7 @@ import java.util.Set;
 
 /** Everything the app remembers lives here. Tiny on purpose. */
 final class Cfg {
-    static final int PORT = 8765;
+    static final int PORT = Http.PORT;
     static final String PHONE = "phone";
     static final String TABLET = "tablet";
 

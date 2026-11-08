@@ -98,7 +98,7 @@ stay thin.
 ## Status (keep true)
 - [x] plan written (this file) and checkpointed
 - [x] A1 core: FsEntry, FsPath, FileKind, FileSort, FsFormat, Clip, Store, DiskStore, TransferEngine + tests (FilesCoreTest ~10,400 checks, TransferEngineTest ~4,600 checks against an in-memory model, 12 deliberate breakages caught)
-- [ ] A2 phone routes + RemoteStore + media scan
+- [~] A2 protocol layer done and tested offline end to end (Json, Http/Client pure, FsApi, FsHttp, FsJobs, RemoteStore, PeerLink: FsProtocolTest ~600 checks, JsonTest ~4000, 11 breakages caught). STILL TO DO for A2: the Android adapters (Files.serve on FsApi, AndroidMedia thumbnails/recent/scan, Api routing)
 - [ ] A3 Files tab UI, release
 - [ ] B attach from the remote screen, release
 - [ ] C Texts: pure parts + tests

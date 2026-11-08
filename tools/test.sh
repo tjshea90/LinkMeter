@@ -30,6 +30,11 @@ javac -proc:none -d "$out" $FM/FsEntry.java $FM/FsPath.java $FM/FileKind.java $F
   $FM/Store.java $FM/DiskStore.java $FM/TransferEngine.java tools/test/FilesCoreTest.java tools/test/TransferEngineTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.FilesCoreTest || fail=1
 java -cp "$out" com.tj.linkmeter.TransferEngineTest || fail=1
+echo "== File protocol (the real server code and the real client over a real socket: every route, an old app, the engine across the wire)"
+javac -proc:none -cp "$out" -d "$out" $FM/Json.java $FM/Http.java $FM/Client.java $FM/FsJobs.java $FM/FsApi.java $FM/FsHttp.java $FM/RemoteStore.java \
+  $FM/PeerLink.java tools/test/JsonTest.java tools/test/FsProtocolTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.JsonTest || fail=1
+java -cp "$out" com.tj.linkmeter.FsProtocolTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"
