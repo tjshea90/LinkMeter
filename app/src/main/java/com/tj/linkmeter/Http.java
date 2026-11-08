@@ -162,6 +162,14 @@ final class Http {
         out.write(h.getBytes(StandardCharsets.US_ASCII));
     }
 
+    /** Like {@link #head} with one extra header line, for example "X-Size: 1080x2340". */
+    static void headWith(OutputStream out, int code, String type, long len, String extra)
+            throws IOException {
+        String h = "HTTP/1.0 " + code + " " + reason(code) + "\r\nContent-Type: " + type
+                + "\r\nContent-Length: " + len + "\r\n" + extra + "\r\nConnection: close\r\n\r\n";
+        out.write(h.getBytes(StandardCharsets.US_ASCII));
+    }
+
     static void send(OutputStream out, int code, String type, byte[] body) throws IOException {
         head(out, code, type, body.length);
         out.write(body);

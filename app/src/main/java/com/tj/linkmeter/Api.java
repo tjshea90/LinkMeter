@@ -76,6 +76,21 @@ final class Api {
                     Http.err(out, 404, "not a phone");
                 }
                 break;
+            case "/screen/state":
+            case "/screen/frame":
+            case "/screen/tap":
+            case "/screen/swipe":
+            case "/screen/key":
+            case "/screen/on":
+            case "/screen/off":
+            case "/screen/text":
+            case "/screen/pin":
+                if (phone) {
+                    Screen.serve(c, r, out);
+                } else {
+                    Http.err(out, 404, "not a phone");
+                }
+                break;
             case "/apk":
                 if (phone) {
                     try {

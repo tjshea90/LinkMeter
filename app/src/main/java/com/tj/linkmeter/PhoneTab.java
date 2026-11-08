@@ -94,6 +94,13 @@ final class PhoneTab extends Tab {
         boot.setOnCheckedChangeListener((view, checked) -> Cfg.setAutoStart(act, checked));
         col.addView(boot, Ui.lp(act, 16));
 
+        CheckBox screenCtl = new CheckBox(act);
+        screenCtl.setText("Let the tablet see and control this screen");
+        screenCtl.setTextColor(Ui.FG);
+        screenCtl.setChecked(Cfg.screenControl(act));
+        screenCtl.setOnCheckedChangeListener((view, checked) -> Cfg.setScreenControl(act, checked));
+        col.addView(screenCtl, Ui.lp(act, 4));
+
         CheckBox eco = new CheckBox(act);
         eco.setText("Switch battery saver on by itself when the tablet connects");
         eco.setTextColor(Ui.FG);

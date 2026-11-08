@@ -23,3 +23,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T02:34:09Z bands: one-tap band grid, persistent lock status with Keep and countdown; signal fallback through Shizuku
 - 2026-11-08T02:46:54Z speed test: fewer requests, fall back to other servers when the first limits the connection (HTTP 429)
 - 2026-11-08T04:28:30Z updater: pipe the installer output, empty input, second install method; show the phone's last update result on the tablet
+- 2026-11-08T04:43:28Z remote screen control tab (view, tap, swipe, PIN, wake/sleep) and experimental Start Shizuku from the tablet over network adb

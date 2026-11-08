@@ -28,6 +28,8 @@ final class Client {
         Socket sock;
         int code;
         long length = -1;
+        /** The X-Size header, if the other device sent one. */
+        String size = "";
         InputStream in;
 
         @Override
@@ -94,6 +96,8 @@ final class Client {
                     first = false;
                 } else if (l.isEmpty()) {
                     return;
+                } else if (l.toLowerCase(Locale.US).startsWith("x-size:")) {
+                    st.size = l.substring(7).trim();
                 } else if (l.toLowerCase(Locale.US).startsWith("content-length:")) {
                     try {
                         st.length = Long.parseLong(l.substring(15).trim());

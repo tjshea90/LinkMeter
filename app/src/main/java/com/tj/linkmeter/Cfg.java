@@ -135,6 +135,15 @@ final class Cfg {
     }
 
     /** Phone: switch on the battery-saving profile by itself when the tablet connects. */
+    /** Phone: may the paired tablet see and control the screen? On by default. */
+    static boolean screenControl(Context c) {
+        return sp(c).getBoolean("screenCtl", true);
+    }
+
+    static void setScreenControl(Context c, boolean on) {
+        sp(c).edit().putBoolean("screenCtl", on).apply();
+    }
+
     static boolean ecoAuto(Context c) {
         return sp(c).getBoolean("ecoAuto", true);
     }

@@ -98,6 +98,15 @@ final class ControlTab extends Tab {
                 Ui.button(act, "Prepare phone", v -> send("setup", "Preparing the phone", 40000)),
                 Ui.button(act, "Probe phone", v -> probe())));
 
+        col.addView(heading("Start Shizuku from the tablet (experimental)"), Ui.lp(act, 18));
+        col.addView(row(
+                Ui.button(act, "Set up network adb", v -> send("adb_tcp_setup", "Setting up", 40000)),
+                Ui.button(act, "Start Shizuku", v -> startShizuku())));
+        col.addView(Ui.text(act, "For after a phone restart, with no Wi-Fi network needed. Set up works "
+                + "while Shizuku is running. Then Start Shizuku connects to the phone's network adb "
+                + "and runs Shizuku's start script. The first time, the phone asks Allow USB debugging: "
+                + "tap Always allow.", 12, Ui.DIM, false), Ui.lp(act, 4));
+
         col.addView(heading("App update"), Ui.lp(act, 18));
         version = Ui.text(act, "", 12, Ui.DIM, false);
         col.addView(version, Ui.lp(act, 4));
@@ -205,6 +214,38 @@ final class ControlTab extends Tab {
                 }
             });
         }, "linkmeter-update").start();
+    }
+
+    /** Connects to the phone's network adb and runs the Shizuku start script. */
+    private void startShizuku() {
+        show("Connecting to the phone's adb. If the phone asks Allow USB debugging, tap Always allow…", true);
+        final android.content.Context app = act.getApplicationContext();
+        new Thread(() -> {
+            String msg;
+            boolean ok = false;
+            try {
+                String host = Net.phoneHost(app);
+                if (host.isEmpty()) {
+                    throw new IOException("The tablet is not on the phone's hotspot.");
+                }
+                String out = AdbClient.shell(app, host, 5555,
+                        "sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh", 90);
+                msg = "Shizuku's start script said:\n" + out;
+                ok = true;
+            } catch (java.net.ConnectException e) {
+                msg = "The phone is not listening for network adb on port 5555. Run Set up network adb "
+                        + "(needs Shizuku running), restart the phone, or run adb tcpip 5555 once from a "
+                        + "computer.";
+            } catch (IOException e) {
+                msg = "Couldn't start Shizuku: " + e.getMessage();
+            }
+            final boolean fOk = ok;
+            final String fMsg = msg;
+            act.ui.post(() -> {
+                show(fMsg, fOk);
+                act.ui.postDelayed(this::onShow, 6000); // read the phone's Shizuku state again
+            });
+        }, "linkmeter-adb").start();
     }
 
     /** Asks the phone to put everything back and shows its report. Also used by the Bands tab. */
