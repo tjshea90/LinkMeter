@@ -8,7 +8,7 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (later): the user's field report on v0.2.47 is fixed in code (NOT yet seen on a device).** Report: the picture
+**2026-11-08 (later): the user's field report on v0.2.47 is fixed in code, released as v0.2.51 (NOT yet seen on a device).** Report: the picture
 sometimes showed blocks of old and new screen mixed while a page loaded (screenshot), and the TABLET dimmed after a short idle.
 - Garbled picture = a wrong reference picture in the decoder until the next keyframe (screenrecord sends one only every 10 s).
   Cause: `Screen.video` (phone) cut `screenrecord`'s raw byte stream into "frames" with a 3 ms "pipe went quiet" guess, and
@@ -49,7 +49,7 @@ sometimes showed blocks of old and new screen mixed while a page loaded (screens
 3. The first remote-control build was confirmed by the user ("works very well"). Everything added since then has compiled
    and passed the offline tests (`tools/test.sh`) but has NOT run on a device yet.
 
-NEXT: the user installs the newest release (v0.2.47 or later; `https://github.com/tjshea90/LinkMeter/releases/latest/download/LinkMeter.apk`
+NEXT: the user installs the newest release (v0.2.51 or later; `https://github.com/tjshea90/LinkMeter/releases/latest/download/LinkMeter.apk`
 is always the newest) on the tablet, then Control > Update phone from this tablet, and goes through the field-test checklist in
 "Remote screen control"; the Options panel's "Copy this information" gives what to report (its "Phone app:" line says whether the
 phone really runs the same build). Then fix what it shows.
