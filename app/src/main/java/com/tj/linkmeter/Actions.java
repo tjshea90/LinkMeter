@@ -434,6 +434,8 @@ final class Actions {
             "dumpsys telephony.registry 2>&1 | grep -iE 'mServiceState|mSignalStrength|"
                     + "mDataConnectionState|mDataNetworkType' | cut -c1-500 | head -8",
             "dumpsys telephony.registry 2>&1 | grep -i 'mCellInfo' | cut -c1-3000 | head -3",
+            // the carriers the radio is really using (several with carrier aggregation or 5G) and the label the phone shows
+            "dumpsys telephony.registry 2>&1 | grep -E 'mPhysicalChannelConfigs|mTelephonyDisplayInfo' | cut -c1-2500 | head -4",
             "getprop 2>&1 | grep -iE 'ril|radio|telephony|mtk' "
                     + "| grep -viE 'imei|imsi|iccid|serial|msisdn|number' | head -40",
         };

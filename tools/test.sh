@@ -16,6 +16,12 @@ java -cp "$out" com.tj.linkmeter.PhonePowerTest || fail=1
 echo "== PowerSequence (the phone's Sleep / Wake steps, against a simulated phone)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PowerSequence.java tools/test/PowerSequenceTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PowerSequenceTest || fail=1
+echo "== Bands (carrier list, lock check, plan) and the band comparison run, against simulated phones"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/RadioState.java app/src/main/java/com/tj/linkmeter/BandCheck.java \
+  app/src/main/java/com/tj/linkmeter/SweepPlan.java app/src/main/java/com/tj/linkmeter/BandSweep.java \
+  tools/test/BandToolsTest.java tools/test/BandSweepTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.BandToolsTest || fail=1
+java -cp "$out" com.tj.linkmeter.BandSweepTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

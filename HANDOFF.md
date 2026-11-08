@@ -8,6 +8,37 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
+**2026-11-08 (newest): the Bands tab, from the user's question (changed, NOT yet seen on a device).** The user: "The band lock only
+shows that the phone can see a single band. Is this accurate? Then it says the modem accepted the lock when I try different
+bands. I can get both 4G LTE and 5G UW, but my 5G UW is so weak that the upload speed is almost 0. I want to try different bands
+for better upload." Phone: SM-S156V (Verizon A15 5G, MediaTek, "Samsung RIL"), see "Probe results".
+- Findings (code reading): (1) "sees a single band" is accurate for what the scan reads but incomplete. The scan only read the
+  cell list and service state out of `dumpsys telephony.registry`; "Now using" was the first REGISTERED cell. It never read the
+  carriers actually in use (`mPhysicalChannelConfigs`): the phone had `isUsingCarrierAggregation=true` (several LTE carriers) and
+  Verizon 5G is an LTE carrier plus an NR carrier (non-standalone). Android gives apps no spectrum scan, so "bands that exist
+  here" cannot be listed; only what the radio is connected to can. (2) "The modem accepted" was only the callback of
+  `setSystemSelectionChannels` saying true; many phones acknowledge any request and then ignore it, and the tab never checked.
+  Also an `lte:13` lock says nothing about NR, so 5G can stay on beside it.
+- Changes: phone `/cells` now also returns `carriers` (rat, band, ch, bw, primary), `display` (`overrideNetwork`: NR_ADVANCED =
+  "5G UW"), `ca`, `bws`, `nr`, and `cfgRaw` (the carrier list's own text if it was there but unreadable), parsed by the pure
+  `RadioState`. Tablet: "Now using" lists every carrier; after a lock the tab says whether the phone OBEYED (`BandCheck.verify`:
+  "✓ the phone is on B13" / "✗ asked for B13, phone is on B66, B2: not obeyed") instead of "the modem accepted"; the Probe report
+  also prints the carrier-list and display lines. NEW section "Find the best upload" (`BandSweep`, pure runner; `SweepLink`, the real
+  HTTP calls; `SweepPlan`): for each setting (as it is now; 5G bands with 5G on; 5G off with no lock; each 4G band with 5G off) it
+  locks, waits until the carriers match (max 22 s; 10 s if they cannot be read), runs an upload-only speed test on the phone's
+  mobile data (`/speed/start?only=up`, about 12 s) and fills a table, then clears the lock and puts 5G back as it REALLY was (the
+  phone is asked, not assumed); "Use the best setting" applies it for good. The summary says plainly whether any lock was obeyed
+  and how much better the best is than the phone's own choice. Stops by itself if the phone's safety net undoes a lock.
+  Tests: `tools/test/BandToolsTest.java` and `BandSweepTest.java` (simulated phones that obey, ignore, reject, lose replies, run
+  out of data, and are stopped at every moment; whatever happens, no lock and 5G as before).
+- UNKNOWN until the user tries it: (a) whether this phone prints `mPhysicalChannelConfigs` in a form `RadioState` reads (the
+  parser is tolerant; if not, the tab shows the raw text and Probe has it: adapt the parser to that text); (b) whether this
+  modem obeys `setSystemSelectionChannels` at all (the run answers that with measurements); (c) whether `net_lte` (Force 4G) works on
+  this phone (never confirmed: the run notes "5G could not be switched off" if not).
+- Advice given to the user (Verizon): lower bands (B13 700 MHz, B5 850 MHz) reach indoors and have the stronger uplink but are narrow;
+  B66/B2/B4 are wider but weaker indoors; 5G UW is C-band n77 (high, TDD, weak indoor uplink) or mmWave; with 5G off the
+  phone uses LTE carriers for upload. If locks are not obeyed, the lever that remains is 5G off (Force 4G) and where the phone sits.
+
 **2026-11-08 (newest): Sleep, third round, from the user's screenshot of v0.2.55 (changed, NOT yet seen on a device).** The
 tab said "The phone's screen is off. Tap Wake." in a small label over a BRIGHT frozen lock screen; the user: "But it isn't. When I
 press sleep it just goes to the lock screen and stays on, and one time it still let me control apps."
@@ -149,7 +180,8 @@ older estimate, kept for the unconfirmed rows.
 | Battery saver profile (auto when tablet connects) | Eco | Shizuku | medium |
 | Force 4G / allow 5G | Actions.setNr | Shizuku | LOW until probed (two routes, see below) |
 | Cell survey | Cells.survey (parses `dumpsys telephony.registry`) | Shizuku | LOW until probed (text format unverified) |
-| Band lock | Cells.applyBands, ShellMain | Shizuku + modem cooperation | EXPERIMENTAL |
+| Band lock | Cells.applyBands, ShellMain | Shizuku + modem cooperation | EXPERIMENTAL (the modem acknowledged a request; whether it obeys is checked by the tab now) |
+| Bands tab: every carrier in use, "was the lock obeyed", "Find the best upload" | RadioState, BandCheck, SweepPlan, BandSweep, SweepLink, BandsTab, Cells.survey, SpeedTest (upload only) | Shizuku (dumpsys, net_lte / net_5g) | LOW until field-tested (offline tests pass) |
 | Screen tab, Pictures mode (raw screencap to JPEG) and slow taps | Screen.frame, ScreenTab | Shizuku | medium |
 | Screen tab, live H.264 video + live touch (first version) | Screen.video/ctl, VideoStream, CtlChannel, ShellMain inject | Shizuku (screenrecord, app_process helper) | CONFIRMED by the user: works very well |
 | Screen tab, new interface (side bars, typing, number pad, Options, sharp still, header fix) | ScreenTab, RemoteLayout, TypingView, PinPad, AdvancedPanel, SpsFix | same | LOW until field-tested |
@@ -178,9 +210,10 @@ tablet's hotspot once so it reconnects by itself).
 
 Open items, in order:
 1. Field test the new remote screen interface and the phone-settings session, see "Remote screen control".
-2. Bands tab was rebuilt: grid of LTE (29) and NR (27) band buttons, a status card with Keep / Clear and a countdown,
-   "Now using" from a scan 6 s after each lock. Needs a field test: which bands the modem accepts, which gives the best
-   upload (the user's goal is better indoor upload; the phone sat on LTE band 66 with sinr about 4; try 13, 5, 2, 4).
+2. Bands tab: grid of LTE (29) and NR (27) band buttons, a status card with Keep / Clear and a countdown, "Now using" (every
+   carrier) and a check whether a lock was obeyed, and "Find the best upload" (a measured comparison). Needs a field test: does
+   this modem obey locks (the run says), which setting gives the best upload (the user's goal is better indoor upload; the phone
+   sat on LTE band 66 with sinr about 4; try 13, 5, 2, 4; 5G UW upload is near 0).
 3. Speed test servers: Cloudflare first, then Hetzner (ash-speed) and OVH as fallbacks after HTTP 429 and timeouts
    hit the user's connection. The two fallbacks are unverified. Upload exists on Cloudflare only.
 4. Ask the user what his BandLock app already does to change bands.
@@ -331,7 +364,9 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
 `tools/test.sh` runs: `tools/test/ProfilePlanTest.java` (the phone-settings decisions: explicit scenarios plus 5000 random
 begin / change / end stories that must give the phone back exactly as it was), `tools/test/PhonePowerTest.java` (the Sleep / Wake
 button rules: stale answers are not believed, failures revert, a lost reply is corrected later; 3000 random stories),
-`tools/test/PowerSequenceTest.java` (the phone's Sleep / Wake steps against a simulated phone on a virtual clock: slow phones,
+`tools/test/BandToolsTest.java` (carrier-list parsing, "was the lock obeyed", the plan) and `tools/test/BandSweepTest.java` (the
+band comparison run against simulated phones on a virtual clock: whatever happens, including a stop at any moment, the phone ends
+with no band lock and 5G as before; six deliberate breakages are caught), `tools/test/PowerSequenceTest.java` (the phone's Sleep / Wake steps against a simulated phone on a virtual clock: slow phones,
 a phone that wakes by itself, Always-On Display, methods that do nothing; the power key must never undo a job on a phone that
 follows within 1.8 s; four deliberate breakages are caught) and
 `tools/test-spsfix.sh` (SpsFix against real
@@ -476,7 +511,8 @@ NOT yet tested on the phone. First real test should be done with the phone in ha
 Header `X-Token: <32 hex>`. The tablet's token is its own secret; the phone keeps the secrets of
 paired tablets. Phone endpoints: `/s` (status), `/pair` (POST, only while the 2-minute Pair window
 is open), `/act?name=` (POST), `/probe`, `/speed/{start,stop,status}`, `/cells`, `/band?set=`,
-`/band/keep`, `/bandinfo`, `/apk` (POST, tablet-driven update), and the screen routes
+`/band/keep`, `/bandinfo`, `/apk` (POST, tablet-driven update), `/speed/start?only=up` (upload-only test), `/cells` (cell list plus
+`carriers`, `display`, `ca`, `bws`, `nr`, `cfgRaw`), and the screen routes
 `/screen/{state,frame,video,ctl,profile,tap,swipe,key,on,off,text,pin}` (see "Remote screen control").
 Every route except `/pair` is checked against the paired token in `Api.handle` before the router's `switch`, and a route that
 `Screen.serve` (or any handler) knows but the `switch` does not list answers 404: add new routes in both places.
@@ -548,6 +584,7 @@ Call (tablet helpers), Updater (tablet-driven phone update), Ui, MeterView, Spee
 HomeTab/SpeedTab/BandsTab/ControlTab/FilesTab/SettingsTab/PhoneTab/ScreenTab, MainActivity.
 Remote screen, phone: Screen (routes), PowerSequence (Sleep / Wake steps), RemoteProfile and ProfilePlan (screen kept on and
 dimmed, restored), ShellMain `inject` and `sleep`.
+Bands: BandsTab (the tab), SweepLink (its real HTTP calls), BandSweep (the run, pure), SweepPlan, BandCheck, RadioState (all pure).
 Remote screen, tablet: ScreenTab (the tab), RemoteLayout, BarColumn, BarButton, Icons (layout and buttons), TypingView, PinPad,
 AdvancedPanel, ScreenPrefs (settings), PhonePower (Sleep / Wake button rules), VideoStream, AnnexBFramer (cuts the stream into pictures), SpsFix (decoder),
 CtlChannel, AspectSurfaceView, PhoneScreenView.

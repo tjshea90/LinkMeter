@@ -204,7 +204,7 @@ final class Api {
     private static void speed(Context c, Http.Req r, OutputStream out) throws IOException {
         switch (r.path) {
             case "/speed/start":
-                SpeedTest.start(c);
+                SpeedTest.start(c, "up".equals(r.q("only")));
                 Http.json(out, 200, "{\"ok\":true}");
                 break;
             case "/speed/stop":

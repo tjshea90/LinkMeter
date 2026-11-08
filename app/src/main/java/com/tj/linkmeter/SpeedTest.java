@@ -57,6 +57,8 @@ final class SpeedTest {
 
     private static volatile int phase = IDLE;
     private static volatile boolean cancel;
+    /** This run measures the upload only. */
+    private static volatile boolean skipDown;
     private static volatile double pingMs;
     private static volatile double downMbps;
     private static volatile double upMbps;
@@ -74,6 +76,11 @@ final class SpeedTest {
     }
 
     static void start(Context c) {
+        start(c, false);
+    }
+
+    /** uploadOnly: ping and upload, no download (about 12 s instead of 25 s), for comparing several bands. */
+    static void start(Context c, boolean uploadOnly) {
         synchronized (LOCK) {
             if (running()) {
                 return;
@@ -90,6 +97,7 @@ final class SpeedTest {
             warn = "";
             server = 0;
             cancel = false;
+            skipDown = uploadOnly;
             phase = PING;
         }
         final Context app = c.getApplicationContext();
@@ -122,7 +130,7 @@ final class SpeedTest {
             }
             pingMs = ping(net);
             via = route;
-            while (!cancel) {
+            while (!cancel && !skipDown) {
                 try {
                     downMbps = transfer(net, true);
                     break;

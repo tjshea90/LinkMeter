@@ -29,15 +29,6 @@ final class Cells {
     private static final Pattern START = Pattern.compile("CellInfo(Lte|Nr|Wcdma|Gsm|Tdscdma|Cdma)");
     private static final Pattern BANDS = Pattern.compile("mBands=\\[([0-9, ]*)]");
 
-    /** LTE downlink EARFCN ranges: low, high, band. Used when the phone does not name the band. */
-    private static final int[][] LTE = {
-        {0, 599, 1}, {600, 1199, 2}, {1200, 1949, 3}, {1950, 2399, 4}, {2400, 2649, 5},
-        {2750, 3449, 7}, {3450, 3799, 8}, {5010, 5179, 12}, {5180, 5279, 13}, {5280, 5379, 14},
-        {5730, 5849, 17}, {6150, 6449, 20}, {8040, 8689, 25}, {8690, 9039, 26}, {9210, 9659, 28},
-        {9770, 9869, 30}, {37750, 38249, 38}, {38650, 39649, 40}, {39650, 41589, 41},
-        {55240, 56739, 48}, {66436, 67335, 66}, {68586, 68935, 71},
-    };
-
     private static volatile Runnable pending;
     private static volatile String lockSpec = "";
     private static volatile boolean kept;
@@ -69,16 +60,45 @@ final class Cells {
     // ------------------------------------------------------------ survey
 
     static String survey() throws IOException {
-        Priv.Result r = Priv.run("dumpsys telephony.registry 2>&1 | grep -iE 'CellInfo|mServiceState' "
-                + "| cut -c1-9000 | head -8", 25);
+        // The cell list (the cell the phone is registered on, and a few it measured) AND, after the marker, the carriers the
+        // radio is really using (several with carrier aggregation or 5G) and the label the phone shows for them.
+        Priv.Result r = Priv.run("D=$(dumpsys telephony.registry 2>&1); "
+                + "printf '%s\\n' \"$D\" | grep -iE 'CellInfo|mServiceState' | cut -c1-9000 | head -8; "
+                + "echo '##EXTRA'; "
+                + "printf '%s\\n' \"$D\" | grep -E 'mPhysicalChannelConfigs|mTelephonyDisplayInfo' | cut -c1-6000 | head -4", 25);
+        int marker = r.out.indexOf("##EXTRA");
+        String cellPart = marker >= 0 ? r.out.substring(0, marker) : r.out;
         // This phone hides each cell's channel in the cell list but shows the serving one here.
-        Matcher ch = Pattern.compile("mChannelNumber=(\\d+)").matcher(r.out);
+        Matcher ch = Pattern.compile("mChannelNumber=(\\d+)").matcher(cellPart);
         int servingChannel = ch.find() ? Integer.parseInt(ch.group(1)) : NONE;
         JSONObject o = new JSONObject();
         JSONArray arr = new JSONArray();
         Set<String> seen = new HashSet<>();
         try {
-            for (JSONObject cell : parse(r.out)) {
+            RadioState rs = RadioState.parse(r.out);
+            JSONArray car = new JSONArray();
+            for (RadioState.Carrier cr : rs.carriers) {
+                JSONObject j = new JSONObject();
+                j.put("rat", cr.rat);
+                j.put("band", cr.band);
+                j.put("ch", cr.channel);
+                j.put("bw", cr.bwKhz);
+                j.put("primary", cr.primary ? 1 : 0);
+                car.put(j);
+            }
+            o.put("carriers", car);
+            o.put("display", rs.display);
+            o.put("ca", rs.ca);
+            if (!rs.bandwidths.isEmpty()) {
+                o.put("bws", new JSONArray(rs.bandwidths));
+            }
+            if (!rs.nrState.isEmpty()) {
+                o.put("nr", rs.nrState);
+            }
+            if (car.length() == 0 && !rs.rawConfigs.isEmpty()) {
+                o.put("cfgRaw", rs.rawConfigs);
+            }
+            for (JSONObject cell : parse(cellPart)) {
                 if (cell.optInt("reg") == 1 && !cell.has("earfcn") && servingChannel != NONE) {
                     cell.put("earfcn", servingChannel);
                     if (cell.optJSONArray("bands") != null && cell.optJSONArray("bands").length() == 0
@@ -97,7 +117,7 @@ final class Cells {
             }
             o.put("cells", arr);
             if (arr.length() == 0) {
-                o.put("raw", r.out.length() > 1500 ? r.out.substring(0, 1500) : r.out);
+                o.put("raw", cellPart.length() > 1500 ? cellPart.substring(0, 1500) : cellPart);
             }
         } catch (JSONException ignored) {
             // numbers and short text only
@@ -178,12 +198,7 @@ final class Cells {
     }
 
     private static int lteBand(int earfcn) {
-        for (int[] r : LTE) {
-            if (earfcn >= r[0] && earfcn <= r[1]) {
-                return r[2];
-            }
-        }
-        return 0;
+        return RadioState.lteBand(earfcn);
     }
 
     // ------------------------------------------------------------ band lock

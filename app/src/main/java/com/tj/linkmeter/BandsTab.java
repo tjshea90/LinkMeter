@@ -5,10 +5,13 @@ import android.os.SystemClock;
 import android.text.InputType;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeSet;
@@ -41,6 +44,22 @@ final class BandsTab extends Tab {
     private String lockSpec = "";
     private boolean kept;
     private long revertAtMs;
+    /** The next scan should say whether the phone obeyed the lock that was just asked for. */
+    private boolean verifyNext;
+
+    // "Find the best upload": the run itself lives on in this object when the tab is left and shown again
+    private EditText lteList;
+    private EditText nrList;
+    private CheckBox fiveGOffBox;
+    private Button sweepBtn;
+    private Button stopBtn;
+    private Button useBestBtn;
+    private TextView sweepProgress;
+    private TextView sweepTable;
+    private BandSweep sweep;
+    private List<BandSweep.Row> lastRows = new ArrayList<>();
+    private int lastBest = -1;
+    private String lastProgress = "";
 
     private final Runnable clock = new Runnable() {
         @Override
@@ -71,9 +90,10 @@ final class BandsTab extends Tab {
         buttons.clear();
         LinearLayout col = Ui.column(act);
         col.addView(Ui.text(act, "Cell bands", 22, Ui.FG, true));
-        col.addView(Ui.text(act, "Tap a band to ask the modem to use only that band. The modem may "
-                + "refuse bands it doesn't have. A lock undoes itself after 2 minutes unless you "
-                + "press Keep, and Restore everything always puts the phone back.", 12, Ui.DIM, false),
+        col.addView(Ui.text(act, "Tap a band to ask the modem to use only that band. \"The modem accepted it\" only "
+                + "means the modem acknowledged the request: many phones do that and then ignore it, so this tab "
+                + "checks which carriers the phone really uses afterwards. A lock undoes itself after 2 minutes "
+                + "unless you press Keep, and Restore everything always puts the phone back.", 12, Ui.DIM, false),
                 Ui.lp(act, 4));
 
         statusText = Ui.text(act, "", 15, Ui.FG, true);
@@ -81,6 +101,7 @@ final class BandsTab extends Tab {
         statusText.setBackgroundColor(Ui.CARD);
         col.addView(statusText, Ui.lp(act, 10));
         nowText = Ui.text(act, "Now using: scan to see", 13, Ui.DIM, false);
+        nowText.setTypeface(Typeface.MONOSPACE);
         nowText.setPadding(Ui.dp(act, 12), 0, Ui.dp(act, 12), Ui.dp(act, 10));
         nowText.setBackgroundColor(Ui.CARD);
         col.addView(nowText);
@@ -96,6 +117,8 @@ final class BandsTab extends Tab {
         result.setTypeface(Typeface.MONOSPACE);
         result.setTextIsSelectable(true);
         col.addView(result, Ui.lp(act, 6));
+
+        buildSweepSection(col);
 
         LinearLayout row = new LinearLayout(act);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -167,6 +190,136 @@ final class BandsTab extends Tab {
             for (int i = rest; i < PER_ROW; i++) {
                 row.addView(new View(act), Ui.weight());
             }
+        }
+    }
+
+    // ------------------------------------------------------------ find the best upload
+
+    private EditText bandField(String hint, String text) {
+        EditText e = new EditText(act);
+        e.setSingleLine(true);
+        e.setInputType(InputType.TYPE_CLASS_TEXT);
+        e.setTextColor(Ui.FG);
+        e.setHint(hint);
+        e.setHintTextColor(Ui.DIM);
+        e.setText(text);
+        return e;
+    }
+
+    private void buildSweepSection(LinearLayout col) {
+        col.addView(Ui.text(act, "Find the best upload", 18, Ui.FG, true), Ui.lp(act, 16));
+        col.addView(Ui.text(act, "Tries the settings below one after another. For each it asks the modem, waits until the "
+                + "phone has really moved (checked against the carriers it is using), then measures the phone's upload on "
+                + "its mobile data for about 10 seconds. At the end the phone is put back as it was, and you pick the "
+                + "best. About half a minute per setting. Leave the phone where you will use it.", 12, Ui.DIM, false),
+                Ui.lp(act, 4));
+        col.addView(Ui.text(act, "4G bands to try (numbers, separated by commas)", 12, Ui.FG, false), Ui.lp(act, 10));
+        lteList = bandField("13, 5, 66, 2, 4", "13, 5, 66, 2, 4");
+        col.addView(lteList);
+        col.addView(Ui.text(act, "5G bands to try (leave empty to skip 5G, for example 77 is the C-band)", 12, Ui.FG,
+                false), Ui.lp(act, 6));
+        nrList = bandField("77", "");
+        col.addView(nrList);
+        fiveGOffBox = new CheckBox(act);
+        fiveGOffBox.setText("Also try 4G with 5G switched off (switched back on at the end)");
+        fiveGOffBox.setTextColor(Ui.FG);
+        fiveGOffBox.setChecked(true);
+        col.addView(fiveGOffBox, Ui.lp(act, 6));
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        sweepBtn = Ui.button(act, "Start", v -> startSweep());
+        stopBtn = Ui.button(act, "Stop", v -> stopSweep());
+        row.addView(sweepBtn, Ui.weight());
+        row.addView(stopBtn, Ui.weight());
+        col.addView(row, Ui.lp(act, 4));
+        sweepProgress = Ui.text(act, lastProgress, 13, Ui.FG, true);
+        col.addView(sweepProgress, Ui.lp(act, 6));
+        sweepTable = Ui.text(act, "", 12, Ui.FG, false);
+        sweepTable.setTypeface(Typeface.MONOSPACE);
+        sweepTable.setTextIsSelectable(true);
+        col.addView(sweepTable, Ui.lp(act, 4));
+        useBestBtn = Ui.button(act, "Use the best setting", v -> useBest());
+        col.addView(useBestBtn, Ui.lp(act, 4));
+        renderRows(lastRows, lastBest, sweep != null && sweep.running());
+    }
+
+    private void startSweep() {
+        if (sweep != null && sweep.running()) {
+            return;
+        }
+        int[] lte = SweepPlan.parseBands(lteList.getText().toString(), 10);
+        int[] nr = SweepPlan.parseBands(nrList.getText().toString(), 6);
+        List<SweepPlan.Step> plan = SweepPlan.build(lte, nr, fiveGOffBox.isChecked());
+        lastRows = new ArrayList<>();
+        lastBest = -1;
+        sweep = new BandSweep(new SweepLink(act), new BandSweep.Listener() {
+            @Override
+            public void progress(String text) {
+                lastProgress = text;
+                if (sweepProgress != null) {
+                    sweepProgress.setText(text);
+                }
+            }
+
+            @Override
+            public void rows(List<BandSweep.Row> rows, int best, boolean running) {
+                renderRows(rows, best, running);
+            }
+        }, plan);
+        say("Starting a comparison of " + plan.size() + " settings. Any band lock is cleared first.", true);
+        sweep.start();
+    }
+
+    private void stopSweep() {
+        if (sweep != null) {
+            sweep.cancel();
+        }
+    }
+
+    private void renderRows(List<BandSweep.Row> rows, int best, boolean running) {
+        lastRows = rows == null ? new ArrayList<BandSweep.Row>() : new ArrayList<>(rows);
+        lastBest = best;
+        if (sweepTable == null) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        String summary = running ? "" : BandSweep.summary(lastRows);
+        if (!summary.isEmpty()) {
+            sb.append(summary).append("\n\n");
+        }
+        for (int i = 0; i < lastRows.size(); i++) {
+            sb.append(lastRows.get(i).line(i == best)).append("\n\n");
+        }
+        sweepTable.setText(sb.toString().trim());
+        sweepBtn.setEnabled(!running);
+        stopBtn.setEnabled(running);
+        boolean can = !running && best >= 0 && best < lastRows.size();
+        useBestBtn.setEnabled(can);
+        useBestBtn.setText(can ? "Use the best: " + lastRows.get(best).step.label : "Use the best setting");
+    }
+
+    /** Applies the winning setting for good: 5G on or off as it needs, the band lock, and Keep. */
+    private void useBest() {
+        if (lastBest < 0 || lastBest >= lastRows.size()) {
+            return;
+        }
+        final SweepPlan.Step s = lastRows.get(lastBest).step;
+        say("Applying: " + s.label + "…", true);
+        if (s.fiveG == null) {
+            applyStep(s);
+            return;
+        }
+        Call.run(act, "POST", "/act?name=" + (s.fiveG ? "net_5g" : "net_lte"), 60000, (ok, text, json) -> {
+            say(text, ok);
+            applyStep(s);
+        });
+    }
+
+    private void applyStep(SweepPlan.Step s) {
+        if (s.spec.isEmpty()) {
+            lock("");
+        } else {
+            lock(s.spec, true);
         }
     }
 
@@ -248,20 +401,28 @@ final class BandsTab extends Tab {
     // ------------------------------------------------------------ actions
 
     private void lock(final String spec) {
+        lock(spec, false);
+    }
+
+    private void lock(final String spec, final boolean keepAfter) {
         if (!spec.matches("[a-z0-9,;:]*")) {
             say("That doesn't look right. Use something like lte:5 or lte:5,12.", false);
             return;
         }
         say(spec.isEmpty() ? "Clearing the lock…" : "Asking the modem for " + pretty(spec) + "…", true);
         Call.run(act, "POST", "/band?set=" + Http.enc(spec), 50000, (ok, text, json) -> {
-            say(ok ? (spec.isEmpty() ? "Lock cleared." : "The modem accepted " + pretty(spec)
-                    + ". Check the signal below, then Keep or try another band.") : text, ok);
+            say(ok ? (spec.isEmpty() ? "Lock cleared." : "The modem acknowledged the request for " + pretty(spec)
+                    + ". That does not prove the phone moved: checking which carriers it is really on…") : text, ok);
             if (ok && json != null) {
                 applyStatus(json.optString("lock", ""), json.optBoolean("kept", false),
                         json.optInt("left", 0));
                 if (!spec.isEmpty()) {
-                    // the modem needs a few seconds to move; then show what it is really on
+                    // the modem needs a few seconds to move; then show what it is really on, and whether it obeyed
+                    verifyNext = true;
                     act.ui.postDelayed(() -> scan(false), 6000);
+                    if (keepAfter) {
+                        keepLock();
+                    }
                 }
             } else {
                 refreshStatus();
@@ -347,9 +508,36 @@ final class BandsTab extends Tab {
                 }
             }
         }
+        // The list above is the cell the phone is registered on. What the radio is really USING is the list of carriers:
+        // with carrier aggregation or 5G there are several at once.
+        RadioState rs = SweepLink.stateOf(json);
+        for (RadioState.Carrier c : rs.carriers) {
+            if (c.band > 0) {
+                (c.nr() ? seenNr : seenLte).add(c.band);
+            }
+        }
+        String carriersText = BandCheck.describe(rs);
+        if (!rs.rawConfigs.isEmpty()) {
+            sb.append("\n\nThe phone's carrier list is there but could not be read. Its text:\n").append(rs.rawConfigs);
+        }
         cellsText.setText(sb.toString().trim());
         if (nowText != null) {
-            nowText.setText(now.isEmpty() ? "Now using: unknown" : "Now using: " + now);
+            if (!rs.carriers.isEmpty()) {
+                nowText.setText("Now using:\n" + carriersText);
+            } else if (!now.isEmpty()) {
+                nowText.setText("Now using: " + now + (rs.display.isEmpty() && !rs.ca ? "" : "\n" + carriersText));
+            } else {
+                nowText.setText("Now using: unknown" + (rs.display.isEmpty() && !rs.ca ? "" : "\n" + carriersText));
+            }
+        }
+        if (verifyNext || !lockSpec.isEmpty()) {
+            boolean after = verifyNext;
+            verifyNext = false;
+            if (!lockSpec.isEmpty() && (after || (result != null && result.getText().length() == 0))) {
+                BandCheck.Result v = BandCheck.verify(lockSpec, rs.carriers);
+                say((v.verdict == BandCheck.Verdict.OBEYED ? "✓ " : v.verdict == BandCheck.Verdict.NOT_OBEYED ? "✗ " : "? ")
+                        + v.text, v.verdict != BandCheck.Verdict.NOT_OBEYED);
+            }
         }
         paintStatus();
     }
