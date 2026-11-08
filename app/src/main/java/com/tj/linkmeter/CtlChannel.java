@@ -37,7 +37,13 @@ final class CtlChannel {
                 // no message
             }
             s.close();
-            throw new IOException(sb.length() > 0 ? sb.toString() : "error " + s.code);
+            String text = sb.toString();
+            try {
+                text = new org.json.JSONObject(text).optString("err", text); // the phone's reason, without the JSON
+            } catch (org.json.JSONException plain) {
+                // not JSON: show it as it came
+            }
+            throw new IOException(text.isEmpty() ? "error " + s.code : text);
         }
         try {
             s.sock.setSoTimeout(0);

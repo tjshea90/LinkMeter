@@ -192,6 +192,8 @@ Likely trouble spots, with the remedy to try:
 - A hiccup every 3 minutes: the screenrecord restart. Expected; could be hidden by starting the next one early.
 - Touch lands a few pixels off: screenrecord letterboxes when the phone's shape is not an exact multiple of 16; map touches
   through the letterbox if it matters.
+- The phone is rotated while streaming: the stream keeps the size it started with, so the picture and the touch mapping go
+  wrong until the tab is left and re-entered. Fix if it matters: restart the stream when the phone's size changes.
 - screenrecord refuses on this Samsung build (the status line will say what it printed): the last resort is a scrcpy-style
   server in ShellMain (virtual display + MediaCodec through hidden APIs), a bigger piece of work.
 

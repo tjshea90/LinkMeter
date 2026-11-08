@@ -205,13 +205,22 @@ final class Screen {
             final Process p = Priv.spawn(Cells.mainCommandExec(c, "inject") + " 2>&1");
             final String[] first = new String[1];
             Thread t = new Thread(() -> {
+                StringBuilder noise = new StringBuilder();
                 try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                    first[0] = br.readLine();
-                    while (br.readLine() != null) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        if (first[0] == null && (line.startsWith("OK") || line.startsWith("ERR"))) {
+                            first[0] = line;
+                        } else if (first[0] == null && noise.length() < 300) {
+                            noise.append(line).append(' '); // stray output before the verdict
+                        }
                         // keep reading so the helper never blocks on a full pipe
                     }
                 } catch (IOException ignored) {
                     // the helper ended
+                }
+                if (first[0] == null) {
+                    first[0] = "ERR the helper ended: " + noise.toString().trim();
                 }
             }, "linkmeter-inject-out");
             t.setDaemon(true);
