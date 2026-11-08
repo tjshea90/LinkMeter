@@ -8,7 +8,17 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (newest): first field result of "Find the best upload", and a regression of MINE found by the user's screenshot.**
+**2026-11-08 (newest): BIG REQUEST in progress: polished file manager, attach to phone apps, Texts (SMS/MMS).**
+The user asked (after the Bands work, v0.2.61 is the last release before this): send and receive SMS on the tablet with easy
+photo/file attachments; attach tablet photos/files to ANY app on the phone while using it remotely; revamp the Files tab into a
+polished file manager (copy/paste/delete, thumbnails, like File Manager +) so files move easily between phone and tablet.
+- THE PLAN, DESIGN, PROTOCOL AND A STATUS CHECKLIST ARE IN `docs/FILES_AND_TEXTS_PLAN.md`. Read it, keep its Status list true.
+- Order: A (file manager: pure core + tests, phone routes, UI) then B (attach from the Screen tab) then C (Texts). Each is released
+  on its own with a plain `tools/checkpoint.sh`; intermediate saves use `NO_RELEASE=1`.
+- Rule learned the hard way (v0.2.57 to .59): never hold a big output in a shell variable or pass it as an argument on the phone
+  (no built-in printf, 128 KB limit). Android views compile only on CI: keep them thin, put logic in pure classes with tests.
+
+**2026-11-08 (earlier): first field result of "Find the best upload", and a regression of MINE found by the user's screenshot.**
 - The run works on the phone: all 7 settings were measured, the phone was put back, "Use the best" appeared. Upload (one 8 s sample each,
   5G was on at the start): as it is now 2.6, 5G off 4.2, B13 4.2, B5 2.9, B66 7.5, B2 6.5, B4 5.4 Mbit/s. One sample each is NOISY, and the
   locks could not be checked (below), so these numbers do not yet prove that a band lock does anything.
