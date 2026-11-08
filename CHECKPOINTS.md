@@ -29,3 +29,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T05:19:36Z remote control hardening: stop screenrecord when the tablet leaves, lift a held finger if touch drops, touch helper only while in use, pictures no longer block touch, reason shown when video fails, fps/kbit stats, keepalive
 - 2026-11-08T05:22:07Z handoff: record the live remote control design, protocol, field-test checklist, the routing bug, the dead network-adb path and the branch/CI rules
 - 2026-11-08T05:23:05Z touch helper start-up: skip stray output before the verdict, report the helper's own output if it ends early, show the phone's reason as plain text; note the rotation risk
+- 2026-11-08T05:23:52Z touch connection: phone drops a silent connection after 3 minutes (tablet keepalive is every minute)

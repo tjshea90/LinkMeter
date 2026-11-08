@@ -284,7 +284,8 @@ final class Screen {
         int lx = 0;
         int ly = 0;
         try {
-            r.sock.setSoTimeout(10 * 60 * 1000);
+            // The tablet sends a "p" line every minute, so a connection that stays silent this long is gone.
+            r.sock.setSoTimeout(3 * 60 * 1000);
             Http.headOpen(out, "text/plain", "");
             out.flush();
             BufferedReader br = new BufferedReader(new InputStreamReader(r.body, StandardCharsets.US_ASCII));
