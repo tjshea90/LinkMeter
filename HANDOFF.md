@@ -8,37 +8,36 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08, second session "Faster remote control update"**: the work is on branch `ccr-ae02e85b-7bro73` and is NOT merged
-to `main` yet (`main` has the first remote-control fix only). It compiles green in CI and the offline tests pass
-(`tools/test.sh`). **None of the new interface or phone-settings code has run on a device yet.**
+**2026-11-08, "Faster remote control update", last part**: everything described below is MERGED into `main` (the user said
+"Merge it"), and from now on builds are NUMBERED RELEASES that merge and publish themselves.
 
-What the user said after trying the first build: the live remote control "works very well"; it fell back to Pictures once or
-twice; once it said "the decoder stopped taking video" and the picture only came back when they moved a finger (a reconnect
-whose first picture the tablet decoder held back until more frames came). They asked for, and the branch now has:
-1. Advanced video options (resolution, bitrate limit, decoder, low-delay tuning, pictures speed, speed numbers). A frames per
-   second cap for LIVE VIDEO is not possible: the phone's `screenrecord` has no such option (see "Remote screen control").
-2. A new interface: a column of buttons on each side of the picture, never over it (the old bottom bar covered the phone's own
-   navigation bar), a typing mode that opens the tablet's keyboard without covering the picture, a number pad for the PIN, and an
-   Options panel.
-3. The decoder problem: the stream header is rewritten so the decoder does not hold pictures back (`SpsFix`), low-latency hints,
-   and a sharp still picture whenever the phone's screen stops changing.
-4. While the remote screen is open the phone keeps its screen on for at least 2 minutes, dims to the lowest brightness, and puts
-   everything back afterwards (`RemoteProfile`, with its decisions in `ProfilePlan`).
-5. The two dead network-adb buttons, `AdbClient` and the `adb_tcp_setup` action are gone.
+1. Releases are numbered and automatic (the user's standing instruction). Every push to `main` or to a `ccr-*` session branch
+   is built and tested by GitHub (`.github/workflows/build.yml`). A good build on a session branch is fast-forwarded into
+   `main` by the pipeline when that is safe, and a numbered release (`v0.2.N` with `LinkMeter-0.2.N.apk`) is published if the
+   app changed. Sessions therefore no longer ask "merge it?". Rules, switches and limits: "Releases and the automatic merge".
+   Releases page: https://github.com/tjshea90/LinkMeter/releases
+2. What the user asked for in this round, all in that merge (details in "Remote screen control"): advanced video options
+   (resolution, bitrate limit, decoder, low-delay tuning; a frames per second cap for live video is impossible with the
+   phone's `screenrecord`), a new remote screen interface (side columns of buttons, typing mode, number pad, Options panel),
+   a fix for the decoder holding pictures back (header fix, low-latency hints, sharp still picture), the phone keeping its
+   screen on 2+ minutes and dimming while the remote screen is open and putting everything back (`RemoteProfile`), and
+   removal of the dead network-adb buttons.
+3. The first remote-control build was confirmed by the user ("works very well"). Everything added since then has compiled
+   and passed the offline tests (`tools/test.sh`) but has NOT run on a device yet.
 
-NEXT, in order: (a) ask the user whether to merge the branch into `main` (that publishes `latest`); (b) the user updates both
-devices and field-tests with the checklist in "Remote screen control", then reports what the Options panel's "Copy this
-information" button gives; (c) fix what it shows.
+NEXT: the user installs the newest release on the tablet, then Control > Update phone from this tablet, and goes through the
+field-test checklist in "Remote screen control"; the Options panel's "Copy this information" gives what to report. Then fix
+what it shows.
 
-Earlier the same day (first session, `session_01UWi8ZxcnuAwP2jZg1uh8Gh` and the one after it): the first version of the live
-remote control (commit `14b3e12`) was written by a session that died of "Prompt is too long" before writing it down; the next
-session found that `Api.handle` never routed `/screen/video` and `/screen/ctl` (they answered 404, so the tablet silently used
-Pictures), fixed that, hardened the video and touch paths, and merged it into `main` as `latest` (`088cc22`).
+Branch rule for cloud sessions: develop and push only on the designated `ccr-*` branch; the pipeline does the merging. Start
+every session with `git fetch --all && git branch -r && git log --oneline main..origin/<newest ccr-* branch>` so work that sits
+on an unmerged branch is not mistaken for missing (the pipeline leaves a branch unmerged when it touches `.github/`, when
+`main` has moved, or when told so by a marker: then merge by hand, with the user's say-so).
 
-Branch rule for cloud sessions: develop and push only on the designated `ccr-*` branch, and merge into `main` only when the
-user says so (a fast-forward push of the branch to `main` publishes `latest`; the head commit of that push must not contain
-`[skip ci]`). Start every session with `git fetch --all && git branch -r && git log --oneline main..origin/<newest ccr-*
-branch>` so work that sits on an unmerged branch is not mistaken for missing.
+Earlier the same day: the first version of the live remote control (commit `14b3e12`) was written by a session that died of
+"Prompt is too long" before writing it down; the next session found that `Api.handle` never routed `/screen/video` and
+`/screen/ctl` (they answered 404, so the tablet silently used Pictures), fixed that, hardened the video and touch paths, and
+merged it into `main` as the `latest` release (`088cc22`).
 
 ## What it is
 
@@ -52,8 +51,8 @@ The user's phone is the hotspot; the tablet joins it and controls the phone.
   font scale 1.2, no Play services. Tabs: Home, Speed, Bands, Control, Files, Settings.
   Only the tab on screen does work, and only while the app is in front.
 
-Repo: github.com/tjshea90/LinkMeter. Every push to `main` builds the release APK and publishes
-it as the `latest` release (`LinkMeter.apk`).
+Repo: github.com/tjshea90/LinkMeter. Every push is built and tested; good builds become numbered releases (`v0.2.N`, file
+`LinkMeter-0.2.N.apk`) at https://github.com/tjshea90/LinkMeter/releases (see "Releases and the automatic merge").
 
 ## State (what is done and what is not)
 
@@ -97,8 +96,7 @@ restart Shizuku still has to be started the usual way (computer over USB, or the
 tablet's hotspot once so it reconnects by itself).
 
 Open items, in order:
-1. Merge the branch (needs the user's say-so), then field test the new remote screen interface and the phone-settings
-   session, see "Remote screen control".
+1. Field test the new remote screen interface and the phone-settings session, see "Remote screen control".
 2. Bands tab was rebuilt: grid of LTE (29) and NR (27) band buttons, a status card with Keep / Clear and a countdown,
    "Now using" from a scan 6 s after each lock. Needs a field test: which bands the modem accepts, which gives the best
    upload (the user's goal is better indoor upload; the phone sat on LTE band 66 with sinr about 4; try 13, 5, 2, 4).
@@ -264,6 +262,41 @@ x264 streams of many kinds, checked by ffmpeg's own header parser and decoder). 
   and retyping; if a keyboard still misbehaves, look at which InputConnection call it uses.
 - screenrecord refuses on this Samsung build (the status line will say what it printed): the last resort is the own-encoder engine.
 
+## Releases and the automatic merge (`.github/workflows/build.yml`)
+
+Three jobs run on every push to `main` or `ccr-*` (and on manual runs):
+- `build`: Gradle `assembleRelease`. The APK is renamed `LinkMeter-<version>.apk`, and its `versionName` is read back with
+  `aapt2` and must equal the release version (so `gradle.properties` and the workflow cannot drift apart).
+- `test`: `tools/test.sh` (ffmpeg is installed first): the phone-settings tests, the H.264 header tests, and the tests of the
+  merge gate below.
+- `release`, only if both passed, one at a time: the step "Decide what to do" works out two answers.
+  - Merge (only for a `ccr-*` branch): the commit must be a fast-forward of `main` (main must not have moved, and must not
+    already contain it), must not touch `.github/`, `app/debug.keystore` or the `applicationId` line of `app/build.gradle`,
+    and its message must not contain `[no-merge]` or `[wip]`. Then `git push origin HEAD:main`. That push is made with the
+    workflow's own token, which by GitHub's rule does not start another run, so there is one release per commit.
+  - Release (after a merge, or for a push to `main`): only if something under `app/`, `gradle/`, `build.gradle`,
+    `settings.gradle` or `gradle.properties` changed since the previous release tag, and the message has no `[no-release]`.
+    Tag `v<version>`, title `LinkMeter <version>`, assets `LinkMeter-<version>.apk` and the same file as `LinkMeter.apk` (so
+    `https://github.com/tjshea90/LinkMeter/releases/latest/download/LinkMeter.apk` is always the newest), notes = the commit
+    subjects since the previous release.
+- Version: `versionBase` in `gradle.properties` (0.2 now) plus the workflow's run number is both `versionName` and
+  `versionCode` (so numbers skip when runs release nothing, and always rise). Raise `versionBase` for a bigger step.
+- Markers in the head commit's message: `[no-release]` (merge, no release; `NO_RELEASE=1 tools/checkpoint.sh` adds it),
+  `[no-merge]` or `[wip]` (neither), `[skip ci]` (GitHub's own: nothing runs at all, not even the merge, so avoid it now).
+- Manual runs (Actions > build-apk > Run workflow, or the MCP `actions_run_trigger` with `ref` and string inputs):
+  `dry_run` (only report, and test that main could be pushed), `rehearse` (makes a DRAFT release with the real APK and
+  deletes it at once, merges nothing: use it after changing the release step), `force_release`.
+- A change to the workflow is never merged by the pipeline (the workflow's token may not change workflow files, and nothing
+  tests a workflow but running it). Merge it by hand with the user's say-so (`git push origin HEAD:main` once the branch run is
+  green), rehearse first, then watch the run on `main`.
+- `tools/test/test_release_decision.py` runs the real "Decide what to do" script, taken out of the workflow file, in
+  throwaway git repositories (24 cases). Change the gate only together with that test. `actionlint` (`pip install
+  actionlint-py`) lints workflow files.
+- The unnumbered `latest` release of the old pipeline is deleted by the first numbered release; the step
+  `gh release delete latest ... || true` in the workflow can be removed afterwards.
+- If `main` moved so a branch is not a fast-forward, the run says so in its summary; look at what is on `main`, then merge by
+  hand. Actions on Node 20 print a deprecation warning (GitHub forces Node 24); bump their versions when it becomes an error.
+
 ## Safety: getting the phone back if a change breaks mobile data
 
 The user asked for this explicitly (a band lock must never leave the phone unrecoverable). Layers:
@@ -288,13 +321,13 @@ NOT yet tested on the phone. First real test should be done with the phone in ha
   AOSP source. Do not try to route around these.
 - Commits end with the Co-Authored-By and Claude-Session trailer lines given by the session reminder.
 - `.simple-workflow/` (plugin notes) is gitignored on purpose.
-- Cloud sessions are bound to one `ccr-*` branch and must not push elsewhere. CI (`build-apk`) compile-checks pushes to
-  `main` and `ccr-*`; only `main` publishes `latest`. A `ccr-*` run still attaches the APK as a run artifact.
+- Cloud sessions are bound to one `ccr-*` branch and must not push to `main` themselves: the pipeline merges good builds and
+  releases them (see "Releases and the automatic merge"). Every run attaches the APK as a run artifact.
 - Check CI with the GitHub MCP tools (`actions_list` with `workflow_runs_filter.branch`, `get_job_logs` with `failed_only`);
   `tools/ci.sh` does the same with `gh`, which worked read-only here but is not the sanctioned route.
 - `javac` exists but there is no Android jar. `cd app/src/main/java && javac -proc:none -d <scratch> <files>` still finds
   syntax errors and misspelled app-internal names: ignore errors whose `symbol:` is an Android, org.json or Shizuku class.
-- Offline tests: `tools/test.sh` (see "Remote screen control"). This sandbox has `ffmpeg` with libx264 and the `trace_headers`
+- Offline tests: `tools/test.sh` (see "Remote screen control"; it also tests the release pipeline's merge gate). This sandbox has `ffmpeg` with libx264 and the `trace_headers`
   filter, which is how SpsFix is checked against real streams and ffmpeg's own parser. Pure logic should live in classes
   without Android imports (SpsFix, ProfilePlan, Icons) so it can be tested here. To look at the icons:
   `javac -d <scratch> app/src/main/java/com/tj/linkmeter/Icons.java tools/test/IconSheet.java` then
@@ -383,4 +416,5 @@ Remote screen, phone: Screen (routes), RemoteProfile and ProfilePlan (screen kep
 Remote screen, tablet: ScreenTab (the tab), RemoteLayout, BarColumn, BarButton, Icons (layout and buttons), TypingView, PinPad,
 AdvancedPanel, ScreenPrefs (settings), VideoStream, SpsFix (decoder), CtlChannel, AspectSurfaceView, PhoneScreenView.
 Tools: `tools/checkpoint.sh` (log, commit, push with retries), `tools/ci.sh` (same, then watches the build with gh),
-`tools/handoff-check.sh` (warns when this file is stale), `tools/test.sh` (offline tests). `CHECKPOINTS.md` is the append-only log they write.
+`tools/handoff-check.sh` (warns when this file is stale), `tools/test.sh` (offline tests, including
+`tools/test/test_release_decision.py` for the release pipeline's merge gate). `CHECKPOINTS.md` is the append-only log they write.
