@@ -64,6 +64,15 @@ with Wireless debugging OFF (wireless-debugging start dies when Wi-Fi turns off 
 - `dumpsys telephony.registry`: serving cell is LTE band 5 (`mBands=[5]`), rsrp about -104, level 2,
   `isUsingCarrierAggregation=true`, ServiceState `mChannelNumber=2560` (EARFCN, band 5). Cell lists HIDE
   `mEarfcn` and `mPci` as `[****]`, so Cells.survey takes the serving channel from `mChannelNumber`.
+- Force 4G first try: route A (ShellMain) failed and route B's `set-allowed-network-types-for-users` rejected
+  both the word form and the decimal mask ("No valid NETWORK_TYPES_BITMASK"); its real format is still unknown.
+  Before the failure the phone allowed GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPAP|GSM|LTE_CA plus NR.
+- `Bands > Read lock info` (ShellMain info) showed the TelephonyManager methods exist (setAllowedNetworkTypesForReason(int,long),
+  setSystemSelectionChannels(List,Executor,Consumer), ...) but every call threw a NullPointerException in
+  `TelephonyServiceManager.getTelephonyServiceRegisterer()`: the app_process helper never ran the mainline
+  service-wrapper setup. Fixed by calling `ActivityThread.initializeMainlineModules()` (fallback:
+  TelephonyFrameworkInitializer.setTelephonyServiceManager) at the start of ShellMain.telephony(). NOT yet confirmed on the phone.
+- Cell scan on the phone showed the serving cell as LTE B66 (ch 66611), not B5 (the user wants B5 indoors).
 - Not yet checked on the phone: ShellMain route (`Bands > Read lock info`), band lock result, Prepare phone,
   Force 4G / Allow 5G outcome, battery saver, speed test, Files.
 

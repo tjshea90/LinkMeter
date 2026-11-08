@@ -106,6 +106,7 @@ public final class ShellMain {
                 // a main looper already exists
             }
         }
+        initMainlineModules();
         Class<?> at = Class.forName("android.app.ActivityThread");
         Object thread = at.getMethod("systemMain").invoke(null);
         Context base = (Context) at.getMethod("getSystemContext").invoke(thread);
@@ -123,6 +124,29 @@ public final class ShellMain {
             tm = tm.createForSubscriptionId(sub);
         }
         return tm;
+    }
+
+    /**
+     * A normal app process registers the telephony service wrapper at start-up; this process
+     * does not, which made every TelephonyManager call fail with a NullPointerException.
+     * Do what ActivityThread.main does, then fall back to doing just the telephony part.
+     */
+    private static void initMainlineModules() {
+        try {
+            Class.forName("android.app.ActivityThread").getMethod("initializeMainlineModules")
+                    .invoke(null);
+            return;
+        } catch (Throwable ignored) {
+            // try the narrower way below
+        }
+        try {
+            Class<?> tsm = Class.forName("android.os.TelephonyServiceManager");
+            Object mgr = tsm.getConstructor().newInstance();
+            Class.forName("android.telephony.TelephonyFrameworkInitializer")
+                    .getMethod("setTelephonyServiceManager", tsm).invoke(null, mgr);
+        } catch (Throwable ignored) {
+            // already set up, or not available: the command will report what fails
+        }
     }
 
     private static Method find(Class<?> c, String name, int argc) {

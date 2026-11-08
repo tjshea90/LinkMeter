@@ -12,3 +12,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-08T01:13:38Z fix: don't trust the Wi-Fi manager to say the tablet is on Wi-Fi; show the phone address and what reaches the phone
 - 2026-11-08T01:15:33Z handoff: record the pairing issue, diagnostics and sandbox limits
 - 2026-11-08T01:28:44Z 4G toggle reads and writes the word form this phone uses; cell scan uses the serving channel; record probe results
+- 2026-11-08T01:39:53Z ShellMain: set up the telephony service wrapper first (fixes NullPointerException); show API route errors in 4G result

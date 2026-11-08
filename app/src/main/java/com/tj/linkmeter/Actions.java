@@ -14,6 +14,9 @@ final class Actions {
     private static final String GET_TYPES = "cmd phone get-allowed-network-types-for-users";
     private static final String SET_TYPES = "cmd phone set-allowed-network-types-for-users";
 
+    /** What the telephony-API route said last time it could not be used, for the error message. */
+    private static volatile String apiNote = "";
+
     private Actions() {}
 
     /** These cut the link to the tablet, so the phone answers first and acts a moment later. */
@@ -125,7 +128,8 @@ final class Actions {
         }
         Priv.Result usage = Priv.run(SET_TYPES + " 2>&1 | head -20", 15);
         return "The phone did not accept the change.\n" + log.toString().trim()
-                + "\nUsage the phone printed:\n" + usage.out;
+                + "\nUsage the phone printed:\n" + usage.out
+                + (apiNote.isEmpty() ? "" : "\nThe telephony API route said:\n" + apiNote);
     }
 
     /** The phone's allowed network types, from the telephony API (first choice) or the shell command. */
@@ -150,10 +154,13 @@ final class Actions {
      * so the caller can try the shell command instead.
      */
     private static String setNrViaApi(Context c, boolean allow5g) throws IOException {
-        long mask = parseOk(Cells.shellMain(c, "nt-get").out);
+        Priv.Result first = Cells.shellMain(c, "nt-get");
+        long mask = parseOk(first.out);
         if (mask < 0 || (mask & LTE_BIT) == 0) {
+            apiNote = first.out;
             return null;
         }
+        apiNote = "";
         long target = allow5g ? (mask | NR_BIT) : (mask & ~NR_BIT);
         if (target == mask) {
             return allow5g ? "5G is already allowed (" + typesText(mask) + ")."
