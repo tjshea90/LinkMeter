@@ -8,6 +8,22 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
+**2026-11-08 (even later), IN PROGRESS: the user's report on v0.2.51: "the screen still dims quickly on the tablet, and a
+lot of times the sleep button doesn't work".** What I found (code reading only, no device) and what I am doing:
+- Sleep: the Sleep button sends `input keyevent 223` and the phone answers "Screen off." as soon as that command exits, without
+  checking that the phone slept. The tablet only relabels the button, so with the live video the last frame stays on screen as if
+  the phone were awake (screenrecord sends nothing while the display is off, so nothing tells the tablet). The tablet's
+  `phoneOn` is flipped optimistically and overwritten by a 3 s poll that can still carry the old answer. The phone's server also
+  drops a connection silently when all 8 workers are busy (`SenderService`). Plan: phone checks `isInteractive()` and retries with
+  the power key and answers truthfully; tablet state machine `PhonePower` (tested offline) with a settle window, `phoneWentOff()`
+  that stops the video and shows "The phone's screen is off. Tap Wake.", retries and visible errors; 16 workers and a 503 reply.
+- Tablet dimming: v0.2.51 holds `FLAG_KEEP_SCREEN_ON` while the Screen tab is shown (checked: `Cfg.getBool` default honoured,
+  lifecycle calls `setHoldAwake` right). Cause on the user's tablet still unknown (old APK on the tablet? an OEM power manager?).
+  Plan: also a timed SCREEN_BRIGHT wake lock and the view flag, an Information line with the window flag, wake lock, Android's own
+  screen timeout, brightness and battery saver, and the tablet and phone versions at the top of Options.
+- Ask the user for the Information text ("Copy this information") if the dimming persists after this.
+
+
 **2026-11-08 (later): the user's field report on v0.2.47 is fixed in code, released as v0.2.51 (NOT yet seen on a device).** Report: the picture
 sometimes showed blocks of old and new screen mixed while a page loaded (screenshot), and the TABLET dimmed after a short idle.
 - Garbled picture = a wrong reference picture in the decoder until the next keyframe (screenrecord sends one only every 10 s).
