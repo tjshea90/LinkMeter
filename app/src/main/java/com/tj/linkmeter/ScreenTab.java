@@ -258,6 +258,7 @@ final class ScreenTab extends Tab {
         unlockBtn = new BarButton(act, Icons.Kind.LOCK, "Unlock", v -> showPin());
         fullBtn = new BarButton(act, Icons.Kind.FULL, "Full", v -> toggleFullscreen());
         rightNormal.addView(keysBtn);
+        rightNormal.addView(new BarButton(act, Icons.Kind.PAPERCLIP, "Attach", v -> AttachDialog.show(act)));
         rightNormal.addView(powerBtn);
         rightNormal.addView(unlockBtn);
         rightNormal.addView(new BarButton(act, Icons.Kind.SLIDERS, "Options", v -> showAdvanced()));

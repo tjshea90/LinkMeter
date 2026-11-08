@@ -30,6 +30,7 @@ import java.util.List;
 public class MainActivity extends Activity {
     private static final int REQ_PERMS = 1;
     private static final int REQ_STORAGE = 3;
+    private static final int REQ_PICK = 4;
 
     /** Shared with the tabs. */
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -350,6 +351,38 @@ public class MainActivity extends Activity {
             ui.postDelayed(this::refreshPhone, 400);
         } else if (req == REQ_STORAGE && tabs != null) {
             showTab(index, true);
+        }
+    }
+
+    /** Told when the system file picker (started by {@link #pickFiles}) is done. */
+    interface PickResult {
+        void onResult(int resultCode, Intent data);
+    }
+
+    private PickResult pickResult;
+
+    /** Opens the system file picker for one or several files of any kind, and reports what was chosen to the callback. */
+    void pickFiles(PickResult callback) {
+        pickResult = callback;
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        try {
+            startActivityForResult(i, REQ_PICK);
+        } catch (RuntimeException e) {
+            pickResult = null;
+            Toast.makeText(this, "This tablet has no file picker.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int result, Intent data) {
+        super.onActivityResult(req, result, data);
+        if (req == REQ_PICK && pickResult != null) {
+            PickResult cb = pickResult;
+            pickResult = null;
+            cb.onResult(result, data);
         }
     }
 
