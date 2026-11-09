@@ -40,6 +40,9 @@ javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BootNames.java app
 java -cp "$out" com.tj.linkmeter.BootNamesTest || fail=1
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BootPlan.java tools/test/BootPlanTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.BootPlanTest || fail=1
+echo "== Find the phone on the tablet's hotspot (PhoneFinder, over the loopback network with fake phones: the right secret, other services, black holes, empty subnets)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/Json.java app/src/main/java/com/tj/linkmeter/Http.java app/src/main/java/com/tj/linkmeter/Client.java app/src/main/java/com/tj/linkmeter/PhoneFinder.java tools/test/PhoneFinderTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.PhoneFinderTest || fail=1
 echo "== Start the phone after a restart (BootFlow: the order of the steps, never strands the tablet, never claims success it has not seen; simulated tablets and phones on a virtual clock)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BootFlow.java tools/test/BootFlowTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.BootFlowTest || fail=1

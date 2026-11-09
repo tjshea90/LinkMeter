@@ -31,6 +31,7 @@ public class MainActivity extends Activity {
     private static final int REQ_PERMS = 1;
     private static final int REQ_STORAGE = 3;
     private static final int REQ_PICK = 4;
+    private static final int REQ_LOC = 5;
 
     /** Shared with the tabs. */
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -351,7 +352,26 @@ public class MainActivity extends Activity {
             ui.postDelayed(this::refreshPhone, 400);
         } else if (req == REQ_STORAGE && tabs != null) {
             showTab(index, true);
+        } else if (req == REQ_LOC && locationDone != null) {
+            Runnable r = locationDone;
+            locationDone = null;
+            r.run(); // granted or not: the hotspot says plainly if it cannot start
         }
+    }
+
+    private Runnable locationDone;
+
+    /**
+     * Asks for the location permission and runs then once the user has answered (at once if it is already given). Android 10 wants it
+     * before an app may make a hotspot; LinkMeter does not read the location.
+     */
+    void requestLocation(Runnable then) {
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            then.run();
+            return;
+        }
+        locationDone = then;
+        requestPermissions(new String[] {Manifest.permission.ACCESS_FINE_LOCATION}, REQ_LOC);
     }
 
     /** Told when the system file picker (started by {@link #pickFiles}) is done. */

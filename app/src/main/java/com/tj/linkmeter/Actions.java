@@ -39,7 +39,7 @@ final class Actions {
     /** These cut the link to the tablet, so the phone answers first and acts a moment later. */
     static boolean isDelayed(String name) {
         return name.equals("airplane_on") || name.equals("hotspot_off") || name.equals("poweroff")
-                || name.equals("hotspot_restart") || name.equals("radio_cycle");
+                || name.equals("hotspot_restart") || name.equals("radio_cycle") || name.equals("boot_hotspot_on");
     }
 
     /** Called before the reply to a delayed action is sent, so that a question asked right after it gets the right answer. */
@@ -53,6 +53,8 @@ final class Actions {
         switch (name) {
             case "hotspot_restart":
                 return Cells.mainCommand(c, "hotspot-restart");
+            case "boot_hotspot_on":
+                return Cells.mainCommand(c, "hotspot-start"); // "start the phone after a restart": the phone becomes the hotspot
             case "radio_cycle":
                 // for the band lock: the modem applies a restriction when it SEARCHES, so make it search again
                 return Cells.mainCommand(c, "radio-cycle");
@@ -74,6 +76,9 @@ final class Actions {
                 Thread.sleep(800);
                 markRadioRisk(app, name); // BEFORE the radio goes off: a cut-off must still be undone
                 Priv.Result r = Priv.run(delayedCommand(app, name), 60);
+                if (name.equals("boot_hotspot_on")) {
+                    Boot.hotspotResult = firstLine(r.out); // the tablet asks how it went once it is on the phone's hotspot
+                }
                 if (name.equals("radio_cycle")) {
                     cycleState = r.out.contains("OK ") ? "done" : "failed: " + firstLine(r.out);
                 }
@@ -96,6 +101,25 @@ final class Actions {
         switch (name) {
             case "safety":
                 return safety(c);
+            case "boot_wadb":
+                return Boot.enableWadb(c);
+            case "boot_notify":
+                Boot.notifyShizuku(c, Priv.state() == Priv.NO_PERM ? BootPlan.Notice.NEEDS_ALLOW : BootPlan.Notice.NOT_RUNNING);
+                return "OK the notification is on the phone";
+            case "boot_setup":
+                return Boot.setup(c);
+            case "boot_undo":
+                return Boot.undo(c);
+            case "boot_assist_on":
+                Boot.setAssist(c, true);
+                return "Boot assist is on.";
+            case "boot_assist_off":
+                Boot.setAssist(c, false);
+                return "Boot assist is off.";
+            case "boot_keep_on":
+                return Boot.setPairingKept(c, true);
+            case "boot_keep_off":
+                return Boot.setPairingKept(c, false);
             case "menu_find":
                 return Menus.find();
             case "menu_open":

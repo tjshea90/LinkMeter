@@ -69,6 +69,13 @@ final class Api {
                     Http.err(out, 404, "not a phone");
                 }
                 break;
+            case "/boot":
+                if (phone) {
+                    Http.json(out, 200, Boot.statusJson(c)); // "start the phone after a restart": Shizuku, Wi-Fi, wireless debugging, hotspot
+                } else {
+                    Http.err(out, 404, "not a phone");
+                }
+                break;
             case "/act":
                 if (phone) {
                     act(c, r, out);

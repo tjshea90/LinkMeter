@@ -444,6 +444,8 @@ public final class ShellMain {
                 return hotspotBand(ctx, a.length > 1 ? a[1] : "");
             case "hotspot-restart":
                 return hotspotRestart(ctx);
+            case "hotspot-start":
+                return hotspotStart(ctx);
             default:
                 return "ERR unknown command";
         }
@@ -491,8 +493,8 @@ public final class ShellMain {
                 : "ERR the phone refused the new hotspot settings";
     }
 
-    /** Stops the Wi-Fi hotspot and starts it again, so a changed band takes effect. */
-    private static String hotspotRestart(Context ctx) throws Exception {
+    /** The phone's TetheringManager, built by hand (its constructor is hidden). null, with the reason in why[0], if this phone has none. */
+    private static Object tetheringManager(Context ctx, String[] why) throws Exception {
         Class<?> tmc = Class.forName("android.net.TetheringManager");
         Constructor<?> k = null;
         for (Constructor<?> c : tmc.getDeclaredConstructors()) {
@@ -504,20 +506,26 @@ public final class ShellMain {
             }
         }
         if (k == null) {
-            return "ERR no TetheringManager(Context, Supplier) on this phone";
+            why[0] = "no TetheringManager(Context, Supplier) on this phone";
+            return null;
         }
         k.setAccessible(true);
         final android.os.IBinder binder = (android.os.IBinder) Class.forName("android.os.ServiceManager")
                 .getMethod("getService", String.class).invoke(null, "tethering");
-        Object tm = k.newInstance(ctx, new java.util.function.Supplier<android.os.IBinder>() {
+        return k.newInstance(ctx, new java.util.function.Supplier<android.os.IBinder>() {
             @Override
             public android.os.IBinder get() {
                 return binder;
             }
         });
+    }
+
+    /**
+     * Asks for the Wi-Fi hotspot to be switched on and waits (up to 20 seconds) for the phone's answer. okText is the success reply;
+     * hint is added to the failure replies ("; turn it on again on the phone").
+     */
+    private static String startWifiTethering(Object tm, String okText, String hint) throws Exception {
         final int wifi = 0; // TetheringManager.TETHERING_WIFI
-        call(tm, "stopTethering", wifi);
-        Thread.sleep(3000);
         Method start = null;
         for (Method m : tm.getClass().getMethods()) {
             Class<?>[] p = m.getParameterTypes();
@@ -527,9 +535,10 @@ public final class ShellMain {
             }
         }
         if (start == null) {
-            return "ERR the hotspot was stopped but this phone has no startTethering(int, Executor, callback); "
-                    + "turn it on again on the phone";
+            return "ERR this phone has no startTethering(int, Executor, callback)" + hint;
         }
+        final String ok = okText;
+        final String retry = hint;
         final CountDownLatch latch = new CountDownLatch(1);
         final String[] outcome = new String[1];
         Object cb = java.lang.reflect.Proxy.newProxyInstance(start.getParameterTypes()[2].getClassLoader(),
@@ -537,12 +546,11 @@ public final class ShellMain {
                     @Override
                     public Object invoke(Object proxy, Method m, Object[] args) {
                         if (m.getName().equals("onTetheringStarted")) {
-                            outcome[0] = "OK the hotspot is back on";
+                            outcome[0] = ok;
                             latch.countDown();
                         } else if (m.getName().equals("onTetheringFailed")) {
                             outcome[0] = "ERR the hotspot failed to start (code "
-                                    + (args != null && args.length > 0 ? args[0] : "?")
-                                    + "); turn it on again on the phone";
+                                    + (args != null && args.length > 0 ? args[0] : "?") + ")" + retry;
                             latch.countDown();
                         }
                         return null;
@@ -559,6 +567,28 @@ public final class ShellMain {
             return "ERR no answer when starting the hotspot; check the phone";
         }
         return outcome[0];
+    }
+
+    /** Stops the Wi-Fi hotspot and starts it again, so a changed band takes effect. */
+    private static String hotspotRestart(Context ctx) throws Exception {
+        String[] why = new String[1];
+        Object tm = tetheringManager(ctx, why);
+        if (tm == null) {
+            return "ERR " + why[0];
+        }
+        call(tm, "stopTethering", 0);
+        Thread.sleep(3000);
+        return startWifiTethering(tm, "OK the hotspot is back on", "; turn it on again on the phone");
+    }
+
+    /** Switches the Wi-Fi hotspot on (nothing happens if it is already on). Used by "start the phone after a restart". */
+    private static String hotspotStart(Context ctx) throws Exception {
+        String[] why = new String[1];
+        Object tm = tetheringManager(ctx, why);
+        if (tm == null) {
+            return "ERR " + why[0];
+        }
+        return startWifiTethering(tm, "OK the hotspot is on", "; switch it on by hand on the phone");
     }
 
     private static String unwrap(Throwable t) {

@@ -23,6 +23,7 @@ final class ControlTab extends Tab {
     private TextView status;
     private TextView result;
     private TextView version;
+    private BootSection boot;
     private long phoneCode = -1;
     private String phoneName = "";
     private String phoneUpd = "";
@@ -54,6 +55,9 @@ final class ControlTab extends Tab {
         col.addView(Ui.text(act, "Use these if a band lock or network change leaves the phone without "
                 + "internet. They work over the hotspot even when the phone has no mobile data.",
                 12, Ui.DIM, false), Ui.lp(act, 4));
+
+        boot = new BootSection(act);
+        boot.build(col); // start the phone after a restart: the tablet's hotspot, wireless debugging, Shizuku, the swap
 
         col.addView(heading("Mobile network"), Ui.lp(act, 18));
         col.addView(row(
@@ -123,7 +127,17 @@ final class ControlTab extends Tab {
     }
 
     @Override
+    void onHide() {
+        if (boot != null) {
+            boot.onHide();
+        }
+    }
+
+    @Override
     void onShow() {
+        if (boot != null) {
+            boot.onShow();
+        }
         Call.run(act, "GET", "/s", 4000, (ok, text, json) -> {
             if (status == null) {
                 return;
