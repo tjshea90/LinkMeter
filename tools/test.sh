@@ -35,6 +35,14 @@ javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/TypingFilter.java 
 java -cp "$out" com.tj.linkmeter.TypingFilterTest || fail=1
 echo "== Phone codes (tripwire: no way to call, send USSD, or dial except the one guarded function; no digit, *, # or call key; the document lists exactly the safe codes)"
 python3 tools/test/test_dial_paths.py || fail=1
+echo "== Boot automation (BootNames, Subnet, BootPlan: the tablet hotspot's name and password, where to look for the phone, what the phone does by itself after a restart)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BootNames.java app/src/main/java/com/tj/linkmeter/Subnet.java tools/test/BootNamesTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.BootNamesTest || fail=1
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BootPlan.java tools/test/BootPlanTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.BootPlanTest || fail=1
+echo "== Start the phone after a restart (BootFlow: the order of the steps, never strands the tablet, never claims success it has not seen; simulated tablets and phones on a virtual clock)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BootFlow.java tools/test/BootFlowTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.BootFlowTest || fail=1
 echo "== Safety net (GuardPolicy: when the phone undoes LinkMeter's changes by itself: never fights the user, always acts when data stays down)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/GuardPolicy.java tools/test/GuardPolicyTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.GuardPolicyTest || fail=1
