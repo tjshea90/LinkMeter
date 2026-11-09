@@ -322,8 +322,10 @@ final class LabSection {
         r1.addView(Ui.button(act, "Try the usual ones", v -> confirmMenu("Open a service menu?", () -> menuCall("menu_usual", ""))),
                 Ui.weight());
         col.addView(r1, Ui.lp(act, 6));
-        col.addView(Ui.text(act, "Codes this app will dial (it dials nothing else: some service codes erase the phone):", 12, Ui.DIM,
-                false), Ui.lp(act, 8));
+        col.addView(Ui.text(act, "Codes this app will dial (it dials nothing else: some service codes erase the phone). Verizon phones "
+                + "usually ignore them: the dialer then answers \"Connection problem or invalid MMI code\", which is harmless "
+                + "(these codes only ask the network a question) but opens nothing. The two buttons above open the screens "
+                + "directly and work better:", 12, Ui.DIM, false), Ui.lp(act, 8));
         for (String[] c : MenuScan.SAFE_CODES) {
             col.addView(codeButton(c[0], c[1]), Ui.lp(act, 2));
         }

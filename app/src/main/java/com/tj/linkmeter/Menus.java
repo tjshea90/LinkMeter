@@ -59,9 +59,11 @@ final class Menus {
     }
 
     /**
-     * Opens the phone's dialer with a service code typed in, for example *#2263#. The dialer runs a service code by itself when it
-     * sees it. Only the codes in MenuScan.SAFE_CODES are ever dialed: the command is built by MenuScan.dialCommand, which gives
-     * nothing for any other code.
+     * Opens the phone's dialer with a service code typed in, for example *#2263#. The dialer runs a service code by itself only if the
+     * phone's firmware handles it (a Verizon Samsung usually does not: the code then goes to the network as a request and fails with
+     * "Connection problem or invalid MMI code"; every code in the list starts with *#, which the network reads as a question, so
+     * that is harmless). Only the codes in MenuScan.SAFE_CODES are ever dialed: the command is built by MenuScan.dialCommand, which
+     * gives nothing for any other code.
      */
     static String dial(Context c, String code) throws IOException {
         String cmd = MenuScan.dialCommand(code);
@@ -72,9 +74,11 @@ final class Menus {
         Priv.Result r = Priv.run(cmd, 20);
         if (MenuScan.started(r.out)) {
             menuOpened(c);
-            return "The dialer was opened with " + code + ". If a menu did not open by itself, look at the phone's screen (Screen tab) "
-                    + "and press the call button. A message like \"RAT selection option restricted\" or nothing at all means this "
-                    + "phone's firmware blocks that menu.";
+            return "The dialer was opened with " + code + ". A menu opens by itself only if this phone's firmware handles the code: look at "
+                    + "the phone's screen (Screen tab). Pressing the call button does not help: the dialer would only send the code "
+                    + "to the network, which answers \"Connection problem or invalid MMI code\" (harmless, it changes nothing). If "
+                    + "nothing opened, this phone's firmware blocks that menu (Verizon's usually does): use \"Try the usual ones\" or "
+                    + "\"Look for service menus\", which open the screens directly, without the dialer.";
         }
         return "Could not open the dialer: " + firstLines(r.out);
     }
