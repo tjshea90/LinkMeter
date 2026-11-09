@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The whole file conversation between the two devices, offline: the real server code (FsApi through FsHttp, on a real socket)
@@ -75,6 +76,8 @@ public final class FsProtocolTest {
         /** An app too old for the newer routes. */
         volatile boolean legacy;
         volatile int served;
+        /** Connections accepted and not yet finished: counted from the moment of accept() until the handler thread has ended. */
+        final AtomicInteger active = new AtomicInteger();
 
         Server(File root) throws IOException {
             ss = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
@@ -85,7 +88,14 @@ public final class FsProtocolTest {
                 while (!ss.isClosed()) {
                     try {
                         final Socket s = ss.accept();
-                        Thread h = new Thread(() -> handle(s));
+                        active.incrementAndGet(); // before the thread exists, so no request slips through the gap
+                        Thread h = new Thread(() -> {
+                            try {
+                                handle(s);
+                            } finally {
+                                active.decrementAndGet();
+                            }
+                        });
                         h.setDaemon(true);
                         h.start();
                     } catch (IOException e) {
@@ -126,6 +136,29 @@ public final class FsProtocolTest {
                     // closed
                 }
             }
+        }
+
+        /**
+         * Waits until the server has finished everything it was sent so far, also what a client that was cancelled left half way. The
+         * thread for such a request can start a moment AFTER the client has gone and then still creates, fills, renames or deletes a
+         * partial file, so a test that looks at the folders right after a cancel can list a partial file that is gone before it reads
+         * it (this made one CI run die with a NoSuchFileException). A request made now is accepted after every connection made before
+         * it (the queue is first in, first out), so when that request has been answered every earlier one has been accepted and
+         * counted; then the count has to fall to zero.
+         */
+        boolean idle() throws Exception {
+            try {
+                remote(TOKEN).list("/", false); // any answer will do: its only job is to be accepted last
+            } catch (IOException ignored) {
+                // an answer of any kind is enough
+            }
+            for (int i = 0; i < 400; i++) {
+                if (active.get() == 0) {
+                    return true;
+                }
+                Thread.sleep(25);
+            }
+            return false;
         }
 
         @Override
@@ -522,6 +555,8 @@ public final class FsProtocolTest {
                 File s = dir == 0 ? mine : phoneDir;
                 File d = dir == 0 ? phoneDir : mine;
                 String tag = "wire cancel dir=" + dir + " at=" + at;
+                // the phone's thread for a request the tablet abandoned may not even have started yet: wait until it is really done
+                check(srv.idle(), tag + ": the server finished everything it was sent");
                 check(waitNoParts(phoneDir) && FilesCoreTest.noParts(mine).isEmpty(), tag + ": no partial files");
                 TransferEngineTest.Model ds = TransferEngineTest.Model.scan(d);
                 TransferEngineTest.Model ss = TransferEngineTest.Model.scan(s);
