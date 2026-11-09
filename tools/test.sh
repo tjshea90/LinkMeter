@@ -30,6 +30,11 @@ java -cp "$out" com.tj.linkmeter.NrLegTest || fail=1
 echo "== Fair comparison of settings (LeverRun: random order within rounds, a sign-test verdict, a setting counts only when the phone really took it, always put back; simulated phones)"
 javac -proc:none -cp "$out" -d "$out" app/src/main/java/com/tj/linkmeter/LeverRun.java tools/test/LeverRunTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LeverRunTest || fail=1
+echo "== Phone codes (TypingFilter: the remote keyboard never types * or #, over all 65,536 characters)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/TypingFilter.java tools/test/TypingFilterTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.TypingFilterTest || fail=1
+echo "== Phone codes (tripwire: no way to call, send USSD, or dial except the one guarded function; no digit, *, # or call key; the document lists exactly the safe codes)"
+python3 tools/test/test_dial_paths.py || fail=1
 echo "== Safety net (GuardPolicy: when the phone undoes LinkMeter's changes by itself: never fights the user, always acts when data stays down)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/GuardPolicy.java tools/test/GuardPolicyTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.GuardPolicyTest || fail=1

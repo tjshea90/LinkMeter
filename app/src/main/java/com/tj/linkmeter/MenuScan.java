@@ -46,12 +46,11 @@ final class MenuScan {
     static final String[][] SAFE_CODES = {
         {"*#2263#", "band selection (Samsung)"},
         {"*#0011#", "service mode: radio status (Samsung)"},
-        {"*#197328640#", "service menu (Samsung)"},
         {"*#0*#", "hardware test menu (Samsung)"},
         {"*#06#", "shows the IMEI"},
         {"*#1234#", "shows the software versions (Samsung)"},
         {"*#*#4636#*#*", "phone information and network type (Android)"},
-        {"*#*#3646633#*#*", "engineering mode (MediaTek)"},
+        {"*#*#3646633#*#*", "engineering mode (MediaTek): a powerful technician menu, change nothing but bands"},
     };
 
     /**
@@ -61,7 +60,7 @@ final class MenuScan {
      */
     private static final Pattern DANGEROUS_SCREEN = Pattern.compile("(?i)reset|wipe|erase|(?<!in)format|flash|imei|nvram|nvdata|factory"
             + "|recovery|rsu|simlock|sim_lock|unlock|bootloader|oem|root|fuse|efs|backup|restore|download|odin|fota|upgrade|update"
-            + "|provision|activation|calibrat|repartition|partition|security|knox");
+            + "|firmware|provision|activation|calibrat|repartition|partition|security|knox");
 
     /** Codes worth pointing out, with what they usually are. */
     static final String[][] KNOWN_CODES = {
@@ -121,6 +120,20 @@ final class MenuScan {
             }
         }
         return false;
+    }
+
+    /**
+     * The shell command that opens the phone's dialer with a service code typed in, or null unless the code is EXACTLY one of
+     * {@link #SAFE_CODES}. This is the only place in the app where a dial command is built, so a code that is not on the list cannot
+     * reach the phone whatever asks for it. (A tripwire test fails the build if "android.intent.action.DIAL" ever appears anywhere
+     * else in the app.)
+     */
+    static String dialCommand(String code) {
+        if (!isSafeDialCode(code)) {
+            return null;
+        }
+        // 224 = wake up, so the dialer is seen
+        return "input keyevent 224; am start -a android.intent.action.DIAL -d '" + dialUri(code) + "' 2>&1 | head -6";
     }
 
     /** A screen the app may list and open: a well-formed name that does not suggest anything destructive. */

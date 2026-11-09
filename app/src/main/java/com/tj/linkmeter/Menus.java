@@ -58,17 +58,18 @@ final class Menus {
                 + "). Use \"Look for service menus\" to see what this phone really has.";
     }
 
-    /** Opens the phone's dialer with a code typed in, for example *#2263#. The dialer runs a service code by itself when it sees it. */
+    /**
+     * Opens the phone's dialer with a service code typed in, for example *#2263#. The dialer runs a service code by itself when it
+     * sees it. Only the codes in MenuScan.SAFE_CODES are ever dialed: the command is built by MenuScan.dialCommand, which gives
+     * nothing for any other code.
+     */
     static String dial(Context c, String code) throws IOException {
-        if (!MenuScan.isDialCode(code)) {
-            throw new IOException("a dial code has only digits, * and # (at most 24)");
+        String cmd = MenuScan.dialCommand(code);
+        if (cmd == null) {
+            throw new IOException("this app only dials service codes from its own short list of safe ones (some codes erase the phone), "
+                    + "and that is not one of them");
         }
-        if (!MenuScan.isSafeDialCode(code)) {
-            throw new IOException("this app only dials service codes from its own list (some codes erase the phone): " + code
-                    + " is not on it");
-        }
-        Priv.Result r = Priv.run("input keyevent 224; am start -a android.intent.action.DIAL -d '" + MenuScan.dialUri(code)
-                + "' 2>&1 | head -6", 20);
+        Priv.Result r = Priv.run(cmd, 20);
         if (MenuScan.started(r.out)) {
             menuOpened(c);
             return "The dialer was opened with " + code + ". If a menu did not open by itself, look at the phone's screen (Screen tab) "

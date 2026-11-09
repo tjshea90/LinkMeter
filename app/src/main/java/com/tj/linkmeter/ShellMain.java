@@ -338,6 +338,9 @@ public final class ShellMain {
         KeyCharacterMap map = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD);
         for (int i = 0; i + 4 <= hex.length(); i += 4) {
             char c = (char) Integer.parseInt(hex.substring(i, i + 4), 16);
+            if (!TypingFilter.typable(c)) {
+                continue; // NEVER * or #: every dangerous dialer code needs one (see TypingFilter); the only place text becomes key presses
+            }
             long now = SystemClock.uptimeMillis();
             if (c == '\n') {
                 inj.invoke(im, key(now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER), 0);
@@ -346,6 +349,13 @@ public final class ShellMain {
             }
             KeyEvent[] events = map.getEvents(new char[] {c});
             if (events == null) {
+                continue;
+            }
+            boolean starOrPound = false;
+            for (KeyEvent e : events) {
+                starOrPound |= !TypingFilter.typableKey(e.getKeyCode()); // the star / pound keys, whatever character the map calls them
+            }
+            if (starOrPound) {
                 continue;
             }
             for (KeyEvent e : events) {

@@ -449,8 +449,14 @@ final class Screen {
                 if (ch == 'k' && !allowedKey(Integer.parseInt(line.substring(2)))) {
                     continue;
                 }
-                if (ch == 't' && line.length() % 4 != 2) {
-                    continue; // "t " and then whole characters of 4 hex digits
+                if (ch == 't') {
+                    if (line.length() % 4 != 2) {
+                        continue; // "t " and then whole characters of 4 hex digits
+                    }
+                    line = TypingFilter.filterLine(line); // NEVER * or # (they start phone service codes); the helper checks again
+                    if (line == null) {
+                        continue;
+                    }
                 }
                 inject(line);
                 if (ch == 'd' || ch == 'm' || ch == 'u') {

@@ -133,13 +133,98 @@ public final class MenuScanTest {
             check(MenuScan.SAFE_CODES.length >= 6, "the list has the useful codes");
         }
 
+        // ---- SAFETY: the dial command exists only for the codes on the list
+        {
+            java.util.Set<String> allowed = new java.util.HashSet<>();
+            java.util.Set<String> uris = new java.util.HashSet<>();
+            for (String[] c : MenuScan.SAFE_CODES) {
+                allowed.add(c[0]);
+                uris.add(MenuScan.dialUri(c[0]));
+                String cmd = MenuScan.dialCommand(c[0]);
+                check(cmd != null && cmd.equals("input keyevent 224; am start -a android.intent.action.DIAL -d '" + MenuScan.dialUri(c[0]) + "' 2>&1 | head -6"),
+                        "a listed code gives exactly the expected command: " + c[0]);
+            }
+            check(!allowed.contains("*#197328640#"), "the redundant Samsung alias is not on the list");
+            // the codes people know can erase or alter the phone, and many more
+            String[] bad = {"*2767*3855#", "*2767*2878#", "*2767*927#", "*2767*49927#", "*2767*688#", "*#7780#", "*#*#7780#*#*", "*#9900#", "*#9090#",
+                "*#7284#", "*#872564#", "*#0808#", "*#2663#", "*#34971539#", "*#2580#", "*#272*123456789012345#", "*#12580*369#", "*#*#2846579#*#*",
+                "*#*#273283*255*663282*#*#*", "*#*#2432546#*#*", "*#*#7594#*#*", "*#8999*8378#", "*#4238378#", "*#232331#", "*#0283#", "*#0228#",
+                "**04*1234*5678*5678#", "**05*12345678*1111*1111#", "##72786#", "##786#", "##3282#", "##778#", "*228#", "*#21#", "*21*5551234#",
+                "*#*#197328640#*#*", "*#197328640#", "*#3282*727336*#", "#*#", "*#*", "*", "#", "", "0", "911", "112", "*#06", "#06#", "*#06#*",
+                "*#0011", "*#2263", "*#*#4636#*#", "*#*#4636#*#*#", "*#*#3646633#*#"};
+            for (String c : bad) {
+                check(MenuScan.dialCommand(c) == null, "SAFE: no dial command for " + c);
+            }
+            check(MenuScan.dialCommand(null) == null, "SAFE: none for null");
+            // every one-character change (insert, delete, replace) of every listed code, over a wide alphabet
+            String alphabet = "0123456789*#+ ;,'\"\\\n\t%$`&|<>()-_.abcxyzXYZ\u00A0\u200B\uFF0A\uFF03\u0662";
+            int neighbours = 0;
+            for (String c : allowed) {
+                for (int i = 0; i <= c.length(); i++) {
+                    for (int k = 0; k < alphabet.length(); k++) {
+                        String ins = c.substring(0, i) + alphabet.charAt(k) + c.substring(i);
+                        check(MenuScan.dialCommand(ins) == null || allowed.contains(ins), "SAFE: no command for an altered code (insert): " + ins.replace("\n", "\\n"));
+                        neighbours++;
+                        if (i < c.length()) {
+                            String rep = c.substring(0, i) + alphabet.charAt(k) + c.substring(i + 1);
+                            check(MenuScan.dialCommand(rep) == null || allowed.contains(rep), "SAFE: no command for an altered code (replace): " + rep.replace("\n", "\\n"));
+                            neighbours++;
+                        }
+                    }
+                    if (i < c.length()) {
+                        String del = c.substring(0, i) + c.substring(i + 1);
+                        check(MenuScan.dialCommand(del) == null || allowed.contains(del), "SAFE: no command for an altered code (delete): " + del);
+                        neighbours++;
+                    }
+                }
+                check(MenuScan.dialCommand(c + " ") == null && MenuScan.dialCommand(" " + c) == null && MenuScan.dialCommand(c + "\n") == null
+                        && MenuScan.dialCommand(c.toLowerCase() + "x") == null, "SAFE: whitespace around a listed code makes it a different string: " + c);
+            }
+            check(neighbours > 3000, "many altered codes were tried: " + neighbours);
+            // two codes glued together, a list of them, URL-encoded forms
+            for (String a1 : allowed) {
+                for (String b1 : allowed) {
+                    check(MenuScan.dialCommand(a1 + b1) == null && MenuScan.dialCommand(a1 + ";" + b1) == null && MenuScan.dialCommand(a1 + "," + b1) == null,
+                            "SAFE: two codes together are not a code: " + a1 + b1);
+                }
+                check(MenuScan.dialCommand(MenuScan.dialUri(a1)) == null && MenuScan.dialCommand(MenuScan.dialUri(a1).substring(4)) == null,
+                        "SAFE: the encoded form is not accepted as a code: " + a1);
+            }
+            // random strings: a command only ever exists for a listed code, and only ever holds a listed code's address
+            java.util.Random g = new java.util.Random(31337);
+            String pool = "0123456789**##**##+;,' \"%\n\\abcdef";
+            int made = 0;
+            for (int run = 0; run < 300000; run++) {
+                int n = g.nextInt(18);
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < n; i++) {
+                    sb.append(pool.charAt(g.nextInt(pool.length())));
+                }
+                String code = sb.toString();
+                String cmd = MenuScan.dialCommand(code);
+                if (cmd != null) {
+                    made++;
+                    check(allowed.contains(code), "SAFE: a command was made for a code that is not listed: " + code);
+                }
+            }
+            check(made == 0 || made > 0, "random strings were tried (" + made + " were listed codes)");
+            // whatever the command contains, its address is a listed code's address and it holds no other dial or call
+            for (String c : allowed) {
+                String cmd = MenuScan.dialCommand(c);
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("-d '([^']*)'").matcher(cmd);
+                check(m.find() && uris.contains(m.group(1)) && !m.find(), "the command holds exactly one address and it is a listed one: " + cmd);
+                check(cmd.indexOf("tel:") == cmd.lastIndexOf("tel:") && !cmd.contains("CALL") && !cmd.contains("ussd") && !cmd.contains(";" + "am "),
+                        "and no second dial, call or command: " + cmd);
+            }
+        }
+
         // ---- SAFETY: screens that suggest wiping, resetting, IMEI, NVRAM, flashing or unlocking are never listed or opened
         {
             String[] bad = {"com.x/.FactoryReset", "com.x/.WipeData", "com.x/.EraseUserData", "com.x/.ImeiWriter", "com.mediatek.engineermode/.NvramBackup",
                 "com.x/.NvdataRestore", "com.x/.UnlockActivity", "com.x/.SimLockSettings", "com.x/.FlashTool", "com.x/.FirmwareUpgrade",
                 "com.x/.OdinMode", "com.x/.RsuActivity", "com.x/.FormatStorage", "com.x/.RecoveryMenu", "com.x/.BootloaderInfo", "com.x/.OemUnlock",
                 "com.x/.EfsBackup", "com.x/.FotaUpdate", "com.x/.ResetNetwork", "com.x/.DOWNLOADMODE", "com.x/.RepartitionDisk", "com.x/.KnoxSettings",
-                "com.factory.test/.Main", "com.x/.ActivationActivity", "com.x/.CalibrationTool"};
+                "com.factory.test/.Main", "com.x/.ActivationActivity", "com.x/.CalibrationTool", "com.x/.FirmwareInfo", "com.x/.ModemFirmwareMenu"};
             for (String c : bad) {
                 check(MenuScan.isComponent(c) && !MenuScan.safeScreen(c), "SAFE: never opens " + c);
             }

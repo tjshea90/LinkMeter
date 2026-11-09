@@ -1214,7 +1214,16 @@ final class ScreenTab extends Tab {
     }
 
     /** Sends typed text over the live channel (a phone key press per character); held back until it is up. */
-    private void sendText(String s) {
+    private void sendText(String text) {
+        // The phone never types * or # (every dangerous dialer code needs one, see TypingFilter): say so, and send the rest.
+        if (TypingFilter.hasBlockedSymbol(text)) {
+            Toast.makeText(act, "* and # are not typed on the phone from here: they can start phone service codes. "
+                    + "Type them on the phone itself.", Toast.LENGTH_LONG).show();
+        }
+        String s = TypingFilter.keep(text);
+        if (s.isEmpty()) {
+            return;
+        }
         CtlChannel c = ctl;
         if (c != null && !c.isDead()) {
             sendChunks(c, s);
