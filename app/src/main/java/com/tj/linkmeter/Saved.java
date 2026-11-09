@@ -91,9 +91,27 @@ final class Saved {
         sp(c).edit().remove("airUntil").apply();
     }
 
+    /** How long after opening a service menu the safety net keeps watching. */
+    static final long MENU_WATCH_MS = 2L * 60 * 60 * 1000;
+
+    /** A service menu (or the dialer with a service code) was opened at this wall-clock time: what is done inside it is not seen by LinkMeter. */
+    static void rememberMenuAt(Context c, long at) {
+        sp(c).edit().putLong("menuAt", at).apply();
+    }
+
+    static void clearMenu(Context c) {
+        sp(c).edit().remove("menuAt").apply();
+    }
+
+    static boolean menuRecent(Context c) {
+        long at = sp(c).getLong("menuAt", 0);
+        long now = System.currentTimeMillis();
+        return at > 0 && now >= at && now - at < MENU_WATCH_MS;
+    }
+
     /** Is anything LinkMeter changed still in place that could stop mobile data? Then the safety net keeps watching. */
     static boolean pendingRadio(Context c) {
-        return types(c) > 0 || nrLegChanged(c) || lockOn(c) || blip(c) > 0 || airplaneUntil(c) > 0;
+        return types(c) > 0 || nrLegChanged(c) || lockOn(c) || blip(c) > 0 || airplaneUntil(c) > 0 || menuRecent(c);
     }
 
     /** The hotspot band before the first change: 1 = 2.4 GHz, 2 = 5 GHz, 3 = either. */

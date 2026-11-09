@@ -27,8 +27,8 @@ final class MenuScan {
     static final String PACKAGES_MARK = "== packages";
     static final String CODES_MARK = "== codes";
     /** Words in a package name that suggest a service or engineering app. */
-    static final String PACKAGE_WORDS = "engineer|servicemode|modemui|rilservice|factory|hiddenmenu|sysscope|mediatek|mtk|secphone"
-            + "|testmode|diagnos|cqatest|bandselect|networkmode|radioinfo";
+    static final String PACKAGE_WORDS = "engineer|servicemode|modemui|rilservice|hiddenmenu|sysscope|mediatek|mtk|secphone"
+            + "|cqatest|bandselect|networkmode|radioinfo";
 
     /**
      * Step 1 and 2 in one command, pipes only (the dump is large). The output is at most 60 + 900 lines of 160 characters: well under
@@ -37,6 +37,31 @@ final class MenuScan {
     static final String DISCOVER_COMMAND = "echo '" + PACKAGES_MARK + "'; pm list packages 2>&1 | grep -iE '" + PACKAGE_WORDS
             + "' | sed 's/^package://' | sort | head -60; echo '" + CODES_MARK + "'; "
             + "dumpsys package r receiver 2>&1 | grep -B8 -A90 'Scheme: \"android_secret_code\"' | cut -c1-160 | head -900";
+
+    /**
+     * The ONLY dialer codes the app will dial: they show information or open a band / network menu. A free-text code would be a
+     * risk to the phone: Samsung has codes that wipe it at once (for example *2767*3855#), and others that reset settings. So there
+     * is no way to dial anything else from here, whatever the tablet asks for.
+     */
+    static final String[][] SAFE_CODES = {
+        {"*#2263#", "band selection (Samsung)"},
+        {"*#0011#", "service mode: radio status (Samsung)"},
+        {"*#197328640#", "service menu (Samsung)"},
+        {"*#0*#", "hardware test menu (Samsung)"},
+        {"*#06#", "shows the IMEI"},
+        {"*#1234#", "shows the software versions (Samsung)"},
+        {"*#*#4636#*#*", "phone information and network type (Android)"},
+        {"*#*#3646633#*#*", "engineering mode (MediaTek)"},
+    };
+
+    /**
+     * Screens that are never listed and never opened: a name that suggests wiping, resetting, IMEI or NVRAM work, flashing or
+     * firmware, unlocking, or backup and restore of the radio's memory. Looking at a service menu is safe; these are the entries
+     * where one wrong tap can damage the phone for good.
+     */
+    private static final Pattern DANGEROUS_SCREEN = Pattern.compile("(?i)reset|wipe|erase|(?<!in)format|flash|imei|nvram|nvdata|factory"
+            + "|recovery|rsu|simlock|sim_lock|unlock|bootloader|oem|root|fuse|efs|backup|restore|download|odin|fota|upgrade|update"
+            + "|provision|activation|calibrat|repartition|partition|security|knox");
 
     /** Codes worth pointing out, with what they usually are. */
     static final String[][] KNOWN_CODES = {
@@ -83,6 +108,24 @@ final class MenuScan {
 
     static boolean isDialCode(String s) {
         return s != null && DIAL.matcher(s).matches();
+    }
+
+    /** Is this exactly one of the codes the app may dial? */
+    static boolean isSafeDialCode(String s) {
+        if (s == null) {
+            return false;
+        }
+        for (String[] c : SAFE_CODES) {
+            if (c[0].equals(s)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A screen the app may list and open: a well-formed name that does not suggest anything destructive. */
+    static boolean safeScreen(String component) {
+        return isComponent(component) && !DANGEROUS_SCREEN.matcher(component).find();
     }
 
     /** The tel: address for a dial code: # and * must be written as %23 and %2A. */
@@ -171,7 +214,7 @@ final class MenuScan {
         if (out != null) {
             for (String raw : out.split("\n")) {
                 String line = raw.trim();
-                if (isComponent(line)) {
+                if (safeScreen(line)) {
                     r.add(line);
                 }
             }
@@ -227,7 +270,7 @@ final class MenuScan {
                 if (p.length == 2 && !p[0].isEmpty() && p[0].length() <= 24 && isComponent(p[1])) {
                     r.codes.add(new String[] {p[0], p[1]});
                 }
-            } else if (line.startsWith("ACT ") && isComponent(line.substring(4))) {
+            } else if (line.startsWith("ACT ") && safeScreen(line.substring(4))) {
                 r.activities.add(line.substring(4));
             } else if (line.startsWith("NOTE ")) {
                 r.notes.add(line.substring(5));
@@ -265,6 +308,8 @@ final class MenuScan {
         for (String n : r.notes) {
             sb.append("  note: ").append(n).append('\n');
         }
+        sb.append("  (Only the codes in the list below are offered to dial. Others are shown so you know they exist, but this app will not "
+                + "dial them: some service codes erase the phone.)");
         return sb.toString().trim();
     }
 

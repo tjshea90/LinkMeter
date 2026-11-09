@@ -27,6 +27,8 @@ final class Guard {
     private static final AtomicBoolean RECOVERING = new AtomicBoolean();
     private static Context appCtx;
     private static boolean running;
+    private static long lastNoticeAt;
+    private static final long NOTICE_EVERY_MS = 30L * 60 * 1000;
 
     private Guard() {}
 
@@ -44,6 +46,17 @@ final class Guard {
             POLICY.arm(SystemClock.elapsedRealtime());
             start();
         }
+    }
+
+    /** Is the safety net watching right now? (For the Safety check.) */
+    static synchronized boolean watching() {
+        return running;
+    }
+
+    /** "working", "not working" or "" (cannot tell, or the user chose it). (For the Safety check.) */
+    static String cellularText(Context c) {
+        GuardPolicy.Data d = dataState(c);
+        return d == GuardPolicy.Data.GOOD ? "working" : d == GuardPolicy.Data.BAD ? "not working" : "";
     }
 
     private static void start() {
@@ -85,9 +98,16 @@ final class Guard {
         if (d.act == GuardPolicy.Act.RESTORE) {
             new Thread(() -> {
                 String report = Actions.restoreRadio(app);
-                Notice.post(app, "LinkMeter undid a network change",
-                        "Mobile data stopped working while something LinkMeter had changed was still in place, so it was put back.\n"
-                                + report);
+                // without Shizuku (for example after a restart of the phone) nothing can be undone from here: hand over the manual steps
+                boolean helpless = !Priv.ready();
+                long now = SystemClock.elapsedRealtime();
+                if (lastNoticeAt == 0 || now - lastNoticeAt > NOTICE_EVERY_MS) { // not one notification every five minutes
+                    lastNoticeAt = now;
+                    Notice.post(app, helpless ? "Mobile data is down and LinkMeter cannot fix it" : "LinkMeter undid a network change",
+                            (helpless ? "LinkMeter needs Shizuku to undo its changes, and Shizuku is not running.\n"
+                                    : "Mobile data stopped working while something LinkMeter had changed was still in place, so it was put back.\n")
+                                    + report + (helpless ? "\n\n" + Actions.MANUAL : ""));
+                }
             }, "linkmeter-guard").start();
         }
         H.postDelayed(TICK, d.nextMs);

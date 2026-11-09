@@ -112,6 +112,59 @@ public final class MenuScanTest {
             check(u.matches("tel:[0-9%A-F]+"), "a dial address has only safe characters: " + u);
         }
 
+        // ---- SAFETY: only known-safe codes are ever dialed
+        {
+            String[] destructive = {"*2767*3855#", "*#7780#", "*#*#7780#*#*", "*#9900#", "*#*#273283*255*663282*#*#*", "*#7284#", "*#0808#",
+                "*#*#2432546#*#*", "*#8999*8378#", "*#*#7594#*#*", "*#9090#", "*#272*", "*#*#0*#*#*", "*#0228#", "*#0283#", "*#32489#",
+                "*#232331#", "*#872564#", "*#2663#", "*#4238378#", "*#2580#", "*#*#2846579#*#*", "*#12580*369#", "**04*"};
+            for (String c : destructive) {
+                check(!MenuScan.isSafeDialCode(c), "SAFE: never dials " + c);
+            }
+            for (String[] c : MenuScan.SAFE_CODES) {
+                check(MenuScan.isSafeDialCode(c[0]) && MenuScan.isDialCode(c[0]), "a listed code is accepted: " + c[0]);
+                check(!c[1].isEmpty(), "and has a description: " + c[0]);
+                for (String d : destructive) {
+                    check(!c[0].equals(d), "no destructive code is in the list: " + d);
+                }
+                check(!MenuScan.isSafeDialCode(c[0] + "1") && !MenuScan.isSafeDialCode(" " + c[0]) && !MenuScan.isSafeDialCode(c[0] + " ")
+                        && !MenuScan.isSafeDialCode(c[0].substring(0, c[0].length() - 1)), "a code is matched exactly, not by prefix: " + c[0]);
+            }
+            check(!MenuScan.isSafeDialCode(null) && !MenuScan.isSafeDialCode(""), "null and empty are refused");
+            check(MenuScan.SAFE_CODES.length >= 6, "the list has the useful codes");
+        }
+
+        // ---- SAFETY: screens that suggest wiping, resetting, IMEI, NVRAM, flashing or unlocking are never listed or opened
+        {
+            String[] bad = {"com.x/.FactoryReset", "com.x/.WipeData", "com.x/.EraseUserData", "com.x/.ImeiWriter", "com.mediatek.engineermode/.NvramBackup",
+                "com.x/.NvdataRestore", "com.x/.UnlockActivity", "com.x/.SimLockSettings", "com.x/.FlashTool", "com.x/.FirmwareUpgrade",
+                "com.x/.OdinMode", "com.x/.RsuActivity", "com.x/.FormatStorage", "com.x/.RecoveryMenu", "com.x/.BootloaderInfo", "com.x/.OemUnlock",
+                "com.x/.EfsBackup", "com.x/.FotaUpdate", "com.x/.ResetNetwork", "com.x/.DOWNLOADMODE", "com.x/.RepartitionDisk", "com.x/.KnoxSettings",
+                "com.factory.test/.Main", "com.x/.ActivationActivity", "com.x/.CalibrationTool"};
+            for (String c : bad) {
+                check(MenuScan.isComponent(c) && !MenuScan.safeScreen(c), "SAFE: never opens " + c);
+            }
+            String[] good = {"com.mediatek.engineermode/.EngineerMode", "com.sec.android.RilServiceModeApp/.ServiceModeApp",
+                "com.sec.android.app.servicemodeapp/.ServiceModeApp", "com.sec.android.app.modemui/.activities.ShowBandActivity",
+                "com.android.phone/.settings.RadioInfo", "com.android.settings/.RadioInfo", "com.x/.PhoneInformation", "com.x/.BatteryInformation",
+                "com.mediatek.engineermode/.bandselect.BandModeSelect", "com.x/.NetworkModeSelect", "com.x/.PerformanceInfo"};
+            for (String c : good) {
+                check(MenuScan.safeScreen(c), "a harmless screen is not hidden: " + c);
+            }
+            for (String c : MenuScan.USUAL_SCREENS) {
+                check(MenuScan.safeScreen(c), "every 'usual' screen passes the filter: " + c);
+            }
+            check(!MenuScan.safeScreen(null) && !MenuScan.safeScreen("") && !MenuScan.safeScreen("a/b;reset"), "junk is refused");
+            check(MenuScan.parseActivities("com.x/.FactoryReset\ncom.mediatek.engineermode/.EngineerMode\ncom.x/.ImeiWriter\n").equals(Arrays.asList("com.mediatek.engineermode/.EngineerMode")),
+                    "dangerous screens never get into the list");
+            MenuScan.Reply rr = MenuScan.parseReply("MENUS 1\nACT com.x/.FactoryReset\nACT com.mediatek.engineermode/.EngineerMode\nACT com.x/.WipeData\n");
+            check(rr.activities.size() == 1 && rr.activities.get(0).contains("EngineerMode"), "and not from a reply either (an old or altered phone app)");
+            check(!MenuScan.PACKAGE_WORDS.toLowerCase().contains("factory") && !MenuScan.PACKAGE_WORDS.contains("diagnos") && !MenuScan.PACKAGE_WORDS.contains("testmode"),
+                    "factory, diagnostic and test-mode apps are not even searched for");
+            check(!MenuScan.DISCOVER_COMMAND.toLowerCase().contains("factory"), "and the real command does not look for them");
+            String sum = MenuScan.summary(MenuScan.parseReply(MenuScan.reply(MenuScan.parseDiscovery(discovery(PACKAGES, RECEIVERS)), new ArrayList<String>())));
+            check(sum.contains("will not dial them"), "the summary says that only listed codes are dialed: " + sum);
+        }
+
         // ---- the activities command and its reading
         check(MenuScan.activitiesCommand(new ArrayList<String>()) == null, "no packages, no command");
         check(MenuScan.activitiesCommand(Arrays.asList("a;reboot", "b c", "$(id)")) == null, "bad package names give no command");

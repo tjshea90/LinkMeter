@@ -1,5 +1,6 @@
 package com.tj.linkmeter;
 
+import android.content.Context;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,24 +26,29 @@ final class Menus {
     }
 
     /** Opens one screen, for example "com.mediatek.engineermode/.EngineerMode". The shell may start screens that are not exported. */
-    static String open(String component) throws IOException {
+    static String open(Context c, String component) throws IOException {
         if (!MenuScan.isComponent(component)) {
             throw new IOException("that is not a screen name (it looks like package/.Class)");
+        }
+        if (!MenuScan.safeScreen(component)) {
+            throw new IOException("this app does not open that screen: its name suggests it can erase, reset, flash or unlock the phone");
         }
         // 224 = wake up: a screen opened on a sleeping phone is not seen
         Priv.Result r = Priv.run("input keyevent 224; am start -n '" + component + "' 2>&1 | head -8", 20);
         if (MenuScan.started(r.out)) {
+            menuOpened(c);
             return "Opened " + component + ". Look at the phone's screen (the Screen tab shows it; unlock the phone first if it is locked).";
         }
         return "Could not open " + component + ": " + firstLines(r.out);
     }
 
     /** Tries the usual service and engineering screens in turn and stops at the first that opens. */
-    static String usual() throws IOException {
+    static String usual(Context c) throws IOException {
         StringBuilder missed = new StringBuilder();
         for (String comp : MenuScan.USUAL_SCREENS) {
             Priv.Result r = Priv.run("am start -n '" + comp + "' 2>&1 | head -8", 20);
             if (MenuScan.started(r.out)) {
+                menuOpened(c);
                 return "Opened " + comp + ". Look at the phone's screen (the Screen tab shows it)."
                         + (missed.length() == 0 ? "" : "\nNot on this phone: " + missed.toString().trim());
             }
@@ -53,18 +59,33 @@ final class Menus {
     }
 
     /** Opens the phone's dialer with a code typed in, for example *#2263#. The dialer runs a service code by itself when it sees it. */
-    static String dial(String code) throws IOException {
+    static String dial(Context c, String code) throws IOException {
         if (!MenuScan.isDialCode(code)) {
             throw new IOException("a dial code has only digits, * and # (at most 24)");
+        }
+        if (!MenuScan.isSafeDialCode(code)) {
+            throw new IOException("this app only dials service codes from its own list (some codes erase the phone): " + code
+                    + " is not on it");
         }
         Priv.Result r = Priv.run("input keyevent 224; am start -a android.intent.action.DIAL -d '" + MenuScan.dialUri(code)
                 + "' 2>&1 | head -6", 20);
         if (MenuScan.started(r.out)) {
+            menuOpened(c);
             return "The dialer was opened with " + code + ". If a menu did not open by itself, look at the phone's screen (Screen tab) "
                     + "and press the call button. A message like \"RAT selection option restricted\" or nothing at all means this "
                     + "phone's firmware blocks that menu.";
         }
         return "Could not open the dialer: " + firstLines(r.out);
+    }
+
+    /**
+     * A service menu was opened: for the next two hours the safety net watches mobile data, because a change made INSIDE such a menu
+     * (a band, a network type) is something LinkMeter cannot see. If data dies, it resets what the phone's own software lets it
+     * reset (network types, band lock); a band chosen inside the menu itself is put back by choosing "all bands" / "auto" there.
+     */
+    private static void menuOpened(Context c) {
+        Saved.rememberMenuAt(c, System.currentTimeMillis());
+        Guard.arm(c);
     }
 
     private static String firstLines(String s) {

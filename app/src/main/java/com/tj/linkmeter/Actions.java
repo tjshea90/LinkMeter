@@ -94,14 +94,16 @@ final class Actions {
     /** Runs an action and returns text for the tablet to show. arg: the one extra value a few actions take (a screen name, a dial code). */
     static String run(Context c, String name, String arg) throws IOException {
         switch (name) {
+            case "safety":
+                return safety(c);
             case "menu_find":
                 return Menus.find();
             case "menu_open":
-                return Menus.open(arg);
+                return Menus.open(c, arg);
             case "menu_usual":
-                return Menus.usual();
+                return Menus.usual(c);
             case "menu_dial":
-                return Menus.dial(arg);
+                return Menus.dial(c, arg);
             case "airplane_off":
                 Saved.clearAirplaneUntil(c);
                 Saved.clearBlip(c);
@@ -312,6 +314,45 @@ final class Actions {
         return (i < 0 ? s : s.substring(0, i)).trim();
     }
 
+    /** The Safety check: what is mobile data doing, and is anything LinkMeter changed still in place? The words are SafetyReport's. */
+    private static String safety(Context c) {
+        SafetyReport.Facts f = new SafetyReport.Facts();
+        long types = currentTypes(c);
+        f.types = types;
+        f.typesText = types >= 0 ? typesText(types) : "";
+        f.typesChanged = Saved.types(c) > 0;
+        try {
+            Boolean off = NrLeg.offFromText(NrLeg.describe(NrLeg.parse(Cells.shellMain(c, "nrdc-get").out)));
+            f.legOn = off == null ? null : Boolean.valueOf(!off);
+        } catch (IOException ignored) {
+            // Shizuku is off: unknown
+        }
+        f.legChanged = Saved.nrLegChanged(c);
+        try {
+            org.json.JSONObject j = new org.json.JSONObject(Cells.status());
+            f.lock = j.optString("lock", "");
+            f.lockKept = j.optBoolean("kept", false);
+        } catch (org.json.JSONException ignored) {
+            // plain values only
+        }
+        f.lockFlag = Saved.lockOn(c);
+        try {
+            f.airplaneOn = Boolean.valueOf(Settings.Global.getInt(c.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1);
+            TelephonyManager tm = c.getSystemService(TelephonyManager.class);
+            f.dataEnabled = tm == null ? null : Boolean.valueOf(tm.isDataEnabled());
+        } catch (RuntimeException ignored) {
+            // unknown
+        }
+        f.cellular = Guard.cellularText(c);
+        f.radioBlip = Saved.blip(c) > 0;
+        f.airplaneTimer = Saved.airplaneUntil(c) > 0;
+        f.menuRecent = Saved.menuRecent(c);
+        f.hotspotBandChanged = Saved.hotspotBand(c) > 0;
+        f.batterySaver = Eco.isOn(c);
+        f.guardWatching = Guard.watching();
+        return SafetyReport.report(f);
+    }
+
     // ------------------------------------------------------------ radio-off and airplane failsafes
 
     /** Before a deliberate radio-off, or an airplane mode the tablet cannot end: write it down, so a cut-off session still gets undone. */
@@ -446,6 +487,7 @@ final class Actions {
                 sb.append("5G leg: ").append(e.getMessage()).append('\n');
             }
         }
+        Saved.clearMenu(c);
         long saved = Saved.types(c);
         long target = saved > 0 ? saved : DEFAULT_TYPES;
         try {

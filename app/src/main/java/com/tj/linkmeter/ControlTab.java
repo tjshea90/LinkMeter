@@ -45,6 +45,8 @@ final class ControlTab extends Tab {
 
         col.addView(Ui.button(act, "Restore everything (fix internet)", v -> restoreDialog(act)),
                 Ui.lp(act, 10));
+        col.addView(Ui.button(act, "Safety check: is anything still changed?", v -> send("safety", "Checking the phone", 40000)),
+                Ui.lp(act, 4));
         col.addView(Ui.button(act, "Restart modem", v -> confirm("Restart the modem?",
                 "The phone loses mobile data and the hotspot for about a minute while the modem restarts. If mobile data does not "
                         + "come back, press Restore everything on the phone (LinkMeter > Phone) or restart the phone.",

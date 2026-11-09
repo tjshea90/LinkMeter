@@ -33,6 +33,9 @@ java -cp "$out" com.tj.linkmeter.LeverRunTest || fail=1
 echo "== Safety net (GuardPolicy: when the phone undoes LinkMeter's changes by itself: never fights the user, always acts when data stays down)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/GuardPolicy.java tools/test/GuardPolicyTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.GuardPolicyTest || fail=1
+echo "== Safety check (SafetyReport: never says 'nothing is changed' while something is; every combination)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SafetyReport.java tools/test/SafetyReportTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.SafetyReportTest || fail=1
 echo "== Best spot for the phone (SignalHunt: the 10 s average, the upload score, the beep, marked spots)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SignalHunt.java tools/test/SignalHuntTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.SignalHuntTest || fail=1

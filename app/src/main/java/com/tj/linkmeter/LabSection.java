@@ -1,5 +1,6 @@
 package com.tj.linkmeter;
 
+import android.app.AlertDialog;
 import android.graphics.Typeface;
 import android.os.SystemClock;
 import android.text.InputType;
@@ -20,6 +21,10 @@ import java.util.List;
  */
 final class LabSection {
     private final MainActivity act;
+
+    // ---- the safety check
+    private TextView safetyView;
+    private String safetyMsg = "";
 
     // ---- the 5G leg
     private TextView legView;
@@ -44,7 +49,6 @@ final class LabSection {
     // ---- the hidden menus
     private TextView menuView;
     private LinearLayout screensBox;
-    private EditText codeField;
     private String menuMsg = "";
     private List<String> screens = new ArrayList<>();
 
@@ -80,10 +84,28 @@ final class LabSection {
         col.addView(Ui.text(act, "What this phone does obey", 18, Ui.FG, true), Ui.lp(act, 16));
         col.addView(Ui.text(act, "This phone ignores band locks (a lock only hints at the modem's search). These are things it does "
                 + "obey. None of them changes a band, and Restore everything undoes each of them.", 12, Ui.DIM, false), Ui.lp(act, 4));
+        Button safe = Ui.button(act, "Safety check: is anything still changed?", x -> safetyCheck());
+        col.addView(safe, Ui.lp(act, 6));
+        safetyView = Ui.text(act, safetyMsg, 12, Ui.FG, false);
+        mono(safetyView);
+        col.addView(safetyView, Ui.lp(act, 4));
         buildLeg(col);
         buildCompare(col);
         buildMenus(col);
         buildHunt(col);
+    }
+
+    private void safetyCheck() {
+        safetyMsg = "Checking the phone…";
+        if (safetyView != null) {
+            safetyView.setText(safetyMsg);
+        }
+        Call.run(act, "POST", "/act?name=safety", 40000, (ok, text, json) -> {
+            safetyMsg = text;
+            if (safetyView != null) {
+                safetyView.setText(text);
+            }
+        });
     }
 
     private static void mono(TextView t) {
@@ -297,23 +319,14 @@ final class LabSection {
                 + "(unlock the phone first).", 12, Ui.DIM, false), Ui.lp(act, 4));
         LinearLayout r1 = row(act);
         r1.addView(Ui.button(act, "Look for service menus", v -> findMenus()), Ui.weight());
-        r1.addView(Ui.button(act, "Try the usual ones", v -> menuCall("menu_usual", "")), Ui.weight());
+        r1.addView(Ui.button(act, "Try the usual ones", v -> confirmMenu("Open a service menu?", () -> menuCall("menu_usual", ""))),
+                Ui.weight());
         col.addView(r1, Ui.lp(act, 6));
-        LinearLayout r2 = row(act);
-        r2.addView(codeButton("*#2263#"), Ui.weight());
-        r2.addView(codeButton("*#0011#"), Ui.weight());
-        r2.addView(codeButton("*#*#4636#*#*"), Ui.weight());
-        col.addView(r2, Ui.lp(act, 4));
-        LinearLayout r3 = row(act);
-        codeField = new EditText(act);
-        codeField.setSingleLine(true);
-        codeField.setInputType(InputType.TYPE_CLASS_TEXT);
-        codeField.setTextColor(Ui.FG);
-        codeField.setHint("another code, for example *#0*#");
-        codeField.setHintTextColor(Ui.DIM);
-        r3.addView(codeField, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f));
-        r3.addView(Ui.button(act, "Dial it", v -> menuCall("menu_dial", codeField.getText().toString().trim())), Ui.weight());
-        col.addView(r3, Ui.lp(act, 4));
+        col.addView(Ui.text(act, "Codes this app will dial (it dials nothing else: some service codes erase the phone):", 12, Ui.DIM,
+                false), Ui.lp(act, 8));
+        for (String[] c : MenuScan.SAFE_CODES) {
+            col.addView(codeButton(c[0], c[1]), Ui.lp(act, 2));
+        }
         menuView = Ui.text(act, menuMsg, 12, Ui.FG, false);
         mono(menuView);
         col.addView(menuView, Ui.lp(act, 6));
@@ -323,11 +336,24 @@ final class LabSection {
         paintScreens();
     }
 
-    private Button codeButton(final String code) {
-        Button b = Ui.button(act, code, v -> menuCall("menu_dial", code));
+    private Button codeButton(final String code, String what) {
+        Button b = Ui.button(act, code + "   " + what, v -> confirmMenu("Dial " + code + "?", () -> menuCall("menu_dial", code)));
         b.setTextSize(12);
-        b.setPadding(0, b.getPaddingTop(), 0, b.getPaddingBottom());
         return b;
+    }
+
+    /** Every menu action asks first, in plain words: the menus are made for factory and repair staff. */
+    private void confirmMenu(String title, final Runnable go) {
+        new AlertDialog.Builder(act)
+                .setTitle(title)
+                .setMessage("Service menus are made for the factory and for repair shops. Looking is safe. Only change band or network "
+                        + "selection, and write down what it was before (usually \"all bands\" or \"auto\") so you can put it back. "
+                        + "Never touch anything about IMEI, NVRAM, flashing, firmware, unlock, reset, or backup and restore. If mobile "
+                        + "data stops working afterwards: set the band back to all bands or auto, press Restore everything (Bands tab "
+                        + "or LinkMeter > Phone on the phone), or restart the phone.")
+                .setPositiveButton("Open it", (d, w) -> go.run())
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void setMenu(String s) {
@@ -369,7 +395,7 @@ final class LabSection {
         for (int i = 0; i < screens.size() && i < 12; i++) {
             final String comp = screens.get(i);
             Button b = Ui.button(act, comp.length() > 46 ? comp.substring(0, 20) + "…" + comp.substring(comp.length() - 24) : comp,
-                    v -> menuCall("menu_open", comp));
+                    v -> confirmMenu("Open this screen?", () -> menuCall("menu_open", comp)));
             b.setTextSize(11);
             screensBox.addView(b, Ui.lp(act, 2));
         }
