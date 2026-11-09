@@ -106,11 +106,16 @@ final class BandsTab extends Tab {
         statusText.setPadding(Ui.dp(act, 12), Ui.dp(act, 10), Ui.dp(act, 12), Ui.dp(act, 4));
         statusText.setBackgroundColor(Ui.CARD);
         col.addView(statusText, Ui.lp(act, 10));
-        nowText = Ui.text(act, "Now using: scan to see", 13, Ui.DIM, false);
+        nowText = Ui.text(act, "Now using: not scanned yet. Press \"Scan now\" (just below).", 13, Ui.DIM, false);
         nowText.setTypeface(Typeface.MONOSPACE);
         nowText.setPadding(Ui.dp(act, 12), 0, Ui.dp(act, 12), Ui.dp(act, 10));
         nowText.setBackgroundColor(Ui.CARD);
         col.addView(nowText);
+        // The same scan as the "Scan cells" button far below, but here, next to the box that shows its answer.
+        col.addView(Ui.button(act, "Scan now", v -> {
+            nowText.setText("Now using: scanning…");
+            scan(true);
+        }), Ui.lp(act, 4));
 
         LinearLayout keepRow = new LinearLayout(act);
         keepRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -488,6 +493,9 @@ final class BandsTab extends Tab {
             if (!ok || json == null) {
                 if (visible) {
                     cellsText.setText(text);
+                    if (nowText != null) {
+                        nowText.setText("Now using: could not ask the phone. " + text);
+                    }
                 }
                 return;
             }
