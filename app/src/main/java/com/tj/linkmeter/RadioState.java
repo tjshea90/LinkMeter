@@ -58,6 +58,54 @@ final class RadioState {
     /** The carrier list's own text when it was there but nothing could be read from it (so it can be looked at). */
     String rawConfigs = "";
 
+    // ------------------------------------------------------------ is 5G really in use?
+
+    /** Does the carrier list name a 5G carrier? */
+    boolean listsNr() {
+        for (Carrier c : carriers) {
+            if (c.nr()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Is a 5G carrier of the list really in use? The list is not always current: after 5G was switched off the phone can keep the last
+     * list for a while, with its 5G carriers in it, while its own 5G label ("5G UW", "5G") and its 5G state have already gone (a run of
+     * the comparison on the user's phone showed exactly that: "B66 + n77 + n2" with no 5G label). So a listed 5G carrier counts unless
+     * the phone's own words contradict it: its label is a non-5G one AND its 5G state is not "CONNECTED". Whatever the phone did not
+     * say is not held against the list. False when the list names no 5G carrier.
+     *
+     * knownNotAllowed: the caller has switched 5G off and read it back, so the phone is not allowed to use 5G. Then its label alone
+     * settles it, whether or not it printed a 5G state.
+     */
+    boolean nrCarrierInUse(boolean knownNotAllowed) {
+        if (!listsNr()) {
+            return false;
+        }
+        boolean connected = nrState.equals("CONNECTED");
+        boolean labelSaysNo = !display.isEmpty() && !display.equals("NR_ADVANCED") && !display.equals("NR_NSA");
+        boolean stateSaysNo = knownNotAllowed ? !connected : (!nrState.isEmpty() && !connected);
+        return !(labelSaysNo && stateSaysNo);
+    }
+
+    /** The list names 5G carriers that the phone's own label and state say are not in use: an out-of-date list. */
+    boolean staleNr(boolean knownNotAllowed) {
+        return listsNr() && !nrCarrierInUse(knownNotAllowed);
+    }
+
+    /** What the phone said about 5G, in words: for the table, when a 5G setting did not seem to take, so a wrong verdict can be told from a right one. */
+    String fiveGEvidence() {
+        StringBuilder names = new StringBuilder();
+        for (Carrier c : carriers) {
+            names.append(names.length() > 0 ? " + " : "").append(c.bandName());
+        }
+        return "the phone's carrier list: " + (names.length() == 0 ? "empty" : names.toString())
+                + "; its 5G label: " + (display.isEmpty() ? "not given" : display)
+                + "; its 5G state: " + (nrState.isEmpty() ? "not given" : nrState);
+    }
+
     /** Separates the two parts of the survey's output: the cell list, then the lines this class reads. */
     static final String EXTRA_MARKER = "##EXTRA";
 

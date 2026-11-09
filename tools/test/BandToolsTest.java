@@ -128,6 +128,62 @@ public final class BandToolsTest {
         check(RadioState.parse("mServiceState={domain=PS nrState=RESTRICTED domain=CS nrState=NONE}").nrState.equals("RESTRICTED"),
                 "5G state: the first that says something");
 
+        // --- is a listed 5G carrier really in use? The list can be out of date for a while after 5G was switched off
+        {
+            RadioState x = new RadioState();
+            x.carriers.add(new RadioState.Carrier("LTE", 66, 66611, 15000, true));
+            check(!x.listsNr() && !x.nrCarrierInUse(false) && !x.staleNr(false), "no 5G carrier listed: none in use, nothing stale");
+            x.carriers.add(new RadioState.Carrier("NR", 77, 650000, 60000, false));
+            x.carriers.add(new RadioState.Carrier("NR", 2, 394000, 10000, false));
+            check(x.listsNr() && x.nrCarrierInUse(false) && !x.staleNr(false), "listed and the phone says nothing else: the list is believed");
+            x.display = "NR_ADVANCED";
+            x.nrState = "CONNECTED";
+            check(x.nrCarrierInUse(false) && x.nrCarrierInUse(true) && !x.staleNr(true), "5G UW label and CONNECTED: in use, whatever else is known");
+            x.display = "NONE";
+            x.nrState = "NONE";
+            check(!x.nrCarrierInUse(false) && x.staleNr(false), "listed, but label NONE and state NONE: an out-of-date list");
+            x.display = "NONE";
+            x.nrState = "";
+            check(x.nrCarrierInUse(false), "label NONE and no state: not enough to overrule the list...");
+            check(!x.nrCarrierInUse(true) && x.staleNr(true), "...unless 5G is known to be switched off: then the label settles it");
+            x.display = "";
+            x.nrState = "NONE";
+            check(x.nrCarrierInUse(false) && x.nrCarrierInUse(true), "a state but no label: the list stands");
+            x.display = "NONE";
+            x.nrState = "CONNECTED";
+            check(x.nrCarrierInUse(false) && x.nrCarrierInUse(true), "state CONNECTED is never overruled by a missing 5G label");
+            x.display = "NR_NSA";
+            x.nrState = "NOT_RESTRICTED";
+            check(x.nrCarrierInUse(false) && !x.staleNr(false), "the plain 5G label counts");
+            x.display = "LTE_CA";
+            x.nrState = "RESTRICTED";
+            check(x.staleNr(false) && !x.nrCarrierInUse(false), "LTE_CA label and RESTRICTED: an out-of-date list");
+            String ev = x.fiveGEvidence();
+            check(ev.contains("B66 + n77 + n2") && ev.contains("LTE_CA") && ev.contains("RESTRICTED"), "the evidence text names list, label and state: " + ev);
+            check(new RadioState().fiveGEvidence().contains("empty") && new RadioState().fiveGEvidence().contains("not given"),
+                    "and says what the phone did not give: " + new RadioState().fiveGEvidence());
+
+            // the words of the table and the Now-using box
+            x.display = "NONE";
+            x.nrState = "NONE";
+            String t = BandSweep.usingText(x);
+            check(t.startsWith("B66 [") && t.contains("n77 + n2") && t.contains("old entries"), "an out-of-date list is not shown as 5G: " + t);
+            check(BandCheck.describe(x).contains("probably an out-of-date list"), "the Now-using text says so: " + BandCheck.describe(x));
+            x.display = "NR_ADVANCED";
+            x.nrState = "CONNECTED";
+            check(BandSweep.usingText(x).equals("B66 + n77 + n2 (5G UW)"), "a real 5G connection is shown as it is: " + BandSweep.usingText(x));
+            check(!BandCheck.describe(x).contains("out-of-date"), "and gets no such remark");
+            x.display = "NONE";
+            x.nrState = "";
+            check(BandSweep.usingText(x).equals("B66 + n77 + n2"), "label only, 5G not known to be off: the list stands: " + BandSweep.usingText(x));
+            check(BandSweep.usingText(x, true).startsWith("B66 ["), "label only, 5G known to be off: old entries named: " + BandSweep.usingText(x, true));
+            RadioState onlyNr = new RadioState();
+            onlyNr.carriers.add(new RadioState.Carrier("NR", 77, 650000, 60000, true));
+            onlyNr.display = "NONE";
+            onlyNr.nrState = "NONE";
+            check(BandSweep.usingText(onlyNr, true).equals("n77"), "with no 4G carrier to fall back on nothing is hidden: " + BandSweep.usingText(onlyNr, true));
+        }
+
         // --- was the lock obeyed?
         List<RadioState.Carrier> ca = RadioState.parse(CA_NSA).carriers; // B66, B2 and n77
         check(BandCheck.verify("", ca).verdict == BandCheck.Verdict.OBEYED, "no lock asked for is always fine");

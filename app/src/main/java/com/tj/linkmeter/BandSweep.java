@@ -508,13 +508,11 @@ final class BandSweep {
                 // a phone that has listed its carriers and now lists none has no service yet: that is waited out, not "cannot tell"
                 noService = rs.carriers.isEmpty() && listedBefore;
                 BandCheck.Result v = BandCheck.verify(s.spec, rs.carriers);
-                boolean nrStillOn = false;
-                for (RadioState.Carrier c : rs.carriers) {
-                    nrStillOn |= c.nr();
-                }
+                // the phone's carrier list can still name 5G carriers for a while after 5G was switched off: its own label and state decide
+                boolean nrStillOn = rs.nrCarrierInUse(Boolean.FALSE.equals(s.fiveG));
                 boolean fiveGWrong = Boolean.FALSE.equals(s.fiveG) && nrStillOn;
                 if (!confirming) {
-                    row.using = usingText(rs);
+                    row.using = usingText(rs, Boolean.FALSE.equals(s.fiveG));
                     row.rsrp = obs.rsrp;
                 }
                 boolean settled = v.verdict == BandCheck.Verdict.OBEYED && !fiveGWrong;
@@ -829,8 +827,27 @@ final class BandSweep {
 
     /** "B66 + B2 + n77 (5G UW)" */
     static String usingText(RadioState s) {
-        StringBuilder sb = new StringBuilder();
+        return usingText(s, false);
+    }
+
+    /**
+     * The carriers in use, in words. 5G carriers that the phone's own label and state say are not in use (an out-of-date list, see
+     * RadioState.fiveGInUse) are left out and named at the end, so the text does not claim 5G for a phone that is on 4G.
+     * fiveGOff: 5G was switched off by the caller and read back.
+     */
+    static String usingText(RadioState s, boolean fiveGOff) {
+        boolean hasLte = false;
         for (RadioState.Carrier c : s.carriers) {
+            hasLte |= !c.nr();
+        }
+        boolean stale = hasLte && s.staleNr(fiveGOff);
+        StringBuilder sb = new StringBuilder();
+        StringBuilder old = new StringBuilder();
+        for (RadioState.Carrier c : s.carriers) {
+            if (stale && c.nr()) {
+                old.append(old.length() > 0 ? " + " : "").append(c.bandName());
+                continue;
+            }
             sb.append(sb.length() > 0 ? " + " : "").append(c.bandName());
         }
         if (sb.length() == 0) {
@@ -838,6 +855,7 @@ final class BandSweep {
         }
         String label = s.display.equals("NR_ADVANCED") ? "5G UW" : s.display.equals("NR_NSA") ? "5G"
                 : (s.display.equals("LTE_CA") || s.display.equals("LTE_ADVANCED_PRO")) ? "LTE+" : "";
-        return label.isEmpty() ? sb.toString() : sb + " (" + label + ")";
+        String text = label.isEmpty() ? sb.toString() : sb + " (" + label + ")";
+        return old.length() == 0 ? text : text + " [the phone still lists " + old + " but says 5G is not in use: old entries]";
     }
 }

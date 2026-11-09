@@ -150,6 +150,10 @@ final class BandCheck {
             }
             sb.append('\n');
         }
+        if (s.staleNr(false)) {
+            sb.append("The 5G carriers above are probably an out-of-date list: the phone's own 5G label and state say 5G is not in use "
+                    + "(label ").append(s.display).append(", state ").append(s.nrState.isEmpty() ? "not given" : s.nrState).append(").");
+        }
         return sb.toString().trim();
     }
 

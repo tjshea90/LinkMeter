@@ -34,6 +34,8 @@ public final class BandSweepTest {
         String lock = "";
         long lockSetAt = -1_000_000;
         boolean fiveGOff;
+        /** With 5G off the phone keeps listing its old 5G carrier (an out-of-date list); its label and state say there is no 5G. */
+        boolean staleList;
         boolean awake;
         int awakeCalls;
         int uploadsRunning;
@@ -140,6 +142,11 @@ public final class BandSweepTest {
             if (nr) {
                 s.carriers.add(new RadioState.Carrier("NR", 77, 650016, 100000, false));
                 s.display = "NR_ADVANCED";
+            } else if (staleList) {
+                // 5G is off, but the phone still lists its old 5G carrier while its own label and state say there is none
+                s.carriers.add(new RadioState.Carrier("NR", 77, 650016, 100000, false));
+                s.display = "NONE";
+                s.nrState = "NONE";
             }
             return s;
         }
@@ -152,7 +159,7 @@ public final class BandSweepTest {
             boolean nr = false;
             int primary = 0;
             for (RadioState.Carrier c : r.carriers) {
-                nr |= c.nr();
+                nr |= c.nr() && !(staleList && fiveGOff); // an old entry is not 5G in use
                 if (c.primary) {
                     primary = c.band;
                 }
@@ -449,6 +456,22 @@ public final class BandSweepTest {
             s.start();
             p.run();
             over("5g was off", p, s, r, true);
+        }
+        // 3b. an out-of-date carrier list after 5G was switched off: not mistaken for 5G still being on
+        {
+            Sim p = new Sim();
+            p.staleList = true;
+            Rec r = new Rec();
+            BandSweep s = new BandSweep(p, r, SweepPlan.build(new int[] {5}, new int[0], true));
+            s.start();
+            p.run();
+            over("stale list", p, s, r, false);
+            BandSweep.Row off = s.rows().get(1); // 5G off, no lock
+            check(off.step.spec.isEmpty() && off.step.fiveG != null && !off.step.fiveG, "stale list: row 1 is '5G off, no lock'");
+            check(!off.note.contains("5G was still on"), "stale list: it is not reported as 5G still on: " + off.note);
+            check(off.using.contains("old entries"), "stale list: the old 5G entry is named as old: " + off.using);
+            check(off.up == 4.0, "stale list: measured as the 4G it is: " + off.up);
+            check(!BandSweep.summary(s.rows()).contains("5G was still on"), "stale list: and the summary does not say so");
         }
         // 4. a lock the modem rejects
         {

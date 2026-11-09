@@ -39,6 +39,12 @@ public final class LeverRunTest {
         boolean legOffNow;
         boolean nr = true;
         boolean nrCoverage = true;
+        /** The phone also says its 5G label and 5G state (as a real phone does): "NR_ADVANCED"/"CONNECTED" with 5G, "NONE" without. */
+        boolean labels;
+        /** With 5G off the phone keeps listing its old 5G carriers (out-of-date list) while its label and state say there is none. */
+        boolean staleList;
+        /** Leave the 5G state out of what the phone says (some phones print no such line). */
+        boolean noNrState;
         boolean legSupported = true;
         boolean legReadable = true;
         /** 0: "off" drops the 5G cell after 4 s; 1: only "off now" does; 2: nothing does. */
@@ -203,8 +209,12 @@ public final class LeverRunTest {
                 }
                 RadioState s = new RadioState();
                 s.carriers.add(new RadioState.Carrier("LTE", 66, 66611, 20000, true));
-                if (nr) {
+                if (nr || (staleList && fiveGOff)) {
                     s.carriers.add(new RadioState.Carrier("NR", 77, 650000, 100000, false));
+                }
+                if (labels) {
+                    s.display = nr ? "NR_ADVANCED" : "NONE";
+                    s.nrState = noNrState ? "" : (nr ? "CONNECTED" : "NONE");
                 }
                 d.done(true, "", new BandSweep.Observation(s, -104));
             });
@@ -350,6 +360,9 @@ public final class LeverRunTest {
         otherStartingStates();
         unsupportedLeg();
         stubbornFiveGCell();
+        staleCarrierList();
+        baselineIsNeverThrownAway();
+        disobeyedSettingIsDropped();
         observeBroken();
         refusals();
         unreachablePhone();
@@ -680,9 +693,12 @@ public final class LeverRunTest {
         r = go(s, rec, three(), 4, -1);
         ended(s, rec, r, false, false, " [never drops]");
         check(rec.rows.get(2).n() == 0, "measurements of a setting that did not take effect are not counted: " + rec.rows.get(2).n());
-        check(rec.rows.get(2).ineffective == 4, "they are counted as not counted: " + rec.rows.get(2).ineffective);
+        check(rec.rows.get(2).ineffective == LeverRun.DROP_AFTER, "two tries, then it is left out of the other rounds: " + rec.rows.get(2).ineffective);
+        check(rec.rows.get(2).unavailable && rec.rows.get(2).notObeyed, "and it is marked as not obeyed");
         check(rec.best != 2, "and it is never recommended");
         check(LeverRun.line(rec.rows, 2, false).contains("not counted"), "the table says so");
+        check(LeverRun.line(rec.rows, 2, false).contains("this phone does not obey it"), "and that the phone does not obey it: " + LeverRun.line(rec.rows, 2, false));
+        check(r.summary().contains("does not obey that setting"), "the summary says so too: " + r.summary());
         check(s.uploadsStarted == 8, "no speed test was wasted on it: " + s.uploadsStarted);
 
         s = new Sim();
@@ -693,6 +709,124 @@ public final class LeverRunTest {
         r = go(s, rec, three(), 3, -1);
         ended(s, rec, r, false, false, " [no 5G here]");
         check(rec.rows.get(2).n() == 3 && rec.rows.get(2).ineffective == 0, "with no 5G cell at all the setting is simply measured");
+    }
+
+    /**
+     * The user's phone: after "4G only" the phone's own 5G label was gone but its carrier list still named the old 5G carriers
+     * (B66 + n77 + n2). That list is out of date, not a 5G connection, so the measurements must count.
+     */
+    static void staleCarrierList() {
+        // label and state both say "no 5G": believed over the list
+        Sim s = new Sim();
+        s.labels = true;
+        s.staleList = true;
+        s.rnd = new Random(31);
+        s.noise = 0.1;
+        s.fLte = 2.0;
+        Rec rec = new Rec();
+        LeverRun r = go(s, rec, three(), 4, -1);
+        ended(s, rec, r, false, false, " [stale list, label and state]");
+        LeverRun.Row lte = rec.rows.get(1);
+        check(lte.n() == 4 && lte.ineffective == 0, "'4G only' was measured in every round, nothing thrown away: n=" + lte.n() + " ineffective=" + lte.ineffective);
+        check(!lte.unavailable && !lte.notObeyed, "and it is not left out");
+        check(lte.using.contains("old entries") && lte.using.contains("n77"), "the table names the old 5G entries it ignored: " + lte.using);
+        check(!LeverRun.line(rec.rows, 1, false).contains("stayed on 5G"), "the table does not claim the phone stayed on 5G");
+        check(lte.median() > 1.5 * rec.rows.get(0).median(), "and the real difference shows: 4G only " + lte.median() + " vs " + rec.rows.get(0).median());
+
+        // the phone printed a 5G label but no 5G state: 5G was switched off and read back, so the label alone settles it
+        s = new Sim();
+        s.labels = true;
+        s.noNrState = true;
+        s.staleList = true;
+        s.rnd = new Random(32);
+        rec = new Rec();
+        r = go(s, rec, three(), 3, -1);
+        ended(s, rec, r, false, false, " [stale list, label only]");
+        check(rec.rows.get(1).n() == 3 && rec.rows.get(1).ineffective == 0, "label only: still measured: n=" + rec.rows.get(1).n());
+        check(rec.rows.get(1).using.contains("old entries"), "label only: the table names the old entries: " + rec.rows.get(1).using);
+
+        // the phone says NOTHING about 5G besides its list: the list is believed (as before), so a 5G cell that stays is not counted
+        s = new Sim();
+        s.staleList = true; // no label, no state
+        s.rnd = new Random(33);
+        rec = new Rec();
+        r = go(s, rec, three(), 4, -1);
+        ended(s, rec, r, false, false, " [stale list, nothing else said]");
+        check(rec.rows.get(1).n() == 0 && rec.rows.get(1).ineffective == LeverRun.DROP_AFTER,
+                "with no label and no state the list is believed, as before: " + rec.rows.get(1).n() + "/" + rec.rows.get(1).ineffective);
+        check(rec.rows.get(1).evidence.contains("label: not given") && rec.rows.get(1).evidence.contains("state: not given"),
+                "and the table says what the phone did and did not say: " + rec.rows.get(1).evidence);
+
+        // a REAL 5G connection (label and state say so) with 5G allowed but the leg "off": believed, the setting is not obeyed
+        s = new Sim();
+        s.labels = true;
+        s.legMode = 2;
+        s.rnd = new Random(34);
+        rec = new Rec();
+        r = go(s, rec, three(), 4, -1);
+        ended(s, rec, r, false, false, " [real 5G, leg ignored]");
+        check(rec.rows.get(2).n() == 0 && rec.rows.get(2).notObeyed, "a real 5G connection is not mistaken for a stale list");
+        check(rec.rows.get(2).evidence.contains("NR_ADVANCED") && rec.rows.get(2).evidence.contains("CONNECTED"),
+                "and the evidence names the label and the state: " + rec.rows.get(2).evidence);
+    }
+
+    /** "As it is now" is what everything is compared with: it is measured whatever the phone shows, and never asked to drop 5G. */
+    static void baselineIsNeverThrownAway() {
+        // the user's phone: its own setting says "5G leg off", yet it keeps its 5G connection
+        Sim s = new Sim();
+        s.labels = true;
+        s.legOff = true;
+        s.legMode = 2; // nothing drops the cell
+        s.rnd = new Random(35);
+        s.noise = 0.1;
+        Rec rec = new Rec();
+        LeverRun r = go(s, rec, LeverRun.settings(true, true, false), 4, -1);
+        ended(s, rec, r, false, true, " [baseline with an ignored leg-off]");
+        LeverRun.Row base = rec.rows.get(0);
+        check(rec.rows.size() == 2, "'5G leg off' repeats the phone's own setting and is left out: " + rec.rows.size());
+        check(base.n() == 4 && base.ineffective == 0, "the baseline was measured in every round: n=" + base.n() + " ineffective=" + base.ineffective);
+        check(base.note.contains("measured as it is"), "and the table says the phone still uses 5G: " + base.note);
+        check(base.note.indexOf("measured as it is") == base.note.lastIndexOf("measured as it is"), "once, not once per round: " + base.note);
+        check(s.offNowCalls == 0, "the baseline was never asked to drop the 5G cell by force: " + s.offNowCalls);
+        check(rec.rows.get(1).n() == 4, "the other setting was measured too, so there is something to compare");
+        check(!r.summary().contains("nothing can be compared"), "a comparison exists: " + r.summary());
+
+        // 5G off at the start (the phone's own setting) and the phone still shows 5G: the same
+        s = new Sim();
+        s.labels = true;
+        s.fiveGOff = true;
+        s.nr = true; // the cell stays although 5G is off
+        s.rnd = new Random(36);
+        rec = new Rec();
+        r = go(s, rec, LeverRun.settings(false, true, false), 3, -1);
+        ended(s, rec, r, true, false, " [baseline 5G off but a 5G cell]");
+        check(rec.rows.get(0).n() == 3, "the baseline is measured: n=" + rec.rows.get(0).n());
+    }
+
+    /** A setting that is not obeyed twice in a row is dropped: it must not cost the whole run. */
+    static void disobeyedSettingIsDropped() {
+        Sim s = new Sim();
+        s.labels = true;
+        s.legMode = 2;
+        s.rnd = new Random(37);
+        s.noise = 0.1;
+        Rec rec = new Rec();
+        LeverRun r = go(s, rec, three(), 5, -1);
+        ended(s, rec, r, false, false, " [leg never obeyed]");
+        LeverRun.Row leg = rec.rows.get(2);
+        check(leg.ineffective == 2 && leg.n() == 0 && leg.notObeyed, "two tries then dropped: " + leg.ineffective);
+        check(rec.rows.get(0).n() == 5 && rec.rows.get(1).n() == 5, "the others were measured in all 5 rounds");
+        check(s.uploadsStarted == 10, "the dropped setting cost no further speed tests: " + s.uploadsStarted);
+        check(s.offNowCalls == LeverRun.DROP_AFTER, "'off now' was tried once per try, and there were only two tries: " + s.offNowCalls);
+
+        // one bad try and then it takes: NOT dropped, and its number counts
+        s = new Sim();
+        s.legMode = 1; // only "off now" drops it, which works
+        s.rnd = new Random(38);
+        rec = new Rec();
+        r = go(s, rec, three(), 4, -1);
+        ended(s, rec, r, false, false, " [needs off now]");
+        check(!rec.rows.get(2).unavailable && rec.rows.get(2).n() == 4, "a setting that works after 'off now' is kept");
     }
 
     static void observeBroken() {

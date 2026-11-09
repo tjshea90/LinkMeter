@@ -154,10 +154,8 @@ final class LabSection {
                 act.ui.postDelayed(() -> Call.run(act, "GET", "/cells", 35000, (ok2, text2, json2) -> {
                     if (ok2 && json2 != null) {
                         RadioState st = SweepLink.stateOf(json2);
-                        boolean nr = false;
-                        for (RadioState.Carrier c : st.carriers) {
-                            nr |= c.nr();
-                        }
+                        // an out-of-date carrier list is not a 5G cell (see RadioState.nrCarrierInUse)
+                        boolean nr = st.nrCarrierInUse(false);
                         setLeg(legMsg + "\nEight seconds later the phone is using: " + BandSweep.usingText(st)
                                 + (nr ? "" : "  (no 5G cell)"));
                     }

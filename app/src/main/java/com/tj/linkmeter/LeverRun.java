@@ -127,8 +127,12 @@ final class LeverRun {
         int ineffective;
         /** Measurements made although the carriers could not be listed. */
         int unverified;
-        /** The modem cannot do this setting at all (the 5G leg on a modem that cannot switch it). */
+        /** The modem cannot do this setting at all (the 5G leg on a modem that cannot switch it), or does not obey it (notObeyed). */
         boolean unavailable;
+        /** The phone took the setting but kept 5G anyway, twice in a row: it is left out of the other rounds. */
+        boolean notObeyed;
+        /** What the phone said about 5G the last time a measurement was not counted (its list, its label, its state). */
+        String evidence = "";
         String using = "";
         int rsrp = Integer.MIN_VALUE;
         String note = "";
@@ -272,7 +276,7 @@ final class LeverRun {
         Row r = rows.get(i);
         StringBuilder sb = new StringBuilder(best ? "★ " : "  ").append(r.setting.label).append("\n    ");
         if (r.n() == 0) {
-            sb.append(r.unavailable ? "not possible on this phone" : "no upload result");
+            sb.append(r.notObeyed ? "left out: this phone does not obey it" : r.unavailable ? "not possible on this phone" : "no upload result");
         } else {
             sb.append(String.format(Locale.US, "upload median %.2f Mbit/s", r.median()));
             sb.append(" (");
@@ -297,6 +301,9 @@ final class LeverRun {
         if (r.ineffective > 0) {
             sb.append("\n    ").append(r.ineffective).append(r.ineffective == 1 ? " measurement" : " measurements")
                     .append(" not counted: the phone stayed on 5G");
+            if (!r.evidence.isEmpty()) {
+                sb.append("\n    last reading: ").append(r.evidence);
+            }
         }
         if (r.unverified > 0) {
             sb.append("\n    ").append(r.unverified).append(r.unverified == 1 ? " measurement" : " measurements")
@@ -342,7 +349,10 @@ final class LeverRun {
         }
         for (int i = 1; i < rows.size(); i++) {
             Row r = rows.get(i);
-            if (r.unavailable) {
+            if (r.notObeyed) {
+                sb.append("\n\"").append(r.setting.label).append("\" was left out: the phone kept 5G although it was told not to, "
+                        + "so there is no honest number for it (this phone does not obey that setting).");
+            } else if (r.unavailable) {
                 sb.append("\n\"").append(r.setting.label).append("\" is not possible on this phone's modem.");
             } else if (verdict(base, r) == Verdict.WORSE) {
                 sb.append("\n\"").append(r.setting.label).append("\" was WORSE than \"").append(base.setting.label).append("\".");
@@ -352,6 +362,9 @@ final class LeverRun {
     }
 
     // ------------------------------------------------------------ the run
+
+    /** A setting the phone took but did not obey (5G stayed) this many times in a row, with no number yet, is left out of the other rounds. */
+    static final int DROP_AFTER = 2;
 
     private final Link link;
     private final Listener ui;
@@ -600,15 +613,6 @@ final class LeverRun {
         link.later(waitMs, () -> verify(t0));
     }
 
-    private static boolean hasNr(RadioState s) {
-        for (RadioState.Carrier c : s.carriers) {
-            if (c.nr()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /** Looks at the carriers until the setting has taken effect (no 5G cell when it says none), then measures. */
     private void verify(final long t0) {
         if (cancelled) {
@@ -626,15 +630,27 @@ final class LeverRun {
                 measure();
                 return;
             }
-            row.using = BandSweep.usingText(obs.state);
+            row.using = BandSweep.usingText(obs.state, row.target.fiveGOff);
             row.rsrp = obs.rsrp;
-            if (!row.target.expectNoNr() || !hasNr(obs.state)) {
+            // A 5G carrier in the phone's list counts only if the phone's own 5G label and state do not contradict it: the list can
+            // be out of date for a while after 5G was switched off (that made this run call a phone that had gone to 4G "still on 5G").
+            if (!row.target.expectNoNr() || !obs.state.nrCarrierInUse(row.target.fiveGOff)) {
                 measure();
                 return;
             }
             long waited = link.now() - t0;
             if (waited < 20000) {
                 link.later(3000, () -> verify(t0));
+                return;
+            }
+            if (isBaseline(row)) {
+                // "As it is now" is what the phone does when it is left alone, and everything else is compared with it: it is measured
+                // whatever the phone shows (and never asked to drop 5G), and the table says so.
+                String said = "the phone is set to keep 5G off but still uses it: measured as it is";
+                if (!row.note.contains(said)) {
+                    row.note = join(row.note, said);
+                }
+                measure();
                 return;
             }
             if (Boolean.TRUE.equals(row.target.legOff) && !escalated) {
@@ -652,10 +668,20 @@ final class LeverRun {
                 return;
             }
             row.ineffective++;
-            row.note = join(row.note, "the phone stayed on 5G, so this setting could not be tested");
+            row.evidence = obs.state.fiveGEvidence();
+            if (row.n() == 0 && row.ineffective >= DROP_AFTER) {
+                // the phone took the setting but kept 5G twice in a row: it will not obey, and every further round would only cost minutes
+                row.unavailable = true;
+                row.notObeyed = true;
+            }
             publish();
             next();
         });
+    }
+
+    /** "As it is now" changes nothing, so it is never judged by what the phone shows. */
+    private static boolean isBaseline(Row r) {
+        return r.setting.fiveG == null && r.setting.leg == null;
     }
 
     /** The upload-only speed test on the phone's mobile data. */
