@@ -434,10 +434,10 @@ final class LabSection {
                 hunt.add(new SignalHunt.Sample(now,
                         SignalHunt.rsrp(json.optInt("lteRsrp", Integer.MAX_VALUE)),
                         SignalHunt.rsrq(json.optInt("lteRsrq", Integer.MAX_VALUE)),
-                        SignalHunt.sinr(json.optInt("lteSinr", Integer.MAX_VALUE)),
+                        SignalHunt.sinrRaw(json.optInt("lteSinr", Integer.MAX_VALUE)),
                         SignalHunt.cqi(json.optInt("lteCqi", Integer.MAX_VALUE)),
                         SignalHunt.rsrp(json.optInt("nrRsrp", Integer.MAX_VALUE)),
-                        SignalHunt.sinr(json.optInt("nrSinr", Integer.MAX_VALUE))));
+                        SignalHunt.nrSinr(json.optInt("nrSinr", Integer.MAX_VALUE))));
                 paintHunt(now, json.optString("net", ""));
             } else {
                 setHunt("The phone did not answer: " + (json != null && json.has("err") ? json.optString("err") : text)
@@ -477,12 +477,13 @@ final class LabSection {
         }
     }
 
-    private static SignalHunt.Avg oneReading(SignalHunt.Sample s) {
+    private SignalHunt.Avg oneReading(SignalHunt.Sample s) {
         SignalHunt.Avg a = new SignalHunt.Avg();
         a.count = 1;
         a.lteRsrp = s.lteRsrp;
         a.lteRsrq = s.lteRsrq;
-        a.lteSinr = s.lteSinr;
+        a.lteSinrRaw = s.lteSinr;
+        a.lteSinr = hunt.sinrKnown() && s.lteSinr != SignalHunt.NA ? Math.round(s.lteSinr / 10f) : SignalHunt.NA;
         a.lteCqi = s.lteCqi;
         a.nrRsrp = s.nrRsrp;
         a.nrSinr = s.nrSinr;

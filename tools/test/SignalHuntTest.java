@@ -42,9 +42,9 @@ public final class SignalHuntTest {
         check(SignalHunt.rsrp(-104) == -104 && SignalHunt.rsrp(Integer.MAX_VALUE) == NA && SignalHunt.rsrp(0) == NA
                 && SignalHunt.rsrp(-141) == NA && SignalHunt.rsrp(-140) == -140 && SignalHunt.rsrp(-40) == -40 && SignalHunt.rsrp(-39) == NA, "RSRP range");
         check(SignalHunt.rsrq(-12) == -12 && SignalHunt.rsrq(Integer.MAX_VALUE) == NA && SignalHunt.rsrq(-44) == NA && SignalHunt.rsrq(21) == NA, "RSRQ range");
-        check(SignalHunt.sinr(4) == 4 && SignalHunt.sinr(-12) == -12 && SignalHunt.sinr(30) == 30, "whole dB stay");
-        check(SignalHunt.sinr(55) == 6 && SignalHunt.sinr(-150) == -15 && SignalHunt.sinr(120) == 12, "tenths of a dB are turned into dB: " + SignalHunt.sinr(55));
-        check(SignalHunt.sinr(Integer.MAX_VALUE) == NA && SignalHunt.sinr(1000) == NA && SignalHunt.sinr(-1000) == NA, "SINR out of range is NA");
+        check(SignalHunt.sinrRaw(4) == 4 && SignalHunt.sinrRaw(-12) == -12 && SignalHunt.sinrRaw(300) == 300 && SignalHunt.sinrRaw(-200) == -200, "a raw SINR is kept as it is");
+        check(SignalHunt.sinrRaw(Integer.MAX_VALUE) == NA && SignalHunt.sinrRaw(1000) == NA && SignalHunt.sinrRaw(-1000) == NA, "a raw SINR out of range is NA");
+        check(SignalHunt.nrSinr(-3) == -3 && SignalHunt.nrSinr(40) == 40 && SignalHunt.nrSinr(Integer.MAX_VALUE) == NA && SignalHunt.nrSinr(300) == NA, "NR SINR is whole dB");
         check(SignalHunt.cqi(0) == 0 && SignalHunt.cqi(15) == 15 && SignalHunt.cqi(16) == NA && SignalHunt.cqi(Integer.MAX_VALUE) == NA && SignalHunt.cqi(-1) == NA, "CQI range");
 
         // ---- the score
@@ -64,6 +64,73 @@ public final class SignalHuntTest {
         }
         check(SignalHunt.rating(-1).equals("no reading") && SignalHunt.rating(10).equals("very weak") && SignalHunt.rating(30).equals("weak")
                 && SignalHunt.rating(60).equals("fair") && SignalHunt.rating(90).equals("good"), "ratings");
+
+        // the weights: power 50, quality 20, SINR 30 (70 : 30 without SINR)
+        {
+            SignalHunt.Avg a = new SignalHunt.Avg();
+            a.lteRsrp = -80;
+            a.lteRsrq = -20;
+            a.lteSinr = -5;
+            check(SignalHunt.score(a) == 50, "good power, worst quality and SINR: " + SignalHunt.score(a));
+            a.lteSinr = NA;
+            check(SignalHunt.score(a) == 71, "good power, worst quality, no SINR: " + SignalHunt.score(a));
+            a.lteRsrq = -8;
+            check(SignalHunt.score(a) == 100, "good power and quality, no SINR: " + SignalHunt.score(a));
+            a.lteRsrp = NA;
+            check(SignalHunt.score(a) == 100, "quality alone");
+            a.lteRsrq = -20;
+            check(SignalHunt.score(a) == 0, "worst quality alone");
+            SignalHunt.Avg b = new SignalHunt.Avg();
+            b.lteRsrp = -100;
+            int lowQ = 0;
+            int prev = -1;
+            for (int q = -25; q <= 0; q++) {
+                b.lteRsrq = q;
+                int sc = SignalHunt.score(b);
+                check(sc >= prev, "better quality never scores lower at " + q);
+                prev = sc;
+                lowQ = sc;
+            }
+            check(lowQ == 100 || lowQ > 0, "the quality scale is used");
+        }
+
+        // ---- SINR and its unit: never guessed
+        {
+            // raw values that could be whole dB or tenths: shown raw, left out of the score
+            SignalHunt h = new SignalHunt();
+            SignalHunt g = new SignalHunt();
+            for (int i = 0; i < 12; i++) {
+                h.add(new SignalHunt.Sample(i * 1000L, -112, -14, 25, NA, NA, NA)); // 25: 25 dB, or 2.5 dB?
+                g.add(new SignalHunt.Sample(i * 1000L, -112, -14, -5, NA, NA, NA)); // -5: -5 dB, or -0.5 dB?
+            }
+            check(!h.sinrKnown() && !g.sinrKnown(), "readings that fit both units do not decide the unit");
+            SignalHunt.Avg ah = h.average(11_000, SignalHunt.WINDOW_MS);
+            check(ah.lteSinr == NA && ah.lteSinrRaw == 25, "the SINR is shown raw: " + ah.lteSinr + " " + ah.lteSinrRaw);
+            check(SignalHunt.score(ah) == SignalHunt.score(g.average(11_000, SignalHunt.WINDOW_MS)),
+                    "so a weak spot is NOT scored higher because its raw SINR looks like 25 dB");
+            check(SignalHunt.score(ah) < 40, "a weak spot scores low: " + SignalHunt.score(ah));
+            check(SignalHunt.describe(ah).contains("SINR 25 (unit unknown)"), "and the words say the unit is unknown: " + SignalHunt.describe(ah));
+            // one value that cannot be whole dB proves tenths, for the whole session
+            h.add(new SignalHunt.Sample(12_000, -112, -14, 100, NA, NA, NA)); // 100 = 10 dB in tenths
+            check(h.sinrKnown(), "a reading above 30 proves the unit is tenths of a dB");
+            SignalHunt.Avg bh = h.average(12_000, SignalHunt.WINDOW_MS);
+            check(bh.lteSinr != NA, "from then on SINR counts");
+            // the window now holds 25 x 10 (readings 2..11) and 100: mean raw 33.6 -> 3.4 dB
+            check(bh.lteSinr == 3, "and is read in tenths: " + bh.lteSinr);
+            check(SignalHunt.describe(bh).contains("SINR 3 dB"), "and shown in dB: " + SignalHunt.describe(bh));
+            h.add(new SignalHunt.Sample(13_000, -112, -14, 30, NA, NA, NA));
+            check(h.sinrKnown(), "the unit stays known for the session");
+            h.reset();
+            check(!h.sinrKnown(), "a reset forgets it");
+            // a value below -20 proves it too
+            SignalHunt n = new SignalHunt();
+            n.add(new SignalHunt.Sample(0, -110, -12, -40, NA, NA, NA));
+            check(n.sinrKnown(), "-40 cannot be whole dB either");
+            // the documented limit: a whole-dB phone that really has more than 30 dB of SINR is read as tenths
+            SignalHunt w = new SignalHunt();
+            w.add(new SignalHunt.Sample(0, -80, -6, 35, NA, NA, NA));
+            check(w.sinrKnown(), "a whole-dB phone at 35 dB looks like tenths (rare, and only lowers that score)");
+        }
 
         // ---- the tone
         check(SignalHunt.toneHz(-1) == 0, "no beep without a reading");
@@ -128,7 +195,8 @@ public final class SignalHuntTest {
             h.add(new SignalHunt.Sample(0, -100, NA, NA, NA, NA, NA));
             h.add(new SignalHunt.Sample(1000, -110, NA, 4, NA, NA, NA));
             SignalHunt.Avg a = h.average(1000, 10_000);
-            check(a.lteRsrp == -105 && a.lteSinr == 4 && a.lteRsrq == NA && a.lteCqi == NA && a.count == 2, "NA is left out of the average: " + a.lteRsrp + " " + a.lteSinr);
+            check(a.lteRsrp == -105 && a.lteSinrRaw == 4 && a.lteSinr == NA && a.lteRsrq == NA && a.lteCqi == NA && a.count == 2,
+                    "NA is left out of the average, and a SINR of unknown unit stays raw: " + a.lteRsrp + " " + a.lteSinrRaw + " " + a.lteSinr);
         }
         // a hundred and fifty readings: only the recent ones are kept
         {
@@ -192,6 +260,10 @@ public final class SignalHuntTest {
             a.nrSinr = -3;
             String d = SignalHunt.describe(a);
             check(d.equals("4G -104 dBm, SINR 4 dB, RSRQ -12, CQI 6 | 5G -112 dBm, SINR -3 dB"), "describe: " + d);
+            SignalHunt.Avg u = avg(-104, NA, NA);
+            u.lteSinrRaw = 25;
+            u.lteRsrq = -12;
+            check(SignalHunt.describe(u).equals("4G -104 dBm, SINR 25 (unit unknown), RSRQ -12"), "describe with an unknown unit: " + SignalHunt.describe(u));
             check(SignalHunt.describe(new SignalHunt.Avg()).equals("4G -, SINR -, RSRQ -"), "describe with nothing: " + SignalHunt.describe(new SignalHunt.Avg()));
         }
 
