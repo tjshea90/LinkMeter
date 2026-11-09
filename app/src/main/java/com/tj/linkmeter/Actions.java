@@ -1,6 +1,9 @@
 package com.tj.linkmeter;
 
 import android.content.Context;
+import android.provider.Settings;
+import android.telephony.ServiceState;
+import android.telephony.TelephonyManager;
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,6 +27,14 @@ final class Actions {
      * switched off and on) or "failed: why". The restart drops the hotspot, so the tablet cannot be told when it ends by the reply.
      */
     private static volatile String cycleState = "none";
+
+    /**
+     * Airplane mode started from the tablet ends by itself after this long: the tablet cannot end it (the link goes down with the
+     * radio), so without this a forgotten "Airplane on" would leave the phone offline until someone picks it up.
+     */
+    static final long AIRPLANE_AUTO_OFF_MS = 15L * 60 * 1000;
+    /** A deliberate radio-off is over in a few seconds; if it is still on after this long, the safety net switches the radio back on. */
+    private static final long BLIP_GRACE_MS = 45L * 1000;
 
     /** These cut the link to the tablet, so the phone answers first and acts a moment later. */
     static boolean isDelayed(String name) {
@@ -61,10 +72,12 @@ final class Actions {
         new Thread(() -> {
             try {
                 Thread.sleep(800);
+                markRadioRisk(app, name); // BEFORE the radio goes off: a cut-off must still be undone
                 Priv.Result r = Priv.run(delayedCommand(app, name), 60);
                 if (name.equals("radio_cycle")) {
                     cycleState = r.out.contains("OK ") ? "done" : "failed: " + firstLine(r.out);
                 }
+                finishRadioRisk(app, name);
             } catch (IOException | InterruptedException e) {
                 // the tablet has already lost the link; nothing to report to (but a radio restart records how it went)
                 if (name.equals("radio_cycle")) {
@@ -90,6 +103,8 @@ final class Actions {
             case "menu_dial":
                 return Menus.dial(arg);
             case "airplane_off":
+                Saved.clearAirplaneUntil(c);
+                Saved.clearBlip(c);
                 return report(Priv.run("cmd connectivity airplane-mode disable", 15), "Airplane mode is off.");
             case "screen_off":
                 return report(Priv.run("input keyevent 223", 10), "Screen is off.");
@@ -297,6 +312,96 @@ final class Actions {
         return (i < 0 ? s : s.substring(0, i)).trim();
     }
 
+    // ------------------------------------------------------------ radio-off and airplane failsafes
+
+    /** Before a deliberate radio-off, or an airplane mode the tablet cannot end: write it down, so a cut-off session still gets undone. */
+    private static void markRadioRisk(Context app, String name) {
+        long now = System.currentTimeMillis();
+        if (name.equals("radio_cycle") || name.equals("hotspot_off")) {
+            Saved.rememberBlip(app, now);
+            Guard.arm(app);
+        } else if (name.equals("airplane_on")) {
+            Saved.rememberAirplaneUntil(app, now + AIRPLANE_AUTO_OFF_MS);
+            Guard.arm(app);
+        }
+    }
+
+    /** After a radio-off: make sure the radio really is back on, forcing it if not, and only then forget the risk. */
+    private static void finishRadioRisk(Context app, String name) {
+        if ((name.equals("radio_cycle") || name.equals("hotspot_off")) && radioBack(app)) {
+            Saved.clearBlip(app);
+        } // otherwise the flag stays and the safety net keeps trying
+    }
+
+    /** 1 = the radio is on and airplane mode is off, 0 = it is definitely off, -1 = cannot tell. Android's own state, no Shizuku needed. */
+    private static int radioState(Context app) {
+        try {
+            if (Settings.Global.getInt(app.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1) {
+                return 0;
+            }
+            TelephonyManager tm = app.getSystemService(TelephonyManager.class);
+            ServiceState ss = tm == null ? null : tm.getServiceState();
+            if (ss == null) {
+                return -1;
+            }
+            return ss.getState() == ServiceState.STATE_POWER_OFF ? 0 : 1;
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /** Polls for up to `seconds` while the radio is definitely off; returns the last state (see radioState). */
+    private static int waitRadioState(Context app, int seconds) {
+        int st = radioState(app);
+        for (int i = 0; i < seconds / 2 && st == 0; i++) {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            st = radioState(app);
+        }
+        return st;
+    }
+
+    /**
+     * Makes sure the radio is on and airplane mode is off: both are switched on (harmless if they already are), and if the radio is
+     * then DEFINITELY still off, the airplane toggle a person would do. True when it is on or cannot be told to be off.
+     */
+    private static boolean radioBack(Context app) {
+        try {
+            Priv.run("cmd connectivity airplane-mode disable", 15);
+            Cells.shellMain(app, "radio-on");
+            if (waitRadioState(app, 20) != 0) {
+                return true;
+            }
+            Priv.run("cmd connectivity airplane-mode enable; sleep 3; cmd connectivity airplane-mode disable", 30);
+            Cells.shellMain(app, "radio-on");
+            return waitRadioState(app, 30) != 0;
+        } catch (IOException e) {
+            return false; // Shizuku is off: the Phone tab shows the manual steps
+        }
+    }
+
+    /** Is a radio-off that never ended, or an airplane mode whose time is up, waiting to be undone? */
+    static boolean timersDue(Context app) {
+        long now = System.currentTimeMillis();
+        long blip = Saved.blip(app);
+        long air = Saved.airplaneUntil(app);
+        boolean blipDue = blip > 0 && (now - blip > BLIP_GRACE_MS || now < blip);
+        boolean airDue = air > 0 && (now >= air || air - now > AIRPLANE_AUTO_OFF_MS + 60_000L);
+        return blipDue || airDue;
+    }
+
+    /** Called by the safety net (and at every service start): finishes what a cut-off session left half-way. */
+    static void recoverTimers(Context app) {
+        if (timersDue(app) && radioBack(app)) {
+            Saved.clearBlip(app);
+            Saved.clearAirplaneUntil(app);
+        }
+    }
+
     /** Puts the radio back: no band lock, and the network types as they were (or the usual default). */
     static String restoreRadio(Context c) {
         StringBuilder sb = new StringBuilder();
@@ -306,6 +411,7 @@ final class Actions {
                     : "could not be cleared (" + firstLine(r.out) + ").").append('\n');
             if (r.out.contains("OK ")) {
                 Cells.clearState();
+                Saved.clearLock(c);
             }
         } catch (IOException e) {
             sb.append("Band lock: ").append(e.getMessage()).append('\n');
@@ -314,6 +420,17 @@ final class Actions {
             Cells.shellMain(c, "radio-on"); // a band test may have been cut off while the radio was off
         } catch (IOException ignored) {
             // nothing more to do here
+        }
+        if (Saved.blip(c) > 0 || Saved.airplaneUntil(c) > 0) {
+            // a radio-off or an airplane mode that LinkMeter started is still in place: end it
+            try {
+                Priv.run("cmd connectivity airplane-mode disable", 15);
+                Saved.clearBlip(c);
+                Saved.clearAirplaneUntil(c);
+                sb.append("Airplane mode and radio: switched back on.\n");
+            } catch (IOException e) {
+                sb.append("Airplane mode and radio: ").append(e.getMessage()).append('\n');
+            }
         }
         if (Saved.nrLegChanged(c)) {
             // LinkMeter switched the 5G leg off: put it back on (a normal phone has it on)

@@ -45,8 +45,10 @@ final class ControlTab extends Tab {
 
         col.addView(Ui.button(act, "Restore everything (fix internet)", v -> restoreDialog(act)),
                 Ui.lp(act, 10));
-        col.addView(Ui.button(act, "Restart modem", v -> send("restart_modem", "Restarting the modem", 40000)),
-                Ui.lp(act, 4));
+        col.addView(Ui.button(act, "Restart modem", v -> confirm("Restart the modem?",
+                "The phone loses mobile data and the hotspot for about a minute while the modem restarts. If mobile data does not "
+                        + "come back, press Restore everything on the phone (LinkMeter > Phone) or restart the phone.",
+                "restart_modem", 40000)), Ui.lp(act, 4));
         col.addView(Ui.text(act, "Use these if a band lock or network change leaves the phone without "
                 + "internet. They work over the hotspot even when the phone has no mobile data.",
                 12, Ui.DIM, false), Ui.lp(act, 4));
@@ -72,8 +74,9 @@ final class ControlTab extends Tab {
                         "The tablet will lose its connection. To turn it back on, use the phone.",
                         "hotspot_off")),
                 Ui.button(act, "Airplane on", v -> confirm("Turn airplane mode on?",
-                        "The tablet will lose its connection and the phone will have no signal "
-                                + "until airplane mode is turned off on the phone.", "airplane_on")),
+                        "The tablet will lose its connection and the phone will have no signal. The phone turns airplane "
+                                + "mode off by itself after 15 minutes (the tablet cannot, the link goes down). To end it sooner: "
+                                + "LinkMeter > Phone > Restore, or airplane mode in the phone's quick settings.", "airplane_on")),
                 Ui.button(act, "Power off", v -> confirm("Power the phone off?",
                         "The phone shuts down. You will need to switch it on by hand.",
                         "poweroff"))));
@@ -249,10 +252,14 @@ final class ControlTab extends Tab {
     }
 
     private void confirm(String title, String msg, final String name) {
+        confirm(title, msg, name, 15000);
+    }
+
+    private void confirm(String title, String msg, final String name, final int readMs) {
         new AlertDialog.Builder(act)
                 .setTitle(title)
                 .setMessage(msg)
-                .setPositiveButton("Do it", (d, w) -> send(name, "Sending", 15000))
+                .setPositiveButton("Do it", (d, w) -> send(name, "Sending", readMs))
                 .setNegativeButton("Cancel", null)
                 .show();
     }

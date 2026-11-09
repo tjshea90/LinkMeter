@@ -30,6 +30,9 @@ java -cp "$out" com.tj.linkmeter.NrLegTest || fail=1
 echo "== Fair comparison of settings (LeverRun: random order within rounds, a sign-test verdict, a setting counts only when the phone really took it, always put back; simulated phones)"
 javac -proc:none -cp "$out" -d "$out" app/src/main/java/com/tj/linkmeter/LeverRun.java tools/test/LeverRunTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LeverRunTest || fail=1
+echo "== Safety net (GuardPolicy: when the phone undoes LinkMeter's changes by itself: never fights the user, always acts when data stays down)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/GuardPolicy.java tools/test/GuardPolicyTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.GuardPolicyTest || fail=1
 echo "== Best spot for the phone (SignalHunt: the 10 s average, the upload score, the beep, marked spots)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SignalHunt.java tools/test/SignalHuntTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.SignalHuntTest || fail=1

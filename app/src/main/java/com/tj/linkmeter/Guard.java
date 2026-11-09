@@ -7,80 +7,117 @@ import android.net.NetworkCapabilities;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.Settings;
+import android.telephony.TelephonyManager;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Safety net for radio changes (band lock, 4G/5G). After one, it watches mobile data for ten
- * minutes. If data has not worked for two minutes in a row it undoes the change by itself and
- * posts a notification, so a bad setting can never leave the phone without internet.
- * It is idle the rest of the time and uses no timers outside that window.
+ * The phone's safety net for everything LinkMeter changes on its radio: network types, a band lock (even a "kept" one), the 5G leg,
+ * a radio that was switched off for a moment, airplane mode started from the tablet. The rules are in {@link GuardPolicy} (tested
+ * on a computer): in short, if mobile data is down for two minutes (the first ten minutes after a change) or four minutes (later)
+ * while any of that is still in place, the phone puts it back by itself, with no tablet and no internet, and says so in a
+ * notification. It judges the CELLULAR network, not whatever network happens to be active (a working Wi-Fi must not hide a dead
+ * mobile connection), and it never fights the user: airplane mode or mobile data switched off by hand count as "cannot tell".
+ * It watches only while something is still changed, a quick look every 20 s at first and once a minute later, so it costs nothing
+ * the rest of the time. {@link #resume} re-arms it when the service starts, so a restart of the app or the phone does not lose it.
  */
 final class Guard {
-    private static final long STEP_MS = 20000L;
-    private static final long WATCH_MS = 10L * 60 * 1000;
-    private static final long BAD_LIMIT_MS = 2L * 60 * 1000;
     private static final Handler H = new Handler(Looper.getMainLooper());
-
+    private static final GuardPolicy POLICY = new GuardPolicy();
+    private static final AtomicBoolean RECOVERING = new AtomicBoolean();
+    private static Context appCtx;
     private static boolean running;
-    private static long endAt;
-    private static long badSince;
 
     private Guard() {}
 
-    /** Call after any change that could affect mobile data. Safe to call again: it extends the window. */
+    /** Call after any change that could affect mobile data. Safe to call again: it starts the close watch over. */
     static synchronized void arm(Context c) {
-        final Context app = c.getApplicationContext();
-        endAt = SystemClock.elapsedRealtime() + WATCH_MS;
-        badSince = 0;
+        appCtx = c.getApplicationContext();
+        POLICY.arm(SystemClock.elapsedRealtime());
+        start();
+    }
+
+    /** The service has started: if anything LinkMeter changed is still in place, watch closely again. */
+    static synchronized void resume(Context c) {
+        appCtx = c.getApplicationContext();
+        if (Saved.pendingRadio(appCtx)) {
+            POLICY.arm(SystemClock.elapsedRealtime());
+            start();
+        }
+    }
+
+    private static void start() {
         if (running) {
             return;
         }
         running = true;
-        H.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (!step(app)) {
-                    H.postDelayed(this, STEP_MS);
-                }
-            }
-        }, STEP_MS);
+        H.postDelayed(TICK, GuardPolicy.FAST_STEP_MS);
     }
 
-    /** Returns true when watching is over. */
-    private static synchronized boolean step(final Context app) {
-        long now = SystemClock.elapsedRealtime();
-        if (now > endAt) {
+    private static final Runnable TICK = new Runnable() {
+        @Override
+        public void run() {
+            step();
+        }
+    };
+
+    private static synchronized void step() {
+        final Context app = appCtx;
+        if (app == null) {
             running = false;
-            return true;
+            return;
         }
-        if (dataWorks(app)) {
-            badSince = 0;
-            return false;
+        // a radio that was switched off for a moment and never came back, airplane mode that was meant to end: finish that first
+        if (Actions.timersDue(app) && RECOVERING.compareAndSet(false, true)) {
+            new Thread(() -> {
+                try {
+                    Actions.recoverTimers(app);
+                } finally {
+                    RECOVERING.set(false);
+                }
+            }, "linkmeter-recover").start();
         }
-        if (badSince == 0) {
-            badSince = now;
-            return false;
-        }
-        if (now - badSince >= BAD_LIMIT_MS) {
+        GuardPolicy.Decision d = POLICY.step(SystemClock.elapsedRealtime(), Saved.pendingRadio(app), dataState(app));
+        if (d.act == GuardPolicy.Act.STOP) {
             running = false;
+            return;
+        }
+        if (d.act == GuardPolicy.Act.RESTORE) {
             new Thread(() -> {
                 String report = Actions.restoreRadio(app);
                 Notice.post(app, "LinkMeter undid a network change",
-                        "Mobile data stopped working after a change, so the band lock and network "
-                                + "types were put back.\n" + report);
+                        "Mobile data stopped working while something LinkMeter had changed was still in place, so it was put back.\n"
+                                + report);
             }, "linkmeter-guard").start();
-            return true;
         }
-        return false;
+        H.postDelayed(TICK, d.nextMs);
     }
 
-    private static boolean dataWorks(Context c) {
+    /**
+     * GOOD: a cellular network with working internet. BAD: none. UNKNOWN: cannot tell, or the user chose it (airplane mode, mobile
+     * data switched off, no answer from Android): never counted against LinkMeter's changes.
+     */
+    private static GuardPolicy.Data dataState(Context c) {
         try {
+            if (Settings.Global.getInt(c.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1) {
+                return GuardPolicy.Data.UNKNOWN;
+            }
+            TelephonyManager tm = c.getSystemService(TelephonyManager.class);
+            if (tm != null && !tm.isDataEnabled()) {
+                return GuardPolicy.Data.UNKNOWN;
+            }
             ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
-            Network n = cm.getActiveNetwork();
-            NetworkCapabilities nc = n == null ? null : cm.getNetworkCapabilities(n);
-            return nc != null && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+            for (Network n : cm.getAllNetworks()) {
+                NetworkCapabilities nc = cm.getNetworkCapabilities(n);
+                if (nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                        && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        && nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+                    return GuardPolicy.Data.GOOD;
+                }
+            }
+            return GuardPolicy.Data.BAD;
         } catch (RuntimeException e) {
-            return true; // can't tell: don't undo anything
+            return GuardPolicy.Data.UNKNOWN; // can't tell: don't undo anything
         }
     }
 }

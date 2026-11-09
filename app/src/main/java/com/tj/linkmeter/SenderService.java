@@ -67,6 +67,7 @@ public class SenderService extends Service {
                 Eco.onServiceStart(getApplicationContext());
                 Updater.cleanup(getApplicationContext());
                 RemoteProfile.recover(getApplicationContext());
+                Guard.resume(getApplicationContext()); // anything LinkMeter changed and left: watch it again, finish a cut-off radio-off
             }
         }
         // Sticky: if Android ever stops it, it comes back by itself.

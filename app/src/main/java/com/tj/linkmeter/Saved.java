@@ -46,6 +46,56 @@ final class Saved {
         sp(c).edit().remove("nrleg").apply();
     }
 
+    // ---- the other things the safety net must be able to undo, even after the app was killed or the phone restarted
+
+    /** A band lock is (or may be) on. Written BEFORE the lock is asked for, cleared when it is gone. */
+    static void rememberLock(Context c) {
+        sp(c).edit().putBoolean("lock", true).apply();
+    }
+
+    static boolean lockOn(Context c) {
+        return sp(c).getBoolean("lock", false);
+    }
+
+    static void clearLock(Context c) {
+        sp(c).edit().remove("lock").apply();
+    }
+
+    /**
+     * A deliberate short radio-off (the radio restart, the airplane-mode blip behind "Hotspot off") started at this wall-clock time.
+     * Written BEFORE the radio goes off and cleared once it is confirmed back on: if the app dies in between, the next start finds
+     * it and switches the radio back on. 0 = none.
+     */
+    static void rememberBlip(Context c, long at) {
+        sp(c).edit().putLong("blip", at).apply();
+    }
+
+    static long blip(Context c) {
+        return sp(c).getLong("blip", 0);
+    }
+
+    static void clearBlip(Context c) {
+        sp(c).edit().remove("blip").apply();
+    }
+
+    /** Airplane mode was turned on from the tablet and ends by itself at this wall-clock time (the tablet cannot end it: the link is down). 0 = none. */
+    static void rememberAirplaneUntil(Context c, long at) {
+        sp(c).edit().putLong("airUntil", at).apply();
+    }
+
+    static long airplaneUntil(Context c) {
+        return sp(c).getLong("airUntil", 0);
+    }
+
+    static void clearAirplaneUntil(Context c) {
+        sp(c).edit().remove("airUntil").apply();
+    }
+
+    /** Is anything LinkMeter changed still in place that could stop mobile data? Then the safety net keeps watching. */
+    static boolean pendingRadio(Context c) {
+        return types(c) > 0 || nrLegChanged(c) || lockOn(c) || blip(c) > 0 || airplaneUntil(c) > 0;
+    }
+
     /** The hotspot band before the first change: 1 = 2.4 GHz, 2 = 5 GHz, 3 = either. */
     static void rememberHotspotBand(Context c, int band) {
         SharedPreferences p = sp(c);

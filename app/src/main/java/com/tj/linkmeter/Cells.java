@@ -202,6 +202,10 @@ final class Cells {
 
     /** spec: "lte:5,12;nr:71", or empty to clear. The caller has already checked the characters. */
     static String applyBands(Context c, String spec) throws IOException {
+        if (!spec.isEmpty()) {
+            Saved.rememberLock(c); // before the lock is asked for: a cut-off must still be undone
+        }
+        // if this throws (Shizuku went away) the lock may or may not be on: the flag stays, and the safety net clears it
         Priv.Result r = shellMain(c, spec.isEmpty() ? "bands-clear" : "bands-set '" + spec + "'");
         boolean ok = r.out.contains("OK ");
         if (ok && !spec.isEmpty()) {
@@ -212,6 +216,9 @@ final class Cells {
             Guard.arm(c);
         } else if (ok) {
             clearState();
+            Saved.clearLock(c);
+        } else if (!spec.isEmpty()) {
+            Saved.clearLock(c); // the modem refused it: nothing is locked
         }
         return r.out;
     }
@@ -245,6 +252,7 @@ final class Cells {
             try {
                 if (shellMain(app, "bands-clear").out.contains("OK ")) {
                     clearState();
+                    Saved.clearLock(app);
                 }
             } catch (IOException ignored) {
                 // Shizuku is off; nothing more can be done from here
