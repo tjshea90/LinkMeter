@@ -380,6 +380,11 @@ final class LeverRun {
     private boolean origFiveGOff;
     private boolean origLegOff;
     private boolean legReadable;
+    /**
+     * The phone's modem says it cannot switch the 5G leg. Then the leg has no setting at all: the state the phone reports for it
+     * ("off") is only the answer of a modem that has nothing to report, so it is not believed, and no setting is judged by it.
+     */
+    private boolean legUnsupported;
     /** The believed leg state is known to match the phone: it was read, or the run has set it itself. */
     private boolean legSynced;
     private boolean curFiveGOff;
@@ -448,7 +453,8 @@ final class LeverRun {
             origFiveGOff = ok && Boolean.TRUE.equals(off);
             curFiveGOff = origFiveGOff;
             link.legOff((ok2, text2, off2) -> {
-                legReadable = ok2 && off2 != null;
+                legUnsupported = NrLeg.cannot(text2);
+                legReadable = !legUnsupported && ok2 && off2 != null;
                 legSynced = legReadable;
                 origLegOff = legReadable && Boolean.TRUE.equals(off2);
                 curLegOff = origLegOff;
@@ -468,9 +474,21 @@ final class LeverRun {
     /** Works out what each setting means for this phone, drops repeats, and orders the measurements round by round. */
     private void plan() {
         List<Target> seen = new ArrayList<>();
+        boolean asksForLeg = false;
         for (Setting s : wanted) {
             boolean fiveGOff = s.fiveG == null ? origFiveGOff : !s.fiveG;
-            Boolean legOff = fiveGOff ? null : (s.leg == null ? Boolean.valueOf(origLegOff) : Boolean.valueOf(!s.leg));
+            asksForLeg |= s.leg != null;
+            if (legUnsupported && !fiveGOff && Boolean.FALSE.equals(s.leg)) {
+                // "5G leg off" on a modem that says it cannot switch the leg: there is nothing to measure, and it is said so
+                Row none = new Row(s, new Target(false, Boolean.TRUE), rounds);
+                none.unavailable = true;
+                none.note = "this phone's modem cannot switch the 5G leg";
+                rows.add(none);
+                continue;
+            }
+            // on a modem that cannot switch the leg the leg is no part of any setting (5G allowed is just 5G allowed)
+            Boolean legOff = fiveGOff || legUnsupported ? null
+                    : (s.leg == null ? Boolean.valueOf(origLegOff) : Boolean.valueOf(!s.leg));
             Target t = new Target(fiveGOff, legOff);
             boolean dup = false;
             for (Target o : seen) {
@@ -483,11 +501,15 @@ final class LeverRun {
             seen.add(t);
             rows.add(new Row(s, t, rounds));
         }
+        if (legUnsupported && asksForLeg) {
+            planNote = join(planNote, "This phone's modem says it cannot switch the 5G leg, so the leg settings are left out and 5G "
+                    + "is measured as the phone has it.");
+        }
         boolean usesLeg = false;
         for (Row r : rows) {
             usesLeg |= r.target.legOff != null;
         }
-        if (!legReadable && usesLeg) {
+        if (!legReadable && !legUnsupported && usesLeg) {
             planNote = join(planNote, "This phone does not report whether the 5G leg is on, so the run sets it itself and leaves it on "
                     + "(the normal state) at the end.");
         }
@@ -593,8 +615,12 @@ final class LeverRun {
             }
             if (!ok) {
                 if (NrLeg.cannot(text)) {
+                    // found out only now (the phone's reading did not say): from here on the leg is no part of any setting, and what the
+                    // phone reported for it ("off") is not believed, so a note that was based on it is taken back
+                    legUnsupported = true;
                     row.unavailable = true;
                     row.note = join(row.note, "this phone's modem cannot switch the 5G leg");
+                    forgetKeptNrNotes();
                     publish();
                     next();
                 } else {
@@ -634,7 +660,7 @@ final class LeverRun {
             row.rsrp = obs.rsrp;
             // A 5G carrier in the phone's list counts only if the phone's own 5G label and state do not contradict it: the list can
             // be out of date for a while after 5G was switched off (that made this run call a phone that had gone to 4G "still on 5G").
-            if (!row.target.expectNoNr() || !obs.state.nrCarrierInUse(row.target.fiveGOff)) {
+            if (!expectsNoNr(row) || !obs.state.nrCarrierInUse(row.target.fiveGOff)) {
                 measure();
                 return;
             }
@@ -646,7 +672,7 @@ final class LeverRun {
             if (isBaseline(row)) {
                 // "As it is now" is what the phone does when it is left alone, and everything else is compared with it: it is measured
                 // whatever the phone shows (and never asked to drop 5G), and the table says so.
-                String said = "the phone is set to keep 5G off but still uses it: measured as it is";
+                String said = row.target.fiveGOff ? KEPT_NR_NOTE_OFF : KEPT_NR_NOTE_LEG;
                 if (!row.note.contains(said)) {
                     row.note = join(row.note, said);
                 }
@@ -682,6 +708,24 @@ final class LeverRun {
     /** "As it is now" changes nothing, so it is never judged by what the phone shows. */
     private static boolean isBaseline(Row r) {
         return r.setting.fiveG == null && r.setting.leg == null;
+    }
+
+    static final String KEPT_NR_NOTE_OFF = "5G is switched off but the phone still shows a 5G cell: measured as it is";
+    static final String KEPT_NR_NOTE_LEG = "the phone's 5G leg is switched off but it still uses 5G: measured as it is";
+
+    /** Does this setting mean "the phone shows no 5G cell"? A leg setting means nothing on a modem that cannot switch the leg. */
+    private boolean expectsNoNr(Row r) {
+        return r.target.fiveGOff || (!legUnsupported && Boolean.TRUE.equals(r.target.legOff));
+    }
+
+    /** The modem turned out to have no 5G leg setting: a note that said the leg was off but still used is not true any more. */
+    private void forgetKeptNrNotes() {
+        for (Row r : rows) {
+            if (r.note.contains(KEPT_NR_NOTE_LEG)) {
+                String left = r.note.replace("; " + KEPT_NR_NOTE_LEG, "").replace(KEPT_NR_NOTE_LEG + "; ", "").replace(KEPT_NR_NOTE_LEG, "");
+                r.note = left.trim();
+            }
+        }
     }
 
     /** The upload-only speed test on the phone's mobile data. */

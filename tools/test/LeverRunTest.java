@@ -46,6 +46,8 @@ public final class LeverRunTest {
         /** Leave the 5G state out of what the phone says (some phones print no such line). */
         boolean noNrState;
         boolean legSupported = true;
+        /** A modem that cannot switch the leg does not say so when it is read (only when a switch is asked for). */
+        boolean legReadSilent;
         boolean legReadable = true;
         /** 0: "off" drops the 5G cell after 4 s; 1: only "off now" does; 2: nothing does. */
         int legMode;
@@ -168,7 +170,9 @@ public final class LeverRunTest {
                 if (down() || !legReadable) {
                     d.done(false, "Couldn't read it", null);
                 } else {
-                    d.done(true, "", legOff);
+                    // a modem that cannot switch the leg still answers "off" (it has nothing to report), and says so after it
+                    d.done(true, legSupported || legReadSilent ? ""
+                            : "5G leg is " + (legOff ? "off" : "on") + ". The modem says it cannot switch the 5G leg.", legOff);
                 }
             });
         }
@@ -363,6 +367,7 @@ public final class LeverRunTest {
         staleCarrierList();
         baselineIsNeverThrownAway();
         disobeyedSettingIsDropped();
+        legUnsupportedLikeTheUsersPhone();
         observeBroken();
         refusals();
         unreachablePhone();
@@ -664,11 +669,81 @@ public final class LeverRunTest {
         LeverRun r = go(s, rec, three(), 4, -1);
         ended(s, rec, r, false, false, " [leg unsupported]");
         check(rec.rows.get(2).unavailable, "the leg row is marked impossible");
-        check(s.legSwitches == 1, "and not tried again: " + s.legSwitches);
+        check(s.legSwitches == 0, "the phone said so when it was read, so no switch was even tried: " + s.legSwitches);
         check(rec.rows.get(0).n() == 4 && rec.rows.get(1).n() == 4, "the other settings were measured in every round");
         check(rec.rows.get(2).n() == 0, "no numbers for the impossible one");
         check(r.summary().contains("not possible on this phone's modem"), "the summary says so: " + r.summary());
+        check(r.summary().contains("cannot switch the 5G leg, so the leg settings are left out"), "and says why: " + r.summary());
         check(rec.best == -1 || rec.best == 1, "and never recommends the impossible one");
+
+        // the same modem, but its reading does not say it cannot: found out at the first switch, tried once, never again
+        s = new Sim();
+        s.legSupported = false;
+        s.legReadSilent = true;
+        s.rnd = new Random(8);
+        s.noise = 0.1;
+        rec = new Rec();
+        r = go(s, rec, three(), 4, -1);
+        ended(s, rec, r, false, false, " [leg unsupported, silent reading]");
+        check(rec.rows.get(2).unavailable && s.legSwitches == 1, "found out at the first switch and not tried again: " + s.legSwitches);
+        check(rec.rows.get(0).n() == 4 && rec.rows.get(1).n() == 4, "the other settings were measured in every round [silent]");
+    }
+
+    /**
+     * The user's phone: the modem cannot switch the 5G leg, yet it reports the leg as "off" (a modem with nothing to report says
+     * "off"), and it keeps its 5G connection. That "off" must not make "As it is now" a setting that "keeps 5G off but still uses it".
+     */
+    static void legUnsupportedLikeTheUsersPhone() {
+        // the reading says it cannot switch the leg
+        Sim s = new Sim();
+        s.legSupported = false;
+        s.legOff = true; // the meaningless reading
+        s.legMode = 2;
+        s.labels = true;
+        s.rnd = new Random(41);
+        s.noise = 0.1;
+        Rec rec = new Rec();
+        LeverRun r = go(s, rec, LeverRun.settings(true, true, true), 5, -1);
+        ended(s, rec, r, false, true, " [unsupported leg that reads off]");
+        check(rec.rows.size() == 3, "baseline, 4G only, and the leg-off row; '5G on, normal' is the baseline: " + rec.rows.size());
+        LeverRun.Row base = rec.rows.get(0);
+        check(base.n() == 5 && base.ineffective == 0, "the baseline was measured in every round: " + base.n());
+        check(base.note.isEmpty(), "and it carries no note about a leg that cannot be switched: '" + base.note + "'");
+        check(rec.rows.get(1).n() == 5, "4G only measured in every round");
+        check(rec.rows.get(2).unavailable && rec.rows.get(2).note.contains("cannot switch the 5G leg"), "the leg-off row says it is impossible");
+        check(s.legSwitches == 0 && s.offNowCalls == 0, "the leg was never touched: " + s.legSwitches);
+        String sum = r.summary();
+        check(sum.contains("\"5G on, normal\" is the same as a setting above"), "'5G on, normal' is said to be the baseline: " + sum);
+        check(sum.contains("cannot switch the 5G leg, so the leg settings are left out"), "and the summary says why the leg rows are out: " + sum);
+        check(!sum.contains("keeps 5G off") && !LeverRun.line(rec.rows, 0, false).contains("measured as it is"), "no claim that 5G was kept off");
+
+        // the reading does not say it cannot: found out when '5G on, normal' is tried, and then the baseline note is not there. In some
+        // orders the baseline is measured first (so the note exists when the modem gives itself away), in others it is not: all of them.
+        for (long seed = 1; seed <= 16; seed++) {
+            s = new Sim();
+            s.legSupported = false;
+            s.legReadSilent = true;
+            s.legOff = true;
+            s.legMode = 2;
+            s.labels = true;
+            s.orderSeed = seed;
+            s.rnd = new Random(40 + seed);
+            s.noise = 0.1;
+            rec = new Rec();
+            r = go(s, rec, LeverRun.settings(true, true, true), 4, -1);
+            String ctx = " [unsupported leg, silent reading, reads off, order " + seed + "]";
+            ended(s, rec, r, false, true, ctx);
+            base = rec.rows.get(0);
+            check(base.n() == 4 && base.ineffective == 0, "silent: the baseline was measured in every round: " + base.n() + ctx);
+            check(!base.note.contains("measured as it is"), "silent: and the note built on the meaningless 'off' is taken back: '" + base.note + "'" + ctx);
+            int normal = -1;
+            for (int i = 0; i < rec.rows.size(); i++) {
+                if (rec.rows.get(i).setting.label.equals("5G on, normal")) {
+                    normal = i;
+                }
+            }
+            check(normal >= 0 && rec.rows.get(normal).unavailable && s.legSwitches == 1, "silent: '5G on, normal' found out once: " + s.legSwitches + ctx);
+        }
     }
 
     /** The 5G cell stays although the leg was switched off: "off now" is tried, and if even that fails the numbers are not counted. */
