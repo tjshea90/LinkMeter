@@ -19,8 +19,9 @@ final class Beeper {
         if (buf.length == 0) {
             return;
         }
+        AudioTrack t = null;
         try {
-            AudioTrack t = new AudioTrack.Builder()
+            t = new AudioTrack.Builder()
                     .setAudioAttributes(new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -37,7 +38,16 @@ final class Beeper {
             t.play();
             track = t;
         } catch (RuntimeException e) {
-            track = null; // no speaker, or the audio system is busy: the numbers are still on the screen
+            // no speaker, or the audio system is busy: the numbers are still on the screen. A track that was made but could not
+            // play must still be released, or a beep every second would leak one native audio track after another.
+            track = null;
+            if (t != null) {
+                try {
+                    t.release();
+                } catch (RuntimeException ignored) {
+                    // already gone
+                }
+            }
         }
     }
 
