@@ -158,7 +158,7 @@ final class Api {
             return;
         }
         try {
-            String res = Actions.run(c, name);
+            String res = Actions.run(c, name, r.q("arg"));
             Http.json(out, 200, "{\"ok\":true,\"out\":" + JSONObject.quote(res) + "}");
         } catch (IOException e) {
             Http.err(out, 409, String.valueOf(e.getMessage()));

@@ -24,6 +24,12 @@ java -cp "$out" com.tj.linkmeter.BandToolsTest || fail=1
 java -cp "$out" com.tj.linkmeter.BandSweepTest || fail=1
 echo "== Scan command (the real shell command, against a 400 KB fake dump, the way Android's shell runs it)"
 java -cp "$out" com.tj.linkmeter.SurveyCommandTest || fail=1
+echo "== 5G leg (NrLeg: the words the phone and the tablet share about it; never claims a state the phone did not report)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/NrLeg.java tools/test/NrLegTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.NrLegTest || fail=1
+echo "== Service-menu finder (MenuScan: reading the phone's text, refusing anything unsafe, and the real shell commands with no built-in printf)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/MenuScan.java tools/test/MenuScanTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.MenuScanTest || fail=1
 echo "== File manager core (paths, kinds, sorting, clipboard, DiskStore) and the transfer engine (copy, move, clashes, cancel, failures, against a model)"
 FM=app/src/main/java/com/tj/linkmeter
 javac -proc:none -d "$out" $FM/FsEntry.java $FM/FsPath.java $FM/FileKind.java $FM/FileSort.java $FM/FsFormat.java $FM/Clip.java \

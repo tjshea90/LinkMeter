@@ -35,6 +35,8 @@ import java.util.function.Consumer;
  *   radio-cycle          switch the radio off for a few seconds and on again (the modem then searches for a network from
  *                        scratch, which is when a band restriction is applied); the radio is always switched back on
  *   radio-on             make sure the radio is on
+ *   nrdc-get             is the 5G leg (NR dual connectivity) allowed? (see NrLeg for the answer's words)
+ *   nrdc-set on|off|off-now   allow the 5G leg, or keep the phone from adding it (off-now drops it at once)
  *   sleep [nodoze]       put the device to sleep through the power service (nodoze: skip the Always-On Display)
  *
  * Output starts with OK or ERR. Hidden-API checks do not apply in this process,
@@ -91,6 +93,10 @@ public final class ShellMain {
                 return radioCycle(tm);
             case "radio-on":
                 return radioOn(tm);
+            case "nrdc-get":
+                return nrdc(tm, null);
+            case "nrdc-set":
+                return nrdc(tm, a.length > 1 ? a[1] : "");
             default:
                 return "ERR unknown command";
         }
@@ -593,6 +599,93 @@ public final class ShellMain {
         }
         Object on = set.invoke(tm, Boolean.TRUE);
         return Boolean.TRUE.equals(on) ? "OK the radio is on" : "ERR the phone did not switch the radio on";
+    }
+
+    /**
+     * The 5G leg (NR dual connectivity): read it (want == null) or switch it (on, off, off-now). The numbers are read from the
+     * phone's own TelephonyManager, so a phone that numbers them differently still gets the right ones. Answer, read by NrLeg:
+     * "OK nrdc state=on|off|unknown supported=yes|no|unknown result=WORD|n/a" (WORD = the modem's own word, for example SUCCESS
+     * or NOT_SUPPORTED). "off" lets the modem drop the 5G cell when the current connection ends; "off-now" drops it at once.
+     */
+    private static String nrdc(TelephonyManager tm, String want) throws Exception {
+        String result = "n/a";
+        if (want != null) {
+            String field;
+            int fallback;
+            switch (want) {
+                case "on":
+                    field = "NR_DUAL_CONNECTIVITY_ENABLE";
+                    fallback = 1;
+                    break;
+                case "off":
+                    field = "NR_DUAL_CONNECTIVITY_DISABLE";
+                    fallback = 2;
+                    break;
+                case "off-now":
+                    field = "NR_DUAL_CONNECTIVITY_DISABLE_IMMEDIATE";
+                    fallback = 3;
+                    break;
+                default:
+                    return "ERR unknown state '" + want + "' (use on, off or off-now)";
+            }
+            Method set = find(tm.getClass(), "setNrDualConnectivityState", 1);
+            if (set == null) {
+                return "ERR this phone has no setNrDualConnectivityState(int)";
+            }
+            Object r = set.invoke(tm, Integer.valueOf(intConstant(tm.getClass(), field, fallback)));
+            result = resultWord(tm.getClass(), r);
+        }
+        String state = "unknown";
+        try {
+            state = Boolean.TRUE.equals(call(tm, "isNrDualConnectivityEnabled")) ? "on" : "off";
+        } catch (Throwable ignored) {
+            // some phones do not say; the tablet then judges by the carriers the phone is using
+        }
+        String supported = "unknown";
+        try {
+            String cap = "CAPABILITY_NR_DUAL_CONNECTIVITY_CONFIGURATION_AVAILABLE";
+            try {
+                Object v = tm.getClass().getField(cap).get(null);
+                if (v instanceof String) {
+                    cap = (String) v;
+                }
+            } catch (Throwable ignored) {
+                // the name itself is the value on Android
+            }
+            supported = Boolean.TRUE.equals(call(tm, "isRadioInterfaceCapabilitySupported", cap)) ? "yes" : "no";
+        } catch (Throwable ignored) {
+            // unknown stays unknown
+        }
+        return "OK nrdc state=" + state + " supported=" + supported + " result=" + result;
+    }
+
+    private static int intConstant(Class<?> c, String name, int fallback) {
+        try {
+            return c.getField(name).getInt(null);
+        } catch (Throwable t) {
+            return fallback;
+        }
+    }
+
+    /** The modem's name for a result number: the part after ENABLE_NR_DUAL_CONNECTIVITY_ in the class's own constants. */
+    private static String resultWord(Class<?> c, Object r) {
+        if (!(r instanceof Integer)) {
+            return String.valueOf(r).replaceAll("\\s+", "_");
+        }
+        int v = ((Integer) r).intValue();
+        String prefix = "ENABLE_NR_DUAL_CONNECTIVITY_";
+        for (java.lang.reflect.Field f : c.getFields()) {
+            if (f.getName().startsWith(prefix) && f.getType() == int.class) {
+                try {
+                    if (f.getInt(null) == v) {
+                        return f.getName().substring(prefix.length());
+                    }
+                } catch (Throwable ignored) {
+                    // try the next one
+                }
+            }
+        }
+        return String.valueOf(v);
     }
 
     /** spec looks like "lte:5,12;nr:5,71". An empty spec clears the restriction. */

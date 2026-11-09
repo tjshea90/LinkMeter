@@ -74,9 +74,21 @@ final class Actions {
         }, "linkmeter-delayed").start();
     }
 
-    /** Runs an action and returns text for the tablet to show. */
     static String run(Context c, String name) throws IOException {
+        return run(c, name, "");
+    }
+
+    /** Runs an action and returns text for the tablet to show. arg: the one extra value a few actions take (a screen name, a dial code). */
+    static String run(Context c, String name, String arg) throws IOException {
         switch (name) {
+            case "menu_find":
+                return Menus.find();
+            case "menu_open":
+                return Menus.open(arg);
+            case "menu_usual":
+                return Menus.usual();
+            case "menu_dial":
+                return Menus.dial(arg);
             case "airplane_off":
                 return report(Priv.run("cmd connectivity airplane-mode disable", 15), "Airplane mode is off.");
             case "screen_off":
@@ -106,6 +118,14 @@ final class Actions {
                 return setHotspotBand(c, "auto");
             case "net_get":
                 return netGet(c);
+            case "nrleg_get":
+                return nrLeg(c, null);
+            case "nrleg_off":
+                return nrLeg(c, "off");
+            case "nrleg_off_now":
+                return nrLeg(c, "off-now");
+            case "nrleg_on":
+                return nrLeg(c, "on");
             case "net_lte": {
                 String res = setNr(c, false);
                 Guard.arm(c);
@@ -119,6 +139,29 @@ final class Actions {
             default:
                 throw new IOException("unknown action: " + name);
         }
+    }
+
+    /**
+     * The 5G leg (NR dual connectivity): read it (want == null) or switch it (on, off, off-now). Switching it off is remembered
+     * BEFORE it is done, and the safety net (Guard) is armed, so a cut-off or a dead connection still ends with the leg back on.
+     * The words of the answer are NrLeg's; the tablet reads them back.
+     */
+    private static String nrLeg(Context c, String want) throws IOException {
+        if (want == null) {
+            return NrLeg.describe(NrLeg.parse(Cells.shellMain(c, "nrdc-get").out));
+        }
+        if (!want.equals("on")) {
+            Saved.rememberNrLegChanged(c);
+        }
+        NrLeg.State s = NrLeg.parse(Cells.shellMain(c, "nrdc-set " + want).out);
+        if (want.equals("on")) {
+            if (Boolean.TRUE.equals(s.enabled) || (s.error.isEmpty() && s.result.equals("SUCCESS") && s.enabled == null)) {
+                Saved.clearNrLeg(c);
+            }
+        } else {
+            Guard.arm(c);
+        }
+        return NrLeg.describeSet(want, s);
     }
 
     private static String report(Priv.Result r, String okText) {
@@ -271,6 +314,20 @@ final class Actions {
             Cells.shellMain(c, "radio-on"); // a band test may have been cut off while the radio was off
         } catch (IOException ignored) {
             // nothing more to do here
+        }
+        if (Saved.nrLegChanged(c)) {
+            // LinkMeter switched the 5G leg off: put it back on (a normal phone has it on)
+            try {
+                NrLeg.State leg = NrLeg.parse(Cells.shellMain(c, "nrdc-set on").out);
+                if (Boolean.TRUE.equals(leg.enabled) || (leg.error.isEmpty() && leg.result.equals("SUCCESS"))) {
+                    Saved.clearNrLeg(c);
+                    sb.append("5G leg: switched back on.\n");
+                } else {
+                    sb.append("5G leg: could not be switched back on. ").append(NrLeg.describeSet("on", leg)).append('\n');
+                }
+            } catch (IOException e) {
+                sb.append("5G leg: ").append(e.getMessage()).append('\n');
+            }
         }
         long saved = Saved.types(c);
         long target = saved > 0 ? saved : DEFAULT_TYPES;
