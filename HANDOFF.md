@@ -8,7 +8,11 @@ session's transcript.
 
 ## RESUME HERE (newest session first)
 
-**2026-11-08 (NEWEST): TEXTS ARE BUILT END TO END (phone side + Texts tab), CI-compiled, released as v0.2.75 (verified on GitHub, built from 055d9db); NOT yet seen on a device. The Files tab (v0.2.68), Attach (v0.2.70) and the band fix (v0.2.71) are also waiting for the user's field test.**
+**2026-11-09 (NEWEST): the user asked "if the modem won't take forced bands, is there any other way (no root) to force the band or strengthen the cell connection? My problem: weak 5G UW, upload near 0 during the DAY". ANSWERED IN CHAT, NOTHING BUILT; the user has not picked a build yet. Reasoning, evidence and the build list are in `docs/UPLOAD_IDEAS.md`.**
+- Short version: `setSystemSelectionChannels` is documented as a hint for the modem's background SCAN (made for CBRS), so "acknowledged but not obeyed" is normal and there is no second door to a true band lock without root (Samsung `*#2263#` reportedly locked on Verizon firmware, `cmd phone cc` reportedly root-only, carrier config cannot pick RF bands). What can still help: NR leg off with 5G still allowed (`setNrDualConnectivityState`, not built), a 24 h link recorder that tells congestion/priority from RF from heat (not built), a re-attach "reroll", placement or an external-antenna hotspot, and the Total Wireless plan's priority tier ("only in the daytime" points at congestion as much as at the band).
+- NEXT if the user says go: build C (Probe additions for hidden menus), A (NR-leg switch as one more row of "Find the best upload"), then B (link recorder), each pure and tested like `BandSweep`. First the user's own field test of v0.2.71+ decides: "even after searching again" means locks are dead on this firmware, stop pursuing them.
+
+**2026-11-08: TEXTS ARE BUILT END TO END (phone side + Texts tab), CI-compiled, released as v0.2.75 (verified on GitHub, built from 055d9db); NOT yet seen on a device. The Files tab (v0.2.68), Attach (v0.2.70) and the band fix (v0.2.71) are also waiting for the user's field test.**
 - New this block: `TextsTab` (8th tab) + `TextThread` (bubbles, composer, Attach through `AttachDialog.choose`), `TextTime` (pure: list times, day headings; tested), MainActivity registers the tab.
 - HOW THE USER TURNS IT ON: update BOTH apps (tablet: Control > Update phone from this tablet); on the PHONE: LinkMeter > Phone tab > switch on "Let the tablet use my texts" (it asks Shizuku for the SMS permissions,
   or tap "Allow texts access"); then the tablet's Texts tab. Off by default; only the paired tablet can ask.
