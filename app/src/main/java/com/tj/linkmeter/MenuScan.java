@@ -30,10 +30,13 @@ final class MenuScan {
     static final String PACKAGE_WORDS = "engineer|servicemode|modemui|rilservice|factory|hiddenmenu|sysscope|mediatek|mtk|secphone"
             + "|testmode|diagnos|cqatest|bandselect|networkmode|radioinfo";
 
-    /** Step 1 and 2 in one command, pipes only (the dump is large). */
+    /**
+     * Step 1 and 2 in one command, pipes only (the dump is large). The output is at most 60 + 900 lines of 160 characters: well under
+     * the 200,000 bytes that Priv.run keeps (more would cut off its exit-code marker).
+     */
     static final String DISCOVER_COMMAND = "echo '" + PACKAGES_MARK + "'; pm list packages 2>&1 | grep -iE '" + PACKAGE_WORDS
             + "' | sed 's/^package://' | sort | head -60; echo '" + CODES_MARK + "'; "
-            + "dumpsys package r receiver 2>&1 | grep -B8 -A90 'Scheme: \"android_secret_code\"' | cut -c1-200 | head -1500";
+            + "dumpsys package r receiver 2>&1 | grep -B8 -A90 'Scheme: \"android_secret_code\"' | cut -c1-160 | head -900";
 
     /** Codes worth pointing out, with what they usually are. */
     static final String[][] KNOWN_CODES = {

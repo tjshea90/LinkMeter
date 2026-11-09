@@ -27,6 +27,9 @@ java -cp "$out" com.tj.linkmeter.SurveyCommandTest || fail=1
 echo "== 5G leg (NrLeg: the words the phone and the tablet share about it; never claims a state the phone did not report)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/NrLeg.java tools/test/NrLegTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.NrLegTest || fail=1
+echo "== Fair comparison of settings (LeverRun: random order within rounds, a sign-test verdict, a setting counts only when the phone really took it, always put back; simulated phones)"
+javac -proc:none -cp "$out" -d "$out" app/src/main/java/com/tj/linkmeter/LeverRun.java tools/test/LeverRunTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.LeverRunTest || fail=1
 echo "== Service-menu finder (MenuScan: reading the phone's text, refusing anything unsafe, and the real shell commands with no built-in printf)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/MenuScan.java tools/test/MenuScanTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.MenuScanTest || fail=1

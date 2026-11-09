@@ -78,8 +78,12 @@ final class BandsTab extends Tab {
         }
     };
 
+    /** The part for things the phone obeys; it keeps its runs when this tab is left and shown again. */
+    private final LabSection lab;
+
     BandsTab(MainActivity a) {
         super(a);
+        lab = new LabSection(a);
     }
 
     @Override
@@ -120,6 +124,7 @@ final class BandsTab extends Tab {
         result.setTextIsSelectable(true);
         col.addView(result, Ui.lp(act, 6));
 
+        lab.build(col); // what the phone does obey: the 5G leg, a fair comparison, the hidden service menus
         buildSweepSection(col);
 
         LinearLayout row = new LinearLayout(act);

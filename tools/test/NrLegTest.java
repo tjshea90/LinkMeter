@@ -91,6 +91,9 @@ public final class NrLegTest {
                                     check(t.contains("still reports"), "and says it is still reported the old way" + ctx);
                                 }
                             }
+                            // accepted() is true exactly when the modem said SUCCESS and nothing went wrong
+                            check(NrLeg.accepted(t) == (err.isEmpty() && res.equals("SUCCESS")),
+                                    "accepted() agrees with SUCCESS and no error" + ctx + " text=" + t);
                             // I5: a modem that cannot do it says so in words the tablet recognizes
                             if (err.isEmpty() && res.equals("NOT_SUPPORTED")) {
                                 check(NrLeg.cannot(t), "not supported is recognized" + ctx);
@@ -136,6 +139,8 @@ public final class NrLegTest {
         check(NrLeg.offFromText("Failed (code 1): 5G leg is off") == Boolean.TRUE, "an off statement inside other text");
         check(NrLeg.offFromText("the leg is off") == null, "similar words are not enough");
         check(!NrLeg.cannot(null), "cannot(null)");
+        check(!NrLeg.accepted(null) && !NrLeg.accepted("") && !NrLeg.accepted("Failed (code 1): 5G leg is off"), "accepted() on other texts");
+        check(!NrLeg.accepted("Couldn't reach the phone: timed out"), "an unreachable phone is not 'accepted'");
 
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);

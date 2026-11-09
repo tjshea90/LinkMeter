@@ -183,7 +183,9 @@ public final class MenuScanTest {
                 + "if [ \"$1\" = package ] && [ \"$2\" = r ] && [ \"$3\" = activity ]; then cat '" + acttable + "'; fi\n");
         String out = run(bin, MenuScan.DISCOVER_COMMAND);
         MenuScan.Found f = MenuScan.parseDiscovery(out);
-        check(out.length() < 300_000, "the discovery output stays small: " + out.length() + " bytes");
+        check(out.length() < 200_000, "the discovery output stays under what Priv.run keeps (200,000 bytes): " + out.length() + " bytes");
+        // the worst case the command allows: 60 package lines and 900 lines of 160 characters
+        check(60 * 80 + 900 * 161 < 200_000, "and even the largest output the command allows fits");
         check(f.packages.contains("com.mediatek.engineermode") && f.packages.contains("com.sec.android.RilServiceModeApp"), "the real command finds the apps: " + f.packages);
         check(!f.packages.contains("com.android.settings") && !f.packages.contains("com.google.android.gms"), "and only the apps that match");
         check(f.codes.size() == 3 && has(f, "2263", "com.sec.android.RilServiceModeApp/.SecretCodeReceiver"), "the real command finds the codes: " + f.codes.size());

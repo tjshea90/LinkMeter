@@ -133,6 +133,14 @@ final class NrLeg {
         return null;
     }
 
+    /**
+     * True when the phone's words after a set command say the modem ACCEPTED the request (whether or not the phone already reports
+     * the new state: plain "off" may take a while). A refusal, a modem that cannot, an error or a text from somewhere else is false.
+     */
+    static boolean accepted(String text) {
+        return text != null && (text.startsWith("5G leg is") || text.startsWith("5G leg: the modem accepted"));
+    }
+
     /** True when the phone's words say the modem cannot do this at all. */
     static boolean cannot(String text) {
         return text != null && (text.contains("cannot switch the 5G leg") || text.contains("has no setNrDualConnectivityState"));
