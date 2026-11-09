@@ -2,7 +2,7 @@
 
 Rule 1 of this project: **the phone must never break, brick, or lose its internet for good.** This file says how that is kept,
 and where it cannot be (section 6). The "Safety check" button (Control tab, Bands tab) shows at any moment what LinkMeter still has
-changed. Audited 2026-11-09 against the code of v0.2.82; the fixes of that audit are in the release after it.
+changed. Audited 2026-11-09 against the code of v0.2.82; the fixes of that audit are in the next release (v0.2.83 or later: use the newest on the Releases page, not v0.2.79 to v0.2.82).
 
 ## 1. What LinkMeter never does
 
