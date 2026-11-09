@@ -28,6 +28,7 @@ final class HomeTab extends Tab {
     private MeterView mCell;
     private MeterView mWifi;
     private TextView tStatus;
+    private android.widget.Button startHint;
     private TextView tDetail;
 
     private HandlerThread worker;
@@ -85,6 +86,10 @@ final class HomeTab extends Tab {
         col.addView(tStatus, Ui.lp(act, 4));
         tDetail = Ui.text(act, "", 11, Ui.DIM, false);
         col.addView(tDetail, Ui.lp(act, 2));
+        // When the phone does not answer (it has just restarted): one tap to the card that starts everything again.
+        startHint = Ui.button(act, "Phone not answering? Start it after a restart", v -> act.openTab("Control"));
+        startHint.setVisibility(View.GONE);
+        col.addView(startHint, Ui.lp(act, 4));
 
         mBat = new MeterView(act);
         mCell = new MeterView(act);
@@ -263,7 +268,9 @@ final class HomeTab extends Tab {
         if (s.phone != null) {
             tStatus.setText("Connected · updated " + tf.format(new Date(s.at)));
             tStatus.setTextColor(Ui.DIM);
+            startHint.setVisibility(View.GONE);
         } else {
+            startHint.setVisibility(View.VISIBLE);
             String extra = lastPhone != null
                     ? " Showing the last values from " + tf.format(new Date(lastOk)) + "."
                     : "";

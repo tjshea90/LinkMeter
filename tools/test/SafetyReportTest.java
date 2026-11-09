@@ -45,7 +45,7 @@ public final class SafetyReportTest {
         }
 
         // ---- every single change is reported, and reported as a change
-        String[] names = {"types", "leg", "lock", "lockFlag", "blip", "airplane", "hotspot", "menu"};
+        String[] names = {"types", "leg", "lock", "lockFlag", "blip", "airplane", "hotspot", "menu", "secure", "pairing", "assist"};
         for (int i = 0; i < names.length; i++) {
             SafetyReport.Facts f = base();
             switch (i) {
@@ -56,12 +56,22 @@ public final class SafetyReportTest {
                 case 4: f.radioBlip = true; break;
                 case 5: f.airplaneTimer = true; break;
                 case 6: f.hotspotBandChanged = true; break;
-                default: f.menuRecent = true; break;
+                case 7: f.menuRecent = true; break;
+                case 8: f.secureGranted = true; break;
+                case 9: f.pairingKept = true; break;
+                default: f.bootAssist = true; break;
             }
             String r = SafetyReport.report(f);
             check(r.contains("Still changed by LinkMeter") && !r.contains("nothing changed on this phone"), "SAFE: a change is never reported as 'nothing' [" + names[i] + "]: " + r);
             check(SafetyReport.changes(f).size() == 1, "exactly one line for one change [" + names[i] + "]");
-            check(r.contains("Restore everything"), "and says how to put it back [" + names[i] + "]");
+            if (i < 8) {
+                check(r.contains("Restore everything puts it back"), "and says how to put it back [" + names[i] + "]");
+                check(!r.contains("Undo the setup"), "a network change does not talk about the boot setup [" + names[i] + "]");
+            } else {
+                check(r.contains("Undo the setup") && r.contains("Restore everything leaves them alone"), "a boot item says how to undo it, and that Restore everything does not [" + names[i] + "]");
+                check(!r.contains("Restore everything puts it back") && !r.contains("safety net"), "and promises neither a restore nor a safety net, which do not apply [" + names[i] + "]");
+                check(!SafetyReport.radioChanged(f), "a boot item is not a radio change [" + names[i] + "]");
+            }
         }
         {
             SafetyReport.Facts f = base();
@@ -106,7 +116,7 @@ public final class SafetyReportTest {
 
         // ---- every combination of the change flags: never 'nothing' with a change, never a change from nothing
         int combos = 0;
-        for (int m = 0; m < (1 << 9); m++) {
+        for (int m = 0; m < (1 << 12); m++) {
             SafetyReport.Facts f = base();
             f.typesChanged = (m & 1) != 0;
             f.legChanged = (m & 2) != 0;
@@ -117,17 +127,24 @@ public final class SafetyReportTest {
             f.menuRecent = (m & 64) != 0;
             f.lock = (m & 128) != 0 ? "nr:77" : "";
             f.batterySaver = (m & 256) != 0;
+            f.secureGranted = (m & 512) != 0;
+            f.pairingKept = (m & 1024) != 0;
+            f.bootAssist = (m & 2048) != 0;
             f.guardWatching = (m & 1) != 0;
-            boolean any = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128)) != 0;
+            boolean any = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 512 | 1024 | 2048)) != 0;
             String r = SafetyReport.report(f);
             combos++;
             check(any == r.contains("Still changed by LinkMeter"), "a change is reported exactly when there is one [mask " + m + "]");
             check(any != r.contains("nothing changed on this phone"), "'nothing changed' exactly when there is nothing [mask " + m + "]");
-            check(SafetyReport.changes(f).size() == Integer.bitCount(m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128)) - (((m & 4) != 0 && (m & 128) != 0) ? 1 : 0),
+            check(SafetyReport.changes(f).size() == Integer.bitCount(m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 512 | 1024 | 2048)) - (((m & 4) != 0 && (m & 128) != 0) ? 1 : 0),
                     "one line per change (a lock flag and a lock are one line) [mask " + m + "]");
             check(r.contains("Battery saver profile: on") == ((m & 256) != 0), "the battery saver is only mentioned when on [mask " + m + "]");
+            boolean boot = (m & (512 | 1024 | 2048)) != 0;
+            boolean other = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128)) != 0;
+            check(boot == r.contains("Undo the setup"), "the boot setup is mentioned exactly when one of its items is in place [mask " + m + "]");
+            check(other == r.contains("Restore everything puts it back"), "Restore everything is promised exactly when there is something it puts back [mask " + m + "]");
         }
-        check(combos == 512, "all combinations tried");
+        check(combos == 4096, "all combinations tried");
 
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);

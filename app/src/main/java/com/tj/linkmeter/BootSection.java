@@ -70,7 +70,8 @@ final class BootSection implements BootDriver.Listener {
         col.addView(Ui.text(act, "The tablet has no hotspot of its own, so LinkMeter makes one the phone can join (Wi-Fi Direct, with the "
                 + "same name and password every time; the third try uses a local-only hotspot like NetShare's, with a new random "
                 + "password each time). FIRST TIME ONLY: on the phone join this Wi-Fi once (Settings > Connections > Wi-Fi, pick the "
-                + "name, type the password, stay connected even without internet). After that the phone joins it by itself. Android 10 "
+                + "name; if it is not listed use Add network and type the name and the password; stay connected even without internet). "
+                + "After that the phone joins it by itself whenever the tablet makes it (the phone's Wi-Fi must be on). Android 10 "
                 + "asks for the location permission before an app may make a hotspot; LinkMeter does not read your location.",
                 12, Ui.DIM, false), Ui.lp(act, 2));
         LinearLayout h = row();
@@ -195,6 +196,12 @@ final class BootSection implements BootDriver.Listener {
 
     private void startPressed() {
         if (driver.running()) {
+            return;
+        }
+        if (!driver.hotspot().wifiOn()) {
+            // Android does not let an app switch the Wi-Fi on (since Android 10): this is the one thing it asks you to do first
+            Toast.makeText(act, "Switch the tablet's Wi-Fi on first, then press Start everything again.", Toast.LENGTH_LONG).show();
+            openWifi();
             return;
         }
         act.requestLocation(driver::start);

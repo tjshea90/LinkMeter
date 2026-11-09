@@ -292,6 +292,19 @@ public class MainActivity extends Activity {
         return root;
     }
 
+    /** Switches to the tab with this title ("Control"), for a button on another tab. Does nothing if there is no such tab. */
+    void openTab(String title) {
+        if (tabs == null) {
+            return;
+        }
+        for (int i = 0; i < tabs.length; i++) {
+            if (tabs[i].title().equals(title)) {
+                showTab(i, true);
+                return;
+            }
+        }
+    }
+
     private void showTab(int i, boolean start) {
         if (cur != null) {
             cur.onHide();

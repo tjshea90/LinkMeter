@@ -193,7 +193,8 @@ final class Boot {
             PendingIntent devPi = PendingIntent.getActivity(c, 11, dev, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             String text = allow
                     ? "Shizuku is running. Open LinkMeter and tap Allow in Shizuku's question."
-                    : "Tap to open Shizuku, then tap Start. If Android asks, allow wireless debugging on this network.";
+                    : "Tap to open Shizuku, then tap Start. If Android asks, allow wireless debugging on this network. If Shizuku asks to pair: "
+                    + "Developer options > Wireless debugging > Pair device with pairing code, then type the number into Shizuku's notification.";
             Notification n = new Notification.Builder(c, CHANNEL)
                     .setSmallIcon(R.drawable.ic_launcher)
                     .setContentTitle(allow ? "Allow LinkMeter in Shizuku" : "Shizuku isn't running")

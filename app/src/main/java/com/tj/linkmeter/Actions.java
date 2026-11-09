@@ -374,6 +374,9 @@ final class Actions {
         f.hotspotBandChanged = Saved.hotspotBand(c) > 0;
         f.batterySaver = Eco.isOn(c);
         f.guardWatching = Guard.watching();
+        f.secureGranted = Boot.canWriteSecure(c);
+        f.pairingKept = Boot.pairingKept(c);
+        f.bootAssist = Boot.assist(c);
         return SafetyReport.report(f);
     }
 

@@ -2,7 +2,7 @@
 
 Rule 1 of this project: **the phone must never break, brick, or lose its internet for good.** This file says how that is kept,
 and where it cannot be (section 7). The "Safety check" button (Control tab, Bands tab) shows at any moment what LinkMeter still has
-changed. First audit 2026-11-09 (v0.2.82); second check the same day, on phone codes (section 2). Use the newest release on the
+changed. First audit 2026-11-09 (v0.2.82); second check the same day, on phone codes (section 2); third, on "start the phone after a restart" (section 8). Use the newest release on the
 Releases page, never v0.2.79 to v0.2.82 (they can dial any code you give them), and put the SAME release on the phone and on the tablet.
 
 ## 1. What LinkMeter never does
@@ -71,6 +71,12 @@ key list, or if this list stops matching the code.
 | Hotspot Wi-Fi band | hotspot config | yes | Restore everything; Settings > Mobile hotspot |
 | Battery saver profile, screen timeout and brightness during a remote session | Android settings | yes | each value is saved first and put back; also by itself 10 min after the tablet is gone |
 | Service menus opened from here | the phone's own menu | what you change in it | see section 7 |
+| "Start the phone after a restart": the one-time permission to change secure settings (`WRITE_SECURE_SETTINGS`) | Android's permissions | yes | Undo the setup (tablet, Control tab: `pm revoke`); see section 8 |
+| Wireless debugging switched on by LinkMeter after a restart | Android settings | no: Android switches it off by itself when the Wi-Fi goes | switch it off in Developer options; Undo the setup stops LinkMeter doing it |
+| Android's 7-day timeout for wireless-debugging pairings switched off (only if you ask) | Android settings | yes | Forget after 7 days, or Undo the setup (the old value is saved and put back) |
+| Boot assist switch | LinkMeter's own setting | yes | Undo the setup |
+| The tablet's own hotspot (a Wi-Fi Direct group) | the tablet's Wi-Fi | until stopped | the flow stops it itself; Stop hotspot; switching the tablet's Wi-Fi off |
+| The phone's hotspot, started by the flow | the phone's normal hotspot switch | yes | the normal switch (swipe down, Hotspot) |
 
 ## 4. The safety net (works with no tablet and no internet)
 
@@ -112,3 +118,25 @@ themselves. The Android code is compiled by GitHub for every push.
 - **A false alarm.** If the carrier's own connectivity check fails while data really works, the safety net may put the settings back
   after 4 minutes. That costs you the setting, never the connection.
 - **Deleting files** in the file manager is permanent.
+
+## 8. Start the phone after a restart (boot automation)
+
+What it does and why: see `docs/BOOT_FLOW.md`. What it can change, all of it listed in the Safety check while it is in place:
+
+- **A permission.** After you press One-time setup (Control tab on the tablet, Shizuku running), LinkMeter holds `WRITE_SECURE_SETTINGS`.
+  That permission lets an app change Android's secure settings, so it is a real grant. LinkMeter's code writes exactly three settings with it
+  (`Boot.java`): `development_settings_enabled` and `adb_wifi_enabled` (to switch wireless debugging on) and, only if you press Keep the
+  pairing, `adb_allowed_connection_time` (Android's 7-day timeout for adb authorizations). Undo the setup takes it back with `pm revoke`.
+- **Wireless debugging stays on only while a Wi-Fi network is joined.** Android switches it off itself when the Wi-Fi goes, and it only
+  runs on the tablet's own hotspot, which has a WPA2 password. Android still asks "Allow wireless debugging on this network?" and still
+  needs the pairing number typed into Shizuku: LinkMeter cannot answer either.
+- **Nothing touches the radio, the network type, bands or mobile data**, so the connection safety net is not involved and Restore everything
+  does not undo the boot items (the Safety check says so).
+- **The tablet's hotspot** is a Wi-Fi Direct group (or a local-only hotspot, or NetShare's). It only exists while the flow or you keep it on.
+  If the flow stops half-way it leaves the hotspot as it was and says so; Stop hotspot ends it.
+- **The phone's hotspot** is switched on through Shizuku, the same code as "Restart hotspot". If it does not start, the flow tells you to
+  switch it on by hand and carries on by itself.
+- **What was tested:** the order of the steps on simulated tablets and phones (it never stops the tablet's hotspot before the phone's is
+  confirmed, never asks the phone for its hotspot while Shizuku is not running, never claims success it has not seen, and sends nothing
+  after Cancel), the phone's own boot decisions over every combination, the finder over a real loopback network, and the Safety check text.
+  **Not tested on real devices:** the Wi-Fi Direct group on the tablet, the phone joining it, wireless debugging and Shizuku starting.

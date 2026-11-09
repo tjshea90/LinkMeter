@@ -11,6 +11,7 @@ import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -46,7 +47,15 @@ final class TabletHotspot {
     private volatile String mode = "";
     private volatile boolean needsLocation;
     private volatile boolean external;
-    private int starts;
+    /** When the hotspot last became ON (a Wi-Fi Direct group takes a moment to show up in the group info). */
+    private volatile long onAt;
+    /** When our own {@link #stop} ran: the group's network interface can stay up for a few seconds and must not look like NetShare's. */
+    private volatile long stoppedAt = -1;
+    /** Real Wi-Fi Direct failures since the last stop or success. "Wi-Fi is off" does not count: the third real try is a local-only hotspot. */
+    private int directFails;
+
+    private static final long GROUP_FORMING_MS = 8_000L;
+    private static final long LINGER_MS = 15_000L;
 
     private TabletHotspot(Context c) {
         app = c.getApplicationContext();
@@ -123,10 +132,9 @@ final class TabletHotspot {
             fail("The tablet needs the location permission before Android lets an app make a hotspot. Allow it when asked.");
             return;
         }
-        starts++;
         state = BootFlow.Hotspot.STARTING;
         info = "starting…";
-        boolean localOnly = Cfg.getBool(app, "bootLoh", false) || starts >= 3;
+        boolean localOnly = Cfg.getBool(app, "bootLoh", false) || directFails >= 2;
         mode = localOnly ? "local-only" : "Wi-Fi Direct";
         try {
             if (localOnly) {
@@ -170,15 +178,17 @@ final class TabletHotspot {
                 // no group
             }
         }
+        stoppedAt = SystemClock.elapsedRealtime();
         state = BootFlow.Hotspot.OFF;
         info = "";
         ip = "";
-        starts = 0;
+        directFails = 0;
     }
 
     /** Is the group still there? Called every few seconds while the hotspot should be on, and looks for a hotspot made by another app. */
     void poll() {
-        if (state == BootFlow.Hotspot.ON && !external && p2p != null && channel != null && "Wi-Fi Direct".equals(mode)) {
+        if (state == BootFlow.Hotspot.ON && !external && p2p != null && channel != null && "Wi-Fi Direct".equals(mode)
+                && SystemClock.elapsedRealtime() - onAt >= GROUP_FORMING_MS) {
             try {
                 p2p.requestGroupInfo(channel, group -> {
                     if (group == null && state == BootFlow.Hotspot.ON && !external) {
@@ -212,12 +222,20 @@ final class TabletHotspot {
         }
         p2p = (WifiP2pManager) app.getSystemService(Context.WIFI_P2P_SERVICE);
         if (p2p == null) {
-            fail("This tablet has no Wi-Fi Direct. Use a local-only hotspot or NetShare.");
+            directFail("This tablet has no Wi-Fi Direct. Use a local-only hotspot or NetShare.");
             return;
         }
-        channel = p2p.initialize(app, Looper.getMainLooper(), null);
         if (channel == null) {
-            fail("Android gave no Wi-Fi Direct connection. Switch the tablet's Wi-Fi on and try again.");
+            // one connection to Wi-Fi Direct is kept; Android tells us when it is lost, and the next start makes a new one
+            channel = p2p.initialize(app, Looper.getMainLooper(), new WifiP2pManager.ChannelListener() {
+                @Override
+                public void onChannelDisconnected() {
+                    channel = null;
+                }
+            });
+        }
+        if (channel == null) {
+            directFail("Android gave no Wi-Fi Direct connection. Switch the tablet's Wi-Fi on and try again.");
             return;
         }
         final String name = fixedName();
@@ -257,18 +275,19 @@ final class TabletHotspot {
                         pass = group != null && group.getPassphrase() != null ? group.getPassphrase() : password;
                         String iface = group != null ? group.getInterface() : null;
                         ip = addressOf(iface);
-                        state = BootFlow.Hotspot.ON;
                         info = ssid + "  password " + pass;
+                        directFails = 0;
+                        turnedOn();
                     });
                 }
 
                 @Override
                 public void onFailure(int reason) {
-                    fail("Wi-Fi Direct said no: " + p2pReason(reason));
+                    directFail("Wi-Fi Direct said no: " + p2pReason(reason));
                 }
             });
         } catch (IllegalArgumentException | SecurityException e) {
-            fail("Android refused the name or password: " + e.getMessage());
+            directFail("Android refused the name or password: " + e.getMessage());
         }
     }
 
@@ -302,8 +321,8 @@ final class TabletHotspot {
                 ssid = unquote(cfg == null ? null : cfg.SSID);
                 pass = unquote(cfg == null ? null : cfg.preSharedKey);
                 ip = addressOfApInterface();
-                state = BootFlow.Hotspot.ON;
                 info = ssid + "  password " + pass + "  (new at every start: the phone has to join it by hand)";
+                turnedOn();
             }
 
             @Override
@@ -351,6 +370,9 @@ final class TabletHotspot {
         if (state == BootFlow.Hotspot.ON && !external) {
             return;
         }
+        if (stoppedAt >= 0 && SystemClock.elapsedRealtime() - stoppedAt < LINGER_MS) {
+            return; // our own group is still closing: its network interface is not another app's hotspot
+        }
         String found = addressOfApInterface();
         if (!found.isEmpty()) {
             if (!external) {
@@ -360,7 +382,7 @@ final class TabletHotspot {
                 ssid = "";
                 pass = "";
                 info = "A hotspot is on (made by another app, maybe NetShare) at " + found + ".";
-                state = BootFlow.Hotspot.ON;
+                turnedOn();
             }
         } else if (external) {
             external = false;
@@ -419,8 +441,19 @@ final class TabletHotspot {
     }
 
     private void fail(String why) {
-        state = BootFlow.Hotspot.FAILED;
         info = why;
+        state = BootFlow.Hotspot.FAILED;
+    }
+
+    /** A real Wi-Fi Direct failure (not "the Wi-Fi is off"): after two of them the next try is a local-only hotspot. */
+    private void directFail(String why) {
+        directFails++;
+        fail(why);
+    }
+
+    private void turnedOn() {
+        onAt = SystemClock.elapsedRealtime();
+        state = BootFlow.Hotspot.ON;
     }
 
     // ------------------------------------------------------------------------------------------- NetShare

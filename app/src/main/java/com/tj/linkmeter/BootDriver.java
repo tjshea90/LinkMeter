@@ -56,6 +56,8 @@ final class BootDriver {
     private volatile boolean busyNorm;
     private volatile long lastNormPoll;
     private volatile String note = "";
+    /** True while {@link #note} is the "stop the hotspot in NetShare" request, which goes away once that hotspot is gone. */
+    private volatile boolean netShareNote;
     private volatile String lastCommandResult = "";
 
     private BootDriver(Context c) {
@@ -150,6 +152,7 @@ final class BootDriver {
         phoneHost = "";
         hotMisses = 0;
         note = "";
+        netShareNote = false;
         lastCommandResult = "";
         starting = true;
         changed();
@@ -200,6 +203,10 @@ final class BootDriver {
             if (now - lastPollHotspotAt >= 5000) {
                 lastPollHotspotAt = now;
                 hotspot.poll();
+            }
+            if (netShareNote && !hotspot.isExternal()) {
+                netShareNote = false; // that hotspot is gone: the request no longer applies
+                note = "";
             }
             pollHotspotNetwork(now);
             pollNormal(false, null);
@@ -339,6 +346,7 @@ final class BootDriver {
                 hotspot.stop();
                 if (hotspot.isExternal()) {
                     note = "Stop the hotspot in NetShare now: I cannot stop a hotspot that another app made.";
+                    netShareNote = true;
                 }
                 break;
             case WADB_ON:
