@@ -21,7 +21,7 @@ with the tablet). "Automate as much as possible, so I press as few buttons as po
 
 | # | Step | Automatic? |
 |---|---|---|
-| 1 | Tablet: Wi-Fi on | tablet cannot switch Wi-Fi on; hotspot does not need it. Skipped. |
+| 1 | Tablet: Wi-Fi on | NO for the app (Android 10 does not let an app switch Wi-Fi on) and a Wi-Fi Direct group needs it on. "Start everything" checks it and opens the Wi-Fi switch panel if it is off; normally it is on already (it stays on when the phone restarts). A failed attempt because the Wi-Fi is off does not use up one of the hotspot tries. |
 | 2 | Tablet: start the fake hotspot | YES: LinkMeter makes a Wi-Fi Direct group with a fixed name and password (a random local-only hotspot, or NetShare, as fallbacks). One permission prompt (location) the first time. |
 | 3 | Phone: join the tablet hotspot | YES after the first time: the phone saves the network (join it once by hand) and joins by itself. Needs the phone's Wi-Fi to be ON. |
 | 4 | Phone: open Shizuku | notification on the phone: one tap opens it (Android does not let LinkMeter open it by itself) |

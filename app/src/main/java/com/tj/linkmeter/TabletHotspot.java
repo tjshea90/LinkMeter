@@ -54,8 +54,12 @@ final class TabletHotspot {
     /** Real Wi-Fi Direct failures since the last stop or success. "Wi-Fi is off" does not count: the third real try is a local-only hotspot. */
     private int directFails;
 
+    /** When the last start began (to notice an Android that never answers). */
+    private volatile long startedAt;
+
     private static final long GROUP_FORMING_MS = 8_000L;
     private static final long LINGER_MS = 15_000L;
+    private static final long START_TIMEOUT_MS = 25_000L;
 
     private TabletHotspot(Context c) {
         app = c.getApplicationContext();
@@ -132,6 +136,7 @@ final class TabletHotspot {
             fail("The tablet needs the location permission before Android lets an app make a hotspot. Allow it when asked.");
             return;
         }
+        startedAt = SystemClock.elapsedRealtime();
         state = BootFlow.Hotspot.STARTING;
         info = "starting…";
         boolean localOnly = Cfg.getBool(app, "bootLoh", false) || directFails >= 2;
@@ -187,6 +192,15 @@ final class TabletHotspot {
 
     /** Is the group still there? Called every few seconds while the hotspot should be on, and looks for a hotspot made by another app. */
     void poll() {
+        if (state == BootFlow.Hotspot.STARTING && SystemClock.elapsedRealtime() - startedAt > START_TIMEOUT_MS) {
+            // Android never called back: say so, so that the next try can begin (a late answer still turns the hotspot on)
+            String why = "Android did not answer within " + (START_TIMEOUT_MS / 1000) + " seconds.";
+            if ("Wi-Fi Direct".equals(mode)) {
+                directFail("Wi-Fi Direct: " + why);
+            } else {
+                fail("The local-only hotspot: " + why);
+            }
+        }
         if (state == BootFlow.Hotspot.ON && !external && p2p != null && channel != null && "Wi-Fi Direct".equals(mode)
                 && SystemClock.elapsedRealtime() - onAt >= GROUP_FORMING_MS) {
             try {
