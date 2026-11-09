@@ -177,6 +177,7 @@ final class BandsTab extends Tab {
     @Override
     void onHide() {
         act.ui.removeCallbacks(clock);
+        lab.stop(); // the placement helper asks the phone once a second: not while this tab is out of sight
     }
 
     /** A grid of band buttons, a few per row. Each tries that band alone. */

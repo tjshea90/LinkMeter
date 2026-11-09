@@ -62,6 +62,13 @@ final class Api {
                     Http.err(out, 404, "not a phone");
                 }
                 break;
+            case "/sig":
+                if (phone) {
+                    Http.json(out, 200, Status.sigJson(c)); // the placement helper's readings
+                } else {
+                    Http.err(out, 404, "not a phone");
+                }
+                break;
             case "/act":
                 if (phone) {
                     act(c, r, out);

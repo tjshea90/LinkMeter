@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.os.BatteryManager;
 import android.os.SystemClock;
 import android.telephony.CellSignalStrength;
+import android.telephony.CellSignalStrengthLte;
 import android.telephony.CellSignalStrengthNr;
 import android.telephony.SignalStrength;
 import android.telephony.TelephonyManager;
@@ -53,6 +54,46 @@ final class Status {
             cell(c, o);
         } catch (JSONException ignored) {
             // Nothing to do: the tablet just gets whatever was filled in so far.
+        }
+        return o.toString();
+    }
+
+    /**
+     * The 4G and 5G signal readings for the tablet's placement helper (SignalHunt reads them): power, quality and signal-to-noise
+     * of the 4G cell that carries the upload, and of the 5G cell. Whole numbers as Android reports them; a value the phone does not
+     * know is Integer.MAX_VALUE, which SignalHunt turns into "not reported". No Shizuku needed.
+     */
+    static String sigJson(Context c) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("t", SystemClock.elapsedRealtime());
+            if (c.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                TelephonyManager tm = c.getSystemService(TelephonyManager.class);
+                SignalStrength ss = tm == null ? null : tm.getSignalStrength();
+                if (ss != null) {
+                    for (CellSignalStrength s : ss.getCellSignalStrengths()) {
+                        if (s instanceof CellSignalStrengthLte) {
+                            CellSignalStrengthLte l = (CellSignalStrengthLte) s;
+                            o.put("lteRsrp", l.getRsrp());
+                            o.put("lteRsrq", l.getRsrq());
+                            o.put("lteSinr", l.getRssnr());
+                            o.put("lteCqi", l.getCqi());
+                        } else if (s instanceof CellSignalStrengthNr) {
+                            CellSignalStrengthNr n = (CellSignalStrengthNr) s;
+                            o.put("nrRsrp", n.getSsRsrp());
+                            o.put("nrRsrq", n.getSsRsrq());
+                            o.put("nrSinr", n.getSsSinr());
+                        }
+                    }
+                }
+                if (tm != null) {
+                    o.put("net", netName(tm.getDataNetworkType()));
+                }
+            } else {
+                o.put("err", "the phone app has no phone permission");
+            }
+        } catch (JSONException | RuntimeException e) {
+            // the tablet gets whatever was filled in so far
         }
         return o.toString();
     }

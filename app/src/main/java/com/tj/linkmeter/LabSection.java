@@ -1,6 +1,7 @@
 package com.tj.linkmeter;
 
 import android.graphics.Typeface;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.view.View;
 import android.widget.Button;
@@ -47,8 +48,32 @@ final class LabSection {
     private String menuMsg = "";
     private List<String> screens = new ArrayList<>();
 
+    // ---- the placement helper
+    private final SignalHunt hunt = new SignalHunt();
+    private final Beeper beeper = new Beeper();
+    private boolean hunting;
+    /** Each start gets a new number, so a loop from an earlier start ends when it sees that it is not the newest. */
+    private int huntRun;
+    private Button huntBtn;
+    private TextView huntView;
+    private TextView spotsView;
+    private EditText labelField;
+    private CheckBox beepBox;
+    private String huntMsg = "";
+    private String spotsMsg = "";
+
     LabSection(MainActivity act) {
         this.act = act;
+    }
+
+    /** The tab was left: no more questions to the phone and no more beeps. */
+    void stop() {
+        hunting = false;
+        huntRun++;
+        beeper.release();
+        if (huntBtn != null) {
+            huntBtn.setText("Start");
+        }
     }
 
     void build(LinearLayout col) {
@@ -58,6 +83,7 @@ final class LabSection {
         buildLeg(col);
         buildCompare(col);
         buildMenus(col);
+        buildHunt(col);
     }
 
     private static void mono(TextView t) {
@@ -346,6 +372,149 @@ final class LabSection {
                     v -> menuCall("menu_open", comp));
             b.setTextSize(11);
             screensBox.addView(b, Ui.lp(act, 2));
+        }
+    }
+
+    // ------------------------------------------------------------ 4. the best spot
+
+    private void buildHunt(LinearLayout col) {
+        col.addView(Ui.text(act, "4. Find the best spot for the phone", 16, Ui.FG, true), Ui.lp(act, 18));
+        col.addView(Ui.text(act, "Often the biggest gain of all: a few dB more signal at the phone is worth more than any setting. "
+                + "Press Start, then hold or put the phone where you want to try (a window, higher up, outside on a sill, with its case "
+                + "off, its back to the window), wait about 10 seconds for the average to settle, and press \"Mark this spot\". "
+                + "The score looks at the 4G cell, because that is what the upload rides on. With Beep on, a higher tone means a "
+                + "better spot, so you can move the phone without looking at the tablet. The phone must stay on the hotspot, and the "
+                + "tablet within reach of it.", 12, Ui.DIM, false), Ui.lp(act, 4));
+        LinearLayout r = row(act);
+        huntBtn = Ui.button(act, hunting ? "Stop" : "Start", v -> toggleHunt());
+        r.addView(huntBtn, Ui.weight());
+        beepBox = box("Beep (higher = better)", true);
+        r.addView(beepBox, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.4f));
+        col.addView(r, Ui.lp(act, 6));
+        huntView = Ui.text(act, huntMsg, 14, Ui.FG, false);
+        mono(huntView);
+        col.addView(huntView, Ui.lp(act, 6));
+        LinearLayout r2 = row(act);
+        labelField = new EditText(act);
+        labelField.setSingleLine(true);
+        labelField.setInputType(InputType.TYPE_CLASS_TEXT);
+        labelField.setTextColor(Ui.FG);
+        labelField.setHint("name of this spot");
+        labelField.setHintTextColor(Ui.DIM);
+        r2.addView(labelField, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.6f));
+        r2.addView(Ui.button(act, "Mark this spot", v -> markSpot()), Ui.weight());
+        col.addView(r2, Ui.lp(act, 4));
+        spotsView = Ui.text(act, spotsMsg, 12, Ui.FG, false);
+        mono(spotsView);
+        col.addView(spotsView, Ui.lp(act, 4));
+    }
+
+    private void toggleHunt() {
+        if (hunting) {
+            stop();
+            setHunt(huntMsg + "\n(stopped)");
+            return;
+        }
+        hunting = true;
+        final int me = ++huntRun;
+        huntBtn.setText("Stop");
+        setHunt("Asking the phone for its signal…");
+        huntStep(me);
+    }
+
+    /** One reading, then the next one a second later; ends when stopped or when a newer start has taken over. */
+    private void huntStep(final int me) {
+        Call.run(act, "GET", "/sig", 3500, (ok, text, json) -> {
+            if (!hunting || me != huntRun) {
+                return;
+            }
+            long delay = 900;
+            if (ok && json != null && !json.has("err")) {
+                long now = SystemClock.elapsedRealtime();
+                hunt.add(new SignalHunt.Sample(now,
+                        SignalHunt.rsrp(json.optInt("lteRsrp", Integer.MAX_VALUE)),
+                        SignalHunt.rsrq(json.optInt("lteRsrq", Integer.MAX_VALUE)),
+                        SignalHunt.sinr(json.optInt("lteSinr", Integer.MAX_VALUE)),
+                        SignalHunt.cqi(json.optInt("lteCqi", Integer.MAX_VALUE)),
+                        SignalHunt.rsrp(json.optInt("nrRsrp", Integer.MAX_VALUE)),
+                        SignalHunt.sinr(json.optInt("nrSinr", Integer.MAX_VALUE))));
+                paintHunt(now, json.optString("net", ""));
+            } else {
+                setHunt("The phone did not answer: " + (json != null && json.has("err") ? json.optString("err") : text)
+                        + "\nIs the tablet on the phone's hotspot? Is the phone's app up to date?");
+                delay = 2500;
+            }
+            act.ui.postDelayed(() -> huntStep(me), delay);
+        });
+    }
+
+    private void paintHunt(long now, String net) {
+        SignalHunt.Avg a = hunt.average(now, SignalHunt.WINDOW_MS);
+        int score = SignalHunt.score(a);
+        String trend = hunt.trend(now);
+        String arrow = trend.equals("up") ? "↑" : trend.equals("down") ? "↓" : "→";
+        StringBuilder sb = new StringBuilder();
+        if (score < 0) {
+            sb.append("No reading yet");
+        } else {
+            sb.append(String.format(java.util.Locale.US, "Score %d  %s  %s", score, SignalHunt.rating(score), arrow));
+        }
+        if (!net.isEmpty()) {
+            sb.append("   (").append(net).append(")");
+        }
+        sb.append("\nLast 10 s: ").append(SignalHunt.describe(a));
+        SignalHunt.Sample last = hunt.last();
+        if (last != null) {
+            sb.append("\nNow:       ").append(SignalHunt.describe(oneReading(last)));
+        }
+        if (hunt.bestScore() >= 0) {
+            sb.append(String.format(java.util.Locale.US, "\nBest so far this session: %d, %d s ago", hunt.bestScore(),
+                    Math.max(0, (now - hunt.bestAt()) / 1000)));
+        }
+        setHunt(sb.toString());
+        if (beepBox != null && beepBox.isChecked()) {
+            beeper.beep(SignalHunt.toneHz(score));
+        }
+    }
+
+    private static SignalHunt.Avg oneReading(SignalHunt.Sample s) {
+        SignalHunt.Avg a = new SignalHunt.Avg();
+        a.count = 1;
+        a.lteRsrp = s.lteRsrp;
+        a.lteRsrq = s.lteRsrq;
+        a.lteSinr = s.lteSinr;
+        a.lteCqi = s.lteCqi;
+        a.nrRsrp = s.nrRsrp;
+        a.nrSinr = s.nrSinr;
+        return a;
+    }
+
+    private void setHunt(String s) {
+        huntMsg = s;
+        if (huntView != null) {
+            huntView.setText(s);
+        }
+    }
+
+    private void markSpot() {
+        String label = labelField == null ? "" : labelField.getText().toString();
+        SignalHunt.Spot sp = hunt.mark(label, SystemClock.elapsedRealtime());
+        if (sp == null) {
+            spotsMsg = "Nothing to mark yet: press Start and wait for a reading.";
+        } else {
+            StringBuilder sb = new StringBuilder("Marked spots (the average of the last 10 seconds at each):\n");
+            List<SignalHunt.Spot> all = hunt.spots();
+            int best = hunt.bestSpot();
+            for (int i = 0; i < all.size(); i++) {
+                sb.append(all.get(i).line(i == best)).append('\n');
+            }
+            spotsMsg = sb.toString().trim();
+            if (labelField != null) {
+                labelField.setText("");
+            }
+        }
+        if (spotsView != null) {
+            spotsView.setText(spotsMsg);
         }
     }
 }

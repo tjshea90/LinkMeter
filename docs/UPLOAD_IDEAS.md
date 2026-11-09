@@ -1,6 +1,6 @@
 # Upload ideas: other ways to help a weak 5G UW uplink without root (researched 2026-11-09)
 
-**Status (2026-11-09, later): ideas 1 (the 5G leg), 3 (hidden-menu probe) and a fairer comparison are BUILT and tested offline, waiting for CI and the user's field test (details: HANDOFF.md, top block). Still NOT built: the 24 h link recorder (idea 2), the reroll (idea 4), a signal-hunt (placement) mode, the time-of-day policy (idea 5).** The user said that everyone in their brick building gets 0.1 to 1 Mbit/s by day and 4 to 8 at night, and that hotspot off did not help: so weak indoor RF times daytime load; physical levers (idea 6) are the biggest. Keep this file true.
+**Status (2026-11-09, later): ideas 1 (the 5G leg), 3 (hidden-menu probe) and a fairer comparison are BUILT and tested offline, waiting for CI and the user's field test (details: HANDOFF.md, top block). A placement helper ("find the best spot": live score of the 4G anchor, beep, marked spots) is built too. Still NOT built: the 24 h link recorder (idea 2), the reroll (idea 4), the time-of-day policy (idea 5).** The user said that everyone in their brick building gets 0.1 to 1 Mbit/s by day and 4 to 8 at night, and that hotspot off did not help: so weak indoor RF times daytime load; physical levers (idea 6) are the biggest. Keep this file true.
 
 The user's question: "If my modem won't accept forced band requests, is there any other way to force the band or speed
 up or strengthen the cell connection from the software without root? Think outside the box. My problem is extremely slow,
