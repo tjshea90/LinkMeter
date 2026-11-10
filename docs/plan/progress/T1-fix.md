@@ -48,14 +48,18 @@ HANDLED SO FAR:
     the card. NOT_TESTED words: "... but it is not known whether a call to it works. Press Test." LinkStateTest 5204 checks; 5 new "state:"
     breakages (23 of 23 caught); PreviewTest.settingsNewSecret (picture and check; fails without the forget in a scratch copy).
 
-IN PROGRESS NOW: F5 (verdict: real). NOT the reviewer's fix (pacing with PollPace): the Screen tab cannot show anything without the hotspot, so its own
- question is now asked over the hotspot ONLY. Written but NOT yet committed:
- - Reach.hotspotOnly(method, target, readMs) (never Bluetooth), Call.runOverHotspot, ScreenTab.statePoll uses it.
- - ReachTest hotspotOnly() (615861 checks), 4 new "reach:" breakages (all caught), PreviewTest.screenTabLeavesBluetoothAlone + Pretend.btCalls,
-   docs/REMOTE_LINK.md point 5.
- About to: run the preview check (and against the old code in the scratch copy), then test, build, preview, checkpoint.
+ F5 FIXED in commit 5cf6f52 (verdict: real; NOT the reviewer's fix of pacing with PollPace: the Screen tab cannot show anything without the hotspot, so
+    its own question is asked over the hotspot ONLY). Reach.hotspotOnly(method, target, readMs) never calls Bluetooth; Call.runOverHotspot;
+    ScreenTab.statePoll uses it (Sleep and Wake are presses and still go through Call.run). ReachTest 615861 checks (hotspotOnly()), 4 new "reach:"
+    breakages caught; PreviewTest.screenTabLeavesBluetoothAlone + Pretend.btCalls (a check: with the old poll 10 Bluetooth calls in 30 s);
+    docs/REMOTE_LINK.md point 5.
 
-NEXT: F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+IN PROGRESS NOW: F1 (verdict: real by the code; whether this Samsung leaves the state at 14 is not known). Written but NOT yet committed:
+ - RemoteRoutes.hotspotDown(state): 11 or 14. ShellMain: waitAp takes a predicate; hotspotStop's first test, both waits after stopTethering and
+   hotspotRestart's "does it need stopping" use hotspotDown. LinkProtocolTest checks + 3 new "hotspot:" breakages (8 of 8 caught). docs/REMOTE_LINK.md.
+ About to: test, build, checkpoint (no screen changed).
+
+NEXT: F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
