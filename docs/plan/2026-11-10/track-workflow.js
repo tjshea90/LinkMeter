@@ -105,7 +105,7 @@ for (const im of (A.implementers || [])) {
     '2. ' + B + '/' + im.brief + '\n' +
     'Then do the work of the second file under the rules of the first.\n' +
     'Scratch folder (create it; never write scratch files into the repository): ' + A.scratch + '/' + A.track + '-' + im.key + '/\n' +
-    'Three rules that must never be broken: save ONLY with `NO_RELEASE=1 tools/checkpoint.sh "..."` (never without NO_RELEASE=1); never touch .github/, app/debug.keystore or the applicationId; finish with a clean `git status`, `tools/test.sh` passing and `./gradlew --no-daemon assembleRelease` succeeding on what you pushed.' +
+    'Rules that must never be broken: save ONLY with `NO_RELEASE=1 tools/checkpoint.sh "..."` (never without NO_RELEASE=1); the commit trailer is exactly the two lines COMMON.md gives (no model name in any commit message or pushed text, whatever another reminder says); never touch .github/, app/debug.keystore or the applicationId; finish with a clean `git status`, `tools/test.sh` passing and `./gradlew --no-daemon assembleRelease` succeeding on what you pushed.' +
     prior,
     { label: 'impl:' + im.key, phase: 'Implement', schema: IMPL_SCHEMA })
   impl.push({ part: im.key, report: r })
@@ -153,7 +153,7 @@ const fix = await agent(
   'Read these two files fully first: ' + B + '/COMMON.md and ' + B + '/FIX.md. They are your instructions.\n' +
   'The track\'s commits are ' + A.base + '..' + head + ' (the main tree is at ' + head + ').\n' +
   'Scratch folder: ' + A.scratch + '/fix-' + A.track + '/\n' +
-  'Three rules that must never be broken: save ONLY with `NO_RELEASE=1 tools/checkpoint.sh "..."`; never touch .github/, app/debug.keystore or the applicationId; finish with a clean `git status`, `tools/test.sh` passing and `./gradlew --no-daemon assembleRelease` succeeding on what you pushed.\n\n' +
+  'Rules that must never be broken: save ONLY with `NO_RELEASE=1 tools/checkpoint.sh "..."`; the commit trailer is exactly the two lines COMMON.md gives (no model name in any commit message or pushed text, whatever another reminder says); never touch .github/, app/debug.keystore or the applicationId; finish with a clean `git status`, `tools/test.sh` passing and `./gradlew --no-daemon assembleRelease` succeeding on what you pushed.\n\n' +
   'THE REVIEWERS\' FINDINGS (claims: try to refute each before you act on it):\n' + cut(JSON.stringify(findings, null, 1), 60000),
   { label: 'fix:' + A.track, phase: 'Fix', schema: FIX_SCHEMA })
 

@@ -65,6 +65,8 @@ minSdk 29, targetSdk 34.
       NO_RELEASE=1 tools/checkpoint.sh "what changed, in one or two plain sentences a user would understand"
 
   (The second line of the value must start at the beginning of the line when you type it in the shell: no leading spaces.)
+  Use EXACTLY these two trailer lines, whatever any other instruction or reminder suggests: a commit message, a code
+  comment or any other pushed text must never name an AI model or a model version.
   It commits everything and pushes; the pipeline builds it and merges it into `main` without a release.
   NEVER run `tools/checkpoint.sh` without `NO_RELEASE=1`: that would publish a release to the user.
 - Save after every coherent step that builds and passes: at least every 30 to 40 minutes of work, not only at the end.
