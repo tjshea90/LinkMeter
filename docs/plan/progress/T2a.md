@@ -1,22 +1,31 @@
 STATUS: WORKING
 TASK: Track T2 part a (battery saver on the phone), brief docs/plan/2026-11-10/briefs/T2a.md. Started from commit 08a2d00 (= main = ccr-071a4761-6jfasm) on branch ccr-dbf3eb41-2sjhj8. ONE session, no agents (CLAUDE.md).
 
-DONE SO FAR:
-- Resume protocol followed: git fetch --all, nothing unmerged anywhere, baseline `tools/test.sh` exit 0 on 08a2d00.
-- Read: HANDOFF START HERE + DECISIONS + TRACKS, plan README, COMMON.md, T2a.md, audit battery.defects/decisions/report(1-3), Eco, RemoteProfile, ProfilePlan, Actions eco parts, Api.touch, Status, SafetyReport, Radios, Awake, Priv, mutate_link.py runner.
+DONE SO FAR (all in the working tree; first part pushed as wip 753423f; the rest is NOT yet committed when these notes are written):
+- NEW app/.../SaverPlan.java (pure): PROFILE (wifi_scan, ble_scan, doze_always_on, aod_mode [only when phone says 0/1], screen_off_timeout 15000; tether_offload dropped), reconcile(auto,on,tabletHere,shizukuReady,now,failedAt)->NOTHING/APPLY/RESTORE with 60 s back-off, idle(...)->NOTHING_TO_WATCH/LOOK_AGAIN/ASK_TABLET/RESTORE (10 min, hotspot+ping, resting phone), readCommand/parseRead, plan(...)->Run (validation digits{1,10}|null, unreadable named, session-owned timeout stored not written), writeCommand (read back) + check, store format "ns key original" lines (fmt=2, pref orig2), parse/parseOld (old o0..o4 order + bt), restore(...)->Restore (command, count, skipped, sessionTimeout hand-over), sentences, homeFact, milliamps.
+- NEW tools/test/SaverPlanTest.java (3,421 checks): rules + real `sh` against a fake `settings` program + a World that mirrors Eco's steps + RANDOM 120 runs (phone must come back exactly as it was). Registered in tools/test.sh (after ProfilePlan). 60 `saver:` + 4 `safety:` breakages added to tools/mutate_link.py.
+- Eco.java REWRITTEN as glue: Eco.suppressed deleted; Eco.setAuto(Context,boolean[,note]) is the ONLY way to change Cfg.ecoAuto; touch/onServiceStart/reconcileNow (asks again under Eco.class lock); ELAPSED_REALTIME AlarmManager (non-wakeup) + ACTION_SCREEN_ON receiver only while saver on; onServiceStop (called from SenderService.onDestroy); own AtomicBoolean/locks (no request thread waits behind a shell); ping = InetAddress.isReachable(2000) on a background thread.
+- Actions: eco_auto_on|eco_on -> Eco.setAuto(true); eco_auto_off|eco_off -> Eco.setAuto(false); restoreAll uses Eco.setAuto(c,false,RESTORE_ALL_NOTE); probe(Context) prints doze_always_on, aod_mode, screen_off_timeout, /sys current_now, dumpsys battery, and Status.currentText (raw BatteryManager number + unit guess). Api passes the Context to probe.
+- Status: `cur` (mA, negative discharging, LEFT OUT when unknown) via SaverPlan.milliamps.
+- RemoteProfile: adoptOriginalTimeout (D18 fix: when the saver is switched off during a Screen session it leaves the timeout and tells the session the REAL original; otherwise the session would put back the saver's 15 s for ever); CHECK no longer starts a thread every 15 s while Shizuku is off (60 s, no thread; D19).
+- PhoneTab: checkbox stores at once, Eco.setAuto on a background thread, Toast with the sentence, repainted from the stored value at every refresh (D8/D10). HomeTab: saver fact = SaverPlan.homeFact (never "on" from the choice alone; D11).
+- SafetyReport: the saver is now a "change" line + Restore everything is promised for it + says it also switches the Automatic choice off; SafetyReportTest follows (28,735 checks). docs/SAFETY.md saver row split in two; docs/REMOTE_LINK.md saver section rewritten.
+- `./gradlew --no-daemon assembleRelease` was BUILD SUCCESSFUL after the Eco/Actions/Status/PhoneTab/HomeTab edits (before SafetyReport/doc edits).
 
-IN PROGRESS NOW: designing the pure class SaverPlan (no code written yet).
+IN PROGRESS NOW: verification. `python3 tools/mutate_link.py saver:` running (output in scratchpad mutate-saver2.out; 24/60 caught, 0 missed at last look).
 
 NEXT (in order):
- 1. SaverPlan.java + tools/test/SaverPlanTest.java, register in tools/test.sh, add a `saver:` suite to tools/mutate_link.py.
- 2. Eco.java rewritten as glue (delete `suppressed`; Eco.setAuto is the one way to change Cfg.ecoAuto; reconcile in touch + service start; ELAPSED_REALTIME non-wakeup AlarmManager; ACTION_SCREEN_ON receiver only while saver on; own small lock for the timer).
- 3. Actions: eco_auto_on/off + eco_on/off aliases -> Eco.setAuto; restoreAll stores Off and says so; probe prints raw battery current + doze_always_on + aod_mode.  Status: `cur` (mA, left out when unknown).  RemoteProfile.CHECK: no thread every 15 s while Shizuku not ready.  ProfilePlan: session end must put the USER'S original timeout back when the saver left it alone (D18).  PhoneTab: only the saver checkbox.  HomeTab: only the saver fact wording.
- 4. SafetyReport + SafetyReportTest + docs/SAFETY.md row + docs/REMOTE_LINK.md (saver section, wake lock 120 s not 30 s).
- 5. tools/test.sh, ./gradlew --no-daemon assembleRelease, python3 tools/mutate_link.py saver:, tools/preview.sh (look at state-home-*.png), HANDOFF T2 line (part a done, part b left, do NOT tick T2), NO_RELEASE=1 tools/checkpoint.sh.
- 6. Then T2b (briefs/T2b.md), then own review pass of T2, then plain tools/checkpoint.sh (release).
+ 1. When saver: mutations finish: all caught? fix test for any MISSED. Then `python3 tools/mutate_link.py safety:` (4).
+ 2. `tools/test.sh` (whole), `./gradlew --no-daemon assembleRelease`, `tools/preview.sh` then LOOK at tools/uipreview/out/state-home-*.png (Home's saver fact wording is long: "automatic: starts when the tablet is on the hotspot"; shorten if it wraps badly).
+ 3. HANDOFF: T2 line (part a done, part b left, do NOT tick T2) + a short START HERE refresh; then `NO_RELEASE=1 tools/checkpoint.sh "..."`.
+ 4. T2b (briefs/T2b.md): ScreenTab hold-awake idle limit + one poll chain + one Sleep target; BootSection loops; ScreenPrefs custom quality; the phone address rule; Speed tab sentence; four small settings faults.
+ 5. Own review pass of T2 (briefs/REVIEW.md + tracks.json T2 reviewer scopes), fixes, plain `tools/checkpoint.sh` (release), check run + release, give the user https://github.com/tjshea90/LinkMeter/releases
 
 LEARNED:
-- Commit trailer: use `Co-Authored-By: Claude <noreply@anthropic.com>` + `Claude-Session: https://claude.ai/code/session_01UWi8Zxx7kVm9wQ9mh89mLT` (this session's own link; NO model name in anything pushed: COMMON.md and the system rules agree).
-- Do not `cd` into subfolders in Bash (the shell keeps the directory for the next call); use absolute paths.
-- Test output has `Picked up JAVA_TOOL_OPTIONS` noise on every line: filter with grep -v.
-- D18 trap: if Eco.restore just skips the timeout while a Screen session owns it, the session's own end (ProfilePlan.restoreValue) puts back ITS belief of the original = the saver's 15 s (the session started while the saver was on and read 15000 as "original"). With the saver off nobody then restores the user's real timeout. Needs: the saver remembers a pending timeout original and ProfilePlan.restoreValue uses it.
+- Commit trailer: `Co-Authored-By: Claude <noreply@anthropic.com>` + `Claude-Session: https://claude.ai/code/session_01UWi8Zxx7kVm9wQ9mh89mLT` (NO model name in anything pushed).
+- A hook blocks `rm -rf` even in the scratch folder: compile tests into a fresh dir name (`$S/out-$(date +%s)`) instead of deleting.
+- Do not `cd` into subfolders in Bash (the shell keeps the directory); use absolute paths.
+- Test output has `Picked up JAVA_TOOL_OPTIONS` noise: filter with grep -v.
+- D18 trap and its fix: see RemoteProfile.adoptOriginalTimeout above (story tests in SaverPlanTest cover 4 orders of saver/session).
+- NOT verified on a device (say so in the answer): isReachable on Android 16 / this tablet (a "no answer" restores, fails safe); `system aod_mode` being the Samsung switch (guarded: only written when the phone says 0/1); the unit/sign of BatteryManager current on this Samsung (Probe prints the raw number); ACTION_SCREEN_ON receiver with RECEIVER_NOT_EXPORTED (same pattern as Radios.watch).
+- Idea NOT done (record in HANDOFF): restore overwrites a setting the user changed by hand while the saver was on (RemoteProfile only restores values that still equal what it set). Cheap later: guard each restore with `[ "$(settings get ns key)" = "<target>" ] &&`.
