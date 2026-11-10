@@ -1,7 +1,8 @@
 # LinkMeter: what every implementer on this task must know
 
 You work in the LinkMeter repository (your working directory), on the branch that is checked out (do not switch branches).
-You are the only one editing this tree right now. Plain Java, NO third-party libraries (the tablet is a low-RAM Android Go
+You are the only one changing code in this tree right now (commits that start with `progress:` or `note:` are notes and
+rule books saved by others; they change no code). Plain Java, NO third-party libraries (the tablet is a low-RAM Android Go
 device), package `com.tj.linkmeter`, sources in `app/src/main/java/com/tj/linkmeter`, offline tests in `tools/test`,
 minSdk 29, targetSdk 34.
 
@@ -73,7 +74,8 @@ folder, `<scratch>/<progress name>.md`, and push it with
       tools/progress.sh <progress name> <scratch>/<progress name>.md
 
 It takes a few seconds, builds nothing, and commits ONLY that file (as `docs/plan/progress/<progress name>.md`), so it is
-safe in the middle of half-done work, and it works from a reviewer's own copy of the repository too. Save your notes
+safe in the middle of half-done work, and it works from a reviewer's own copy of the repository too.
+`tools/progress.sh --show <progress name>` prints what is saved. Save your notes
 after every finding you finish, at least every 10 minutes, and ALWAYS just before a long command (a build, the tests,
 the preview, a long search). The notes are for a successor who knows nothing of what you did. Keep them short and exact:
 
@@ -120,21 +122,31 @@ the pipeline then builds and merges everything.
 ### When you start: is there work of an earlier run?
 
 BEFORE anything else:
-1. Look for `docs/plan/progress/<progress name>.md` in the repository. If it exists, an earlier run of YOUR role was cut
-   off, or finished. Copy it to your scratch notes file and read it.
-   - `STATUS: DONE`: check in a minute or two that it is true (the commits it names are in `git log`, `git status` is
-     clean, and for an implementer or fixer your track's line in HANDOFF agrees). Then give the answer stored in it as
-     your answer. Do NOT do the work again.
-   - `STATUS: WORKING`: continue from it. Trust DONE SO FAR after a glance at the commits; start at IN PROGRESS NOW.
-2. Run `git log --oneline -6` and `git status --short`. If the newest commit starts with `wip:`, or the tree has changes
-   nobody committed, that is half-done work of the run before you: read the commit message and the notes, build, and
-   finish or repair it before anything new. Never throw it away unread.
+1. Run `tools/progress.sh --show <progress name>`. It prints the notes an earlier run of YOUR role saved, or says that
+   there are none. (It reads the main tree, so it is right in a reviewer's copy too; do not look for the file in your
+   own checkout.) If there are notes, copy them into your scratch notes file and read them.
+   - `STATUS: DONE`: that run finished. Check in a minute that the commits it names are in `git log` (an implementer or
+     fixer also: that your track's line in HANDOFF agrees). Then give the answer stored under `ANSWER` as your answer,
+     UNCHANGED. Do NOT do the work again. Commits newer than the last one your notes name, and changes nobody has
+     committed, belong to the agent that ran AFTER you: leave them exactly as they are (no build, no test, no commit,
+     no stash, no checkout), and skip step 2.
+   - `STATUS: WORKING`: that run was cut off. Continue from it. Trust DONE SO FAR after a glance at the commits; start
+     at IN PROGRESS NOW.
+2. Only if you are not DONE: run `git log --oneline -12` and `git status --short`. Skip the `progress:` and `note:`
+   commits in the log (notes and rule books; they change no code). If the newest OTHER commit starts with `wip:`, or the
+   tree has changes nobody committed, that is half-done work: your own from the earlier run if your notes say so,
+   otherwise of the agent before you. Read the commit message and the notes, build, and finish or repair it before
+   anything new. Never throw it away unread.
 
 ### When you finish
 
 Your LAST notes save has `STATUS: DONE` and, under a heading `ANSWER`, your complete answer (the same content as the
 structured answer you return, as JSON in a code block), so that a run that is started again can hand it back without
 redoing your work. Save it with `tools/progress.sh` AFTER your last checkpoint and before you return your answer.
+- Write `STATUS: DONE` only if your answer says the build and the tests are clean. If they are not, the status stays
+  `WORKING`, with what is not clean under NEXT.
+- Where your answer names your last commit, give your last `checkpoint:` commit
+  (`git log -1 --format=%h --grep='^checkpoint:'`), not HEAD: your last notes save comes after it.
 
 ## Your answer
 

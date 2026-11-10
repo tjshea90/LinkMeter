@@ -45,4 +45,5 @@ audit: the saver's one switch; band locks, the leg and dialing are gone; the hot
 
 ## When you are done
 
-Save (see COMMON). In HANDOFF's track list tick T6 `[x]` and write what was learned in one or two sentences.
+Save (see COMMON). On T6's line in HANDOFF write "BUILT, review pending" and what was learned in one or two sentences.
+Do NOT tick the box: the directing session ticks it after the review and the fixes.

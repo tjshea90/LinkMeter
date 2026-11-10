@@ -15,6 +15,8 @@ export const meta = {
 //   review only (the implementers already ran): implementers: [], head: "<last commit of the track>",
 //   implReportFile: "<file with their reports, or a sentence saying where to look>"
 //   fixAnyway: true = start the fixer although a reviewer returned nothing
+//   finished: { "T2a": "<its last checkpoint commit>" } = implementers that finished in an earlier run (their notes say
+//   STATUS: DONE); they are not started again
 // IF A RUN IS CUT OFF: make the same call again. Nothing is lost and nothing is done twice (see "notes" below).
 const A = args
 const B = A.briefs
@@ -40,7 +42,7 @@ const IMPL_SCHEMA = {
     tests: { type: 'string', description: 'New and changed tests with their check counts, and how many deliberate breakages each caught.' },
     not_known_until_a_device: { type: 'array', items: { type: 'string' } },
     for_the_next: { type: 'array', items: { type: 'string' }, description: 'Facts the next implementer or the orchestrator needs: reply shapes changed, names added, things left for another track.' },
-    last_commit: { type: 'string', description: 'Short hash of your last pushed checkpoint (git rev-parse --short HEAD).' },
+    last_commit: { type: 'string', description: "Short hash of your last pushed checkpoint: git log -1 --format=%h --grep='^checkpoint:' (not HEAD: your last notes save comes after it)." },
     build_and_tests_clean: { type: 'boolean', description: 'true only if tools/test.sh and gradlew assembleRelease both passed on the tree as committed, and git status is clean.' },
   },
   required: ['summary', 'findings', 'files_changed', 'tests', 'not_known_until_a_device', 'for_the_next', 'last_commit', 'build_and_tests_clean'],
@@ -100,9 +102,9 @@ const cut = (s, n) => (s.length > n ? s.slice(0, n) + '\n...[cut]' : s)
 // stored answer back in a minute, one whose notes say WORKING carries on from them. The rules are in COMMON.md.
 const PROG = 'docs/plan/progress'
 const notes = (name, code) =>
-  'YOUR PROGRESS NAME: ' + name + '. The session can be cut off at any moment. BEFORE anything else look for ' + PROG + '/' + name +
-  '.md in the repository: if it is there, an earlier run of your role was cut off or has finished, and the section "Saving" of COMMON.md says what to do ' +
-  '(STATUS: DONE = check briefly that it is true and hand back the answer stored in it, do NOT do the work again; STATUS: WORKING = continue from it). ' +
+  'YOUR PROGRESS NAME: ' + name + '. The session can be cut off at any moment. BEFORE anything else run `tools/progress.sh --show ' + name +
+  '`: it prints the notes an earlier run of your role saved (kept as ' + PROG + '/' + name + '.md in the main tree), or says there are none. The section "Saving" of COMMON.md says what to do with them ' +
+  '(STATUS: DONE = check briefly that it is true and hand back the answer stored in it UNCHANGED, do NOT do the work again, and leave newer commits and uncommitted changes alone: they belong to the agent after you; STATUS: WORKING = continue from it). ' +
   'While you work, push your notes with `tools/progress.sh ' + name + ' <your notes file>` at least every 10 minutes, after every finding and before every long command' +
   (code ? ', and push half-done code with `WIP=1 tools/checkpoint.sh "..."` whenever 15 minutes have passed without a finished step.' : '.') +
   ' Your last notes save has STATUS: DONE and your complete answer.\n'
@@ -114,7 +116,15 @@ const NEVER = 'Rules that must never be broken: save code ONLY with `NO_RELEASE=
 
 phase('Implement')
 const impl = []
+const FIN = A.finished || {}
 for (const im of (A.implementers || [])) {
+  if (FIN[im.key]) {
+    // args.finished = { "<key>": "<its last checkpoint commit>" }: this implementer finished in an earlier run
+    // (its notes say STATUS: DONE). It is not started again; the next agents read its notes for what it did.
+    impl.push({ part: im.key, report: { summary: 'Finished in an earlier run. Its full answer is in ' + PROG + '/' + im.key + '.md (read it: `tools/progress.sh --show ' + im.key + '`).', last_commit: FIN[im.key], build_and_tests_clean: true } })
+    log(im.key + ' finished in an earlier run at ' + FIN[im.key] + ': not started again')
+    continue
+  }
   const prior = impl.length
     ? '\n\nREPORTS OF THE IMPLEMENTERS BEFORE YOU ON THIS TRACK (claims; check them in the code):\n' + cut(JSON.stringify(impl, null, 1), 24000)
     : ''
@@ -151,7 +161,7 @@ const reviews = (await parallel(A.reviewers.map(rv => () =>
   agent(
     'You are a reviewer on the LinkMeter Android app (track ' + A.track + ', reviewer "' + rv.key + '").\n' +
     'Read this file fully first; it is your rule book: ' + B + '/REVIEW.md (the file COMMON.md it names is in the same folder).\n' +
-    'You are in your own copy of the repository (a git worktree). The track ends at commit ' + head + '. Run `git log --oneline -3`: your copy may be a few commits past it (notes of other agents, saved with `progress:` in the message, change no code). Review what `git diff ' + A.base + '..' + head + '` shows; if your copy does not contain ' + head + ', say so in `checked`.\n' +
+    'You are in your own copy of the repository (a git worktree). It was started from `main`, which can be BEHIND the working branch, so first run: `git merge-base --is-ancestor ' + head + ' HEAD || git checkout -q --detach ' + head + '` (the track ends at commit ' + head + '; a copy that is a few `progress:` or `note:` commits past it is fine, they change no code). Review what `git diff ' + A.base + '..' + head + '` shows, and build and test that state.\n' +
     'BASE = ' + A.base + ', HEAD = ' + head + '.\n' +
     'Scratch folder: ' + A.scratch + '/review-' + A.track + '-' + rv.key + '/\n' +
     notes(A.track + '-review-' + rv.key, false) + '\n' +

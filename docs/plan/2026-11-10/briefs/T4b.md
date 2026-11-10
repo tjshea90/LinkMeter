@@ -54,5 +54,6 @@ that names it. `tools/test.sh`, `python3 tools/mutate_link.py`, `./gradlew --no-
 
 ## When you are done
 
-Save (see COMMON; `LeverRun` with its tests by itself first, then the deletions). In HANDOFF's track list tick T4 `[x]`,
+Save (see COMMON; `LeverRun` with its tests by itself first, then the deletions). On T4's line in HANDOFF write "BUILT, review pending" (do NOT tick the box: the directing session ticks it after the
+review and the fixes),
 write what was learned in one or two sentences, and list for the user's sake everything that was removed.

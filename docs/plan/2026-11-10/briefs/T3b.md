@@ -51,4 +51,5 @@ failed with its reason; the details open; the tablet hotspot on. `tools/test.sh`
 
 ## When you are done
 
-Save (see COMMON). In HANDOFF's track list tick T3 `[x]` and write what was learned in one or two sentences.
+Save (see COMMON). On T3's line in HANDOFF write "BUILT, review pending" and what was learned in one or two sentences.
+Do NOT tick the box: the directing session ticks it after the review and the fixes.

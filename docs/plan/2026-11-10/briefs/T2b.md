@@ -65,4 +65,5 @@ tests registered in `tools/test.sh`, each shown to catch deliberate breakages (r
 
 ## When you are done
 
-Save (see COMMON). In HANDOFF's track list tick T2 `[x]` and write what was learned in one or two sentences.
+Save (see COMMON). On T2's line in HANDOFF write "BUILT, review pending" and what was learned in one or two sentences.
+Do NOT tick the box: the directing session ticks it after the review and the fixes.
