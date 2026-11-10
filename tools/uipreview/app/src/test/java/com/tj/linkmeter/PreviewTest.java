@@ -139,7 +139,7 @@ public class PreviewTest {
                 Client.Resp r = new Client.Resp();
                 r.code = 200;
                 r.body = "{\"ok\":true,\"out\":\"Safety check\\nMobile data: working\\nNetwork types: GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPAP|GSM|LTE_CA|NR\\n"
-                        + "5G leg: on (normal)\\nBand lock: none\\n\\nLinkMeter has nothing changed on this phone.\"}";
+                        + "\\nLinkMeter has nothing changed on this phone.\"}";
                 return r;
             }
             if (target.startsWith("/act?name=hotspot_info")) {
