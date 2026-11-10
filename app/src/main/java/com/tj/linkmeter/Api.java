@@ -162,7 +162,7 @@ final class Api {
             return;
         }
         boolean bluetooth = Http.VIA_BT.equals(r.via);
-        if (RemoteRoutes.cutsLink(name, bluetooth, Radios.hotspotOn(c))) {
+        if (RemoteRoutes.cutsLink(name, bluetooth, Radios.hotspot(c))) {
             // the answer could not be delivered afterwards: answer first, act a moment later
             if (!Priv.ready()) {
                 Http.err(out, 409, Priv.stateText(Priv.state()));

@@ -46,11 +46,14 @@ java -cp "$out" com.tj.linkmeter.PhoneFinderTest || fail=1
 echo "== Start the phone after a restart (BootFlow: the order of the steps, never strands the tablet, never claims success it has not seen; simulated tablets and phones on a virtual clock)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BootFlow.java tools/test/BootFlowTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.BootFlowTest || fail=1
-echo "== Bluetooth link (LinkAuth, RemoteRoutes, LinkServer, LinkClient over a real connection: only requests signed by the paired tablet are served, once; no replay; the secret is never sent; only the small routes; garbage and silence end the connection)"
+echo "== Bluetooth link (LinkAuth, RemoteRoutes, LinkServer, LinkClient over a real connection: only requests signed by the paired tablet are served, once; no replay; the secret is never sent; only the small routes; garbage and silence end the connection; a hotspot state nobody can tell is never 'off'; the tablet's connection does not give way to a stranger's; only the phone's own Bluetooth address is taken)"
 javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Json.java app/src/main/java/com/tj/linkmeter/Http.java app/src/main/java/com/tj/linkmeter/Client.java \
   app/src/main/java/com/tj/linkmeter/LinkAuth.java app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/LinkServer.java \
   app/src/main/java/com/tj/linkmeter/LinkClient.java app/src/main/java/com/tj/linkmeter/BtAddr.java tools/test/LinkProtocolTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LinkProtocolTest || fail=1
+echo "== Staying awake (Holds: one connection or action cannot switch the wake lock off under another, a short hold cannot cut a long one short, and every hold runs out by itself; a pretend wake lock on a virtual clock)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/Holds.java tools/test/HoldsTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.HoldsTest || fail=1
 echo "== Which route a request takes (Reach: the hotspot first, Bluetooth only when the hotspot route cannot connect; never sent twice; fake routes on a virtual clock)"
 javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Json.java app/src/main/java/com/tj/linkmeter/Http.java app/src/main/java/com/tj/linkmeter/Client.java \
   app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/Reach.java tools/test/ReachTest.java || fail=1

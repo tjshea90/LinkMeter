@@ -1,6 +1,7 @@
 package com.tj.linkmeter;
 
 import android.content.Context;
+import android.os.Build;
 import android.provider.Settings;
 import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
@@ -36,6 +37,17 @@ final class Actions {
     /** A deliberate radio-off is over in a few seconds; if it is still on after this long, the safety net switches the radio back on. */
     private static final long BLIP_GRACE_MS = 45L * 1000;
 
+    /**
+     * The phone could not do what was asked: the switch did not move. The message is a whole sentence for the user. Asked over
+     * a link that is still there, the tablet gets it as an error (409, see Api.act), so "it worked" is only ever said when it
+     * did; after an answer-first action nobody is left to tell (see {@link #later}).
+     */
+    static final class NotDone extends IOException {
+        NotDone(String sentence) {
+            super(sentence);
+        }
+    }
+
     /** Called before the reply to an answer-first action is sent, so that a question asked right after it gets the right answer. */
     static void prepareDelayed(String name) {
         if (name.equals("radio_cycle")) {
@@ -50,16 +62,20 @@ final class Actions {
      */
     static void later(final Context c, final String name, final boolean viaBluetooth) {
         final Context app = c.getApplicationContext();
-        Awake.work(app, 90_000L); // the phone may be asleep, and the link that kept it awake is about to go
+        final Object hold = new Object();
+        Awake.work(app, hold, 90_000L); // the phone may be asleep, and the link that kept it awake is about to go
         new Thread(() -> {
             try {
                 Thread.sleep(800);
                 perform(app, name, viaBluetooth);
-            } catch (IOException | InterruptedException e) {
-                // the tablet has already lost the link; nothing to report to (but a radio restart records how it went)
-                if (name.equals("radio_cycle")) {
+            } catch (IOException | InterruptedException | RuntimeException e) {
+                // The tablet has already lost the link; nothing to report to (but a radio restart records how it went, unless
+                // perform already did). RuntimeException too: one that escaped this thread would end the phone's app.
+                if (name.equals("radio_cycle") && cycleState.equals("running")) {
                     cycleState = "failed: " + e.getMessage();
                 }
+            } finally {
+                Awake.workDone(hold); // done, or given up: the phone may sleep again (a Standby should not sit awake for 90 s)
             }
         }, "linkmeter-delayed").start();
     }
@@ -67,7 +83,8 @@ final class Actions {
     /**
      * The actions that can take a link away: the work itself, and what happened in plain words. Called a moment after the answer
      * when the action cuts the link it came over ({@link #later}), and at once when it does not (over Bluetooth), so that the
-     * tablet then gets the real result.
+     * tablet then gets the real result. Returns only when the phone did it (or, for the hotspot, when the phone was asked and
+     * cannot say whether it did: the sentence then says exactly that); throws {@link NotDone} when it plainly did not.
      */
     static String perform(Context app, String name, boolean viaBluetooth) throws IOException {
         switch (name) {
@@ -75,13 +92,26 @@ final class Actions {
             case "boot_hotspot_on": {
                 String r = resultLine(Cells.shellMain(app, "hotspot-start").out);
                 Boot.hotspotResult = r; // "start the phone after a restart" asks how it went once the tablet is on the hotspot
-                return r.startsWith("OK") ? "The hotspot is on." : "The hotspot could not be switched on: " + afterWord(r);
+                if (r.startsWith(UNSURE)) {
+                    return "The phone was asked to switch the hotspot on. It does not say whether it is on.";
+                }
+                if (!r.startsWith("OK")) {
+                    throw new NotDone(dot("The hotspot could not be switched on: " + afterWord(r)));
+                }
+                return "The hotspot is on.";
             }
             case "hotspot_off":
                 return hotspotOff(app, viaBluetooth);
             case "hotspot_restart": {
-                String r = resultLine(Cells.shellMain(app, "hotspot-restart").out);
-                return r.startsWith("OK") ? "The hotspot was restarted." : "The hotspot could not be restarted: " + afterWord(r);
+                // longer than the usual 40 s: off (up to 8 s), then on (up to 20 s for the phone's answer and 10 s to come up)
+                String r = resultLine(Cells.shellMain(app, "hotspot-restart", 55).out);
+                if (r.startsWith(UNSURE)) {
+                    return "The phone was asked to restart the hotspot. It does not say whether the hotspot is on.";
+                }
+                if (!r.startsWith("OK")) {
+                    throw new NotDone(dot("The hotspot could not be restarted: " + afterWord(r)));
+                }
+                return "The hotspot was restarted.";
             }
             case "radio_cycle": {
                 // for the phone's choice of cell: the modem searches from scratch when its radio comes back
@@ -95,7 +125,10 @@ final class Actions {
                 }
                 cycleState = r.startsWith("OK") ? "done" : "failed: " + r;
                 finishRadioRisk(app, name);
-                return r.startsWith("OK") ? "The radio was switched off for a few seconds and on again." : "The radio restart failed: " + afterWord(r);
+                if (!r.startsWith("OK")) {
+                    throw new NotDone(dot("The radio restart failed: " + afterWord(r)));
+                }
+                return "The radio was switched off for a few seconds and on again.";
             }
             case "wifi_on":
                 return wifi(app, true);
@@ -115,16 +148,19 @@ final class Actions {
         }
     }
 
+    /** The helper's third verdict, for the hotspot: it asked the phone, and the phone does not report the hotspot's state. */
+    private static final String UNSURE = "UNSURE";
+
     /**
-     * The helper's verdict in what the shell printed: the last line that starts with OK or ERR (other lines can be warnings of the
-     * phone's own tools), or the last line of all if there is none.
+     * The helper's verdict in what the shell printed: the last line that starts with OK, ERR or UNSURE (other lines can be
+     * warnings of the phone's own tools), or the last line of all if there is none.
      */
     static String resultLine(String out) {
         String last = "";
         String[] lines = out.split("\n");
         for (int i = lines.length - 1; i >= 0; i--) {
             String l = lines[i].trim();
-            if (l.startsWith("OK") || l.startsWith("ERR")) {
+            if (l.startsWith("OK") || l.startsWith("ERR") || l.startsWith(UNSURE)) {
                 return l;
             }
             if (last.isEmpty()) {
@@ -137,10 +173,16 @@ final class Actions {
     /** "OK the hotspot is on" -> "the hotspot is on"; "ERR no answer" -> "no answer". */
     private static String afterWord(String line) {
         String t = line.trim();
-        if (t.startsWith("OK ") || t.startsWith("ERR ")) {
+        if (t.startsWith("OK ") || t.startsWith("ERR ") || t.startsWith(UNSURE + " ")) {
             t = t.substring(t.indexOf(' ') + 1);
         }
         return t.isEmpty() ? "the phone gave no reason" : t;
+    }
+
+    /** Ends a sentence that was put together from the phone's own words, so two of them can stand next to each other. */
+    private static String dot(String sentence) {
+        String t = sentence.trim();
+        return t.endsWith(".") || t.endsWith("!") || t.endsWith("?") ? t : t + ".";
     }
 
     /**
@@ -153,49 +195,78 @@ final class Actions {
         if (direct.startsWith("OK")) {
             return "The hotspot is off.";
         }
+        if (direct.startsWith(UNSURE)) {
+            return "The phone was asked to switch the hotspot off. It does not say whether it is off.";
+        }
         if (viaBluetooth) {
-            return "The hotspot could not be switched off the direct way (" + afterWord(direct) + "). The other way, airplane mode "
-                    + "for three seconds, is not used over Bluetooth because it would cut this link too.";
+            throw new NotDone("The hotspot could not be switched off the direct way (" + afterWord(direct) + "). The other way, "
+                    + "airplane mode for three seconds, is not used over Bluetooth because it would cut this link too.");
         }
         markRadioRisk(app, "hotspot_off");
         Priv.run("cmd connectivity airplane-mode enable; sleep 3; cmd connectivity airplane-mode disable", 60);
         finishRadioRisk(app, "hotspot_off");
-        return Radios.waitHotspot(app, false, 4000)
-                ? "The hotspot is off (the direct way failed, so airplane mode was switched on for three seconds: " + afterWord(direct) + ")."
-                : "The hotspot could not be switched off: " + afterWord(direct);
+        Boolean off = Radios.waitHotspot(app, false, 4000);
+        if (off == null) {
+            return "The hotspot could not be switched off the direct way (" + afterWord(direct) + "), so airplane mode was switched "
+                    + "on for three seconds. The phone does not say whether the hotspot is off.";
+        }
+        if (!off) {
+            throw new NotDone(dot("The hotspot could not be switched off: " + afterWord(direct)));
+        }
+        return "The hotspot is off (the direct way failed, so airplane mode was switched on for three seconds: " + afterWord(direct) + ").";
     }
 
     /** The phone's own Wi-Fi switch (not the hotspot). Checked by asking Android afterwards. */
     private static String wifi(Context app, boolean on) throws IOException {
         Priv.Result r = Priv.run("cmd wifi set-wifi-enabled " + (on ? "enabled" : "disabled") + " 2>&1 || svc wifi "
                 + (on ? "enable" : "disable") + " 2>&1", 20);
-        if (Radios.waitWifi(app, on, 6000)) {
-            return "The phone's Wi-Fi is " + (on ? "on." : "off.");
+        if (!Radios.waitWifi(app, on, 6000)) {
+            throw new NotDone(dot("The phone's Wi-Fi did not switch " + (on ? "on" : "off") + (r.out.isEmpty() ? "" : ": " + firstLine(r.out))));
         }
-        return "The phone's Wi-Fi did not switch " + (on ? "on" : "off") + (r.out.isEmpty() ? "." : ": " + firstLine(r.out));
+        return "The phone's Wi-Fi is " + (on ? "on." : "off.");
     }
 
     /**
      * Standby: the hotspot off and the screen off, so the phone idles (days, not hours) until the tablet wakes it over Bluetooth
      * with "hotspot on". Mobile data, calls and texts stay as they are.
+     *
+     * Two switches, so two outcomes. Both are always tried: a phone whose hotspot will not go off still saves battery with its
+     * screen off, and the other way round. Only when BOTH moved is the answer a plain one; if either did not, the answer is an
+     * error that says what became of each, because a phone that is half on standby is not on standby.
      */
     private static String standby(Context app, boolean viaBluetooth) throws IOException {
-        StringBuilder sb = new StringBuilder(hotspotOff(app, viaBluetooth));
-        sb.append(' ').append(screenOff(app));
-        if (viaBluetooth) {
-            sb.append(" To wake the phone: Hotspot on.");
+        String hotspot;
+        String screen;
+        int done = 0;
+        try {
+            hotspot = hotspotOff(app, viaBluetooth);
+            done++;
+        } catch (NotDone e) {
+            hotspot = e.getMessage();
         }
-        return sb.toString();
+        try {
+            screen = screenOff(app);
+            done++;
+        } catch (NotDone e) {
+            screen = e.getMessage();
+        }
+        if (done == 2) {
+            return hotspot + " " + screen + (viaBluetooth ? " To wake the phone: Hotspot on." : "");
+        }
+        throw new NotDone((done == 1 ? "Standby is only half done. " : "Standby did not work. ") + hotspot + " " + screen);
     }
 
     /** The checked Sleep (the same steps as the Screen tab's Sleep button). */
     private static String screenOff(Context app) throws IOException {
         try {
             PowerSequence.Result res = Screen.powerNow(app, false, true);
-            return res.reached ? "The screen is off." : "The screen did not stay off (" + res.how + ").";
+            if (!res.reached) {
+                throw new NotDone("The screen did not stay off (" + res.how + ").");
+            }
+            return "The screen is off.";
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return "The screen was not switched off (interrupted).";
+            throw new NotDone("The screen was not switched off: the phone was interrupted while doing it.");
         }
     }
 
@@ -278,8 +349,7 @@ final class Actions {
             case "radio_cycle_state":
                 return cycleState;
             case "restart_modem":
-                return report(Priv.run("cmd phone restart-modem", 30),
-                        "Modem restart requested. Mobile data comes back in a minute or so.");
+                return restartModem();
             case "hotspot_info":
                 return Cells.shellMain(c, "hotspot-info").out;
             case "hotspot_band_2":
@@ -336,20 +406,60 @@ final class Actions {
         return NrLeg.describeSet(want, s);
     }
 
-    private static String report(Priv.Result r, String okText) {
-        return r.ok() ? okText : "Failed (code " + r.rc + "): " + r.out;
+    /** okText when the shell command ended well; otherwise the phone did not do it, and what it printed says why. */
+    private static String report(Priv.Result r, String okText) throws NotDone {
+        if (!r.ok()) {
+            throw new NotDone(dot("The phone did not do that" + (r.timedOut ? " in time" : "") + (r.out.isEmpty() ? "" : ": " + firstLine(r.out))));
+        }
+        return okText;
     }
 
-    /** One-time grants that make the phone side reliable. Safe to run again. */
+    /**
+     * Asks the phone's own telephony command to restart the modem. Android only obeys it on test builds with root (its source
+     * says so: "RestartModem: Permission denied" for everybody else), so on an ordinary phone this changes nothing, and it then
+     * says so instead of the old "Failed (code 255)". It is NOT answered first like the actions that cut the link: where it is
+     * refused nothing happens to the hotspot, and where it works the hotspot's Wi-Fi stays up (only its internet pauses), so
+     * the real answer can always be delivered.
+     */
+    private static String restartModem() throws IOException {
+        Priv.Result r = Priv.run("cmd phone restart-modem", 30);
+        if (!r.ok() && r.out.contains("Permission denied")) {
+            throw new NotDone("This phone does not let an app restart its modem, so nothing was changed. To make the phone look for "
+                    + "its network again, switch airplane mode on and off at the phone.");
+        }
+        return report(r, "Modem restart requested. Mobile data comes back in a minute or so.");
+    }
+
+    /**
+     * One-time grants that make the phone side reliable. Safe to run again. Each step is run and judged by itself (the old way
+     * ran them in one line and said "Setup ran" whatever happened): if any of them failed, the answer is an error that names it.
+     */
     private static String setup(Context c) throws IOException {
         String p = c.getPackageName();
-        String cmd = "cmd deviceidle whitelist +" + p
-                + "; am set-standby-bucket " + p + " active"
-                + "; appops set " + p + " MANAGE_EXTERNAL_STORAGE allow"
-                + "; pm grant " + p + " android.permission.READ_PHONE_STATE"
-                + "; pm grant " + p + " android.permission.POST_NOTIFICATIONS";
-        Priv.Result r = Priv.run(cmd, 25);
-        return "Setup ran (battery exemption, all-files access, phone permission).\n" + r.out;
+        String[][] steps = {
+            {"no battery limits for LinkMeter", "cmd deviceidle whitelist +" + p},
+            {"kept ready in the background", "am set-standby-bucket " + p + " active"},
+            {"access to all files", Build.VERSION.SDK_INT >= 30 ? "appops set " + p + " MANAGE_EXTERNAL_STORAGE allow" : ""},
+            {"the phone permission", "pm grant " + p + " android.permission.READ_PHONE_STATE"},
+            {"notifications", Build.VERSION.SDK_INT >= 33 ? "pm grant " + p + " android.permission.POST_NOTIFICATIONS" : ""},
+        };
+        StringBuilder done = new StringBuilder();
+        StringBuilder failed = new StringBuilder();
+        for (String[] s : steps) {
+            if (s[1].isEmpty()) {
+                continue; // this Android version has no such setting
+            }
+            Priv.Result r = Priv.run(s[1], 15);
+            if (r.ok()) {
+                done.append(done.length() == 0 ? "" : ", ").append(s[0]);
+            } else {
+                failed.append(failed.length() == 0 ? "" : "; ").append(s[0]).append(r.out.isEmpty() ? "" : " (" + firstLine(r.out) + ")");
+            }
+        }
+        if (failed.length() > 0) {
+            throw new NotDone("Not every step worked. Not done: " + failed + "." + (done.length() == 0 ? "" : " Done: " + done + "."));
+        }
+        return "The phone is prepared: " + done + ".";
     }
 
     /**
@@ -439,7 +549,11 @@ final class Actions {
         return "The phone did not accept the change.\n" + s.out;
     }
 
-    /** Saves the hotspot's current band the first time, then changes it. */
+    /**
+     * Saves the hotspot's current band the first time, then changes it. The helper reads the band back from the phone: "saved"
+     * is only said when the phone gives the new band back, and when it kept its own (Samsung has hotspot settings of its own)
+     * the answer is an error that says which band the phone kept.
+     */
     private static String setHotspotBand(Context c, String arg) throws IOException {
         if (Saved.hotspotBand(c) < 0) {
             Matcher m = Pattern.compile("band=(\\d)").matcher(Cells.shellMain(c, "hotspot-info").out);
@@ -447,7 +561,11 @@ final class Actions {
                 Saved.rememberHotspotBand(c, Integer.parseInt(m.group(1)));
             }
         }
-        return Cells.shellMain(c, "hotspot-band " + arg).out;
+        String r = resultLine(Cells.shellMain(c, "hotspot-band " + arg).out);
+        if (!r.startsWith("OK")) {
+            throw new NotDone(dot("The hotspot's Wi-Fi band was not changed: " + afterWord(r)));
+        }
+        return dot("The hotspot's Wi-Fi band is now " + afterWord(r));
     }
 
     // ------------------------------------------------------------ restore everything
@@ -726,12 +844,12 @@ final class Actions {
         if (hb > 0) {
             try {
                 String arg = hb == 1 ? "2" : (hb == 2 ? "5" : "auto");
-                Priv.Result r = Cells.shellMain(c, "hotspot-band " + arg);
-                if (r.out.contains("OK ")) {
+                String r = resultLine(Cells.shellMain(c, "hotspot-band " + arg).out);
+                if (r.startsWith("OK")) {
                     Saved.clearHotspotBand(c);
                     sb.append("Hotspot band: put back. Restart the hotspot to use it.\n");
                 } else {
-                    sb.append("Hotspot band: could not be put back (").append(firstLine(r.out)).append(").\n");
+                    sb.append("Hotspot band: could not be put back (").append(afterWord(r)).append(").\n");
                 }
             } catch (IOException e) {
                 sb.append("Hotspot band: ").append(e.getMessage()).append('\n');

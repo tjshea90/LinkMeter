@@ -53,10 +53,14 @@ final class Status {
             o.put("eco", Eco.isOn(c));
             o.put("ecoAuto", Cfg.ecoAuto(c));
             // the switches the tablet can move (docs/REMOTE_LINK.md), read the cheap way
-            o.put("hs", Radios.hotspotOn(c));
+            Boolean hotspot = Radios.hotspot(c);
+            if (hotspot != null) {
+                o.put("hs", hotspot.booleanValue()); // left out when the phone cannot tell: "not known" must not read as "off"
+            }
             o.put("wifi", Radios.wifiOn(c));
             o.put("scr", Radios.screenOn(c));
             o.put("air", Radios.airplane(c));
+            BtServer.poke(); // a Bluetooth door that failed to open is tried again while the tablet is here to see the result
             o.put("bt", BtServer.state());
             String mac = Cfg.btMac(c);
             if (!mac.isEmpty()) {

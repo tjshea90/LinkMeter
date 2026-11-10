@@ -84,7 +84,9 @@ final class Screen {
             profile(c, r, out); // before the switch check: ending a session must always work
             return;
         }
-        if (!Cfg.screenControl(c)) {
+        // Sleep, Wake and "is it on" are power switches (like Standby and Screen off, which never asked this switch): they pass.
+        // Seeing the screen, touching it and typing stay behind the phone's "Let the tablet see and control this screen".
+        if (!RemoteRoutes.screenPower(r.path) && !Cfg.screenControl(c)) {
             Http.err(out, 403, "Screen control is turned off on the phone.");
             return;
         }

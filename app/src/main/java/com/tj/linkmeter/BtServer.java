@@ -12,12 +12,17 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.SystemClock;
 import java.io.IOException;
+import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -27,29 +32,64 @@ import java.util.concurrent.TimeUnit;
  * {@link LinkAuth} and {@link RemoteRoutes}, which are tested on a computer; this class is only the Android part.
  *
  * Battery: a listening socket costs nothing by itself (Bluetooth must be on; an idle Bluetooth radio draws well under a
- * milliamp). There are no timers except while a connection is open. A request holds a wake lock only until it is answered.
+ * milliamp). There are no timers except while a connection is open. A connection holds a wake lock from the moment it is accepted
+ * until its greeting is out, and then only while one of its requests is being answered.
+ *
+ * Threads: the door belongs to the service. {@link #start} and {@link #stop} are the service's; everybody else (the phone's own
+ * screen, the setup) calls {@link #recheck}. None of the three blocks its caller: opening and closing the door is done on one
+ * background thread, in the order asked, because Android's Bluetooth calls can take a while and the callers are the screen's
+ * thread.
  */
 final class BtServer {
     /** LinkMeter's own service number. The tablet asks the phone's Bluetooth for exactly this. */
     static final UUID SERVICE = UUID.fromString("f3b0a6c2-5d1e-4c7a-9b8f-2a6d4c1e7b90");
     private static final String NAME = "LinkMeter";
-    /** At most this many connections at once; one more closes the oldest (a stuck caller must not keep the tablet out). */
+    /** At most this many connections at once; one more closes another (a stuck caller must not keep the tablet out). */
     private static final int MAX_OPEN = 2;
+    /** A sleeping phone is kept awake this long after a connection arrives, so its greeting gets out (it is sent within a moment). */
+    private static final long GREETING_AWAKE_MS = 5_000L;
+    /** A sleeping phone must finish what it was asked: awake for at most this long per request, less when the answer is out sooner. */
+    private static final long REQUEST_AWAKE_MS = 120_000L;
+
+    /** One open connection. */
+    private static final class Conn {
+        final BluetoothSocket socket;
+        /** A request signed by a paired tablet has arrived on it (a stranger's connection never gets this far). */
+        volatile boolean proven;
+
+        Conn(BluetoothSocket socket) {
+            this.socket = socket;
+        }
+    }
 
     private static final Object LOCK = new Object();
     private static Context app;
     private static boolean wanted;
     private static BluetoothServerSocket server;
     private static BroadcastReceiver receiver;
-    private static final List<BluetoothSocket> OPEN = new ArrayList<>();
+    /** The open connections, the oldest first. */
+    private static final List<Conn> OPEN = new ArrayList<>();
     private static ScheduledThreadPoolExecutor timer;
     private static int quickEnds;
+
+    /** Opens and closes the door, one job after the other. No thread exists while there is nothing to do. */
+    private static final ThreadPoolExecutor DOOR = new ThreadPoolExecutor(1, 1, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(), r -> {
+        Thread t = new Thread(r, "linkmeter-bt-door");
+        t.setDaemon(true);
+        return t;
+    });
+
+    static {
+        DOOR.allowCoreThreadTimeOut(true);
+    }
 
     /** For the status request and the phone's own screen: on, off (Bluetooth is off), perm, disabled, none, error. */
     private static volatile String state = "none";
     private static volatile String note = "";
-    static volatile int served;
-    static volatile long lastAt;
+    /** When a paired tablet last asked something over Bluetooth (clock time), 0 = not since the service started. */
+    private static volatile long lastAt;
+    /** When {@link #poke} last tried to listen again (time since the phone started), 0 = never. */
+    private static long pokedAt;
 
     private BtServer() {}
 
@@ -75,7 +115,7 @@ final class BtServer {
     static String stateText() {
         switch (state) {
             case "on":
-                return "ready: the paired tablet can reach this phone over Bluetooth";
+                return "on: this phone is listening for the paired tablet";
             case "off":
                 return "Bluetooth is switched off on this phone";
             case "perm":
@@ -89,13 +129,19 @@ final class BtServer {
         }
     }
 
+    /** For the phone's own screen: when a paired tablet last asked something over Bluetooth, or "" if none has since the service started. */
+    static String lastAskedText() {
+        long at = lastAt;
+        return at == 0 ? "" : "last asked over Bluetooth at " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(at));
+    }
+
     private static volatile String cachedName = "";
     private static volatile long nameAt;
 
     /** This phone's Bluetooth name, as other devices see it, or "". Asked of Android at most every five minutes (it is in every status reply). */
     @SuppressLint("MissingPermission")
     static String name(Context c) {
-        long now = android.os.SystemClock.elapsedRealtime();
+        long now = SystemClock.elapsedRealtime();
         if (nameAt != 0 && now - nameAt < 5 * 60_000L) {
             return cachedName;
         }
@@ -114,65 +160,121 @@ final class BtServer {
         return n;
     }
 
-    /** The service started, or something changed (the permission was given, the switch was moved): listen if everything allows it. */
+    /** Hands a job to the door's thread. A job that throws must not end the app: the door then says "error". */
+    private static void door(final Runnable job) {
+        DOOR.execute(() -> {
+            try {
+                job.run();
+            } catch (RuntimeException e) {
+                state = "error";
+                note = String.valueOf(e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * The service has started: from now on listen whenever everything allows it. For the service only. Called from anywhere
+     * else while the service is not running it does nothing, so no listener can be left behind that {@link #stop} never closes.
+     */
     static void start(Context c) {
-        synchronized (LOCK) {
-            app = c.getApplicationContext();
-            wanted = true;
-            quickEnds = 0;
-            if (receiver == null) {
-                receiver = new BroadcastReceiver() {
-                    @Override
-                    public void onReceive(Context ctx, Intent i) {
-                        int st = i.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
-                        if (st == BluetoothAdapter.STATE_ON || st == BluetoothAdapter.STATE_OFF
-                                || st == BluetoothAdapter.STATE_TURNING_OFF) {
-                            synchronized (LOCK) {
-                                if (st != BluetoothAdapter.STATE_ON) {
-                                    closeServerLocked();
-                                }
-                                listenLocked();
+        final Context a = c.getApplicationContext();
+        door(() -> {
+            synchronized (LOCK) {
+                if (!SenderService.active) {
+                    return;
+                }
+                app = a;
+                wanted = true;
+                quickEnds = 0;
+                registerLocked();
+                listenLocked();
+            }
+        });
+    }
+
+    /** Bluetooth going off and coming back: stop listening, listen again. */
+    private static void registerLocked() {
+        if (receiver != null) {
+            return;
+        }
+        receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context ctx, Intent i) {
+                int st = i.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
+                if (st == BluetoothAdapter.STATE_ON || st == BluetoothAdapter.STATE_OFF || st == BluetoothAdapter.STATE_TURNING_OFF) {
+                    final boolean gone = st != BluetoothAdapter.STATE_ON;
+                    door(() -> { // this runs on the screen's thread: the Bluetooth calls go to the door's
+                        synchronized (LOCK) {
+                            if (gone) {
+                                closeServerLocked();
                             }
+                            listenLocked();
                         }
-                    }
-                };
-                try {
-                    IntentFilter f = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
-                    if (Build.VERSION.SDK_INT >= 33) {
-                        app.registerReceiver(receiver, f, Context.RECEIVER_NOT_EXPORTED); // the system's own broadcasts still arrive
-                    } else {
-                        app.registerReceiver(receiver, f);
-                    }
-                } catch (RuntimeException e) {
-                    receiver = null; // no state news: listening still starts below, and again at the next service start
+                    });
                 }
             }
-            listenLocked();
+        };
+        try {
+            IntentFilter f = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+            if (Build.VERSION.SDK_INT >= 33) {
+                app.registerReceiver(receiver, f, Context.RECEIVER_NOT_EXPORTED); // the system's own broadcasts still arrive
+            } else {
+                app.registerReceiver(receiver, f);
+            }
+        } catch (RuntimeException e) {
+            receiver = null; // no state news: listening still starts now, and poke() tries again when the tablet asks for the status
         }
     }
 
     /** The service is stopping: no listener, no connections. */
     static void stop() {
-        synchronized (LOCK) {
-            wanted = false;
-            if (receiver != null && app != null) {
-                try {
-                    app.unregisterReceiver(receiver);
-                } catch (RuntimeException ignored) {
-                    // was not registered
+        door(() -> {
+            synchronized (LOCK) {
+                wanted = false;
+                if (receiver != null && app != null) {
+                    try {
+                        app.unregisterReceiver(receiver);
+                    } catch (RuntimeException ignored) {
+                        // was not registered
+                    }
                 }
+                receiver = null;
+                closeServerLocked();
+                closeAllLocked();
+                if (timer != null) {
+                    timer.shutdownNow();
+                    timer = null;
+                }
+                state = "none";
             }
-            receiver = null;
-            closeServerLocked();
-            for (BluetoothSocket s : new ArrayList<>(OPEN)) {
-                closeQuietly(s);
-            }
-            OPEN.clear();
-            if (timer != null) {
-                timer.shutdownNow();
-                timer = null;
-            }
-            state = "none";
+        });
+    }
+
+    /**
+     * Something the door depends on has changed (the switch on the phone's screen was moved, the permission was given): listen,
+     * or stop listening and hang up, as things are now. Does nothing unless the service is running. Never blocks the caller.
+     */
+    static void recheck() {
+        door(BtServer::listenNow);
+    }
+
+    private static void listenNow() {
+        synchronized (LOCK) {
+            listenLocked();
+        }
+    }
+
+    /**
+     * Called whenever the tablet asks for the status, which it does every few seconds while its app is open. If the door should
+     * be open and is not (the permission was given in Android's settings since, the first try failed, Bluetooth came back
+     * unnoticed), it is tried again: at most every half minute, and never on the caller's thread. So a phone that looks healthy
+     * over the hotspot mends its Bluetooth door while the hotspot is still there to see it by.
+     */
+    static synchronized void poke() {
+        long now = SystemClock.elapsedRealtime();
+        if (RemoteRoutes.listenAgain(state, pokedAt == 0 ? Long.MAX_VALUE : now - pokedAt)) {
+            pokedAt = now;
+            recheck();
         }
     }
 
@@ -182,7 +284,10 @@ final class BtServer {
             return;
         }
         if (!Cfg.btLink(app)) {
+            // the user switched the link off on the phone: that also ends the connections that are open, or a tablet that is
+            // connected would go on commanding the phone
             closeServerLocked();
+            closeAllLocked();
             state = "disabled";
             return;
         }
@@ -211,6 +316,7 @@ final class BtServer {
             server = ss;
             state = "on";
             note = "";
+            nameAt = 0; // the name may have been unreadable until now (no permission, Bluetooth off): ask again
             Thread t = new Thread(() -> acceptLoop(ss), "linkmeter-bt-accept");
             t.setDaemon(true);
             t.start();
@@ -232,8 +338,16 @@ final class BtServer {
         }
     }
 
+    /** Hangs up on everybody. Each connection's own thread then ends and lets go of its wake lock. */
+    private static void closeAllLocked() {
+        for (Conn c : OPEN) {
+            closeQuietly(c.socket);
+        }
+        OPEN.clear();
+    }
+
     private static void acceptLoop(BluetoothServerSocket ss) {
-        long startedAt = android.os.SystemClock.elapsedRealtime();
+        long startedAt = SystemClock.elapsedRealtime();
         boolean any = false;
         while (true) {
             final BluetoothSocket s;
@@ -246,26 +360,36 @@ final class BtServer {
                 break;
             }
             any = true;
+            final Conn conn = new Conn(s);
+            final Context c = app; // set before this thread was started
+            // The phone may have been asleep and only the Bluetooth chip woke it: stay awake until the greeting is out, or the
+            // tablet waits for it in vain. serve() lets go as soon as it is; the hold runs out by itself anyway.
+            Awake.linkBusy(c, conn, GREETING_AWAKE_MS);
             synchronized (LOCK) {
                 if (!wanted) {
                     closeQuietly(s);
+                    Awake.linkDone(conn);
                     break;
                 }
                 while (OPEN.size() >= MAX_OPEN) {
-                    closeQuietly(OPEN.remove(0));
+                    boolean[] proven = new boolean[OPEN.size()];
+                    for (int i = 0; i < proven.length; i++) {
+                        proven[i] = OPEN.get(i).proven;
+                    }
+                    closeQuietly(OPEN.remove(RemoteRoutes.givesWay(proven)).socket);
                 }
-                OPEN.add(s);
+                OPEN.add(conn);
             }
-            Thread t = new Thread(() -> serve(s), "linkmeter-bt");
+            Thread t = new Thread(() -> serve(c, conn), "linkmeter-bt");
             t.setDaemon(true);
             t.start();
         }
         synchronized (LOCK) {
             if (server == ss) {
                 // the listener ended although nobody closed it: listen again if Bluetooth is still there, but never in a tight
-                // loop (a listener that ends at once, three times in a row, is left alone until the next start)
+                // loop (a listener that ends at once, three times in a row, is left alone until the next start or poke)
                 server = null;
-                quickEnds = !any && android.os.SystemClock.elapsedRealtime() - startedAt < 3000 ? quickEnds + 1 : 0;
+                quickEnds = !any && SystemClock.elapsedRealtime() - startedAt < 3000 ? quickEnds + 1 : 0;
                 if (quickEnds >= 3) {
                     state = "error";
                     note = "the listener keeps ending";
@@ -288,14 +412,14 @@ final class BtServer {
         }
     }
 
-    private static void serve(final BluetoothSocket s) {
-        final Context c = app;
+    private static void serve(final Context c, final Conn conn) {
+        final BluetoothSocket s = conn.socket;
         final ScheduledFuture<?>[] pending = new ScheduledFuture<?>[1];
         final Runnable hangUp = () -> closeQuietly(s);
         LinkServer.Watch watch = new LinkServer.Watch() {
             @Override
             public void waiting(long ms) {
-                Awake.linkDone();
+                Awake.linkDone(conn); // the greeting, or the answer, is out: this connection needs the processor no longer
                 synchronized (pending) {
                     if (pending[0] != null) {
                         pending[0].cancel(false);
@@ -316,19 +440,19 @@ final class BtServer {
                         pending[0] = null;
                     }
                 }
-                Awake.linkBusy(c, 120_000L); // a sleeping phone must finish what it was asked; released when the answer is out
+                Awake.linkBusy(c, conn, REQUEST_AWAKE_MS);
             }
         };
         try {
             LinkServer.serve(s.getInputStream(), s.getOutputStream(), LinkAuth.newNonce(), () -> Cfg.trusted(c), (r, out) -> {
-                served++;
+                conn.proven = true; // only a request signed by a paired tablet gets here
                 lastAt = System.currentTimeMillis();
                 Api.handle(c, r, out);
             }, watch);
         } catch (IOException | RuntimeException ignored) {
             // the connection could not even be opened properly
         } finally {
-            Awake.linkDone();
+            Awake.linkDone(conn);
             synchronized (pending) {
                 if (pending[0] != null) {
                     pending[0].cancel(false);
@@ -336,7 +460,7 @@ final class BtServer {
             }
             closeQuietly(s);
             synchronized (LOCK) {
-                OPEN.remove(s);
+                OPEN.remove(conn);
             }
         }
     }
@@ -354,15 +478,22 @@ final class BtServer {
     /**
      * Makes the link ready from the tablet, without touching the phone (needs Shizuku now): gives LinkMeter the Bluetooth
      * permission, switches Bluetooth on if it is off, reads this phone's Bluetooth address (an app may not read its own; the
-     * shell may) so the tablet can be told where to call, and starts listening. Says in plain words what worked.
+     * shell may) so the tablet can be told where to call, and listens. Says in plain words what worked. If the phone is not
+     * listening at the end, the whole report comes back as an error: the link was not made ready.
      */
     static String setup(Context c) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        if (adapter(c) == null) {
-            return "This phone has no Bluetooth.";
+        if (!Cfg.btLink(c)) {
+            // the user's own switch on the phone says no: give no permission, switch nothing on
+            throw new IOException("The Bluetooth link is switched off on the phone, so nothing was changed. To use it, open LinkMeter "
+                    + "on the phone and switch on \"Let the tablet reach this phone over Bluetooth\".");
         }
+        if (adapter(c) == null) {
+            throw new IOException("This phone has no Bluetooth.");
+        }
+        StringBuilder sb = new StringBuilder();
         if (!hasPermission(c)) {
             Priv.run("pm grant " + c.getPackageName() + " " + Manifest.permission.BLUETOOTH_CONNECT, 20);
+            nameAt = 0; // the phone's Bluetooth name could not be read without the permission: ask again, the tablet wants it next
             sb.append(hasPermission(c) ? "LinkMeter may now use Bluetooth on the phone.\n"
                     : "The phone did not give the Bluetooth permission. On the phone: Settings > Apps > LinkMeter > Permissions > "
                     + "Nearby devices > Allow.\n");
@@ -379,9 +510,10 @@ final class BtServer {
             }
             sb.append(enabled(c) ? "Bluetooth was switched on.\n" : "Bluetooth could not be switched on: switch it on at the phone.\n");
         }
-        // Never held in a shell variable: two plain commands, a few short lines each.
-        Priv.Result r = Priv.run("settings get secure bluetooth_address 2>&1; dumpsys bluetooth_manager 2>/dev/null | grep -i -m 4 'address'", 20);
-        String mac = BtAddr.find(r.out);
+        // Never held in a shell variable: two plain commands, a few short lines each. Which of the lines is the phone's OWN
+        // address is decided by BtAddr.own, not by the grep.
+        Priv.Result r = Priv.run("settings get secure bluetooth_address 2>&1; dumpsys bluetooth_manager 2>/dev/null | grep -i -m 12 'address:'", 20);
+        String mac = BtAddr.own(r.out);
         if (!mac.isEmpty()) {
             Cfg.setBtMac(c, mac);
             sb.append("The phone's Bluetooth address was read, so the tablet knows where to call.\n");
@@ -389,8 +521,11 @@ final class BtServer {
             sb.append("The phone would not tell its Bluetooth address. Pair the phone and the tablet once in Android's own Bluetooth "
                     + "settings (on both: Settings > Bluetooth), then press \"Find the phone\" on the tablet.\n");
         }
-        start(c);
+        listenNow(); // on this thread, so the next line reports what is true now (does nothing unless the service is running)
         sb.append("Bluetooth link on the phone: ").append(stateText()).append('.');
+        if (!"on".equals(state)) {
+            throw new IOException(sb.toString());
+        }
         return sb.toString();
     }
 

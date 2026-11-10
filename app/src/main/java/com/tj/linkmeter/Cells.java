@@ -38,7 +38,12 @@ final class Cells {
 
     /** Runs a ShellMain command as the shell user (see ShellMain for the commands). */
     static Priv.Result shellMain(Context c, String args) throws IOException {
-        return Priv.run(mainCommand(c, args), 40);
+        return shellMain(c, args, 40);
+    }
+
+    /** The same, for a command that needs longer than the usual 40 seconds. */
+    static Priv.Result shellMain(Context c, String args, int timeoutSec) throws IOException {
+        return Priv.run(mainCommand(c, args), timeoutSec);
     }
 
     /** The shell command line that starts ShellMain with the given arguments. */

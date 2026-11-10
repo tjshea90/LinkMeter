@@ -311,12 +311,80 @@ public final class LinkProtocolTest {
         check(!RemoteRoutes.cutsLink("wifi_off", false, true), "Wi-Fi off, asked through the hotspot: the hotspot stays");
         check(RemoteRoutes.cutsLink("wifi_off", false, false), "Wi-Fi off, asked through the Wi-Fi being switched off");
         check(!RemoteRoutes.cutsLink("wifi_off", true, true) && !RemoteRoutes.cutsLink("wifi_off", true, false), "Wi-Fi off over Bluetooth");
+        check(RemoteRoutes.cutsLink("wifi_off", false, null), "Wi-Fi off, and the phone cannot tell whether its hotspot is on: answer first, the safe side");
+        check(!RemoteRoutes.cutsLink("wifi_off", true, null), "Wi-Fi off over Bluetooth stays act-then-answer whatever the hotspot does");
+        for (String a : new String[] {"poweroff", "reboot", "airplane_on", "hotspot_off", "hotspot_restart", "radio_cycle", "standby", "hotspot_on", "wifi_on"}) {
+            check(RemoteRoutes.cutsLink(a, false, null), a + " over the network, hotspot not known: answered first as before");
+        }
         for (String a : new String[] {"safety", "restore", "net_lte", "net_5g", "eco_on", "eco_off", "screen_off", "bt_setup", "eco_auto_on", "", "nonsense",
             "airplane_off", "restart_modem", "hotspot_info"}) {
             for (int m = 0; m < 4; m++) {
                 check(!RemoteRoutes.cutsLink(a, (m & 1) != 0, (m & 2) != 0), a + " keeps the link");
             }
+            check(!RemoteRoutes.cutsLink(a, false, null) && !RemoteRoutes.cutsLink(a, true, null), a + " keeps the link, hotspot not known");
         }
+    }
+
+    /** Is the hotspot on: on, off, or not known. "Not known" must never come out as "off". */
+    static void hotspot() {
+        for (int announced = -3; announced <= 20; announced++) {
+            for (int iface = 0; iface < 2; iface++) {
+                check(Boolean.TRUE.equals(RemoteRoutes.hotspotOn(Boolean.TRUE, announced, iface == 1)), "the Wi-Fi service says on: on (" + announced + ")");
+                check(Boolean.FALSE.equals(RemoteRoutes.hotspotOn(Boolean.FALSE, announced, iface == 1)),
+                        "the Wi-Fi service says off: off, whatever was announced before (" + announced + ", " + iface + ")");
+            }
+        }
+        check(Boolean.TRUE.equals(RemoteRoutes.hotspotOn(null, 13, false)) && Boolean.TRUE.equals(RemoteRoutes.hotspotOn(null, 13, true)), "announced: on");
+        for (int off : new int[] {10, 11, 14}) {
+            check(Boolean.FALSE.equals(RemoteRoutes.hotspotOn(null, off, false)), "announced: off, going off, or failed to start (" + off + ")");
+            check(Boolean.FALSE.equals(RemoteRoutes.hotspotOn(null, off, true)), "an announcement counts for more than an interface name (" + off + ")");
+        }
+        check(Boolean.FALSE.equals(RemoteRoutes.hotspotOn(null, 12, false)), "a hotspot that is still coming up is not on yet");
+        for (int none : new int[] {-1, 0, 1, 9, 15, 99}) {
+            check(RemoteRoutes.hotspotOn(null, none, false) == null, "nothing can tell: NOT KNOWN, never 'off' (" + none + ")");
+            check(Boolean.TRUE.equals(RemoteRoutes.hotspotOn(null, none, true)), "nothing announced, but a hotspot interface is up: on (" + none + ")");
+        }
+    }
+
+    /** The phone's screen switch, the full door, and listening again. */
+    static void doorRules() {
+        for (String p : new String[] {"/screen/state", "/screen/on", "/screen/off"}) {
+            check(RemoteRoutes.screenPower(p), "a power switch, not behind the screen switch: " + p);
+            check(RemoteRoutes.overBluetooth("POST", p), "and the same three are the screen routes served over Bluetooth: " + p);
+        }
+        for (String p : new String[] {"/screen/frame", "/screen/video", "/screen/ctl", "/screen/tap", "/screen/swipe", "/screen/key", "/screen/text", "/screen/pin",
+            "/screen/profile", "/screen/on/", "/screen/offx", "/screen", "/screen/", "/screen/State", "", "/s", "/act"}) {
+            check(!RemoteRoutes.screenPower(p), "seeing, touching and typing stay behind the screen switch: " + p);
+        }
+        // which connection gives way: an unproven one before a proven one, the oldest among equals
+        check(RemoteRoutes.givesWay(new boolean[] {false, false}) == 0, "two strangers: the older one goes");
+        check(RemoteRoutes.givesWay(new boolean[] {true, false}) == 1, "the tablet (older, proven) stays; the stranger goes");
+        check(RemoteRoutes.givesWay(new boolean[] {false, true}) == 0, "the stranger (older) goes; the tablet stays");
+        check(RemoteRoutes.givesWay(new boolean[] {true, true}) == 0, "both proven: the older one goes (a connection the tablet has dropped)");
+        check(RemoteRoutes.givesWay(new boolean[] {true, true, false, false}) == 2, "the oldest of the unproven");
+        check(RemoteRoutes.givesWay(new boolean[] {true}) == 0 && RemoteRoutes.givesWay(new boolean[] {false}) == 0, "one connection: that one");
+        for (int mask = 0; mask < 64; mask++) {
+            boolean[] proven = new boolean[6];
+            int firstUnproven = -1;
+            for (int i = 0; i < 6; i++) {
+                proven[i] = (mask & (1 << i)) != 0;
+                if (!proven[i] && firstUnproven < 0) {
+                    firstUnproven = i;
+                }
+            }
+            int g = RemoteRoutes.givesWay(proven);
+            check(g >= 0 && g < 6 && (firstUnproven < 0 ? g == 0 : g == firstUnproven), "a proven connection never goes while an unproven one is open (" + mask + ")");
+        }
+        // listening again by itself
+        for (String cure : new String[] {"perm", "error", "off"}) {
+            check(RemoteRoutes.listenAgain(cure, RemoteRoutes.LISTEN_AGAIN_MS) && RemoteRoutes.listenAgain(cure, Long.MAX_VALUE), "a new try can cure '" + cure + "'");
+            check(!RemoteRoutes.listenAgain(cure, RemoteRoutes.LISTEN_AGAIN_MS - 1) && !RemoteRoutes.listenAgain(cure, 0) && !RemoteRoutes.listenAgain(cure, -5),
+                    "but not sooner than half a minute after the last one: " + cure);
+        }
+        for (String leave : new String[] {"on", "disabled", "none", "", "ON", null}) {
+            check(!RemoteRoutes.listenAgain(leave, Long.MAX_VALUE), "nothing to cure, or the user's own switch: left alone (" + leave + ")");
+        }
+        check(RemoteRoutes.LISTEN_AGAIN_MS >= 30_000L, "the phone is not kept busy with tries");
     }
 
     static void addresses() {
@@ -325,14 +393,26 @@ public final class LinkProtocolTest {
             "00:00:00:00:00:00", "FF:FF:FF:FF:FF:FF", "02:00:00:00:00:00", "XX:XX:XX:XX:1B:2C", "5C:F3:70:8A:1B:2G", " 5C:F3:70:8A:1B:2C"}) {
             check(!BtAddr.valid(bad), "not a usable address: " + bad);
         }
-        check(BtAddr.find("5c:f3:70:8a:1b:2c\n").equals("5C:F3:70:8A:1B:2C"), "the setting's answer, in small letters");
-        check(BtAddr.find("null\n  address: 5C:F3:70:8A:1B:2C\n  name: Galaxy A15 5G\n").equals("5C:F3:70:8A:1B:2C"), "the setting says null, the dump has it");
-        check(BtAddr.find("null\n  address: XX:XX:XX:XX:1B:2C\n").isEmpty(), "a hidden address is not an address");
-        check(BtAddr.find("02:00:00:00:00:00\n  address: 5C:F3:70:8A:1B:2C").equals("5C:F3:70:8A:1B:2C"), "Android's placeholder is skipped, the real one is taken");
-        check(BtAddr.find("00:00:00:00:00:00").isEmpty() && BtAddr.find("").isEmpty() && BtAddr.find(null).isEmpty(), "nothing usable: empty");
-        check(BtAddr.find("Bluetooth Status\n  enabled: true\n  address: 5C:F3:70:8A:1B:2C:99\n").isEmpty(), "seven pairs are not an address (no part of it is taken)");
-        check(BtAddr.find("uuid 0000110a-0000-1000-8000-00805f9b34fb time 12:34:56").isEmpty(), "a time or a service number is not an address");
-        check(BtAddr.find("first AA:BB:CC:DD:EE:01 then AA:BB:CC:DD:EE:02").equals("AA:BB:CC:DD:EE:01"), "the first of two");
+        check(BtAddr.own("5c:f3:70:8a:1b:2c\n").equals("5C:F3:70:8A:1B:2C"), "the setting's answer, in small letters");
+        check(BtAddr.own("null\n  address: 5C:F3:70:8A:1B:2C\n  name: Galaxy A15 5G\n").equals("5C:F3:70:8A:1B:2C"), "the setting says null, the report has it");
+        check(BtAddr.own("null\r\n  Address: 5c:f3:70:8a:1b:2c\r\n").equals("5C:F3:70:8A:1B:2C"), "a capital A, small letters and Windows line ends");
+        check(BtAddr.own("null\n  address: XX:XX:XX:XX:1B:2C\n").isEmpty(), "a hidden address is not an address");
+        check(BtAddr.own("02:00:00:00:00:00\n  address: 5C:F3:70:8A:1B:2C").equals("5C:F3:70:8A:1B:2C"), "Android's placeholder is skipped, the real one is taken");
+        check(BtAddr.own("00:00:00:00:00:00").isEmpty() && BtAddr.own("").isEmpty() && BtAddr.own(null).isEmpty(), "nothing usable: empty");
+        check(BtAddr.own("Bluetooth Status\n  enabled: true\n  address: 5C:F3:70:8A:1B:2C:99\n").isEmpty(), "seven pairs are not an address (no part of it is taken)");
+        check(BtAddr.own("uuid 0000110a-0000-1000-8000-00805f9b34fb time 12:34:56").isEmpty(), "a time or a service number is not an address");
+        // the phone's OWN address or none: never another device's
+        String headset = "AA:BB:CC:DD:EE:01";
+        check(BtAddr.own("null\n  address: XX:XX:XX:XX:1B:2C\n  Address: " + headset + "\n").isEmpty(),
+                "the phone hides its own address: a later 'address:' line is another device's and is NOT taken");
+        check(BtAddr.own("null\n  address: XX:XX:XX:XX:1B:2C\n" + headset + "\n").isEmpty(), "nor a bare address after the hidden one");
+        check(BtAddr.own("null\n  Peer address: " + headset + "\n  mRemoteAddress: " + headset + "\n  connected to " + headset + "\n").isEmpty(),
+                "lines that merely contain an address are not the phone's own line");
+        check(BtAddr.own("null\n  bonded address: " + headset + "\n  address: 5C:F3:70:8A:1B:2C\n").equals("5C:F3:70:8A:1B:2C"),
+                "other devices' lines before the phone's own line are passed over");
+        check(BtAddr.own("null\n  address: 5C:F3:70:8A:1B:2C\n  address: " + headset + "\n").equals("5C:F3:70:8A:1B:2C"), "the first 'address:' line is the phone's own");
+        check(BtAddr.own("null\n  address: 5C:F3:70:8A:1B:2C and more\n").isEmpty(), "a line with more on it is not trusted");
+        check(BtAddr.own("address:5C:F3:70:8A:1B:2C").equals("5C:F3:70:8A:1B:2C") && BtAddr.own("address:").isEmpty(), "with or without the space; an empty line gives nothing");
     }
 
     // ------------------------------------------------------------------------------------------------ over a connection
@@ -671,6 +751,8 @@ public final class LinkProtocolTest {
     public static void main(String[] a) throws Exception {
         auth();
         routes();
+        hotspot();
+        doorRules();
         addresses();
         goodCalls();
         wrongSecret();

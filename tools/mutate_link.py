@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach or their tests: `python3 tools/mutate_link.py` (about 1 minute).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds or their tests: `python3 tools/mutate_link.py` (about 2 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -40,11 +40,26 @@ M = [
  ("prefix match", "RemoteRoutes.java", "if (p.equals(path)) {", "if (path.startsWith(p)) {"),
  ("hotspot_off answers first even on Bluetooth", "RemoteRoutes.java", "                return !viaBluetooth;\n            case \"wifi_off\":", "                return true;\n            case \"wifi_off\":"),
  ("power off acts first", "RemoteRoutes.java", "return true; // the phone, or every radio, goes away", "return !viaBluetooth;"),
- ("wifi_off ignores the hotspot", "RemoteRoutes.java", "return !viaBluetooth && !hotspotOn;", "return !viaBluetooth;"),
+ ("wifi_off ignores the hotspot", "RemoteRoutes.java", "return !viaBluetooth && !Boolean.TRUE.equals(hotspotOn);", "return !viaBluetooth;"),
+ ("hotspot not known: wifi_off acts first", "RemoteRoutes.java", "return !viaBluetooth && !Boolean.TRUE.equals(hotspotOn);", "return !viaBluetooth && Boolean.FALSE.equals(hotspotOn);"),
+ ("hotspot: not known reported as off", "RemoteRoutes.java", "return hotspotInterface ? Boolean.TRUE : null;", "return Boolean.valueOf(hotspotInterface);"),
+ ("hotspot: still coming up counts as on", "RemoteRoutes.java", "return Boolean.valueOf(announced == 13);", "return Boolean.valueOf(announced == 13 || announced == 12);"),
+ ("hotspot: the Wi-Fi service's answer ignored", "RemoteRoutes.java", "        if (api != null) {\n            return api;\n        }\n", ""),
+ ("hotspot: any number taken for an announcement", "RemoteRoutes.java", "if (announced >= 10 && announced <= 14) {", "if (announced >= 0) {"),
+ ("hotspot: an interface outweighs an announcement", "RemoteRoutes.java", "return Boolean.valueOf(announced == 13);", "return Boolean.valueOf(announced == 13 || hotspotInterface);"),
+ ("the picture passes the screen switch", "RemoteRoutes.java", 'return "/screen/state".equals(path) || "/screen/on".equals(path) || "/screen/off".equals(path);', 'return path.startsWith("/screen/");'),
+ ("Sleep stays behind the screen switch", "RemoteRoutes.java", ' || "/screen/off".equals(path);', ';'),
+ ("the tablet gives way to a stranger", "RemoteRoutes.java", "            if (!proven[i]) {\n                return i;", "            if (proven[i]) {\n                return i;"),
+ ("the oldest connection always gives way", "RemoteRoutes.java", "            if (!proven[i]) {\n                return i;\n            }\n", ""),
+ ("listens again without waiting", "RemoteRoutes.java", " && msSinceLastTry >= LISTEN_AGAIN_MS;", ";"),
+ ("a permission given later is never noticed", "RemoteRoutes.java", '"perm".equals(state) || ', ''),
+ ("listens again although the user switched the link off", "RemoteRoutes.java", '"off".equals(state))', '"off".equals(state) || "disabled".equals(state))'),
  ("standby forgotten", "RemoteRoutes.java", '            case "standby":\n', ""),
  ("placeholder address accepted", "BtAddr.java", '&& !mac.equals("02:00:00:00:00:00")', ''),
- ("part of a longer number taken as an address", "BtAddr.java", '(?![0-9A-Fa-f:])', ''),
- ("hidden address accepted", "BtAddr.java", 'if (valid(mac)) {', 'if (true) {'),
+ ("placeholder taken as the setting's answer", "BtAddr.java", 'if (valid(bare)) {', 'if (bare.matches("[0-9A-F:]{17}")) {'),
+ ("hidden address accepted", "BtAddr.java", 'return valid(mac) ? mac : ""; // the adapter', 'return mac; // the adapter'),
+ ("another device's address taken for the phone's own", "BtAddr.java", 'return valid(mac) ? mac : ""; // the adapter\'s own line: this or nothing', 'if (valid(mac)) {\n                    return mac;\n                }'),
+ ("any line with an address in it counts", "BtAddr.java", "if (m.matches()) {", "if (m.find()) {"),
  ("secret sent as a token", "LinkClient.java", 'h.append("X-Seq: ")', 'h.append("X-Token: ").append(secret).append("\\r\\n"); h.append("X-Seq: ")'),
  ("client takes any greeting", "LinkClient.java", "if (nonce == null) {", "if (false) {"),
  ("client numbers do not rise", "LinkClient.java", "long n = ++seq;", "long n = 1;"),
@@ -66,7 +81,20 @@ R = [
  ("reach: the last route not remembered", "Reach.java", "                lastVia = WIFI;\n", ""),
  ("reach: a working hotspot does not end the skipping", "Reach.java", "wifiFailedAt = connected ? -1 : clock.now();", "if (!connected) wifiFailedAt = clock.now();"),
 ]
-SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R)]
+HOLDS_FILES = ["Holds.java"]
+HOLDS_TEST = ROOT + "/tools/test/HoldsTest.java"
+H = [
+ ("holds: the first to finish switches it off", "Holds.java", "ends.remove(who);\n        return left(now);", "ends.remove(who);\n        return 0;"),
+ ("holds: the last to ask sets the end", "Holds.java", "ends.put(who, now + Math.max(1, ms));\n        return left(now);", "ends.put(who, now + Math.max(1, ms));\n        return Math.max(1, ms);"),
+ ("holds: 'done' is not remembered", "Holds.java", "        ends.remove(who);\n", ""),
+ ("holds: a holder can hold twice", "Holds.java", "ends.put(who, now + Math.max(1, ms));", "ends.put(new Object(), now + Math.max(1, ms));"),
+ ("holds: a hold that ran out is kept in the list", "Holds.java", "                it.remove();\n", "                longest = longest + 0;\n"),
+ ("holds: a hold that ran out still counts", "Holds.java", "if (end <= now) {", "if (end <= now - 60000) {"),
+ ("holds: the shortest need wins", "Holds.java", "longest = Math.max(longest, end - now);", "longest = longest == 0 ? end - now : Math.min(longest, end - now);"),
+ ("holds: a hold of no time is no hold", "Holds.java", "now + Math.max(1, ms)", "now + ms"),
+]
+SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
+          (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

@@ -26,7 +26,12 @@ exist too, but they say plainly that someone has to touch the phone afterwards.
 - Phone: inside the always-on service (`SenderService`), `BtServer` listens with
   `listenUsingInsecureRfcommWithServiceRecord("LinkMeter", UUID)`. "Insecure" only means Android does not demand that the two
   devices were paired in the Bluetooth settings first; the link is still encrypted, and every request is signed (below).
-  A receiver for `BluetoothAdapter.ACTION_STATE_CHANGED` starts listening again when Bluetooth is switched back on.
+  A receiver for `BluetoothAdapter.ACTION_STATE_CHANGED` starts listening again when Bluetooth is switched back on. If
+  listening could not start (state `perm`, `error` or `off`), it is tried again by itself whenever the tablet asks for the
+  status, at most every 30 s (`BtServer.poke`), so a permission given later in Android's settings is noticed. Opening and
+  closing the listener happens on one background thread (`BtServer.start`, `stop`, `recheck` never block their caller).
+  At most 2 connections are open; one more closes a connection that has not yet sent a properly signed request before one that
+  has (`RemoteRoutes.givesWay`), so a stranger in range cannot push the tablet out.
   Needs the `BLUETOOTH_CONNECT` permission on Android 12+ (the phone is Android 16): given through Shizuku by `bt_setup`
   (`pm grant`), or by Android's own "Nearby devices" question on the phone.
 - Tablet (Android 10): `BtLink` connects with `getRemoteDevice(mac).createInsecureRfcommSocketToServiceRecord(UUID)`. It needs
@@ -39,7 +44,10 @@ exist too, but they say plainly that someone has to touch the phone afterwards.
 - A Bluetooth socket has no read timeout: on the phone `LinkServer.Watch` tells the wrapper how long the connection may stay
   silent (15 s before the first good request, 90 s after one) and the wrapper closes it; on the tablet `BtLink` closes the socket
   itself when an answer takes too long.
-- A short partial wake lock (30 s, runs out by itself) is taken per request on the phone, so a sleeping phone finishes the job.
+- The phone holds a partial wake lock for a connection from the moment it is accepted until its greeting is out (5 s at most),
+  and again while one of its requests is being answered (120 s at most, released as soon as the answer is out), so a sleeping
+  phone finishes the job. The holds are counted per connection (`Holds`, used by `Awake`): one connection ending cannot let the
+  phone fall asleep under another one's request, and a short hold cannot cut a long one short. Every hold runs out by itself.
 
 ## Who may command the phone over Bluetooth (`LinkAuth`)
 
@@ -57,8 +65,17 @@ sends. So the tablet's secret (the pairing token) never travels on Bluetooth:
 ## What may travel over Bluetooth (`RemoteRoutes.overBluetooth`)
 
 Only: `/s`, `/sig`, `/boot`, `/act`, `/probe`, `/cells`, `/screen/state`, `/screen/on`, `/screen/off`, `/speed/start|stop|status`.
-Refused there (need the hotspot): files, texts, the screen's picture and touches and typing, the app update, pairing, band routes.
-A request with a body is refused and ends the connection.
+Refused there (need the hotspot): files, texts, the screen's picture and touches and typing, the app update, pairing, and the
+`/band*` routes. A request with a body is refused and ends the connection.
+
+`/act` carries EVERY action name over Bluetooth, not only the switches of this document: also the network-type and radio
+actions (`net_lte`, `net_5g`, `radio_cycle`, `restart_modem`), `restore`, `safety`, `setup`, the hotspot band and the boot
+actions. What is refused on Bluetooth are routes, not action names. Every one of them still needs a request signed by a paired
+tablet.
+
+The same three screen routes (`/screen/state|on|off`) are the ones that do NOT wait for the phone's switch "Let the tablet see
+and control this screen" (`RemoteRoutes.screenPower`): they are power switches, like Standby. The picture, touches and typing
+stay behind that switch.
 
 ## Answer first, or act first? (`RemoteRoutes.cutsLink`)
 
@@ -70,24 +87,44 @@ gets the real result:
 |---|---|---|
 | `poweroff`, `reboot`, `airplane_on` | answer first | answer first |
 | `hotspot_off`, `hotspot_restart`, `radio_cycle`, `standby`, `hotspot_on`, `boot_hotspot_on`, `wifi_on` | answer first | act, then answer |
-| `wifi_off` | answer first only if the phone's hotspot is off (the request came through the Wi-Fi being switched off) | act, then answer |
+| `wifi_off` | answer first unless the phone's hotspot is known to be on (the request may have come through the Wi-Fi being switched off) | act, then answer |
+
+`restart_modem` is deliberately not in this table: Android obeys `cmd phone restart-modem` only for root on a test build, so on
+an ordinary phone it changes nothing (the phone now says so), and where it does work the hotspot's Wi-Fi stays up.
+
+When the phone acts first, a switch that did not move comes back as an ERROR (409 with `err`), never as 200 with a sad
+sentence (`Actions.NotDone`): hotspot not switched on / off / restarted, Wi-Fi not switched, the screen not off, the radio
+restart failed, a shell command refused. So the tablet's "ok" means "done". The one in-between answer is for the hotspot when
+the phone took the request and does not report the hotspot's state: 200, and the sentence says "It does not say whether it
+is on." After an answer-first action nobody is left to tell; the next status shows what happened.
 
 ## The phone's new actions (all through Shizuku; `Actions`)
 
 - `hotspot_on`: ShellMain `hotspot-start` (the system's tethering service, as the shell user). `boot_hotspot_on` is the same.
+  "On" is only said when the hotspot's own state says on: the phone's "started" answer means the request was taken, so the
+  helper then waits up to 10 s for the state; a hotspot that is already coming up is waited for instead of asked twice.
 - `hotspot_off`: NEW clean way, ShellMain `hotspot-stop` (`stopTethering`), checked by reading the hotspot state. Only if that
   fails AND the request did not come over Bluetooth, the old airplane-mode blip (3 s) is used (it also takes Bluetooth down for
   a moment, which is why it is not used on the Bluetooth link).
+- `hotspot_restart`: stop, wait until the state says off (an error if it never does), then start as above.
+- The helper's hotspot answers start with `OK`, `ERR` or `UNSURE` (asked, but this phone does not report the hotspot's state).
 - `wifi_on` / `wifi_off`: `cmd wifi set-wifi-enabled enabled|disabled` (fallback `svc wifi enable|disable`), checked with
   `WifiManager.isWifiEnabled()`. Switching the phone's Wi-Fi ON may switch its hotspot OFF on phones that cannot do both.
-- `standby`: hotspot off, then the screen's checked Sleep (`PowerSequence`). Woken with `hotspot_on` over Bluetooth.
+- `standby`: hotspot off, then the screen's checked Sleep (`PowerSequence`). Woken with `hotspot_on` over Bluetooth. Both
+  parts are always tried. Only when both moved is the answer a plain one; otherwise it is an error that starts "Standby is
+  only half done." or "Standby did not work." and then says what became of the hotspot and of the screen.
 - `reboot`: `svc power reboot`. The confirmation says what it costs (unlock by hand, Shizuku dead until "Start everything").
-- `bt_setup`: `pm grant ... BLUETOOTH_CONNECT`, `svc bluetooth enable` if off, read the address, start `BtServer`.
+- `bt_setup`: `pm grant ... BLUETOOTH_CONNECT`, `svc bluetooth enable` if off, read the address (only the adapter's OWN
+  address line counts, `BtAddr.own`; a phone that hides it gets the "pair once, then Find" advice), listen. It does nothing,
+  and says so as an error, while the phone-side switch is off; and its whole report comes back as an error when the phone is
+  not listening at the end.
 - `eco_auto_on` / `eco_auto_off`: the battery saver's Automatic switch, stored on the phone (the old "Turn off" was only kept in
   memory and came back after the phone's service restarted).
-- `/s` additionally reports: `hs` (hotspot on), `wifi` (phone's Wi-Fi switch), `scr` (screen on), `air` (airplane mode),
-  `bt` (the link's state on the phone: `on`, `off` = Bluetooth off, `perm` = permission missing, `disabled` = switch off,
-  `none` = no Bluetooth), `btmac`, `btname`, `ecoAuto`.
+- `/s` additionally reports: `hs` (hotspot on; LEFT OUT when the phone cannot tell, so "not known" never reads as "off":
+  `Radios.hotspot` asks the Wi-Fi manager's hidden answer, then the last hotspot announcement the service heard, then looks
+  for a hotspot interface), `wifi` (phone's Wi-Fi switch), `scr` (screen on), `air` (airplane mode), `bt` (the link's state
+  on the phone: `on` = listening, `off` = Bluetooth off, `perm` = permission missing, `disabled` = switch off, `error` =
+  could not listen, `none` = no Bluetooth or the service is not running), `btmac`, `btname`, `ecoAuto`.
 
 ## The tablet: which way a request goes (`Reach`, used by `Call.run` and the Home tab)
 
@@ -116,7 +153,8 @@ gets the real result:
 - New things that stay changed until undone: the `BLUETOOTH_CONNECT` permission (harmless; taken back with `pm revoke` or in the
   phone's app settings), Bluetooth switched on by `bt_setup`, the phone's Wi-Fi switch after `wifi_on|off`, the hotspot after
   `hotspot_on|off`. They are listed in `docs/SAFETY.md` and are not "Restore everything" items (they are the user's own switches).
-- The phone-side switch "Let the tablet reach this phone over Bluetooth" (on by default) turns the listener off.
+- The phone-side switch "Let the tablet reach this phone over Bluetooth" (`Cfg.btLink`, on by default) turns the listener
+  off AND closes the connections that are open (the screen calls `BtServer.recheck()` after moving it).
 
 ## What is not known until the devices try it
 
@@ -126,3 +164,8 @@ gets the real result:
 3. Does the shell's `startTethering` / `stopTethering` work on this Samsung? (The earlier boot flow used `hotspot-start` and was
    never seen on a device either.) If not: the next idea is the Quick Settings tile through `uiautomator dump` + `input tap`.
 4. Range through the user's walls; whether Samsung keeps the service alive (battery "Unrestricted" is already advised).
+5. Whether the phone can tell that its hotspot is on (`hs` in the status). If `hs` is missing on the user's phone, the next
+   source to add is Android 16's public `TetheringManager.registerTetheringEventCallback` (it reports the tethered interfaces
+   at once, without waiting for a change).
+6. Whether the hotspot's state can be read by the shell helper (`getWifiApEnabledState`); if not, the hotspot answers read
+   "It does not say whether it is on / off."

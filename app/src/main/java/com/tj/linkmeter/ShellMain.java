@@ -38,13 +38,15 @@ import java.util.function.Consumer;
  *   nrdc-get             is the 5G leg (NR dual connectivity) allowed? (see NrLeg for the answer's words)
  *   nrdc-set on|off|off-now   allow the 5G leg, or keep the phone from adding it (off-now drops it at once)
  *   sleep [nodoze]       put the device to sleep through the power service (nodoze: skip the Always-On Display)
- *   hotspot-start        switch the Wi-Fi hotspot on (the system's tethering service, as the shell user)
+ *   hotspot-start        switch the Wi-Fi hotspot on (the system's tethering service, as the shell user), and say whether it
+ *                        really came on
  *   hotspot-stop         switch it off, and say whether it really went off
- *   hotspot-restart      off and on again, so a changed band takes effect
+ *   hotspot-restart      off, wait until it is off, and on again, so a changed band takes effect
  *   hotspot-info         its band, channel, security and state
- *   hotspot-band 2|5|auto   save a band (restart the hotspot to use it)
+ *   hotspot-band 2|5|auto   save a band (restart the hotspot to use it), and say which band the phone then really has
  *
- * Output starts with OK or ERR. Hidden-API checks do not apply in this process,
+ * Output starts with OK or ERR. The hotspot commands have a third word, UNSURE: the phone was asked, and it does not report
+ * the hotspot's state, so nobody can say whether it obeyed. Hidden-API checks do not apply in this process,
  * which is why reflection works here.
  */
 public final class ShellMain {
@@ -471,6 +473,53 @@ public final class ShellMain {
         }
     }
 
+    private static String apWord(int state) {
+        switch (state) {
+            case 10:
+                return "switching off";
+            case 11:
+                return "off";
+            case 12:
+                return "switching on";
+            case 13:
+                return "on";
+            case 14:
+                return "reported as failed";
+            default:
+                return "in an unknown state (" + state + ")";
+        }
+    }
+
+    /**
+     * Waits (up to ms) for the hotspot to reach the wanted state. Returns the last state read: the wanted one, another one, or
+     * -1 at once if this phone does not report the state (waiting would then tell nothing).
+     */
+    private static int waitAp(int want, long ms) throws InterruptedException {
+        long end = SystemClock.elapsedRealtime() + ms;
+        int st = apState();
+        while (st != want && st >= 0 && SystemClock.elapsedRealtime() < end) {
+            Thread.sleep(500);
+            st = apState();
+        }
+        return st;
+    }
+
+    private static final String UNSURE_STATE = "; this phone does not report the hotspot's state here";
+
+    /** 1 = 2.4 GHz, 2 = 5 GHz, 3 = either, as the Wi-Fi service numbers the hotspot's bands. */
+    private static String bandWord(Object band) {
+        if (Integer.valueOf(1).equals(band)) {
+            return "2.4 GHz";
+        }
+        if (Integer.valueOf(2).equals(band)) {
+            return "5 GHz";
+        }
+        if (Integer.valueOf(3).equals(band)) {
+            return "automatic (2.4 or 5 GHz)";
+        }
+        return "a band this app does not know (" + band + ")";
+    }
+
     private static String hotspotInfo(Context ctx) throws Exception {
         Object cfg = wifiCall(wifiService(), "getSoftApConfiguration");
         StringBuilder sb = new StringBuilder("OK hotspot\n");
@@ -486,7 +535,11 @@ public final class ShellMain {
         return sb.toString().trim();
     }
 
-    /** arg: 2 (2.4 GHz), 5 (5 GHz) or auto (either). Saves the setting; restart the hotspot to apply it. */
+    /**
+     * arg: 2 (2.4 GHz), 5 (5 GHz) or auto (either). Saves the setting; restart the hotspot to apply it. The band is read back
+     * afterwards: a phone with hotspot settings of its own (Samsung) may say yes and keep its own band, and "saved" would then
+     * be a claim nobody checked.
+     */
     private static String hotspotBand(Context ctx, String arg) throws Exception {
         int band;
         switch (arg) {
@@ -504,14 +557,22 @@ public final class ShellMain {
         }
         Object wm = wifiService();
         Object cfg = wifiCall(wm, "getSoftApConfiguration");
+        Object before = call(cfg, "getBand");
         Class<?> bc = Class.forName("android.net.wifi.SoftApConfiguration$Builder");
         Object builder = bc.getConstructor(cfg.getClass()).newInstance(cfg);
         bc.getMethod("setBand", int.class).invoke(builder, band);
         Object updated = bc.getMethod("build").invoke(builder);
         Object ok = wifiCall(wm, "setSoftApConfiguration", updated);
-        return Boolean.TRUE.equals(ok)
-                ? "OK saved; restart the hotspot to use it"
-                : "ERR the phone refused the new hotspot settings";
+        if (!Boolean.TRUE.equals(ok)) {
+            return "ERR the phone refused the new hotspot settings";
+        }
+        Object now = call(wifiCall(wm, "getSoftApConfiguration"), "getBand");
+        if (Integer.valueOf(band).equals(now)) {
+            return "OK " + bandWord(now) + ". Restart the hotspot to use it";
+        }
+        return now != null && now.equals(before)
+                ? "ERR the phone kept " + bandWord(now)
+                : "ERR the phone did not take " + bandWord(Integer.valueOf(band)) + ": it now has " + bandWord(now);
     }
 
     /** The phone's TetheringManager, built by hand (its constructor is hidden). null, with the reason in why[0], if this phone has none. */
@@ -542,13 +603,21 @@ public final class ShellMain {
     }
 
     /**
-     * Asks for the Wi-Fi hotspot to be switched on and waits (up to 20 seconds) for the phone's answer. okText is the success reply;
-     * hint is added to the failure replies ("; turn it on again on the phone").
+     * Asks for the Wi-Fi hotspot to be switched on, waits (up to 20 seconds) for the phone's answer, and then (up to 10 more)
+     * for the hotspot itself to be on: the phone's "started" only means that it took the request. okText is the success reply,
+     * given only when the hotspot's state says on; hint is added to the failure replies ("; turn it on again on the phone").
      */
     private static String startWifiTethering(Object tm, String okText, String hint) throws Exception {
         final int wifi = 0; // TetheringManager.TETHERING_WIFI
-        if (apState() == 13) {
+        int st = apState();
+        if (st == 13) {
             return okText; // already on: asking again could restart it and drop whoever is using it
+        }
+        if (st == 12) {
+            // already coming up (asked a moment ago, or switched on at the phone): a second request could be refused as a
+            // duplicate, so wait for the first one
+            st = waitAp(13, 15000);
+            return st == 13 ? okText : "ERR the hotspot was switching on and did not finish (it is " + apWord(st) + ")" + hint;
         }
         // Two shapes of the same call exist: (type, executor, callback) on older Android and (request, executor, callback) on
         // newer. The first is preferred; the request for the second is built with the system's own builder, plain and unchanged.
@@ -576,21 +645,19 @@ public final class ShellMain {
         if (start == null) {
             return "ERR this phone has no startTethering(type or request, executor, callback)" + hint;
         }
-        final String ok = okText;
         final String retry = hint;
         final CountDownLatch latch = new CountDownLatch(1);
-        final String[] outcome = new String[1];
+        final String[] failure = new String[1]; // stays null when the phone says "started"
         Object cb = java.lang.reflect.Proxy.newProxyInstance(start.getParameterTypes()[2].getClassLoader(),
                 new Class<?>[] {start.getParameterTypes()[2]}, new java.lang.reflect.InvocationHandler() {
                     @Override
                     public Object invoke(Object proxy, Method m, Object[] args) {
                         switch (m.getName()) {
                             case "onTetheringStarted":
-                                outcome[0] = ok;
                                 latch.countDown();
                                 return null;
                             case "onTetheringFailed":
-                                outcome[0] = "ERR the hotspot failed to start (code "
+                                failure[0] = "ERR the hotspot failed to start (code "
                                         + (args != null && args.length > 0 ? args[0] : "?") + ")" + retry;
                                 latch.countDown();
                                 return null;
@@ -617,7 +684,19 @@ public final class ShellMain {
             // some phones start the hotspot and never call back: believe the hotspot's own state
             return apState() == 13 ? okText : "ERR no answer when starting the hotspot; check the phone";
         }
-        return outcome[0];
+        if (failure[0] != null) {
+            return failure[0];
+        }
+        // "started": the request was taken. On some Android versions the hotspot is still coming up at this point, and it can
+        // still fail. Say "on" only when the hotspot's own state says so.
+        st = waitAp(13, 10000);
+        if (st == 13) {
+            return okText;
+        }
+        if (st < 0) {
+            return "UNSURE the phone took the request to switch the hotspot on" + UNSURE_STATE;
+        }
+        return "ERR the phone took the request, but the hotspot did not come on (it is " + apWord(st) + ")" + hint;
     }
 
     /**
@@ -634,29 +713,37 @@ public final class ShellMain {
             return "ERR " + why[0];
         }
         call(tm, "stopTethering", 0); // 0 = Wi-Fi
-        int st = -1;
-        for (int i = 0; i < 16; i++) {
-            Thread.sleep(500);
-            st = apState();
-            if (st == 11) {
-                return "OK the hotspot is off";
-            }
+        int st = waitAp(11, 8000);
+        if (st == 11) {
+            return "OK the hotspot is off";
         }
         if (st < 0) {
-            return "OK the hotspot was asked to stop (this phone does not report its state here)";
+            return "UNSURE the hotspot was asked to stop" + UNSURE_STATE;
         }
-        return "ERR the hotspot did not switch off (state " + st + ")";
+        return "ERR the hotspot did not switch off (it is still " + apWord(st) + ")";
     }
 
-    /** Stops the Wi-Fi hotspot and starts it again, so a changed band takes effect. */
+    /**
+     * Stops the Wi-Fi hotspot and starts it again, so a changed band takes effect. The start waits until the hotspot is really
+     * off: a start asked while it is still on answers "it is on" at once, and the restart would have restarted nothing.
+     */
     private static String hotspotRestart(Context ctx) throws Exception {
         String[] why = new String[1];
         Object tm = tetheringManager(ctx, why);
         if (tm == null) {
             return "ERR " + why[0];
         }
-        call(tm, "stopTethering", 0);
-        Thread.sleep(3000);
+        if (apState() != 11) {
+            call(tm, "stopTethering", 0);
+            int st = waitAp(11, 8000);
+            if (st < 0) {
+                Thread.sleep(3000); // this phone does not report the state: give the hotspot the time it usually needs to go off
+            } else if (st != 11) {
+                return "ERR the hotspot did not switch off (it is still " + apWord(st) + "), so it was not restarted";
+            } else {
+                Thread.sleep(1000); // off: a moment for the Wi-Fi chip before it is asked to start again
+            }
+        }
         return startWifiTethering(tm, "OK the hotspot is back on", "; turn it on again on the phone");
     }
 

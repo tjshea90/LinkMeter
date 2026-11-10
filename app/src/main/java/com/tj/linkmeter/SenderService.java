@@ -69,6 +69,7 @@ public class SenderService extends Service {
                 RemoteProfile.recover(getApplicationContext());
                 Guard.resume(getApplicationContext()); // anything LinkMeter changed and left: watch it again, finish a cut-off radio-off
                 BootAssist.start(getApplicationContext()); // after a restart: wireless debugging on and the Shizuku notification, if the user switched Boot assist on
+                Radios.watch(getApplicationContext()); // hears the hotspot go on and off, for the status
                 BtServer.start(getApplicationContext()); // the Bluetooth door: the tablet can reach the phone while the hotspot is off
             }
         }
@@ -208,6 +209,7 @@ public class SenderService extends Service {
             pool.shutdownNow();
         }
         BtServer.stop();
+        Radios.unwatch(getApplicationContext());
         super.onDestroy();
     }
 
