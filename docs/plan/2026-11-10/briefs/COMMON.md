@@ -1,5 +1,9 @@
 # LinkMeter: what every implementer on this task must know
 
+(Written for the agents that first ran the tracks. Since 2026-11-10 ONE session does the tracks itself, without agents:
+everything below applies to that session as it stands. "Your task" is the brief you are working on, your progress name
+is the brief's name, and "your answer" is what you write on the track's line in HANDOFF and in your notes.)
+
 You work in the LinkMeter repository (your working directory), on the branch that is checked out (do not switch branches).
 You are the only one changing code in this tree right now (commits that start with `progress:` or `note:` are notes and
 rule books saved by others; they change no code). Plain Java, NO third-party libraries (the tablet is a low-RAM Android Go

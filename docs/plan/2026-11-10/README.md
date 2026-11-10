@@ -1,7 +1,39 @@
 # How the tracks of the 2026-11-10 plan are carried out
 
-`HANDOFF.md` (newest block, "THE TRACKS") says which tracks are done. This folder holds what is needed to run the next one,
-so a new session does not have to write it again.
+`HANDOFF.md` ("START HERE" at its top, and "THE TRACKS" in its newest block) says which tracks are done. This folder
+holds what is needed to do the next one, so a new session does not have to work it out again.
+
+## HOW ONE SESSION CARRIES OUT THE REST (no agent workflows: the user's decision of 2026-11-10)
+
+The tracks were first run by agent workflows (several agents per track). They used up the user's usage allowance, so the
+user switched them off. From now on ONE session does each track itself. The briefs stay valid: they say what to change,
+which audit findings to act on and which tests to write. Do this, track by track, in the order of "THE TRACKS":
+
+1. New session, new branch: `git fetch --all`, then `git merge --ff-only origin/<the branch HANDOFF names>`. Run
+   `tools/test.sh` and `./gradlew --no-daemon assembleRelease` once to see the tree is sound.
+2. Read `briefs/COMMON.md` once (the rules: devices, what not to touch, how to save). Where it speaks of "your task" and
+   "your progress name": your progress name is the brief's name (`T2a`, `T2b`, ...), your scratch folder is your
+   session's own scratch folder, and "your answer" is what you write on the track's line in HANDOFF.
+3. Take the first brief of the first track that is not ticked (the table at the end of this file). Run
+   `tools/progress.sh --show <its name>` first: if an earlier session left notes, continue from them. Then do the brief
+   one finding at a time: verify the finding in the code, fix it, test it, `NO_RELEASE=1 tools/checkpoint.sh "..."`.
+   Keep the notes file going (`tools/progress.sh <name> <file>`) so that a cut-off loses minutes, not hours.
+4. When the track's briefs are done, REVIEW YOUR OWN TRACK ONCE before closing it: `git diff <commit before the
+   track>..HEAD`, read with the list in `briefs/REVIEW.md` and the two reviewer scopes of the track in `tracks.json` as
+   your checklist (they name what to look at hardest). Track T1's review found ten real faults, two of them serious, so
+   this step is worth its time; keep it to one careful pass. Fix what you find, each as its own finished step.
+5. Close the track: `tools/test.sh`, `./gradlew --no-daemon assembleRelease`, `python3 tools/mutate_link.py`, look at the
+   pictures of `tools/preview.sh` when a screen changed. Tick the track's box in HANDOFF and write what was learned.
+   The closing save is a plain `tools/checkpoint.sh "..."` (a sentence the user understands): it publishes a release,
+   so the user can try that stage on the devices. Check that the run is green and the release exists (GitHub MCP
+   `actions_list`, `list_releases`), and give the user https://github.com/tjshea90/LinkMeter/releases
+6. Then the next track. T7 is the end: one read through everything since v0.2.102, a short user guide, HANDOFF brought
+   up to date, the last release, and the question to the user about `tools/pending/claude-branches.patch`.
+
+A track is a lot of work for one session. It is fine, and expected, that a session ends in the middle of one: what counts
+is that every finished step is pushed and the notes say where you are.
+
+## What is in this folder
 
 - `briefs/COMMON.md`: the rules every implementer works under (devices, what not to touch, how to save).
 - `briefs/REVIEW.md`, `briefs/FIX.md`: the rule books of the reviewers and of the fixer.
@@ -38,7 +70,7 @@ Things the saves depend on (found by two checkers that tried to break them, 2026
   push, or GitHub does not build it).
 - The release text leaves these commits out (the pipeline's release step was fixed on 2026-11-10, commit `34b7632`).
 
-## Running a track (for the directing session)
+## ONLY IF THE USER ASKS FOR AGENT WORKFLOWS AGAIN: running a track with the Workflow tool
 
     Workflow({ scriptPath: "docs/plan/2026-11-10/track-workflow.js", args: {
       ...the track's entry in docs/plan/2026-11-10/tracks.json...,
@@ -47,7 +79,7 @@ Things the saves depend on (found by two checkers that tried to break them, 2026
 
 1. BEFORE starting it, save the complete call as `docs/plan/progress/<track>-run.md` with
    `tools/progress.sh <track>-run <file>`: first line `STATUS: RUNNING`, then the date and the args as JSON.
-2. Keep a scheduled check-in alive (`create_trigger` / `send_later` of the cloud session) whose message says: "if a track
+2. (Optional, costs usage each time it fires.) Keep a scheduled check-in alive (`create_trigger` / `send_later` of the cloud session) whose message says: "if a track
    call is running or you are mid-task, do nothing; otherwise read docs/plan/2026-11-10/README.md, 'If a run was cut
    off', and make the unfinished call again". It restarts the work after the usage limit resets without the user having
    to write. Delete it when the last track is closed.
@@ -65,7 +97,7 @@ Things the saves depend on (found by two checkers that tried to break them, 2026
    so the user can try each stage on the devices. Then check that the run is green and the release exists, and give the
    user the releases page.
 
-## If a run was cut off (usage ran out, the worker restarted, the container is new)
+## ONLY WITH AGENT WORKFLOWS: if a run was cut off (usage ran out, the worker restarted, the container is new)
 
 0. IN A NEW SESSION (a new branch): `git fetch --all`, then `git merge --ff-only origin/<the branch HANDOFF names>`
    BEFORE anything else. The newest notes, any `wip:` commit and the run file are only on that branch, not on `main`.
@@ -83,7 +115,7 @@ Things the saves depend on (found by two checkers that tried to break them, 2026
 4. The script stops by itself, with `stopped_at` and the sentence `again`, when an agent returns nothing; it does not
    start a fixer after a reviewer was cut off.
 
-## The tracks, their briefs and what the reviewers look at
+## The tracks, their briefs and what a review looks at
 
 All briefs are written. A brief was written BEFORE the tracks ahead of it ran, so each one tells its implementer to read
 the earlier tracks' lines in HANDOFF first; if an earlier track changed something a brief assumes, correct the brief.

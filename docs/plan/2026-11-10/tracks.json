@@ -1,5 +1,5 @@
 {
- "_how": "Arguments for docs/plan/2026-11-10/track-workflow.js, one entry per track. Add two values when starting a track: base (the commit before the track: git rev-parse --short HEAD) and scratch (a folder outside the repository). Save the complete call as docs/plan/progress/<track>-run.md with tools/progress.sh before starting it, so the same call can be made again after a cut-off.",
+ "_how": "SINCE 2026-11-10 NO AGENT WORKFLOWS (the user's decision): one session does the briefs itself and uses the reviewer scopes below as its checklist when it reviews its own track (docs/plan/2026-11-10/README.md). ONLY IF THE USER ASKS FOR WORKFLOWS AGAIN: these are the arguments for docs/plan/2026-11-10/track-workflow.js, one entry per track; add base (the commit before the track) and scratch (a folder outside the repository).",
  "T2": {
   "track": "T2",
   "briefs": "docs/plan/2026-11-10/briefs",

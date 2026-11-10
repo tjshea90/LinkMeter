@@ -1,4 +1,8 @@
-# Progress notes of the agents
+# Progress notes
+
+Since 2026-11-10 one session does the tracks itself (no agents). It keeps notes here in the same way: one file per brief
+it works on (`T2a.md`, ...), saved with `tools/progress.sh <name> <notes-file>`. What follows was written when agents
+did the work and still describes the files that are here.
 
 One file per agent role and track part (`T2a.md`, `T2-review-saver.md`, `T2-fix.md`, ...), pushed every few minutes with
 `tools/progress.sh <name> <notes-file>` while the agent works (read back with `tools/progress.sh --show <name>`). They
