@@ -135,11 +135,14 @@ is on." After an answer-first action nobody is left to tell; the next status sho
 3. After a failed hotspot connect the hotspot route is skipped for a few seconds while Bluetooth works (no 2.5 s wait on every
    request), then tried again, so the tablet returns to the hotspot by itself when it is back.
 4. The Bluetooth connection is closed when the app leaves the foreground and after 30 s without a request.
-5. A status read that a screen makes by itself (`/s`, `/sig`, `/boot`, `/screen/state`, `/speed/status` with GET) never
+5. The Screen tab's own question (`/screen/state`, every 3 s for as long as the tab is open) is asked over the hotspot
+   ONLY (`Reach.hotspotOnly`, `Call.runOverHotspot`): the tab needs the hotspot for its picture anyway, and over Bluetooth
+   it would wake a phone on Standby twenty times a minute. Its Sleep and Wake buttons are presses and may use Bluetooth.
+6. A status read that a screen makes by itself (`/s`, `/sig`, `/boot`, `/screen/state`, `/speed/status` with GET) never
    switches the tablet's Bluetooth on (`Reach.statusRead`): the user may have switched it off on purpose. The result then
    says "Bluetooth is off on this tablet" and Home shows a button "Switch Bluetooth on". Anything the user pressed (a switch,
    "Ask again", Set up, Test, Find, the live test below) may switch it on.
-6. Over Bluetooth the phone acts BEFORE it answers, so every `/act` request gets at least 60 s there, whatever the screen
+7. Over Bluetooth the phone acts BEFORE it answers, so every `/act` request gets at least 60 s there, whatever the screen
    allowed for the hotspot route (`Reach.bluetoothReadMs`, one place for all screens). If no answer comes in time on a
    connection that had just been made, the message says the phone may still be doing it.
 

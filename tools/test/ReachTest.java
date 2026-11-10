@@ -10,7 +10,8 @@ import java.util.Random;
  * even connect). Fake routes on a virtual clock. The rule that must never break: a request is not sent a second time unless the
  * first try certainly did not arrive, and nothing that is not allowed over Bluetooth ever goes there.
  * Also: a status read never switches the tablet's Bluetooth on (only a press does), an action gets at least a minute over
- * Bluetooth, and the live test of the link uses Bluetooth and nothing else.
+ * Bluetooth, the live test of the link uses Bluetooth and nothing else, and the question a screen repeats every few seconds
+ * (hotspotOnly) never calls the phone over Bluetooth, whatever the state of the routes.
  * Run by tools/test.sh. Prints "N checks, M failed". ASCII only.
  */
 public final class ReachTest {
@@ -385,6 +386,88 @@ public final class ReachTest {
         check(x.resp == null && w.log.isEmpty(), "the live test cannot be used to send other things over Bluetooth");
     }
 
+    /** The question a screen repeats every few seconds (the Screen tab's): the hotspot route and nothing else. */
+    static void hotspotOnly() {
+        // the hotspot works: answered over it
+        World w = new World();
+        Reach r = w.reach();
+        Reach.Result x = r.hotspotOnly("GET", "/screen/state", 4000);
+        check(x.resp != null && x.via.equals(Reach.WIFI) && x.asked && !x.btTried && x.error.isEmpty() && w.log.toString().equals("[wifi /screen/state]")
+                && w.wifiReadMs == 4000, "hotspot only, the hotspot works: " + w.log);
+        check(r.lastVia().equals(Reach.WIFI), "the route is remembered");
+        // the hotspot is off, the Bluetooth link is ready and working: the phone is NOT called over Bluetooth
+        w = new World();
+        w.wifiMode = Mode.NO_CONNECT;
+        r = w.reach();
+        x = r.hotspotOnly("GET", "/screen/state", 4000);
+        check(x.resp == null && !x.btTried && x.asked && x.wifiDown && w.arrived == 0 && w.log.toString().equals("[wifi /screen/state]"),
+                "hotspot only, the hotspot is off: Bluetooth is left alone: " + w.log);
+        check(x.error.equals("Couldn't reach the phone: failed to connect") && x.via.isEmpty(), "and the error is the hotspot's: " + x.error);
+        // the tablet is not on a network at all: nothing is tried
+        w = new World();
+        w.wifiKnown = false;
+        r = w.reach();
+        x = r.hotspotOnly("GET", "/screen/state", 4000);
+        check(x.resp == null && !x.asked && !x.btTried && !x.wifiDown && w.log.isEmpty() && x.error.equals("The tablet is not on the phone's hotspot."),
+                "hotspot only, no network: nothing is called: " + w.log + " " + x.error);
+        // a lost answer is a failure, and is not asked again another way
+        w = new World();
+        w.wifiMode = Mode.LOST_ANSWER;
+        r = w.reach();
+        x = r.hotspotOnly("GET", "/screen/state", 4000);
+        check(x.resp == null && w.arrived == 1 && w.log.size() == 1 && !x.wifiDown && x.error.startsWith("Couldn't reach the phone"), "hotspot only, a lost answer: " + w.log);
+        // a phone on Standby with this question asked every 3 s for an hour: not one call over Bluetooth
+        w = new World();
+        w.wifiMode = Mode.NO_CONNECT;
+        r = w.reach();
+        r.call("GET", "/s", 3000); // (Bluetooth has just worked, so an ordinary request would now skip the hotspot and go straight to it)
+        int btBefore = 0;
+        for (String l : w.log) {
+            btBefore += l.startsWith("bt ") ? 1 : 0;
+        }
+        for (int i = 0; i < 1200; i++) {
+            w.now += 3000;
+            r.hotspotOnly("GET", "/screen/state", 4000);
+        }
+        int bt = 0;
+        for (String l : w.log) {
+            bt += l.startsWith("bt ") ? 1 : 0;
+        }
+        check(btBefore == 1 && bt == 1 && w.arrived == 1, "an hour of the repeated question with the hotspot off: no call over Bluetooth (" + (bt - btBefore) + ")");
+        // when the hotspot answers it, an ordinary request takes the hotspot again at once (no skipping out of habit)
+        w.wifiMode = Mode.OK;
+        r.hotspotOnly("GET", "/screen/state", 4000);
+        check(r.call("POST", "/screen/on", 30000).via.equals(Reach.WIFI), "after it was answered over the hotspot, a press takes the hotspot");
+
+        // random states of both routes: never Bluetooth, never twice
+        Random rnd = new Random(5);
+        for (int story = 0; story < 2000; story++) {
+            w = new World();
+            r = w.reach();
+            for (int step = 0; step < 10; step++) {
+                w.wifiKnown = rnd.nextInt(4) != 0;
+                w.btReady = rnd.nextInt(4) != 0;
+                w.btOffHere = rnd.nextInt(4) == 0;
+                w.wifiMode = Mode.values()[rnd.nextInt(4)];
+                w.btMode = Mode.values()[rnd.nextInt(3)];
+                w.now += rnd.nextInt(12000);
+                if (rnd.nextInt(3) == 0) {
+                    r.call(rnd.nextBoolean() ? "GET" : "POST", "/s", 3000, rnd.nextBoolean()); // other requests in between
+                }
+                int logBefore = w.log.size();
+                int arrivedBefore = w.arrived;
+                int onBefore = w.switchedOn;
+                x = r.hotspotOnly("GET", "/screen/state", 4000);
+                List<String> did = w.log.subList(logBefore, w.log.size());
+                check(did.size() == (w.wifiKnown ? 1 : 0) && (did.isEmpty() || did.get(0).equals("wifi /screen/state")), "hotspot only: one try over the hotspot, or none: " + did);
+                check(!x.btTried && !x.btOff && w.switchedOn == onBefore, "hotspot only: Bluetooth is neither called nor switched on");
+                check(w.arrived - arrivedBefore <= 1, "hotspot only: never arrives twice");
+                check(x.asked == !did.isEmpty(), "hotspot only: 'asked' says whether it was tried");
+                check((x.resp != null) == x.error.isEmpty() && (x.resp != null) == x.via.equals(Reach.WIFI), "hotspot only: an answer over the hotspot, or an error");
+            }
+        }
+    }
+
     /** Random stories against the rules. */
     static void random() {
         Random rnd = new Random(77);
@@ -446,6 +529,7 @@ public final class ReachTest {
     public static void main(String[] a) {
         scenarios();
         pressesAndTimes();
+        hotspotOnly();
         random();
         System.out.println(checks + " checks, " + failed + " failed");
         if (failed > 0) {

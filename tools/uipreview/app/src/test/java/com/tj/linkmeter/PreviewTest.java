@@ -62,6 +62,8 @@ public class PreviewTest {
         int actCode = 200;
         /** How often the status was asked for. */
         final java.util.concurrent.atomic.AtomicInteger statusAsked = new java.util.concurrent.atomic.AtomicInteger();
+        /** How often the phone was called over Bluetooth, for anything (each such call wakes it). */
+        final java.util.concurrent.atomic.AtomicInteger btCalls = new java.util.concurrent.atomic.AtomicInteger();
 
         static String status(boolean hotspotOn, boolean screenOn) {
             return STATUS.replace("%HS%", String.valueOf(hotspotOn)).replace("%SCR%", String.valueOf(screenOn));
@@ -93,6 +95,7 @@ public class PreviewTest {
                     if (p.btOffHere && !pressed) {
                         throw new Reach.BluetoothOff();
                     }
+                    p.btCalls.incrementAndGet();
                     try {
                         Thread.sleep(p.btDelayMs);
                     } catch (InterruptedException e) {
@@ -642,6 +645,31 @@ public class PreviewTest {
         p.btDelayMs = 0;
         press(a, "Standby");
         dialogShot("state-home-standby-anyway");
+    }
+
+    /**
+     * Not a picture but a check: the Screen tab, left open while the phone is only reachable over Bluetooth (it is on Standby),
+     * must not call it there. Its own question, every 3 s, is for the hotspot only.
+     */
+    @Test
+    public void screenTabLeavesBluetoothAlone() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(false, false);
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        a.openTab(Tab.SCREEN);
+        settle();
+        int before = p.btCalls.get();
+        for (int i = 0; i < 10; i++) {
+            later(3000);
+        }
+        int calls = p.btCalls.get() - before;
+        if (calls != 0) {
+            throw new AssertionError("with the Screen tab open for 30 s the phone was called " + calls + " times over Bluetooth");
+        }
     }
 
     /** The Bluetooth card in Settings in its states: ready, never tested, and a phone that says its Bluetooth is off. */

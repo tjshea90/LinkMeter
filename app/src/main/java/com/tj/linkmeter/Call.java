@@ -74,15 +74,24 @@ final class Call {
         return status.has(name) ? Boolean.valueOf(status.optBoolean(name)) : null;
     }
 
-    static void run(final MainActivity act, final String method, final String target,
-            final int readMs, final Done d) {
+    static void run(MainActivity act, String method, String target, int readMs, Done d) {
+        run(act, method, target, readMs, false, d);
+    }
+
+    /** The same over the hotspot route only, never over Bluetooth: for a question a screen repeats ({@link Reach#hotspotOnly}). */
+    static void runOverHotspot(MainActivity act, String method, String target, int readMs, Done d) {
+        run(act, method, target, readMs, true, d);
+    }
+
+    private static void run(final MainActivity act, final String method, final String target,
+            final int readMs, final boolean hotspotOnly, final Done d) {
         new Thread(() -> {
             boolean ok = false;
             String text;
             JSONObject json = null;
             Reach.Result res;
             try {
-                res = reach(act).call(method, target, readMs);
+                res = hotspotOnly ? reach(act).hotspotOnly(method, target, readMs) : reach(act).call(method, target, readMs);
             } catch (RuntimeException e) {
                 // an escape from this thread would end the app; said as what it is, a request that could not be made
                 res = new Reach.Result();

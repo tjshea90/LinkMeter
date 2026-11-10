@@ -11,9 +11,11 @@ import java.io.IOException;
  * failed connect is that certain ({@link Client.ConnectFailed}). A request that connected and then got no answer may have been
  * carried out, so it is reported as failed and NOT repeated over Bluetooth.
  *
- * Two more rules live here because every request passes through this one place:
+ * Three more rules live here because every request passes through this one place:
  *  - a status read that a screen makes by itself never switches the tablet's Bluetooth on; only something the user pressed may
  *    ({@link #statusRead});
+ *  - a question that a screen repeats every few seconds, and that is only of use while the hotspot is up, is never asked over
+ *    Bluetooth at all ({@link #hotspotOnly}): every question there wakes a phone that may be on Standby;
  *  - over Bluetooth the phone carries an action out BEFORE it answers (over the hotspot it often answers first), so an action
  *    gets at least a minute there, whatever the caller allowed for the hotspot ({@link #bluetoothReadMs}).
  */
@@ -174,6 +176,35 @@ final class Reach {
             res.error = "The tablet is not on the phone's hotspot.";
         } else {
             res.error = "Couldn't reach the phone.";
+        }
+        return res;
+    }
+
+    /**
+     * One request over the hotspot route and nothing else. For the Screen tab's own question (is the phone's screen on), asked
+     * every 3 s for as long as that tab is open: the tab shows the phone's screen, which needs the hotspot anyway, and over
+     * Bluetooth such a question would call a phone on Standby twenty times a minute for hours. (Home asks over Bluetooth too,
+     * seldom and not for long: PollPace.)
+     */
+    Result hotspotOnly(String method, String target, int readMs) {
+        Result res = new Result();
+        if (!wifi.known()) {
+            res.error = "The tablet is not on the phone's hotspot.";
+            return res;
+        }
+        res.asked = true;
+        try {
+            res.resp = wifi.call(method, target, readMs);
+            res.via = WIFI;
+            lastVia = WIFI;
+            noteWifi(true);
+        } catch (Client.ConnectFailed e) {
+            noteWifi(false);
+            res.wifiDown = true;
+            res.error = "Couldn't reach the phone: " + e.getMessage();
+        } catch (IOException e) {
+            noteWifi(true);
+            res.error = "Couldn't reach the phone: " + e.getMessage();
         }
         return res;
     }

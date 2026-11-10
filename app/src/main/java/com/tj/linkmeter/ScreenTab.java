@@ -581,13 +581,19 @@ final class ScreenTab extends Tab {
 
     // ------------------------------------------------------------ the phone's state and its power options
 
+    /**
+     * Every 3 s while this tab is shown: is the phone's screen on, is it locked. Asked over the hotspot ONLY. This tab shows the
+     * phone's screen, which needs the hotspot anyway, and it keeps the tablet awake by itself: left open, a question that could
+     * go over Bluetooth would wake a phone on Standby twenty times a minute for hours. (Sleep and Wake are presses, and may
+     * still travel over Bluetooth.)
+     */
     private final Runnable statePoll = new Runnable() {
         @Override
         public void run() {
             if (!shown) {
                 return;
             }
-            Call.run(act, "GET", "/screen/state", 4000, (ok, text, json) -> {
+            Call.runOverHotspot(act, "GET", "/screen/state", 4000, (ok, text, json) -> {
                 if (!shown) {
                     return;
                 }

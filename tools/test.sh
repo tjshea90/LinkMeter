@@ -57,7 +57,7 @@ java -cp "$out" com.tj.linkmeter.SwitchWordsTest || fail=1
 echo "== Staying awake (Holds: one connection or action cannot switch the wake lock off under another, a short hold cannot cut a long one short, and every hold runs out by itself; a pretend wake lock on a virtual clock)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/Holds.java tools/test/HoldsTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.HoldsTest || fail=1
-echo "== Which route a request takes (Reach: the hotspot first, Bluetooth only when the hotspot route cannot connect; never sent twice; a status read never switches the tablet's Bluetooth on, a press may; an action gets at least a minute over Bluetooth; fake routes on a virtual clock)"
+echo "== Which route a request takes (Reach: the hotspot first, Bluetooth only when the hotspot route cannot connect; never sent twice; a status read never switches the tablet's Bluetooth on, a press may; the Screen tab's repeated question never goes over Bluetooth; an action gets at least a minute over Bluetooth; fake routes on a virtual clock)"
 javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Json.java app/src/main/java/com/tj/linkmeter/Http.java app/src/main/java/com/tj/linkmeter/Client.java \
   app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/Reach.java tools/test/ReachTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.ReachTest || fail=1
