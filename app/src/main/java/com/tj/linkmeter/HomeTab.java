@@ -82,6 +82,8 @@ final class HomeTab extends Tab {
     private long followSince;
     /** What the first hotspot button does when pressed. */
     private boolean hotspotButtonTurnsOff;
+    /** The card's main button sends a switch right now ("Turn the hotspot on"), so it waits with the switches below. */
+    private boolean bannerSends;
 
     /** What one poll found. Built on the worker thread, shown on the UI thread. */
     private static final class Snap {
@@ -186,6 +188,7 @@ final class HomeTab extends Tab {
         bannerOther = Ui.button(act, "", null);
         banner.addView(Ui.row(act, bannerMain, bannerOther), Ui.lp(act, 8));
         banner.setVisibility(View.GONE);
+        bannerSends = false; // a new, empty card
         col.addView(banner, Ui.lp(act, 10));
 
         mBat = new MeterView(act);
@@ -452,6 +455,7 @@ final class HomeTab extends Tab {
 
     /** The card under the title: only when it has something to say. */
     private void paintBanner(Snap s) {
+        bannerSends = false;
         if (s.phone != null && Reach.BLUETOOTH.equals(s.via)) {
             Boolean hs = Call.flag(s.phone, "hs");
             banner.setVisibility(View.VISIBLE);
@@ -480,7 +484,7 @@ final class HomeTab extends Tab {
                         + "files or screen.") + (need.isEmpty() ? "" : " " + need));
                 bannerMain.setText("Turn the hotspot on");
                 bannerMain.setOnClickListener(v -> send("hotspot_on", "Switching the hotspot on", 45000));
-                bannerMain.setEnabled(!busy && need.isEmpty());
+                bannerSends = true; // greyed and freed by paintSwitches, together with the other switches
                 // over Bluetooth the tablet asks seldom, and stops by itself: the button to ask now is always at hand
                 bannerOther.setVisibility(View.VISIBLE);
                 bannerOther.setText("Ask again");
@@ -603,6 +607,9 @@ final class HomeTab extends Tab {
         bScreen.setText(screenOn ? "Sleep screen" : "Wake screen");
         String need = p == null ? "" : needs(p);
         boolean can = reachable && !busy && p != null && need.isEmpty();
+        if (bannerSends) {
+            bannerMain.setEnabled(can);
+        }
         bHotspot.setEnabled(can);
         bHotspotOff.setEnabled(can);
         bScreen.setEnabled(can);
@@ -625,12 +632,12 @@ final class HomeTab extends Tab {
     // ------------------------------------------------------------------------------------------------ the switches
 
     private void send(final String action, String label, int readMs) {
+        if (busy) {
+            return; // one switch at a time: the one on its way (or the Bluetooth check before one) is named on the screen
+        }
         touched();
         busy = true;
         paintSwitches();
-        if (bannerMain != null) {
-            bannerMain.setEnabled(false);
-        }
         setAction(label + "…", true);
         Call.run(act, "POST", "/act?name=" + action, readMs, (ok, text, json) -> {
             // "later": the phone answered BEFORE acting, because the action takes away the link it was asked over. That answer
@@ -675,6 +682,9 @@ final class HomeTab extends Tab {
     }
 
     private void screenPressed() {
+        if (busy) {
+            return;
+        }
         touched();
         boolean on = lastPhone == null || lastPhone.optBoolean("scr", true);
         busy = true;
@@ -696,6 +706,9 @@ final class HomeTab extends Tab {
      * with the reason, and leaves the choice to the user.
      */
     private void confirmOff(final boolean standby) {
+        if (busy) {
+            return;
+        }
         touched();
         if (!BtLink.ready(act)) {
             askOff(standby, false, linkWords()); // there is nothing to call: say why

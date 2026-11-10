@@ -537,6 +537,56 @@ public class PreviewTest {
         press(a, "Ask again");
     }
 
+    /** Every button that sends a switch must be greyed out now (there, and not to be pressed). */
+    static void allSwitchesWait(Activity a, String when, String... labels) {
+        ShadowLooper.idleMainLooper();
+        for (String label : labels) {
+            Button b = findButton(a.getWindow().getDecorView(), label);
+            if (b == null) {
+                throw new AssertionError(when + ": no button \"" + label + "\" on the screen");
+            }
+            if (b.isEnabled()) {
+                throw new AssertionError(when + ": \"" + label + "\" can still be pressed, so a second switch could be sent "
+                        + "behind the first");
+            }
+        }
+    }
+
+    /**
+     * Not a picture but a check: one switch at a time. While the Bluetooth check before Standby runs, and while a screen switch
+     * is on its way, the card's "Turn the hotspot on" waits like the three switches below it. (It once stayed live, and the
+     * first request's return then freed the switches while the second was still being carried out.)
+     */
+    @Test
+    public void homeOneSwitchAtATime() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(false, true);
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        p.btDelayMs = 2500; // from now on a call over Bluetooth takes a while
+        press(a, "Standby");
+        allSwitchesWait(a, "during the Bluetooth check", "Turn the hotspot on", "Hotspot on", "Sleep screen", "Standby");
+        Thread.sleep(2500);
+        settle();
+        AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
+        if (d == null || !d.isShowing()) {
+            throw new AssertionError("the question after the Bluetooth check did not open");
+        }
+        d.dismiss();
+        press(a, "Turn the hotspot on"); // free again once the check is over and the question was cancelled
+        allSwitchesWait(a, "while the hotspot is being switched on", "Turn the hotspot on", "Hotspot on", "Sleep screen", "Standby");
+        Thread.sleep(2500);
+        settle();
+        settle(); // the status question that follows a switch also takes a while
+        Thread.sleep(2500);
+        settle();
+        press(a, "Sleep screen");
+        allSwitchesWait(a, "while the screen is being put to sleep", "Turn the hotspot on", "Hotspot on", "Sleep screen", "Standby");
+    }
+
     /** Before the hotspot goes off the tablet calls the phone over Bluetooth: the state while it does, and the question after a call that failed. */
     @Test
     public void homeOffAnyway() throws Exception {
