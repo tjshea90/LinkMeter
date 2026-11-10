@@ -13,17 +13,19 @@ THE TEN FINDINGS (short names, in the order handled; the full text is in the orc
  F1  phone/low    ShellMain: hotspot state 14 (failed) treated as still on by hotspot-stop / hotspot-restart
  F2  phone/low    BtServer: no second listen try after Bluetooth comes back on
 
-HANDLED SO FAR: (none yet)
+HANDLED SO FAR:
+ F3 FIXED in commit ea96a62 (verdict: real). PollPace.next has a new parameter onBluetoothMs; the first minute and the five minutes count
+    min(time since the last press, time since Bluetooth came into use). HomeTab.btSince (-1 while the questions do not go over Bluetooth) is set in
+    pollTask. The card for "answered over Bluetooth, phone says hotspot on" says "The phone answered over Bluetooth this time" when the tablet is on a
+    Wi-Fi network (s.onWifi), and keeps "has not joined it yet" only when it is on none. Tests: PollPaceTest 54271 checks; tools/mutate_link.py
+    5 new "pace:" breakages (18 of 18 caught); PreviewTest.homeKeepsAskingAfterOneAnswerOverBluetooth (a check; with the old rule in a scratch copy it
+    fails: "asked 0 times"), new pictures state-home-one-answer-over-bluetooth and state-home-back-on-hotspot. Pretend has wifiFails; its Reach clock is
+    SystemClock.elapsedRealtime. HANDOFF T1 line got one sentence.
 
-IN PROGRESS NOW: F3 (verdict: REAL, fixing). Written but NOT yet committed (tree is dirty):
- - PollPace.next has a new parameter onBluetoothMs; the five minutes and the first minute count min(since last press, since Bluetooth came into use).
- - HomeTab: field btSince (-1 while not on Bluetooth), set in pollTask when s.btTried first becomes true; the card for "answered over Bluetooth, hs true" says
-   "The phone answered over Bluetooth this time" when s.onWifi (it no longer claims the tablet has not joined).
- - tools/test/PollPaceTest.java extended (54271 checks), tools/mutate_link.py: 5 new "pace:" breakages, 18 of 18 caught.
- - PreviewTest: Pretend.wifiFails, check homeKeepsAskingAfterOneAnswerOverBluetooth, Pretend's Reach clock is now SystemClock.elapsedRealtime.
- About to: run tools/preview.sh (does the new check pass, and fail without the fix?), tools/test.sh, assembleRelease, then checkpoint.
+IN PROGRESS NOW: F4 (verdict: real, scenario 2 and the "smaller hole" stand after F3; scenario 1 now takes five minutes and ends with the card).
+ Plan: pure rule Trouble.shown(kind, heardBefore, misses, stopped, bluetoothTried) used by HomeTab.paintBanner; checks in TroubleTest; "trouble:" breakages.
 
-NEXT: F3, F4, F6, F8, F9, F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+NEXT: F4, F6, F8, F9, F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
