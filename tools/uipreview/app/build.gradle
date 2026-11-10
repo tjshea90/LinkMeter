@@ -1,0 +1,49 @@
+// NOT part of the app and NOT built by the release pipeline. A separate little Gradle project that compiles the app's own
+// sources (../../../app/src/main) together with Robolectric and draws the app's screens to PNG files on a computer, so a
+// screen can be looked at without a phone or tablet. See tools/uipreview/README.md.
+plugins {
+    id 'com.android.application'
+}
+def repo = "${rootDir}/../../app/src/main"
+android {
+    namespace 'com.tj.linkmeter'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'com.tj.linkmeter'
+        minSdk 29
+        targetSdk 34
+        versionCode 1
+        versionName "0.2.preview"
+    }
+    sourceSets {
+        main {
+            manifest.srcFile "${repo}/AndroidManifest.xml"
+            java.srcDirs = ["${repo}/java"]
+            res.srcDirs = ["${repo}/res"]
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            all {
+                systemProperty 'robolectric.graphicsMode', 'NATIVE'
+                // Maven Central answers shared cloud addresses with "429 too many requests"; Google's mirror of it does not.
+                systemProperty 'robolectric.dependency.repo.url', 'https://maven-central.storage-download.googleapis.com/maven2/'
+                systemProperty 'preview.out', System.getProperty('preview.out', "${rootDir}/out")
+                maxHeapSize = '2g'
+                testLogging { showStandardStreams = true; exceptionFormat = 'full' }
+                outputs.upToDateWhen { false } // always draw again
+            }
+        }
+    }
+}
+dependencies {
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}

@@ -19,6 +19,16 @@ final class Client {
         void onBytes(long done) throws IOException;
     }
 
+    /**
+     * The other device could not be reached at all: no connection was made, so nothing was sent and nothing can have happened
+     * there. (Any other IOException may mean the request arrived and only the answer was lost.)
+     */
+    static final class ConnectFailed extends IOException {
+        ConnectFailed(IOException cause) {
+            super(cause.getMessage(), cause);
+        }
+    }
+
     /** For tests only: talk to this port instead of {@link Http#PORT}. */
     static volatile int portOverride = 0;
 
@@ -41,7 +51,9 @@ final class Client {
         @Override
         public void close() {
             try {
-                sock.close();
+                if (sock != null) {
+                    sock.close();
+                }
             } catch (IOException ignored) {
                 // already closed
             }
@@ -52,16 +64,52 @@ final class Client {
         Socket s = new Socket();
         try {
             s.connect(new InetSocketAddress(host, portOverride > 0 ? portOverride : Http.PORT), connectMs);
+        } catch (IOException | RuntimeException e) {
+            closeQuietly(s);
+            // an address that is not one (a typing mistake in Settings) is the same to the caller as a phone that is not there
+            throw new ConnectFailed(e instanceof IOException ? (IOException) e : new IOException(String.valueOf(e.getMessage())));
+        }
+        try {
             s.setSoTimeout(readMs);
             return s;
         } catch (IOException e) {
-            try {
-                s.close();
-            } catch (IOException ignored) {
-                // nothing to clean up
-            }
+            closeQuietly(s);
             throw e;
         }
+    }
+
+    private static void closeQuietly(Socket s) {
+        try {
+            s.close();
+        } catch (IOException ignored) {
+            // nothing to clean up
+        }
+    }
+
+    /**
+     * Reads one whole reply from a stream that stays open for more (the Bluetooth link): the head, then exactly as many bytes as
+     * its Content-Length says. A reply without a length cannot be told from the next one, so it is refused.
+     */
+    static Resp readFramed(InputStream in, int cap) throws IOException {
+        Stream st = new Stream();
+        st.in = in;
+        readHead(st);
+        if (st.length < 0 || st.length > cap) {
+            throw new IOException(st.length < 0 ? "reply without a length" : "reply too big");
+        }
+        byte[] b = new byte[(int) st.length];
+        int off = 0;
+        while (off < b.length) {
+            int r = in.read(b, off, b.length - off);
+            if (r < 0) {
+                throw new IOException("closed");
+            }
+            off += r;
+        }
+        Resp resp = new Resp();
+        resp.code = st.code;
+        resp.body = new String(b, StandardCharsets.UTF_8);
+        return resp;
     }
 
     private static void writeHead(OutputStream out, String method, String target, String token,

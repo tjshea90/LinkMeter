@@ -24,16 +24,25 @@ final class Http {
 
     /** The port both devices talk on. */
     static final int PORT = 8765;
+    /** {@link Req#via} of a request that came over the Bluetooth link. */
+    static final String VIA_BT = "bt";
 
     static final class Req {
         String method = "";
         String path = "";
+        /** The request target exactly as it was sent (path and query), which is what a Bluetooth request's signature covers. */
+        String target = "";
         String token = "";
         long length;
         /** The first byte asked for by "Range: bytes=N-", or -1 when the whole file is wanted. */
         long rangeStart = -1;
         InetAddress peer;
-        /** The connection, for handlers that stream or need a different timeout. */
+        /** How the request arrived: "" over the network, {@link #VIA_BT} over the Bluetooth link (see LinkServer). */
+        String via = "";
+        /** Bluetooth link only: the request's number and its signature (see LinkAuth). -1 and "" when absent. */
+        long seq = -1;
+        String sig = "";
+        /** The connection, for handlers that stream or need a different timeout. null on the Bluetooth link. */
         Socket sock;
         /** Positioned at the first byte of the body. */
         InputStream body;
@@ -56,7 +65,17 @@ final class Http {
     /** Reads the request line and headers. Leaves the body unread. */
     static Req read(Socket s) throws IOException {
         s.setSoTimeout(5000);
-        InputStream in = new BufferedInputStream(s.getInputStream(), 4096);
+        Req r = readHead(new BufferedInputStream(s.getInputStream(), 4096));
+        r.peer = s.getInetAddress();
+        r.sock = s;
+        return r;
+    }
+
+    /**
+     * Reads one request line and its headers from a stream that may carry several requests one after another (the Bluetooth
+     * link): exactly the bytes of this request's head are taken, nothing more. The body, if any, is left unread in the stream.
+     */
+    static Req readHead(InputStream in) throws IOException {
         ByteArrayOutputStream head = new ByteArrayOutputStream();
         int st = 0; // how much of "\r\n\r\n" has been seen
         while (true) {
@@ -88,6 +107,7 @@ final class Http {
         Req r = new Req();
         r.method = first[0];
         String target = first[1];
+        r.target = target;
         int qm = target.indexOf('?');
         if (qm >= 0) {
             r.path = target.substring(0, qm);
@@ -110,6 +130,14 @@ final class Http {
                 } catch (NumberFormatException ignored) {
                     r.length = 0;
                 }
+            } else if (name.equals("x-seq")) {
+                try {
+                    r.seq = Long.parseLong(val);
+                } catch (NumberFormatException ignored) {
+                    r.seq = -1;
+                }
+            } else if (name.equals("x-sig")) {
+                r.sig = val;
             } else if (name.equals("range") && val.toLowerCase(Locale.US).startsWith("bytes=")) {
                 String from = val.substring(6).split("-")[0].trim();
                 try {
@@ -119,8 +147,6 @@ final class Http {
                 }
             }
         }
-        r.peer = s.getInetAddress();
-        r.sock = s;
         r.body = in;
         return r;
     }
