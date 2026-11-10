@@ -32,12 +32,16 @@ HANDLED SO FAR:
     that sends a switch; paintSwitches greys and frees it with the others (send() no longer greys bannerMain itself); send(), screenPressed() and
     confirmOff() return at once while busy. PreviewTest.homeOneSwitchAtATime (a check; with the old greying in a scratch copy it fails "during the
     Bluetooth check: Turn the hotspot on can still be pressed").
- F8 FIXED (verdict: real), being saved now: HomeTab.onHide says "... The lines above show the phone's latest answer, which may be from before the
+ F8 FIXED in commit 7278693 (verdict: real). HomeTab.onHide says "... The lines above show the phone's latest answer, which may be from before the
     switch." New picture state-home-left-during-follow-up (PreviewTest.homeLeftDuringFollowUp).
+ F9 FIXED (verdict: real), being saved now: new pure rule LinkState.saidOnHome(kind) (no Home card for NOT_REACHED; Settings keeps "Not reached");
+    the last sentence of the "not ready" card is now "Without that link, a hotspot that is switched off can only be switched on again at the
+    phone." LinkStateTest 3997 checks; 4 new "state:" breakages (18 of 18 caught); PreviewTest.settingsLinkStates checks that Home has no
+    "Open Settings" card in that state (fails with the old rule in a scratch copy). docs/REMOTE_LINK.md says the three new rules (F3, F4, F9).
 
-IN PROGRESS NOW: saving F8 (test, build, preview, checkpoint). Then F9.
+IN PROGRESS NOW: saving F9 (test, build, preview, checkpoint). Then F10.
 
-NEXT: F9, F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+NEXT: F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
