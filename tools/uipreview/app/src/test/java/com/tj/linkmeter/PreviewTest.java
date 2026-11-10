@@ -49,6 +49,8 @@ public class PreviewTest {
         String via = "wifi";
         /** With via "wifi": the Bluetooth link is set up as well (for the live test before the hotspot is switched off). */
         boolean bluetoothToo;
+        /** With via "wifi": the hotspot route cannot connect (nothing is sent), as when the phone is busy or out of reach. */
+        boolean wifiFails;
         /** A call over Bluetooth takes this long, and fails if btFails. */
         long btDelayMs;
         boolean btFails;
@@ -75,6 +77,9 @@ public class PreviewTest {
 
                 @Override
                 public Client.Resp call(String method, String target, int readMs) throws IOException {
+                    if (p.wifiFails) {
+                        throw new Client.ConnectFailed(new IOException("failed to connect"));
+                    }
                     return p.answer(target);
                 }
             }, new Reach.Bluetooth() {
@@ -98,7 +103,7 @@ public class PreviewTest {
                     }
                     return p.answer(target);
                 }
-            }, System::currentTimeMillis);
+            }, android.os.SystemClock::elapsedRealtime); // the clock the app itself gives Reach (Call.reach)
         }
 
         Client.Resp answer(String target) {
@@ -451,6 +456,38 @@ public class PreviewTest {
                         + " times, not once: more than one chain of questions is running");
             }
         }
+    }
+
+    /**
+     * Not a picture but a check: Home has been open on the hotspot, untouched, for longer than it would keep asking over
+     * Bluetooth. Then ONE question cannot connect over the hotspot and is answered over Bluetooth. Home must go on asking (the
+     * time on the hotspot is not Bluetooth time), so that it is back on the hotspot with the next question.
+     */
+    @Test
+    public void homeKeepsAskingAfterOneAnswerOverBluetooth() throws Exception {
+        Pretend p = new Pretend();
+        p.bluetoothToo = true;
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        later(6 * 60 * 1000); // six minutes on the hotspot, nobody touches the screen
+        p.wifiFails = true;
+        later(5_000); // the next question: the hotspot route fails, Bluetooth answers
+        if (findButton(a.getWindow().getDecorView(), "Ask again") == null) {
+            throw new AssertionError("the question was not answered over Bluetooth: the check below would prove nothing");
+        }
+        shot(a, "state-home-one-answer-over-bluetooth");
+        p.wifiFails = false;
+        int before = p.statusAsked.get();
+        later(15_000);
+        later(5_000);
+        int asked = p.statusAsked.get() - before;
+        if (asked < 2) {
+            throw new AssertionError("after one answer over Bluetooth Home asked " + asked + " times in the next 20 s: it has "
+                    + "stopped asking although the hotspot works");
+        }
+        shot(a, "state-home-back-on-hotspot");
     }
 
     /** Reached over Bluetooth and left alone for more than five minutes: Home stops asking and says so. */

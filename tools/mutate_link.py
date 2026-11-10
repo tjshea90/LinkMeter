@@ -159,9 +159,9 @@ S = [
 PACE_FILES = ["FollowUp.java", "PollPace.java"]
 PACE_TEST = ROOT + "/tools/test/PollPaceTest.java"
 P = [
- ("pace: over Bluetooth it never stops", "PollPace.java", "            if (sinceActionMs >= BT_STOP_AFTER_MS) {\n                return STOP;\n            }\n", ""),
+ ("pace: over Bluetooth it never stops", "PollPace.java", "            if (quiet >= BT_STOP_AFTER_MS) {\n                return STOP;\n            }\n", ""),
  ("pace: over Bluetooth it stops only after an hour", "PollPace.java", "static final long BT_STOP_AFTER_MS = 5 * 60_000L;", "static final long BT_STOP_AFTER_MS = 60 * 60_000L;"),
- ("pace: every 15 s over Bluetooth for as long as it runs (the old rule)", "PollPace.java", "long step = sinceActionMs < BT_FRESH_FOR_MS ? BT_FRESH_MS : BT_SLOW_MS;", "long step = BT_FRESH_MS;"),
+ ("pace: every 15 s over Bluetooth for as long as it runs (the old rule)", "PollPace.java", "long step = quiet < BT_FRESH_FOR_MS ? BT_FRESH_MS : BT_SLOW_MS;", "long step = BT_FRESH_MS;"),
  ("pace: the first minute lasts five", "PollPace.java", "static final long BT_FRESH_FOR_MS = 60_000L;", "static final long BT_FRESH_FOR_MS = 300_000L;"),
  ("pace: over Bluetooth as often as over the hotspot", "PollPace.java", "return Math.max(baseMs, step);", "return baseMs;"),
  ("pace: a long chosen interval is cut short over Bluetooth", "PollPace.java", "return Math.max(baseMs, step);", "return step;"),
@@ -169,7 +169,12 @@ P = [
  ("pace: one miss shortens the slow phase", "PollPace.java", "step = Math.max(step, 30_000L);", "step = 30_000L;"),
  ("pace: misses do not lengthen the wait over the hotspot", "PollPace.java", "return misses >= 3 ? Math.max(baseMs, 15_000L) : baseMs;", "return baseMs;"),
  ("pace: many misses over the hotspot stay at 15 s", "PollPace.java", "        if (misses >= 10) {\n            return Math.max(baseMs, 60_000L);\n        }\n        if (misses >= 6) {\n            return Math.max(baseMs, 30_000L);\n        }\n", ""),
- ("pace: the hotspot route stops by itself too", "PollPace.java", "        if (bluetooth) {\n            if (sinceActionMs", "        if (true) {\n            if (sinceActionMs"),
+ ("pace: the hotspot route stops by itself too", "PollPace.java", "        if (bluetooth) {\n            // the shorter", "        if (true) {\n            // the shorter"),
+ ("pace: time on the hotspot counts against Bluetooth (the old rule)", "PollPace.java", "long quiet = Math.min(sinceActionMs, onBluetoothMs);", "long quiet = sinceActionMs;"),
+ ("pace: a press does not start the count again", "PollPace.java", "long quiet = Math.min(sinceActionMs, onBluetoothMs);", "long quiet = onBluetoothMs;"),
+ ("pace: the longer of the two times counts", "PollPace.java", "long quiet = Math.min(sinceActionMs, onBluetoothMs);", "long quiet = Math.max(sinceActionMs, onBluetoothMs);"),
+ ("pace: the stop looks at the last press only", "PollPace.java", "if (quiet >= BT_STOP_AFTER_MS) {", "if (sinceActionMs >= BT_STOP_AFTER_MS) {"),
+ ("pace: the first minute looks at the last press only", "PollPace.java", "long step = quiet < BT_FRESH_FOR_MS", "long step = sinceActionMs < BT_FRESH_FOR_MS"),
  ("pace: following a switch is no faster", "PollPace.java", "        if (following) {\n            return FollowUp.EVERY_MS;\n        }\n", ""),
  ("pace: following a switch only over the hotspot", "PollPace.java", "if (following) {", "if (following && !bluetooth) {"),
 ]

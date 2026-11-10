@@ -60,6 +60,8 @@ final class HomeTab extends Tab {
     private volatile int misses;
     /** When the user last did something on this screen (opened it, pressed a button), on the clock that never jumps. */
     private volatile long lastAction;
+    /** Since when the questions have been going out over Bluetooth (same clock); -1 while they do not. Written by the worker. */
+    private volatile long btSince = -1;
     /** The next question is the result of a press, so it may switch the tablet's Bluetooth on. A status read by itself may not. */
     private volatile boolean pressed;
     /** True while {@link #follow} is set: the worker then asks every few seconds. */
@@ -121,8 +123,16 @@ final class HomeTab extends Tab {
                 misses++;
             }
             s.misses = misses;
-            long wait = s.justPaired ? 300L : PollPace.next(Cfg.intervalMs(act), s.btTried,
-                    SystemClock.elapsedRealtime() - lastAction, misses, following);
+            long now = SystemClock.elapsedRealtime();
+            if (!s.btTried) {
+                btSince = -1;
+            } else if (btSince < 0) {
+                // Bluetooth has just come into use. The time it may be asked by itself starts here, not when the screen was
+                // opened: after an hour on the hotspot, one question that had to go over Bluetooth would otherwise be the last.
+                btSince = now;
+            }
+            long wait = s.justPaired ? 300L : PollPace.next(Cfg.intervalMs(act), s.btTried, now - lastAction,
+                    s.btTried ? now - btSince : 0, misses, following);
             synchronized (chain) {
                 // A press while this question was on its way has already queued the next one: that run carries the chain on.
                 // Queuing another here would make two chains, each asking at the full rate, for as long as the tab is open.
@@ -233,6 +243,7 @@ final class HomeTab extends Tab {
         }
         polling = true;
         misses = 0;
+        btSince = -1;
         pressed = false; // opening the screen is not a press: it does not switch the tablet's Bluetooth on
         lastAction = SystemClock.elapsedRealtime();
         worker = new HandlerThread("linkmeter-poll");
@@ -445,9 +456,16 @@ final class HomeTab extends Tab {
             Boolean hs = Call.flag(s.phone, "hs");
             banner.setVisibility(View.VISIBLE);
             if (hs != null && hs) {
-                bannerTitle.setText("The hotspot is on, the tablet has not joined it yet");
-                bannerText.setText("The tablet joins the phone's hotspot by itself, usually within half a minute. Until then "
-                        + "the phone is reached over Bluetooth. If it does not join, open the tablet's Wi-Fi settings.");
+                // On a Wi-Fi network (very likely the hotspot itself) it is only this question that did not get through there:
+                // "has not joined it yet" would be a guess, and usually a wrong one.
+                bannerTitle.setText(s.onWifi ? "The phone answered over Bluetooth this time"
+                        : "The hotspot is on, the tablet has not joined it yet");
+                bannerText.setText(s.onWifi
+                        ? "The phone says its hotspot is on, and the tablet is on a Wi-Fi network, but the phone did not answer "
+                        + "there just now. LinkMeter keeps trying the hotspot first. If this stays, check in the tablet's Wi-Fi "
+                        + "settings that it is on the phone's hotspot."
+                        : "The tablet joins the phone's hotspot by itself, usually within half a minute. Until then the phone "
+                        + "is reached over Bluetooth. If it does not join, open the tablet's Wi-Fi settings.");
                 bannerMain.setText("Ask again");
                 bannerMain.setOnClickListener(v -> askNow());
                 bannerMain.setEnabled(true);
