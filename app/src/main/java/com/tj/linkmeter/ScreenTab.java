@@ -87,6 +87,18 @@ final class ScreenTab extends Tab {
     private boolean waitingForScreen;
     private int mode;
     private boolean phoneOn = true;
+    /**
+     * When this tab is at rest (ScreenPace) it lets the tablet sleep and asks the phone only every 15 s. offSince is when the
+     * phone's screen was first seen off (0 while it is on), lastActivity the later of the last touch and the moment the phone's
+     * screen last came on (or the tab was shown). resting is the last decision.
+     */
+    private long offSince;
+    private long lastActivity;
+    private boolean resting;
+    /** What the activity was last told about holding the tablet awake. */
+    private boolean heldAwake;
+    /** Counts the times the tab was shown or hidden, so a question still on its way from before cannot start a second chain of questions. */
+    private int pollGen;
     /** The rules for the Sleep / Wake button and for believing answers about the phone's screen (tested offline). */
     private final PhonePower power = new PhonePower();
     /** When Sleep was last confirmed: a touch just after it must not wake the phone again. */
@@ -339,8 +351,7 @@ final class ScreenTab extends Tab {
     }
 
     private void cycleQuality() {
-        int p = prefs.preset();
-        prefs.setPreset(p >= 3 ? 0 : p + 1);
+        prefs.setPreset(QualityPresets.next(prefs.preset(), prefs.hasCustom()));
         paintChips();
         if (shown) {
             applyMode();
@@ -500,14 +511,62 @@ final class ScreenTab extends Tab {
 
     // ------------------------------------------------------------ lifecycle
 
-    /** The tablet's own screen stays on and bright while this tab is shown (nobody touches it while they watch the phone). */
+    /**
+     * The tablet's own screen stays on and bright while this tab is shown and the phone's screen is being watched (nobody touches
+     * the tablet while they watch the phone). Once the tab is at rest (ScreenPace) the tablet may dim and sleep by its own settings.
+     */
     private void applyAwake() {
-        act.setHoldAwake(shown && prefs != null && prefs.tabletAwake());
+        pace(true);
+    }
+
+    private boolean pace() {
+        return pace(false);
+    }
+
+    /**
+     * Looks at the phone's screen and the clock again: sets the tablet's hold-awake (only when it changes, unless forced: every
+     * set renews the wake lock), and returns whether this tab is at rest.
+     */
+    private boolean pace(boolean force) {
+        long now = SystemClock.elapsedRealtime();
+        if (phoneOn) {
+            if (offSince != 0) {
+                lastActivity = now; // the phone's screen came on: the rest is over
+                offSince = 0;
+            }
+        } else if (offSince == 0) {
+            offSince = now;
+        }
+        resting = ScreenPace.resting(phoneOn, now, offSince, lastActivity);
+        boolean want = ScreenPace.holdAwake(shown, prefs != null && prefs.tabletAwake(), resting);
+        if (force || want != heldAwake) {
+            heldAwake = want;
+            act.setHoldAwake(want);
+        }
+        return resting;
+    }
+
+    /** A touch: if the tab was at rest, the tablet is held awake again and the phone is asked at once, then every 3 s. */
+    @Override
+    void onUserInteraction() {
+        if (!shown) {
+            return;
+        }
+        lastActivity = SystemClock.elapsedRealtime();
+        if (resting) {
+            pace();
+            pollGen++; // a slow question on its way belongs to a chain that ends here
+            act.ui.removeCallbacks(statePoll);
+            act.ui.post(statePoll);
+        }
     }
 
     @Override
     void onShow() {
         shown = true;
+        lastActivity = SystemClock.elapsedRealtime(); // being shown counts: somebody has just opened it
+        offSince = 0;
+        pollGen++;
         applyAwake();
         connectCtl();
         act.ui.removeCallbacks(statePoll);
@@ -521,6 +580,7 @@ final class ScreenTab extends Tab {
     @Override
     void onHide() {
         shown = false;
+        pollGen++;
         applyAwake();
         act.ui.removeCallbacks(statePoll);
         act.ui.removeCallbacks(stillTick);
@@ -540,7 +600,7 @@ final class ScreenTab extends Tab {
         if (prefs != null) {
             endProfile(false);
             if (woke && prefs.sleepOnLeave()) {
-                post("/screen/off");
+                post(PhonePower.SLEEP); // the same Sleep as the button: leaving must not leave the phone in the Always-On Display
             }
         }
         woke = false;
@@ -582,7 +642,8 @@ final class ScreenTab extends Tab {
     // ------------------------------------------------------------ the phone's state and its power options
 
     /**
-     * Every 3 s while this tab is shown: is the phone's screen on, is it locked. Asked over the hotspot ONLY. This tab shows the
+     * Every 3 s while this tab is in use, every 15 s while it is at rest (ScreenPace), and never while it is hidden: is the
+     * phone's screen on, is it locked. Asked over the hotspot ONLY. This tab shows the
      * phone's screen, which needs the hotspot anyway, and it keeps the tablet awake by itself: left open, a question that could
      * go over Bluetooth would wake a phone on Standby twenty times a minute for hours. (Sleep and Wake are presses, and may
      * still travel over Bluetooth.)
@@ -593,9 +654,10 @@ final class ScreenTab extends Tab {
             if (!shown) {
                 return;
             }
+            final int gen = pollGen;
             Call.runOverHotspot(act, "GET", "/screen/state", 4000, (ok, text, json) -> {
-                if (!shown) {
-                    return;
+                if (!shown || gen != pollGen) {
+                    return; // the tab was left, or shown again, since: the question of the chain that began then goes on instead
                 }
                 if (ok && json != null) {
                     phoneLocked = json.optBoolean("locked", false);
@@ -611,7 +673,7 @@ final class ScreenTab extends Tab {
                         phoneWokeUp();
                     }
                 }
-                act.ui.postDelayed(this, 3000);
+                act.ui.postDelayed(this, ScreenPace.pollMs(pace())); // time has passed: the rest may have begun
             });
         }
     };
@@ -1294,7 +1356,7 @@ final class ScreenTab extends Tab {
     }
 
     private void sendPower(final boolean wantOn, final int attempt) {
-        final String target = wantOn ? "/screen/on" : "/screen/off" + (prefs.sleepFullOff() ? "?nodoze=1" : "");
+        final String target = wantOn ? PhonePower.WAKE : PhonePower.SLEEP;
         Call.run(act, "POST", target, 30000, (ok, text, json) -> {
             long now = SystemClock.elapsedRealtime();
             String what = wantOn ? "Wake" : "Sleep";

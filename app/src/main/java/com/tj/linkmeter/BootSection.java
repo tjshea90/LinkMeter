@@ -119,11 +119,12 @@ final class BootSection implements BootDriver.Listener {
         return r;
     }
 
-    /** The tab is on screen: follow the driver, and look at the hotspot every second. */
+    /** The tab is on screen: follow the driver, and look at the hotspot (every second while something is going on, else every five). */
     void onShow() {
         shown = true;
         driver.setListener(this);
         paint();
+        act.ui.removeCallbacks(refresh); // never a second loop beside one that is already running
         act.ui.postDelayed(refresh, 1000);
     }
 
@@ -145,7 +146,10 @@ final class BootSection implements BootDriver.Listener {
                 driver.hotspot().poll();
             }
             paint();
-            act.ui.postDelayed(this, 1000);
+            // A boot run, or a hotspot of this tablet that is on, starting or failed, changes what is shown from second to second.
+            // Otherwise nothing moves between the driver's own announcements (changed()), and every five seconds is plenty.
+            boolean busy = driver.active() || driver.hotspot().state() != BootFlow.Hotspot.OFF;
+            act.ui.postDelayed(this, busy ? 1000 : 5000);
         }
     };
 

@@ -13,6 +13,15 @@ java -cp "$out" com.tj.linkmeter.ProfilePlanTest || fail=1
 echo "== Battery saver (SaverPlan: switches on only while the tablet is here, an Off choice always wins, the saver follows the tablet's real use of the hotspot, only numbers and known names reach the shell, a profile of the older version is still put back, the Screen tab's timeout is never overwritten; the real shell lines against a fake phone)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SaverPlan.java app/src/main/java/com/tj/linkmeter/ProfilePlan.java tools/test/SaverPlanTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.SaverPlanTest || fail=1
+echo "== The Screen tab at rest (ScreenPace: once the phone's screen has been off two minutes or nobody touched the tab for half an hour the tablet may sleep and the tab asks every 15 s; a touch or the phone's screen coming on ends the rest at once)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/ScreenPace.java tools/test/ScreenPaceTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.ScreenPaceTest || fail=1
+echo "== Screen quality presets (QualityPresets: which preset four numbers are, and the chip's order including the user's own Custom numbers)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/QualityPresets.java tools/test/QualityPresetsTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.QualityPresetsTest || fail=1
+echo "== Phone address field (PhoneAddress: only a complete IPv4 address or nothing is ever stored, and the line under the field says which one is in use)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhoneAddress.java tools/test/PhoneAddressTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.PhoneAddressTest || fail=1
 echo "== PhonePower (the Sleep / Wake button rules)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhonePower.java tools/test/PhonePowerTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhonePowerTest || fail=1

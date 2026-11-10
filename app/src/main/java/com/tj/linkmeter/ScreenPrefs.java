@@ -8,15 +8,15 @@ import android.content.Context;
  * hand makes the preset "Custom" unless the numbers happen to match another preset.
  */
 final class ScreenPrefs {
-    static final String[] PRESETS = {"Saver", "Fast", "Balanced", "Sharp", "Custom"};
-    private static final int[] P_VID_W = {432, 540, 720, 1080};
-    private static final int[] P_VID_K = {800, 1500, 3000, 6000};
-    private static final int[] P_PIC_W = {288, 360, 540, 720};
-    private static final int[] P_PIC_Q = {35, 40, 55, 70};
+    static final String[] PRESETS = QualityPresets.NAMES;
+    private static final int[] P_VID_W = QualityPresets.VID_W;
+    private static final int[] P_VID_K = QualityPresets.VID_K;
+    private static final int[] P_PIC_W = QualityPresets.PIC_W;
+    private static final int[] P_PIC_Q = QualityPresets.PIC_Q;
 
-    /** Steps offered by the sliders. */
+    /** Steps offered by the sliders. The phone never encodes below 500 kbit/s (Screen.java), so a lower step would only be a copy of the first. */
     static final int[] WIDTHS = {288, 360, 432, 540, 630, 720, 900, 1080};
-    static final int[] KBPS = {300, 500, 800, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 12000};
+    static final int[] KBPS = {500, 800, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 12000};
     /** Pictures per second in Pictures mode; 0 = as fast as the phone can. */
     static final int[] PIC_FPS = {0, 1, 2, 4, 8};
     /** Minutes the phone's screen stays on while the remote screen is open; 0 = leave the phone's timeout alone. */
@@ -46,7 +46,24 @@ final class ScreenPrefs {
         return Math.max(0, Math.min(4, Cfg.getInt(c, "scrPreset", 2)));
     }
 
+    /**
+     * Chooses a preset. The user's own numbers (Custom) are kept apart, so choosing a preset does not lose them and Custom can be
+     * chosen again; choosing Custom when there are no custom numbers does nothing.
+     */
     void setPreset(int p) {
+        if (p == QualityPresets.CUSTOM) {
+            if (hasCustom()) {
+                Cfg.setInt(c, "vidW", Cfg.getInt(c, "cVidW", 0));
+                Cfg.setInt(c, "vidK", Cfg.getInt(c, "cVidK", 0));
+                Cfg.setInt(c, "picW", Cfg.getInt(c, "cPicW", 0));
+                Cfg.setInt(c, "picQ", Cfg.getInt(c, "cPicQ", 0));
+                Cfg.setInt(c, "scrPreset", p);
+            }
+            return;
+        }
+        if (preset() == QualityPresets.CUSTOM) {
+            saveCustom(); // leaving Custom: the numbers are about to be overwritten, so keep them (also those an older version left)
+        }
         Cfg.setInt(c, "scrPreset", p);
         if (p >= 0 && p < P_VID_W.length) {
             Cfg.setInt(c, "vidW", P_VID_W[p]);
@@ -57,15 +74,24 @@ final class ScreenPrefs {
     }
 
     private void matchPreset() {
-        int found = 4;
-        for (int p = 0; p < P_VID_W.length; p++) {
-            if (vidWidth() == P_VID_W[p] && vidKbps() == P_VID_K[p] && picWidth() == P_PIC_W[p]
-                    && picQuality() == P_PIC_Q[p]) {
-                found = p;
-                break;
-            }
-        }
+        int found = QualityPresets.match(vidWidth(), vidKbps(), picWidth(), picQuality());
         Cfg.setInt(c, "scrPreset", found);
+        if (found == QualityPresets.CUSTOM) {
+            saveCustom();
+        }
+    }
+
+    /** The four numbers as they are now, kept as the user's own (Custom) in keys no preset touches. */
+    private void saveCustom() {
+        Cfg.setInt(c, "cVidW", vidWidth());
+        Cfg.setInt(c, "cVidK", vidKbps());
+        Cfg.setInt(c, "cPicW", picWidth());
+        Cfg.setInt(c, "cPicQ", picQuality());
+    }
+
+    /** True when the user has numbers of their own (Custom) that the quality chip can go back to. */
+    boolean hasCustom() {
+        return Cfg.getInt(c, "cVidW", 0) > 0;
     }
 
     int vidWidth() {
@@ -78,7 +104,7 @@ final class ScreenPrefs {
     }
 
     int vidKbps() {
-        return Cfg.getInt(c, "vidK", P_VID_K[2]);
+        return Math.max(KBPS[0], Cfg.getInt(c, "vidK", P_VID_K[2])); // never below what the phone uses (an older version offered 300)
     }
 
     void setVidKbps(int v) {
@@ -190,15 +216,6 @@ final class ScreenPrefs {
         Cfg.setBool(c, "sleepLeave", v);
     }
 
-    /** Sleep turns the phone's display fully off, not just to its Always-On Display (which looks like a phone that stayed on). */
-    boolean sleepFullOff() {
-        return Cfg.getBool(c, "sleepFullOff", true);
-    }
-
-    void setSleepFullOff(boolean v) {
-        Cfg.setBool(c, "sleepFullOff", v);
-    }
-
     boolean tapToWake() {
         return Cfg.getBool(c, "tapWake", true);
     }
@@ -215,6 +232,10 @@ final class ScreenPrefs {
     /** Puts every remote screen setting back to its default. */
     void reset() {
         setPreset(2);
+        Cfg.setInt(c, "cVidW", 0); // a reset forgets the user's own numbers too
+        Cfg.setInt(c, "cVidK", 0);
+        Cfg.setInt(c, "cPicW", 0);
+        Cfg.setInt(c, "cPicQ", 0);
         setMode(0);
         setPicFpsIndex(0);
         setLowDelay(0);
@@ -225,7 +246,6 @@ final class ScreenPrefs {
         setDimIndex(0);
         setSleepOnLeave(true);
         setTapToWake(true);
-        setSleepFullOff(true);
         setTabletAwake(true);
     }
 }

@@ -195,13 +195,15 @@ final class AdvancedPanel {
                 + "slower but it works everywhere."), Ui.lp(c, 2));
 
         col.addView(Ui.text(c, "Quality preset", 13, Ui.FG, false), Ui.lp(c, 10));
-        col.addView(choice(java.util.Arrays.copyOf(ScreenPrefs.PRESETS, 4), prefs.preset(), i -> {
+        // Custom is offered once the user has numbers of their own: choosing a preset must not be a way to lose them
+        col.addView(choice(java.util.Arrays.copyOf(ScreenPrefs.PRESETS, prefs.hasCustom() ? 5 : 4), prefs.preset(), i -> {
             prefs.setPreset(i);
             dirtyVideo = true;
             rebuildLater();
         }));
-        col.addView(note(prefs.preset() == 4 ? "Custom: you changed one of the numbers below." : "A preset sets the four "
-                + "numbers below at once."), Ui.lp(c, 2));
+        col.addView(note(prefs.preset() == 4 ? "Custom: the numbers below are your own. A preset replaces them, but Custom brings them back."
+                : prefs.hasCustom() ? "A preset sets the four numbers below at once. Custom brings back your own numbers."
+                : "A preset sets the four numbers below at once."), Ui.lp(c, 2));
 
         col.addView(slider("Video width", ScreenPrefs.WIDTHS, prefs.vidWidth(), v -> v + " px", v -> {
             prefs.setVidWidth(v);
@@ -266,7 +268,9 @@ final class AdvancedPanel {
             host.tabletAwakeChanged();
         }));
         col.addView(note("You only watch the phone here, so the tablet gets no touches. Without this it dims and "
-                + "switches off after its normal screen timeout. It is only kept on while this tab is open."),
+                + "switches off after its normal screen timeout. It is only kept on while this tab is open and the phone's screen "
+                + "is being watched: it lets go when the phone's screen has been off for two minutes, or nobody has touched the tablet "
+                + "for half an hour, and holds on again at the next touch."),
                 Ui.lp(c, 2));
         col.addView(note(host.awakeText()), Ui.lp(c, 4));
 
@@ -292,8 +296,6 @@ final class AdvancedPanel {
                 Ui.lp(c, 2));
         col.addView(check("Turn the phone's screen off when I leave (if I woke it from here)", prefs.sleepOnLeave(),
                 prefs::setSleepOnLeave), Ui.lp(c, 6));
-        col.addView(check("Sleep turns the phone's display fully off (not the Always-On Display)", prefs.sleepFullOff(),
-                prefs::setSleepFullOff));
         col.addView(check("Wake a sleeping phone when I tap the picture", prefs.tapToWake(), prefs::setTapToWake));
         phoneInfo = Ui.text(c, host.phoneText(), 12, Ui.DIM, false);
         col.addView(phoneInfo, Ui.lp(c, 6));

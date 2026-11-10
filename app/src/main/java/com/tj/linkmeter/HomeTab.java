@@ -690,7 +690,7 @@ final class HomeTab extends Tab {
         busy = true;
         paintSwitches();
         setAction(on ? "Putting the phone's screen to sleep…" : "Waking the phone's screen…", true);
-        Call.run(act, "POST", on ? "/screen/off?nodoze=1" : "/screen/on", 20000, (ok, text, json) -> {
+        Call.run(act, "POST", on ? PhonePower.SLEEP : PhonePower.WAKE, 20000, (ok, text, json) -> {
             busy = false;
             setAction(text, ok);
             paintSwitches();

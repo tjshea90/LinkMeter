@@ -18,6 +18,10 @@ public final class PhonePowerTest {
     static final long S = PhonePower.SETTLE_MS;
 
     public static void main(String[] a) {
+        // one Sleep and one Wake for the Sleep button, for leaving the Screen tab and for Home; Sleep is always the fully-off form
+        check(PhonePower.SLEEP.equals("/screen/off?nodoze=1"), "Sleep is the fully-off form (the Always-On Display keeps using power)");
+        check(PhonePower.WAKE.equals("/screen/on"), "Wake is plain");
+        check(PhonePower.SLEEP.startsWith("/screen/off?") && PhonePower.SLEEP.indexOf("nodoze=1") > 0, "an older phone app reads the path and ignores the word it does not know");
         // starts on; a poll that agrees changes nothing
         {
             PhonePower p = new PhonePower();

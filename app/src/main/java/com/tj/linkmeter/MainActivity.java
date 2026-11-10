@@ -320,6 +320,15 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Any touch in the app: the current tab may be resting (the Screen tab) and wants to know that somebody is here. */
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        if (cur != null && resumed) {
+            cur.onUserInteraction();
+        }
+    }
+
     private void showTab(int i, boolean start) {
         if (cur != null) {
             cur.onHide();

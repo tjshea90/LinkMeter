@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -316,12 +316,66 @@ Y = [
  ("safety: the Automatic choice is not mentioned", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (false) {\n                    // Restore everything stores Off"),
  ("safety: the Automatic choice is mentioned when the saver is off", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (true) {\n                    // Restore everything stores Off"),
 ]
+PACE2_FILES = ["ScreenPace.java"]
+PACE2_TEST = ROOT + "/tools/test/ScreenPaceTest.java"
+Z = [
+ ("pace2: never rests for being untouched", "ScreenPace.java", "if (now - lastActivity >= UNTOUCHED_MS) {\n            return true;\n        }", "if (false) {\n            return true;\n        }"),
+ ("pace2: rests when the tab is untouched but the phone is in use for too short a time", "ScreenPace.java", "now - lastActivity >= UNTOUCHED_MS", "now - lastActivity >= UNTOUCHED_MS / 2"),
+ ("pace2: rests only after a day untouched", "ScreenPace.java", "static final long UNTOUCHED_MS = 30 * 60 * 1000L;", "static final long UNTOUCHED_MS = 24 * 60 * 60 * 1000L;"),
+ ("pace2: a touch does not end the phone-off rest", "ScreenPace.java", "now - Math.max(phoneOffSince, lastActivity) >= PHONE_OFF_MS", "now - phoneOffSince >= PHONE_OFF_MS"),
+ ("pace2: rests at once when the phone's screen goes off", "ScreenPace.java", "static final long PHONE_OFF_MS = 2 * 60 * 1000L;", "static final long PHONE_OFF_MS = 0;"),
+ ("pace2: rests only after twenty minutes of the phone's screen off", "ScreenPace.java", "static final long PHONE_OFF_MS = 2 * 60 * 1000L;", "static final long PHONE_OFF_MS = 20 * 60 * 1000L;"),
+ ("pace2: rests although the phone's screen is on", "ScreenPace.java", "return !phoneScreenOn && now - Math.max", "return now - Math.max"),
+ ("pace2: never rests for a phone that is off", "ScreenPace.java", "return !phoneScreenOn && now - Math.max(phoneOffSince, lastActivity) >= PHONE_OFF_MS;", "return false;"),
+ ("pace2: the resting question is as fast as the awake one", "ScreenPace.java", "return resting ? RESTING_POLL_MS : ACTIVE_POLL_MS;", "return ACTIVE_POLL_MS;"),
+ ("pace2: the awake question is slow", "ScreenPace.java", "return resting ? RESTING_POLL_MS : ACTIVE_POLL_MS;", "return RESTING_POLL_MS;"),
+ ("pace2: a resting tab holds the tablet awake", "ScreenPace.java", "return shown && option && !resting;", "return shown && option;"),
+ ("pace2: the option is ignored", "ScreenPace.java", "return shown && option && !resting;", "return shown && !resting;"),
+ ("pace2: a hidden tab holds the tablet awake", "ScreenPace.java", "return shown && option && !resting;", "return option && !resting;"),
+]
+POWER_FILES = ["PhonePower.java"]
+POWER_TEST = ROOT + "/tools/test/PhonePowerTest.java"
+Q = [
+ ("power: Sleep without the fully-off word", "PhonePower.java", 'static final String SLEEP = "/screen/off?nodoze=1";', 'static final String SLEEP = "/screen/off";'),
+ ("power: Sleep and Wake the same", "PhonePower.java", 'static final String WAKE = "/screen/on";', 'static final String WAKE = "/screen/off?nodoze=1";'),
+]
+QUALITY_FILES = ["QualityPresets.java"]
+QUALITY_TEST = ROOT + "/tools/test/QualityPresetsTest.java"
+G = [
+ ("quality: a preset ignores the video width", "QualityPresets.java", "if (vidW == VID_W[p] && vidK == VID_K[p] && picW == PIC_W[p] && picQ == PIC_Q[p]) {", "if (vidK == VID_K[p] && picW == PIC_W[p] && picQ == PIC_Q[p]) {"),
+ ("quality: a preset ignores the video bitrate", "QualityPresets.java", "vidW == VID_W[p] && vidK == VID_K[p] && picW", "vidW == VID_W[p] && picW"),
+ ("quality: a preset ignores the picture width", "QualityPresets.java", "&& picW == PIC_W[p] && picQ == PIC_Q[p]) {", "&& picQ == PIC_Q[p]) {"),
+ ("quality: a preset ignores the picture quality", "QualityPresets.java", "&& picW == PIC_W[p] && picQ == PIC_Q[p]) {", "&& picW == PIC_W[p]) {"),
+ ("quality: nothing is ever Custom", "QualityPresets.java", "        return CUSTOM;\n    }\n\n    /** The preset the chip", "        return 0;\n    }\n\n    /** The preset the chip"),
+ ("quality: Sharp goes to Custom even with no custom numbers", "QualityPresets.java", "return current == CUSTOM - 1 && haveCustom ? CUSTOM : 0;", "return current == CUSTOM - 1 ? CUSTOM : 0;"),
+ ("quality: Sharp never goes to Custom", "QualityPresets.java", "return current == CUSTOM - 1 && haveCustom ? CUSTOM : 0;", "return 0;"),
+ ("quality: Custom is a dead end", "QualityPresets.java", "return current == CUSTOM - 1 && haveCustom ? CUSTOM : 0;", "return current == CUSTOM ? CUSTOM : (current == CUSTOM - 1 && haveCustom ? CUSTOM : 0);"),
+ ("quality: Balanced skips Sharp", "QualityPresets.java", "if (current >= 0 && current < CUSTOM - 1) {\n            return current + 1;", "if (current >= 0 && current < CUSTOM - 1) {\n            return current + 2 > CUSTOM - 1 ? 0 : current + 2;"),
+ ("quality: a preset below the phone's floor", "QualityPresets.java", "VID_K = {800, 1500, 3000, 6000};", "VID_K = {300, 1500, 3000, 6000};"),
+]
+ADDRESS_FILES = ["PhoneAddress.java"]
+ADDRESS_TEST = ROOT + "/tools/test/PhoneAddressTest.java"
+A = [
+ ("address: a half typed address is stored", "PhoneAddress.java", "        if (p.length != 4) {\n            return null;\n        }", "        if (p.length != 4) {\n            return s;\n        }"),
+ ("address: a part above 255 is accepted", "PhoneAddress.java", "if (v > 255) {\n                return null;\n            }", "if (v > 9999) {\n                return null;\n            }"),
+ ("address: letters are accepted", "PhoneAddress.java", 'if (!p[i].matches("\\\\d{1,3}")) {', 'if (p[i].isEmpty()) {'),
+ ("address: an empty part counts as 0", "PhoneAddress.java", "if (!p[i].matches(\"\\\\d{1,3}\")) {\n                return null;\n            }\n            int v = Integer.parseInt(p[i]);", "if (!p[i].matches(\"\\\\d{0,3}\")) {\n                return null;\n            }\n            int v = p[i].isEmpty() ? 0 : Integer.parseInt(p[i]);"),
+ ("address: 0.0.0.0 is accepted", "PhoneAddress.java", "return any ? sb.toString() : null;", "return sb.toString();"),
+ ("address: leading zeros are kept", "PhoneAddress.java", 'sb.append(i == 0 ? "" : ".").append(v);', 'sb.append(i == 0 ? "" : ".").append(p[i]);'),
+ ("address: an empty field is not stored", "PhoneAddress.java", "if (s.isEmpty()) {\n            return \"\";\n        }", "if (s.isEmpty()) {\n            return null;\n        }"),
+ ("address: spaces are not trimmed", "PhoneAddress.java", "String s = typed == null ? \"\" : typed.trim();", "String s = typed == null ? \"\" : typed;"),
+ ("address: a found address beats the typed one", "PhoneAddress.java", "if (!stored.isEmpty()) {\n            line = \"Using: the address you typed, \" + stored + \".\";\n        } else if (!found.isEmpty()) {", "if (!found.isEmpty()) {\n            line = \"Using: the address you typed, \" + stored + \".\";\n        } else if (!stored.isEmpty()) {"),
+ ("address: a half typed address is not said to be unsaved", "PhoneAddress.java", "return notSaved ? \"Not saved yet: type all four numbers, or clear the field. \" + line : line;", "return line;"),
+ ("address: a found address is said to be typed", "PhoneAddress.java", 'line = "Using: " + found + ", found by itself.";', 'line = "Using: the address you typed, " + found + ".";'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
           (FOLLOW_FILES, FOLLOW_TEST, "com.tj.linkmeter.FollowUpTest", F), (TROUBLE_FILES, TROUBLE_TEST, "com.tj.linkmeter.TroubleTest", T),
           (SAVER_FILES, SAVER_TEST, "com.tj.linkmeter.SaverPlanTest", V),
-          (SAFETYREPORT_FILES, SAFETYREPORT_TEST, "com.tj.linkmeter.SafetyReportTest", Y)]
+          (SAFETYREPORT_FILES, SAFETYREPORT_TEST, "com.tj.linkmeter.SafetyReportTest", Y),
+          (PACE2_FILES, PACE2_TEST, "com.tj.linkmeter.ScreenPaceTest", Z), (POWER_FILES, POWER_TEST, "com.tj.linkmeter.PhonePowerTest", Q),
+          (QUALITY_FILES, QUALITY_TEST, "com.tj.linkmeter.QualityPresetsTest", G), (ADDRESS_FILES, ADDRESS_TEST, "com.tj.linkmeter.PhoneAddressTest", A)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

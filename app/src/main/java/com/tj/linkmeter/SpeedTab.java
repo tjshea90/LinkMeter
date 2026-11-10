@@ -73,7 +73,8 @@ final class SpeedTab extends Tab {
         button = Ui.button(act, running ? "Stop" : "Start test", v -> toggle());
         col.addView(button, Ui.lp(act, 8));
         note = Ui.text(act, "Measures the phone's own mobile data, not the Wi-Fi link to the "
-                + "tablet. Takes about 20 seconds and uses roughly 100 to 300 MB.",
+                + "tablet. Takes about 20 seconds and uses about as many MB as the download and upload speeds added together "
+                + "(around 20 MB at 10 Mbit/s each way).",
                 12, Ui.DIM, false);
         col.addView(note, Ui.lp(act, 8));
         from = 0;

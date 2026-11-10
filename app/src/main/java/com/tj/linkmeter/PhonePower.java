@@ -14,6 +14,14 @@ package com.tj.linkmeter;
 final class PhonePower {
     enum Change { NONE, WENT_OFF, WOKE }
 
+    /**
+     * What the tablet sends to put the phone's screen to sleep or to wake it: ONE form, used by the Sleep button, by leaving the
+     * Screen tab and by Home. Sleep is always the fully-off one ("nodoze": the display goes dark, not to the Always-On Display, which
+     * looks like a phone that stayed on and keeps using power). A phone app that does not know the "nodoze" word ignores it.
+     */
+    static final String SLEEP = "/screen/off?nodoze=1";
+    static final String WAKE = "/screen/on";
+
     /** After a press (or its answer), an answer about the phone's state is not believed for this long. */
     static final long SETTLE_MS = 3000;
 

@@ -24,6 +24,8 @@ final class SettingsTab extends Tab {
     private TextView linkChip;
     private TextView linkState;
     private TextView linkSaid;
+    /** The line under the phone address field. */
+    private TextView usingView;
     private Button setUpBtn;
     private Button testBtn;
     private Button findBtn;
@@ -266,6 +268,15 @@ final class SettingsTab extends Tab {
 
     // ------------------------------------------------------------------------------------------------ connection
 
+    /** The line under the phone address field: which address is in use right now, and how it was found. */
+    private void paintUsing(boolean notSaved) {
+        if (usingView == null) {
+            return;
+        }
+        String found = Cfg.host(act).isEmpty() ? Net.phoneHost(act) : "";
+        usingView.setText(PhoneAddress.using(notSaved, Cfg.host(act), found));
+    }
+
     private void buildConnection(LinearLayout col) {
         LinearLayout card = Ui.card(act, "Connection", null);
         card.addView(Ui.text(act, "Phone address", 14, Ui.FG, false), Ui.lp(act, 8));
@@ -285,12 +296,20 @@ final class SettingsTab extends Tab {
 
             @Override
             public void afterTextChanged(Editable e) {
-                Cfg.setHost(act, e.toString().trim());
+                // only a complete address, or nothing, is stored: a half typed "192." must not switch the automatic search off everywhere
+                String store = PhoneAddress.toStore(e.toString());
+                if (store != null) {
+                    Cfg.setHost(act, store);
+                }
+                paintUsing(store == null);
             }
         });
         card.addView(host);
+        usingView = Ui.hint(act, "");
+        card.addView(usingView, Ui.lp(act, 2));
+        paintUsing(false);
         card.addView(Ui.hint(act, "Leave it empty: on the phone's hotspot the tablet finds the phone by itself. Type an address "
-                + "only if " + HOME + " says it cannot find the phone."), Ui.lp(act, 0));
+                + "only if " + HOME + " says it cannot find the phone."), Ui.lp(act, 6));
 
         card.addView(Ui.text(act, "Ask the phone for its status every", 14, Ui.FG, false), Ui.lp(act, 12));
         final long[] values = {15000L, 5000L, 2000L};

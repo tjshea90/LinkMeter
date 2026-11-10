@@ -38,4 +38,7 @@ abstract class Tab {
 
     /** The tab left the screen or the app went to the background. Stop all work here. */
     void onHide() {}
+
+    /** Somebody touched the tablet (any touch, key or trackball event of the app) while this tab is the current one. */
+    void onUserInteraction() {}
 }

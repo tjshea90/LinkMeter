@@ -25,6 +25,8 @@ final class ControlTab extends Tab {
     private TextView version;
     private BootSection boot;
     private long phoneCode = -1;
+    /** The tab is on screen: nothing the tab started later may do work while it is hidden. */
+    private boolean shown;
     private String phoneName = "";
     private String phoneUpd = "";
 
@@ -134,6 +136,7 @@ final class ControlTab extends Tab {
 
     @Override
     void onHide() {
+        shown = false;
         if (boot != null) {
             boot.onHide();
         }
@@ -141,11 +144,24 @@ final class ControlTab extends Tab {
 
     @Override
     void onShow() {
+        shown = true;
         if (boot != null) {
             boot.onShow();
         }
+        refreshStatus();
+    }
+
+    /**
+     * Asks the phone what it is and paints the answer: nothing else. After "Update phone" it is used to look again once the new
+     * app is back, and it does nothing at all when the tab has been left meanwhile (a full onShow here used to start the boot
+     * section's loops on a tab nobody was looking at).
+     */
+    private void refreshStatus() {
+        if (!shown) {
+            return;
+        }
         Call.run(act, "GET", "/s", 4000, (ok, text, json) -> {
-            if (status == null) {
+            if (!shown || status == null) {
                 return;
             }
             if (!ok || json == null) {
@@ -225,8 +241,8 @@ final class ControlTab extends Tab {
                 show(fText, fOk);
                 if (fOk && fText.contains("installing")) {
                     // The phone app restarts; look again once it is back.
-                    act.ui.postDelayed(this::onShow, 15000);
-                    act.ui.postDelayed(this::onShow, 30000);
+                    act.ui.postDelayed(this::refreshStatus, 15000);
+                    act.ui.postDelayed(this::refreshStatus, 30000);
                 }
             });
         }, "linkmeter-update").start();
