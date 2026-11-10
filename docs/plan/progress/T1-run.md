@@ -1,15 +1,15 @@
-STATUS: RUNNING
-TASK: track T1, REVIEW AND FIX ONLY (the two implementers finished: commits bc56127..84dd747, their answers are in
-docs/plan/progress/T1-implementers-answers.json). Started 2026-11-10 19:27 UTC by the directing session.
-SO FAR (2026-11-10 20:25 UTC): both reviewers finished: the tablet reviewer 8 findings (2 high), the phone reviewer 2
-(low). Their full answers are in T1-review-tablet.md and T1-review-phone.md (STATUS: DONE). The fixer is working through
-them one at a time (its notes: T1-fix.md; a checkpoint "Review fix N of track 1" after each).
-IF THIS RUN IS CUT OFF: make the call below again with the script as it is now. The reviewers hand back their stored
-answers, the fixer continues from its notes.
-WHEN IT IS DONE the directing session checks the tree (tests, build, pictures, pipeline), writes the result here, sets
-STATUS: DONE and ticks nothing new (T1's box is already ticked; its line in HANDOFF gets the review's outcome).
+STATUS: DONE
+TASK: track T1, review and fix (the two implementers had finished: commits bc56127..84dd747).
+RESULT (2026-11-10 21:00 UTC): both reviewers finished (tablet 8 findings, 2 of them high; phone 2, low): T1-review-tablet.md
+and T1-review-phone.md. The fixer found all ten real and fixed each in its own commit (ea96a62, 2509a35, 4ff46ba, 7278693,
+358f1e2, 45268e7, b323878, 5cf6f52, 13f55d2, 2f01e4d; closing 8d87454); its verdicts are in T1-fix.md. Nothing was too big.
+One optional extra was left out (after Home has stopped asking over Bluetooth, look for the hotspot alone once a minute).
+CHECKED by the directing session on the finished tree: tools/test.sh exit 0, the release build, python3
+tools/mutate_link.py 204 caught 0 missed, tools/preview.sh 66 pictures (Home, Settings and the "anyway" question looked at).
+Track T1 is closed and released. Nothing has run on a device.
+THIS WAS THE LAST AGENT WORKFLOW: the user switched them off on 2026-11-10 (see HANDOFF, START HERE).
 
-THE CALL (Workflow tool, scriptPath docs/plan/2026-11-10/track-workflow.js), args:
+FOR THE RECORD, THE CALL (Workflow tool, scriptPath docs/plan/2026-11-10/track-workflow.js), args:
 
 ```json
 {
