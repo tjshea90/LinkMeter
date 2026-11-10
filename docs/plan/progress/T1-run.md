@@ -1,10 +1,13 @@
-STATUS: WORKING
+STATUS: RUNNING
 TASK: track T1, REVIEW AND FIX ONLY (the two implementers finished: commits bc56127..84dd747, their answers are in
-docs/plan/progress/T1-implementers-answers.json). Started 2026-11-10 19:27 UTC by the orchestrating session.
-NOTE: this run was started BEFORE the notes rules existed, so its two reviewers do not push notes; if it is cut off,
-their findings are lost and the call below simply runs the review again. The fixer of this run does follow the notes rules
-(its name: T1-fix).
-WHEN IT IS DONE the orchestrator writes the reviewers' findings and the fixer's verdicts into this file and sets DONE.
+docs/plan/progress/T1-implementers-answers.json). Started 2026-11-10 19:27 UTC by the directing session.
+SO FAR (2026-11-10 20:25 UTC): both reviewers finished: the tablet reviewer 8 findings (2 high), the phone reviewer 2
+(low). Their full answers are in T1-review-tablet.md and T1-review-phone.md (STATUS: DONE). The fixer is working through
+them one at a time (its notes: T1-fix.md; a checkpoint "Review fix N of track 1" after each).
+IF THIS RUN IS CUT OFF: make the call below again with the script as it is now. The reviewers hand back their stored
+answers, the fixer continues from its notes.
+WHEN IT IS DONE the directing session checks the tree (tests, build, pictures, pipeline), writes the result here, sets
+STATUS: DONE and ticks nothing new (T1's box is already ticked; its line in HANDOFF gets the review's outcome).
 
 THE CALL (Workflow tool, scriptPath docs/plan/2026-11-10/track-workflow.js), args:
 
