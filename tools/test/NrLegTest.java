@@ -148,17 +148,6 @@ public final class NrLegTest {
         check(!NrLeg.mayForget(NrLeg.parse("")) && !NrLeg.mayForget(NrLeg.parse(null)) && !NrLeg.mayForget(NrLeg.parse("garbage")),
                 "no readable answer keeps the flag");
 
-        // ---- WAITING FOR PART B of track T4: the tablet's comparison still reads the old words with these three (they go with it)
-        check(NrLeg.offFromText(null) == null, "null text");
-        check(NrLeg.offFromText("") == null, "empty text");
-        check(NrLeg.offFromText("Failed (code 1): 5G leg is off") == Boolean.TRUE, "an off statement inside other text");
-        check(NrLeg.offFromText("the leg is off") == null, "similar words are not enough");
-        check(!NrLeg.cannot(null), "cannot(null)");
-        check(NrLeg.cannot(NrLeg.REMOVED), "the fixed sentence is 'cannot'");
-        check(!NrLeg.accepted(null) && !NrLeg.accepted("") && !NrLeg.accepted("Failed (code 1): 5G leg is off"), "accepted() on other texts");
-        check(!NrLeg.accepted("Couldn't reach the phone: timed out"), "an unreachable phone is not 'accepted'");
-        check(!NrLeg.accepted(NrLeg.REMOVED) && NrLeg.offFromText(NrLeg.REMOVED) == null, "the fixed sentence is neither accepted nor a reading");
-
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }

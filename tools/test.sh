@@ -31,21 +31,18 @@ java -cp "$out" com.tj.linkmeter.PhonePowerTest || fail=1
 echo "== PowerSequence (the phone's Sleep / Wake steps, against a simulated phone)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PowerSequence.java tools/test/PowerSequenceTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PowerSequenceTest || fail=1
-echo "== Bands (carrier list, lock check, plan) and the band comparison run, against simulated phones"
-javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/RadioState.java app/src/main/java/com/tj/linkmeter/BandCheck.java \
-  app/src/main/java/com/tj/linkmeter/SweepPlan.java app/src/main/java/com/tj/linkmeter/BandSweep.java \
-  tools/test/BandToolsTest.java tools/test/BandSweepTest.java tools/test/SurveyCommandTest.java || fail=1
+echo "== Bands (RadioState: the carrier list, whether 5G is really in use, the words for what the phone is using)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/RadioState.java tools/test/BandToolsTest.java tools/test/SurveyCommandTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.BandToolsTest || fail=1
-java -cp "$out" com.tj.linkmeter.BandSweepTest || fail=1
 echo "== Scan command (the real shell command, against a 400 KB fake dump, the way Android's shell runs it)"
 java -cp "$out" com.tj.linkmeter.SurveyCommandTest || fail=1
-echo "== 5G leg (NrLeg: the words the phone and the tablet share about it; never claims a state the phone did not report)"
+echo "== 5G leg (NrLeg: the note an older version left is forgotten when nothing can have been switched off, the one sentence the old actions answer)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/NrLeg.java tools/test/NrLegTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.NrLegTest || fail=1
 echo "== Network types memory (TypesFlag: remembered only just before a real write, kept as the first mask, forgotten as soon as the phone is exactly as it was; a whole fair comparison leaves nothing behind)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/TypesFlag.java tools/test/TypesFlagTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.TypesFlagTest || fail=1
-echo "== Fair comparison of settings (LeverRun: random order within rounds, a sign-test verdict, a setting counts only when the phone really took it, always put back; simulated phones)"
+echo "== Fair comparison of two settings (LeverRun: each round's order is a fair coin, a sign-test verdict, a setting counts only when the phone really took it, 5G always put back; simulated phones)"
 javac -proc:none -cp "$out" -d "$out" app/src/main/java/com/tj/linkmeter/LeverRun.java tools/test/LeverRunTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LeverRunTest || fail=1
 echo "== Phone codes (TypingFilter: the remote keyboard never types * or #, over all 65,536 characters)"

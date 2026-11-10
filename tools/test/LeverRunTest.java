@@ -62,6 +62,10 @@ public final class LeverRunTest {
         boolean stubbornNow;
         boolean observeBroken;
         int failFiveG;
+        /** The phone refuses this many requests to switch 5G ON (the ones that put it back). */
+        int failSwitchOn;
+        /** The phone really switches 5G off but the answer is lost: the run is told that it failed. */
+        boolean lostReplyOff;
         long[][] unreachable = new long[0][];
         // the speed model
         double base = 1.0;
@@ -163,7 +167,18 @@ public final class LeverRunTest {
                     d.done(false, "the phone did not take the setting", null);
                     return;
                 }
+                if (!off && failSwitchOn > 0) {
+                    failSwitchOn--;
+                    d.done(false, "the phone did not take the setting", null);
+                    return;
+                }
                 fiveGOff = off;
+                if (off && lostReplyOff) {
+                    stubbornNow = false;
+                    after(2000, () -> nr = nrExpected());
+                    d.done(false, "no answer", null);
+                    return;
+                }
                 if (off) {
                     stubbornNow = offsSoFar++ >= obeysFirst;
                 } else {
@@ -341,6 +356,8 @@ public final class LeverRunTest {
         refusals();
         unreachablePhone();
         restoreWhileOutOfReach();
+        restoreSwitchIsRetried();
+        restoreQuestionIsRetried();
         stopAtEveryMoment();
         fuzz();
         System.out.println(checks + " checks, " + failed + " failed");
@@ -382,6 +399,7 @@ public final class LeverRunTest {
         check(LeverRun.verdict(base, row(1.29, 1.29, 1.29, 1.29, 1.29)) == LeverRun.Verdict.MAYBE, "1.29 times everywhere is only 'maybe'");
         check(LeverRun.verdict(base, row(1.1, 1.1, 1.1, 1.1, 1.1)) == LeverRun.Verdict.SAME, "1.1 times is the same");
         check(LeverRun.verdict(base, row(0.5, 0.5, 0.5, 0.5, 1.2)) == LeverRun.Verdict.WORSE, "half as fast is worse");
+        check(LeverRun.verdict(base, row(0.5, 0.5, 0.5, 2.0, 2.0)) == LeverRun.Verdict.SAME, "slow in only 3 of 5 rounds is luck (50%), not worse");
         check(LeverRun.verdict(base, row(1.5, 1.5)) == LeverRun.Verdict.UNKNOWN, "two rounds cannot decide");
         check(LeverRun.verdict(row(1, 1), row(5, 5)) == LeverRun.Verdict.UNKNOWN, "a baseline with two rounds cannot decide");
         LeverRun.Row gone = row(9, 9, 9, 9, 9);
@@ -841,6 +859,69 @@ public final class LeverRunTest {
             check(s.fiveGSwitches >= 3, "the run asked again until the phone answered" + ctx);
         }
         check(tried, "an order was found that ends on 4G only");
+    }
+
+    /**
+     * The phone refuses the request that puts 5G back, twice: the run asks again (it waits a few seconds between tries) and in the
+     * end 5G is back. One round with "4G only" measured last, so that the put-back is the only switch-on of the whole run.
+     */
+    static void restoreSwitchIsRetried() {
+        List<LeverRun.Setting> settings = LeverRun.settings(true, false);
+        boolean tried = false;
+        for (long seed = 0; seed < 80 && !tried; seed++) {
+            Sim p = new Sim();
+            p.orderSeed = seed;
+            p.rnd = new Random(31);
+            go(p, new Rec(), settings, 1, -1);
+            if (!p.states.get(p.states.size() - 1).equals("lte")) {
+                continue;
+            }
+            tried = true;
+            Sim s = new Sim();
+            s.orderSeed = seed;
+            s.rnd = new Random(31);
+            s.failSwitchOn = 2;
+            Rec rec = new Rec();
+            LeverRun r = go(s, rec, settings, 1, -1);
+            String ctx = " [put back after two refusals, order seed " + seed + "]";
+            ended(s, rec, r, false, ctx);
+            check(s.fiveGSwitches == 1 + 3, "5G was switched off once and asked for three times to go back on: " + s.fiveGSwitches + ctx);
+            check(!rec.last.contains("may not be back"), "and it says it is back as it was: " + rec.last + ctx);
+        }
+        check(tried, "an order was found that ends on 4G only (one round)");
+        // a phone that refuses more often than the run will ask: the run ends anyway and says it may not be back
+        Sim s = new Sim();
+        s.rnd = new Random(31);
+        s.failSwitchOn = 1000;
+        Rec rec = new Rec();
+        LeverRun r = go(s, rec, LeverRun.settings(true, false), 1, -1);
+        check(!r.running() && !rec.lastRunning, "a phone that never takes 5G back does not hang the run");
+        check(rec.last.contains("may not be back") && rec.last.contains("Restore everything on the " + TAB + " tab"),
+                "and the closing message says so and names the tab: " + rec.last);
+    }
+
+    /**
+     * The phone switched 5G off but its answer was lost, so the run believes 5G is still on; then the phone is out of reach exactly
+     * when the run asks how it is set. The run must ask again (it must not assume that its own belief is right), find 5G off and put
+     * it back.
+     */
+    static void restoreQuestionIsRetried() {
+        List<LeverRun.Setting> settings = LeverRun.settings(true, false);
+        Sim p = new Sim();
+        p.lostReplyOff = true;
+        p.rnd = new Random(31);
+        go(p, new Rec(), settings, 1, -1);
+        Sim s = new Sim();
+        s.lostReplyOff = true;
+        s.rnd = new Random(31);
+        long from = p.lastUploadDoneAt + 50;
+        s.unreachable = new long[][] {{from, from + 9_000}};
+        Rec rec = new Rec();
+        LeverRun r = go(s, rec, settings, 1, -1);
+        ended(s, rec, r, false, " [lost reply, then out of reach when asked]");
+        check(!rec.last.contains("may not be back"), "and it says it is back as it was: " + rec.last);
+        check(rec.rows.get(1).n() == 0 && rec.rows.get(1).note.contains("5G could not be switched off"),
+                "the measurement whose answer was lost is left out with a note: " + rec.rows.get(1).note);
     }
 
     static void unreachablePhone() {

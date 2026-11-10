@@ -1,81 +1,121 @@
 package com.tj.linkmeter;
 
+import android.os.SystemClock;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 /**
- * Tablet side: the real phone behind {@link LeverRun}. Everything the band comparison already does (5G on/off, looking at the
- * carriers, the upload test) is {@link SweepLink}; only the 5G leg is new. Every call is a request to the phone (see Call).
+ * Tablet side: the real phone behind {@link LeverRun}. Every call is a request to the phone (see Call) answered on the UI thread.
+ * It sends only names that every phone app since v0.2.100 knows (net_get, net_lte, net_5g, /cells, /speed/*), so a tablet that is
+ * updated first still works with a phone that is not updated yet.
  */
 final class LeverLink implements LeverRun.Link {
-    private final SweepLink inner;
     private final MainActivity act;
 
     LeverLink(MainActivity act) {
         this.act = act;
-        this.inner = new SweepLink(act);
     }
 
     @Override
-    public void fiveGOff(BandSweep.Done<Boolean> d) {
-        inner.fiveGOff(d);
-    }
-
-    @Override
-    public void switchFiveG(boolean off, BandSweep.Done<Boolean> d) {
-        inner.switchFiveG(off, d);
-    }
-
-    @Override
-    public void legOff(final BandSweep.Done<Boolean> d) {
-        Call.run(act, "POST", "/act?name=nrleg_get", 30000, (ok, text, json) -> {
-            Boolean off = ok ? NrLeg.offFromText(text) : null;
-            d.done(off != null, text, off);
+    public void fiveGOff(final LeverRun.Done<Boolean> d) {
+        Call.run(act, "POST", "/act?name=net_get", 30000, (ok, text, json) -> {
+            boolean known = ok && (text.contains("5G is off") || text.contains("5G is allowed"));
+            d.done(known, text, text.contains("5G is off"));
         });
     }
 
     @Override
-    public void switchLeg(String how, final BandSweep.Done<Boolean> d) {
-        String name = how.equals("on") ? "nrleg_on" : how.equals("off-now") ? "nrleg_off_now" : "nrleg_off";
-        Call.run(act, "POST", "/act?name=" + name, 40000, (ok, text, json) -> {
-            if (!ok && text.contains("unknown action")) {
-                // a phone app from before the 5G leg existed: the same as a modem that cannot do it
-                d.done(false, "5G leg: the phone's app is too old to switch the 5G leg (cannot switch the 5G leg until it is updated)", null);
-                return;
+    public void switchFiveG(final boolean off, final LeverRun.Done<Boolean> d) {
+        Call.run(act, "POST", "/act?name=" + (off ? "net_lte" : "net_5g"), 60000, (ok, text, json) -> {
+            // the phone's own words: "Forced to 4G..." / "5G is already off..." and "5G is allowed again..." / "5G is already allowed..."
+            boolean done = ok && (off ? (text.contains("Forced to 4G") || text.contains("already off"))
+                    : (text.contains("allowed again") || text.contains("already allowed")));
+            d.done(done, text, done ? Boolean.valueOf(off) : null);
+        });
+    }
+
+    @Override
+    public void observe(final LeverRun.Done<LeverRun.Observation> d) {
+        Call.run(act, "GET", "/cells", 35000, (ok, text, json) -> {
+            if (ok && json != null) {
+                d.done(true, text, new LeverRun.Observation(stateOf(json), rsrpOf(json)));
+            } else {
+                d.done(false, text, null);
             }
-            d.done(ok && NrLeg.accepted(text), text, NrLeg.offFromText(text));
         });
     }
 
     @Override
-    public void observe(BandSweep.Done<BandSweep.Observation> d) {
-        inner.observe(d);
+    public void startUpload(final LeverRun.Done<Void> d) {
+        Call.run(act, "POST", "/speed/start?only=up", 8000, (ok, text, json) -> d.done(ok, text, null));
     }
 
     @Override
-    public void startUpload(BandSweep.Done<Void> d) {
-        inner.startUpload(d);
+    public void uploadStatus(final LeverRun.Done<LeverRun.Upload> d) {
+        Call.run(act, "GET", "/speed/status", 6000, (ok, text, json) -> {
+            if (ok && json != null) {
+                d.done(true, text, new LeverRun.Upload(json.optInt("phase"), json.optDouble("up", -1),
+                        json.optDouble("ping", -1), json.optDouble("live", 0), json.optString("error", ""),
+                        json.optString("warn", "")));
+            } else {
+                d.done(false, text, null);
+            }
+        });
     }
 
     @Override
-    public void uploadStatus(BandSweep.Done<BandSweep.Upload> d) {
-        inner.uploadStatus(d);
-    }
-
-    @Override
-    public void stopUpload(BandSweep.Done<Void> d) {
-        inner.stopUpload(d);
+    public void stopUpload(final LeverRun.Done<Void> d) {
+        Call.run(act, "POST", "/speed/stop", 4000, (ok, text, json) -> d.done(ok, text, null));
     }
 
     @Override
     public void later(long ms, Runnable r) {
-        inner.later(ms, r);
+        act.ui.postDelayed(r, ms);
     }
 
     @Override
     public long now() {
-        return inner.now();
+        return SystemClock.elapsedRealtime();
     }
 
     @Override
     public void awake(boolean on) {
-        inner.awake(on);
+        act.setHoldAwake(on);
+    }
+
+    // ------------------------------------------------------------ reading what the phone sent
+
+    /** The carriers and labels in a /cells reply. */
+    static RadioState stateOf(JSONObject json) {
+        RadioState s = new RadioState();
+        JSONArray car = json.optJSONArray("carriers");
+        for (int i = 0; car != null && i < car.length(); i++) {
+            JSONObject c = car.optJSONObject(i);
+            if (c != null) {
+                s.carriers.add(new RadioState.Carrier(c.optString("rat"), c.optInt("band"), c.optInt("ch", -1),
+                        c.optInt("bw", -1), c.optInt("primary") == 1));
+            }
+        }
+        s.display = json.optString("display", "");
+        s.ca = json.optBoolean("ca", false);
+        JSONArray bws = json.optJSONArray("bws");
+        for (int i = 0; bws != null && i < bws.length(); i++) {
+            s.bandwidths.add(bws.optInt(i));
+        }
+        s.nrState = json.optString("nr", "");
+        s.rawConfigs = json.optString("cfgRaw", "");
+        return s;
+    }
+
+    /** The signal of the registered cell in a /cells reply, or Integer.MIN_VALUE. */
+    static int rsrpOf(JSONObject json) {
+        JSONArray cells = json.optJSONArray("cells");
+        for (int i = 0; cells != null && i < cells.length(); i++) {
+            JSONObject c = cells.optJSONObject(i);
+            if (c != null && c.optInt("reg") == 1 && c.has("rsrp")) {
+                return c.optInt("rsrp");
+            }
+        }
+        return Integer.MIN_VALUE;
     }
 }

@@ -12,7 +12,8 @@ import android.telephony.TelephonyManager;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * The phone's safety net for everything LinkMeter changes on its radio: network types, a band lock (even a "kept" one), the 5G leg,
+ * The phone's safety net for everything LinkMeter changes on its radio: network types, a band lock or a 5G leg request that a version
+ * up to v0.2.102 left,
  * a radio that was switched off for a moment, airplane mode started from the tablet. The rules are in {@link GuardPolicy} (tested
  * on a computer): in short, if mobile data is down for two minutes (the first ten minutes after a change) or four minutes (later)
  * while any of that is still in place, the phone puts it back by itself, with no tablet and no internet, and says so in a

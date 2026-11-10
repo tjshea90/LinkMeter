@@ -54,7 +54,7 @@ final class PhoneTab extends Tab {
         col.addView(Ui.button(act, "Restart modem", v -> restartModem()), Ui.lp(act, 4));
         col.addView(Ui.button(act, "Open mobile network settings", v -> act.openNetworkSettings()),
                 Ui.lp(act, 4));
-        col.addView(Ui.text(act, "Restore puts back the band lock, network types, hotspot band, "
+        col.addView(Ui.text(act, "Restore puts back the network types, hotspot band, "
                 + "battery saver, airplane mode and mobile data. It also runs from the Restore "
                 + "button on LinkMeter's notification. Without Shizuku, follow these steps:\n"
                 + Actions.MANUAL, 12, Ui.DIM, false), Ui.lp(act, 4));

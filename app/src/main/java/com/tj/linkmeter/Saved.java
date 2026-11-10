@@ -87,10 +87,10 @@ final class Saved {
         sp(c).edit().remove("airUntil").apply();
     }
 
-    /** How long after opening a service menu the safety net keeps watching. */
+    /** How long after opening a phone screen (Phone info) the safety net keeps watching. */
     static final long MENU_WATCH_MS = 2L * 60 * 60 * 1000;
 
-    /** A service menu (or the dialer with a service code) was opened at this wall-clock time: what is done inside it is not seen by LinkMeter. */
+    /** A phone screen (Phone info, or one named screen) was opened at this wall-clock time: what is done inside it is not seen by LinkMeter. */
     static void rememberMenuAt(Context c, long at) {
         sp(c).edit().putLong("menuAt", at).apply();
     }

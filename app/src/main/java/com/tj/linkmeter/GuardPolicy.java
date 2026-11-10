@@ -4,8 +4,8 @@ package com.tj.linkmeter;
  * No Android in here (tested in tools/test/GuardPolicyTest.java). The decisions of the phone's safety net ({@link Guard}): when to
  * undo what LinkMeter changed because the phone's mobile data has stopped working.
  *
- * The promise this class keeps: whatever LinkMeter left changed on the phone (network types, a band lock even if it was "kept",
- * the 5G leg, a radio that was switched off for a moment, airplane mode it started) is put back by the phone ITSELF, with no tablet
+ * The promise this class keeps: whatever LinkMeter left changed on the phone (network types, a band lock or a 5G leg request that
+ * a version up to v0.2.102 left, a radio that was switched off for a moment, airplane mode it started) is put back by the phone ITSELF, with no tablet
  * and no internet, if mobile data is down for long enough. The rules:
  *  - it only ever undoes something when LinkMeter really has something changed ({@code pending});
  *  - the first ten minutes after a change are watched closely: two minutes without mobile data is enough;

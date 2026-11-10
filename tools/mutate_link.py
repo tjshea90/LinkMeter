@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -419,7 +419,40 @@ U = [
  ("types: a phone with more types than before counts as back", "TypesFlag.java", "return remembered > 0 && (now < 0 || now != remembered);", "return remembered > 0 && (now < 0 || (now & remembered) != remembered);"),
  ("types: nothing stored counts as needed", "TypesFlag.java", "return remembered > 0 && (now < 0 || now != remembered);", "return now < 0 || now != remembered;"),
 ]
-SUITES =[(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
+LEVER_FILES = ["RadioState.java", "LeverRun.java"]
+LEVER_TEST = ROOT + "/tools/test/LeverRunTest.java"
+LV = [
+ ("lever: the baseline is thrown away when 5G stays", "LeverRun.java", "if (isBaseline(row)) {", "if (false) {"),
+ ("lever: the baseline note is added in every round", "LeverRun.java", "if (!row.note.contains(KEPT_NR_NOTE)) {", "if (true) {"),
+ ("lever: an out-of-date carrier list counts as 5G", "LeverRun.java", "!obs.state.nrCarrierInUse(true)", "!obs.state.listsNr()"),
+ ("lever: a setting that is not obeyed is never dropped", "LeverRun.java", "row.n() == 0 && row.ineffective >= DROP_AFTER", "row.n() == 0 && row.ineffective >= 1000"),
+ ("lever: a setting is dropped after one try", "LeverRun.java", "row.n() == 0 && row.ineffective >= DROP_AFTER", "row.n() == 0 && row.ineffective >= 1"),
+ ("lever: a setting that has a number is dropped too", "LeverRun.java", "row.n() == 0 && row.ineffective >= DROP_AFTER", "row.ineffective >= DROP_AFTER"),
+ ("lever: a setting needs three tries before it is dropped", "LeverRun.java", "static final int DROP_AFTER = 2;", "static final int DROP_AFTER = 3;"),
+ ("lever: 5G is not put back at the end", "LeverRun.java", "if (now != origFiveGOff) {", "if (false) {"),
+ ("lever: the question before the put-back is not repeated", "LeverRun.java", "if (!ok && attempt < 5) {\n                ui.progress(\"Waiting for the phone to answer, to put 5G back", "if (!ok && attempt < 0) {\n                ui.progress(\"Waiting for the phone to answer, to put 5G back"),
+ ("lever: the switch that puts 5G back is not repeated", "LeverRun.java", "if (!a && attempt < 5) {", "if (!a && attempt < 0) {"),
+ ("lever: a warning without a number is stored as zero", "LeverRun.java", "if (u.up <= 0 && !u.warn.isEmpty()) {", "if (false) {"),
+ ("lever: equal settings are measured twice", "LeverRun.java", "if (seen.contains(fiveGOff)) {", "if (false) {"),
+ ("lever: the order is never shuffled", "LeverRun.java", "int j = rnd.nextInt(i + 1);", "int j = i;"),
+ ("lever: the order is always the same flip", "LeverRun.java", "int j = rnd.nextInt(i + 1);", "int j = 0;"),
+ ("lever: stopping leaves the speed test running", "LeverRun.java", "link.stopUpload((a, b, c) -> finish()); // the test may have started", "finish(); // the test may have started"),
+ ("lever: the tablet is left awake", "LeverRun.java", "        link.awake(false);\n", ""),
+ ("lever: the closing words name another tab", "LeverRun.java", '+ tabName + " tab."', '+ "Bands" + " tab."'),
+ ("lever: a run can be started twice", "LeverRun.java", "    void start() {\n        if (running) {\n            return;\n        }", "    void start() {\n        if (false) {\n            return;\n        }"),
+ ("lever: clear needs only 1.0 times", "LeverRun.java", "if (ratio >= 1.3 && luckBetter <= 0.05) {", "if (ratio >= 1.0 && luckBetter <= 0.05) {"),
+ ("lever: clear accepts a 20% luck chance", "LeverRun.java", "if (ratio >= 1.3 && luckBetter <= 0.05) {", "if (ratio >= 1.3 && luckBetter <= 0.2) {"),
+ ("lever: maybe needs only 1.0 times", "LeverRun.java", "if (ratio >= 1.15 && luckBetter <= 0.2) {", "if (ratio >= 1.0 && luckBetter <= 0.2) {"),
+ ("lever: worse ignores the luck chance", "LeverRun.java", "if (ratio <= 0.77 && signP(p[0], p[2]) <= 0.2) {", "if (ratio <= 0.77) {"),
+ ("lever: two rounds can decide", "LeverRun.java", "if (p[0] < 3 || r.notObeyed) {", "if (p[0] < 2 || r.notObeyed) {"),
+ ("lever: a setting the phone does not obey gets a verdict", "LeverRun.java", "if (p[0] < 3 || r.notObeyed) {", "if (p[0] < 3) {"),
+ ("lever: a tie counts as a win", "LeverRun.java", "if (r.byRound[i] > base.byRound[i]) {", "if (r.byRound[i] >= base.byRound[i]) {"),
+ ("lever: the luck chance counts one win too few", "LeverRun.java", "            if (j >= k) {\n                sum += c;", "            if (j > k) {\n                sum += c;"),
+ ("lever: the median of two takes the lower", "LeverRun.java", "(l.get(m - 1) + l.get(m)) / 2", "l.get(m - 1)"),
+ ("lever: a row that is no better is recommended", "LeverRun.java", "if ((v == Verdict.CLEAR || v == Verdict.MAYBE) && (best < 0", "if ((v == Verdict.CLEAR || v == Verdict.MAYBE || v == Verdict.SAME) && (best < 0"),
+ ("lever: the lowest of the better rows is recommended", "LeverRun.java", "rows.get(i).median() > rows.get(best).median()", "rows.get(i).median() < rows.get(best).median()"),
+]
+SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
           (FOLLOW_FILES, FOLLOW_TEST, "com.tj.linkmeter.FollowUpTest", F), (TROUBLE_FILES, TROUBLE_TEST, "com.tj.linkmeter.TroubleTest", T),
@@ -428,7 +461,8 @@ SUITES =[(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, RE
           (PACE2_FILES, PACE2_TEST, "com.tj.linkmeter.ScreenPaceTest", Z), (POWER_FILES, POWER_TEST, "com.tj.linkmeter.PhonePowerTest", Q),
           (QUALITY_FILES, QUALITY_TEST, "com.tj.linkmeter.QualityPresetsTest", G), (ADDRESS_FILES, ADDRESS_TEST, "com.tj.linkmeter.PhoneAddressTest", A),
           (PHONETAB_FILES, PHONETAB_TEST, "com.tj.linkmeter.PhoneTabRulesTest", B),
-          (LEG_FILES, LEG_TEST, "com.tj.linkmeter.NrLegTest", N), (TYPES_FILES, TYPES_TEST, "com.tj.linkmeter.TypesFlagTest", U)]
+          (LEG_FILES, LEG_TEST, "com.tj.linkmeter.NrLegTest", N), (TYPES_FILES, TYPES_TEST, "com.tj.linkmeter.TypesFlagTest", U),
+          (LEVER_FILES, LEVER_TEST, "com.tj.linkmeter.LeverRunTest", LV)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

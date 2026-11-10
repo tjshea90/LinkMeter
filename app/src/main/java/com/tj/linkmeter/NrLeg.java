@@ -111,37 +111,4 @@ final class NrLeg {
         }
         return "5G leg: this phone cannot switch it, so there was nothing to put back.";
     }
-
-    // ---- WAITING FOR PART B of track T4: the tablet's comparison (LeverRun, LeverLink) still reads the old words with these
-    // three. They go when those callers go.
-
-    /**
-     * Reads the phone's words back on the tablet: TRUE = the leg is off, FALSE = on, null = unknown. Only the plain statement counts;
-     * the sentence about a leg that is "still reported ON" must not be taken for "is on".
-     */
-    static Boolean offFromText(String text) {
-        if (text == null) {
-            return null;
-        }
-        if (text.contains("5G leg is off")) {
-            return Boolean.TRUE;
-        }
-        if (text.contains("5G leg is on")) {
-            return Boolean.FALSE;
-        }
-        return null;
-    }
-
-    /**
-     * True when the phone's words after a set command say the modem ACCEPTED the request (whether or not the phone already reports
-     * the new state: plain "off" may take a while). A refusal, a modem that cannot, an error or a text from somewhere else is false.
-     */
-    static boolean accepted(String text) {
-        return text != null && (text.startsWith("5G leg is") || text.startsWith("5G leg: the modem accepted"));
-    }
-
-    /** True when the phone's words say the modem cannot do this at all. */
-    static boolean cannot(String text) {
-        return text != null && (text.contains("cannot switch the 5G leg") || text.contains(NO_CALL));
-    }
 }

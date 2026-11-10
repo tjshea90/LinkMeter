@@ -763,8 +763,8 @@ final class Actions {
     }
 
     /**
-     * The one button that undoes everything LinkMeter can change: band lock, network types, hotspot
-     * band, battery saver, airplane mode and mobile data. Each step runs on its own, so one failure
+     * The one button that undoes everything LinkMeter can change: network types (and a band lock or a 5G leg request that an older
+     * version left), hotspot band, battery saver, airplane mode and mobile data. Each step runs on its own, so one failure
      * never stops the others.
      */
     static String restoreAll(Context c) {

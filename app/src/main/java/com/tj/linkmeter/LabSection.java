@@ -14,10 +14,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The part of the Bands tab for things this phone DOES obey (band locks it ignores): the 5G leg, a fair comparison of settings
- * on the upload speed, and the phone's own Phone info screen. The views are thin; the logic is in NrLeg and LeverRun
- * (tested on a computer). Like the band comparison, a run lives on in this object when the tab is left and shown
- * again, so every callback checks that its view still exists.
+ * The part of the Bands tab for things this phone DOES obey: a fair comparison of 4G only and 5G on the upload speed, the phone's
+ * own Phone info screen, and a helper for finding the best spot. (Versions up to v0.2.102 also had the 5G leg here; this modem
+ * never obeyed it.) The views are thin; the logic is in LeverRun (tested on a computer). Like the comparison, a run lives on in
+ * this object when the tab is left and shown again, so every callback checks that its view still exists.
  */
 final class LabSection {
     private final MainActivity act;
@@ -26,14 +26,7 @@ final class LabSection {
     private TextView safetyView;
     private String safetyMsg = "";
 
-    // ---- the 5G leg
-    private TextView legView;
-    private String legMsg = "";
-
     // ---- the comparison
-    private CheckBox fourGBox;
-    private CheckBox legBox;
-    private CheckBox normalBox;
     private EditText roundsField;
     private Button startBtn;
     private Button stopBtn;
@@ -79,15 +72,11 @@ final class LabSection {
     }
 
     void build(LinearLayout col) {
-        col.addView(Ui.text(act, "What this phone does obey", 18, Ui.FG, true), Ui.lp(act, 16));
-        col.addView(Ui.text(act, "This phone ignores band locks (a lock only hints at the modem's search). These are things it does "
-                + "obey. None of them changes a band, and Restore everything undoes each of them.", 12, Ui.DIM, false), Ui.lp(act, 4));
         Button safe = Ui.button(act, "Safety check: is anything still changed?", x -> safetyCheck());
-        col.addView(safe, Ui.lp(act, 6));
+        col.addView(safe, Ui.lp(act, 16));
         safetyView = Ui.text(act, safetyMsg, 12, Ui.FG, false);
         mono(safetyView);
         col.addView(safetyView, Ui.lp(act, 4));
-        buildLeg(col);
         buildCompare(col);
         buildMenus(col);
         buildHunt(col);
@@ -117,52 +106,7 @@ final class LabSection {
         return r;
     }
 
-    // ------------------------------------------------------------ 1. the 5G leg
-
-    private void buildLeg(LinearLayout col) {
-        col.addView(Ui.text(act, "1. The 5G leg", 16, Ui.FG, true), Ui.lp(act, 14));
-        col.addView(Ui.text(act, "On 5G UW the phone is on a 4G cell AND a 5G cell at once, and has to share its small upload power "
-                + "between them. When the 5G cell is weak that can make the upload worse than on 4G alone. Switching the 5G leg off "
-                + "keeps 5G allowed but lets the strong 4G cell carry everything. \"Off\" lets the modem drop the 5G cell when the "
-                + "connection ends; \"Off now\" drops it at once (the data may blip for a second).", 12, Ui.DIM, false), Ui.lp(act, 4));
-        LinearLayout r = row(act);
-        r.addView(Ui.button(act, "Check", v -> leg("nrleg_get", "Asking the phone…", false)), Ui.weight());
-        r.addView(Ui.button(act, "Off", v -> leg("nrleg_off", "Asking the modem to keep the 5G cell away…", true)), Ui.weight());
-        r.addView(Ui.button(act, "Off now", v -> leg("nrleg_off_now", "Asking the modem to drop the 5G cell now…", true)), Ui.weight());
-        r.addView(Ui.button(act, "On", v -> leg("nrleg_on", "Switching the 5G leg back on…", true)), Ui.weight());
-        col.addView(r, Ui.lp(act, 6));
-        legView = Ui.text(act, legMsg, 13, Ui.FG, false);
-        mono(legView);
-        col.addView(legView, Ui.lp(act, 6));
-    }
-
-    private void setLeg(String s) {
-        legMsg = s;
-        if (legView != null) {
-            legView.setText(s);
-        }
-    }
-
-    private void leg(final String action, String waiting, final boolean thenLook) {
-        setLeg(waiting);
-        Call.run(act, "POST", "/act?name=" + action, 40000, (ok, text, json) -> {
-            setLeg(text);
-            if (ok && thenLook) {
-                // what the phone is really using a few seconds later: is the 5G cell gone?
-                act.ui.postDelayed(() -> Call.run(act, "GET", "/cells", 35000, (ok2, text2, json2) -> {
-                    if (ok2 && json2 != null) {
-                        RadioState st = SweepLink.stateOf(json2);
-                        // an out-of-date carrier list is not a 5G cell (see RadioState.nrCarrierInUse)
-                        boolean nr = st.nrCarrierInUse(false);
-                        setLeg(legMsg + "\nEight seconds later the phone is using: " + BandSweep.usingText(st)
-                                + (nr ? "" : "  (no 5G cell)"));
-                    }
-                }), 8000);
-            }
-        });
-    }
-
-    // ------------------------------------------------------------ 2. the comparison
+    // ------------------------------------------------------------ 1. the comparison
 
     private CheckBox box(String text, boolean on) {
         CheckBox b = new CheckBox(act);
@@ -173,18 +117,13 @@ final class LabSection {
     }
 
     private void buildCompare(LinearLayout col) {
-        col.addView(Ui.text(act, "2. Compare settings fairly", 16, Ui.FG, true), Ui.lp(act, 18));
-        col.addView(Ui.text(act, "Measures the phone's upload on its mobile data under each setting you tick, again and again in rounds: "
-                + "every setting once per round, in a random order, so a busy or quiet minute cannot favour one. Then it says whether "
-                + "one is clearly better than how the phone is now, or whether the differences are just noise. About 25 seconds per "
-                + "measurement (3 settings x 5 rounds is about 7 minutes). Run it at the time of day when the upload is bad. At the end "
-                + "the phone is put back as it was.", 12, Ui.DIM, false), Ui.lp(act, 4));
-        fourGBox = box("4G only (5G off)", true);
-        legBox = box("5G allowed, 5G leg off", true);
-        normalBox = box("5G on, normal (tick this if the phone starts with 5G off or the leg off)", false);
-        col.addView(fourGBox, Ui.lp(act, 6));
-        col.addView(legBox, Ui.lp(act, 0));
-        col.addView(normalBox, Ui.lp(act, 0));
+        col.addView(Ui.text(act, "1. Compare 4G only and 5G fairly", 16, Ui.FG, true), Ui.lp(act, 18));
+        col.addView(Ui.text(act, "Measures the phone's upload on its mobile data with the phone as it is now and with the other 5G "
+                + "state (4G only if 5G is on now, 5G allowed if it is off), again and again in rounds: each setting once per round, "
+                + "in a random order, so a busy or quiet minute cannot favour one. Then it says whether one is clearly better, or "
+                + "whether the difference is just noise. About 25 seconds per measurement (2 settings x 5 rounds is about 4 minutes). "
+                + "Run it at the time of day when the upload is bad. At the end the phone is put back as it was.", 12, Ui.DIM, false),
+                Ui.lp(act, 4));
         col.addView(Ui.text(act, "Rounds (3 to 9). 5 or more can show a clear difference; 3 or 4 can only suggest one.", 12, Ui.FG, false),
                 Ui.lp(act, 8));
         roundsField = new EditText(act);
@@ -235,11 +174,7 @@ final class LabSection {
             // keep 5
         }
         rounds = Math.max(3, Math.min(9, rounds));
-        List<LeverRun.Setting> settings = LeverRun.settings(fourGBox.isChecked(), legBox.isChecked(), normalBox.isChecked());
-        if (settings.size() < 2) {
-            setProgress("Tick at least one setting to compare with how the phone is now.");
-            return;
-        }
+        List<LeverRun.Setting> settings = LeverRun.settings(true, true); // the run drops the one that is how the phone is now
         rows = new ArrayList<>();
         best = -1;
         tableMsg = "";
@@ -256,8 +191,8 @@ final class LabSection {
             public void rows(List<LeverRun.Row> r, int b, boolean running) {
                 renderRows(r, b, running);
             }
-        }, settings, rounds);
-        setProgress("Starting: " + settings.size() + " settings, " + rounds + " rounds.");
+        }, settings, rounds, Tab.BANDS);
+        setProgress("Starting: " + rounds + " rounds.");
         run.start();
     }
 
@@ -288,31 +223,29 @@ final class LabSection {
         paintButtons(running);
     }
 
-    /** Applies the winning setting for good: 5G on or off, then the 5G leg. It stays until Restore everything (or the leg is switched on). */
+    /**
+     * Applies the winning setting for good: 5G on or off. The phone's safety net also undoes it by itself when mobile data is down
+     * for some minutes (it watches whenever 5G was changed), and Restore everything undoes it at any time.
+     */
     private void useBest() {
         if (best < 1 || best >= rows.size()) {
             return;
         }
-        final LeverRun.Target t = rows.get(best).target;
-        setProgress("Applying: " + rows.get(best).setting.label + "…");
-        Call.run(act, "POST", "/act?name=" + (t.fiveGOff ? "net_lte" : "net_5g"), 60000, (ok, text, json) -> {
-            if (t.legOff == null) {
-                setProgress(text + "\nIt stays like this until you press Restore everything.");
-                return;
-            }
-            Call.run(act, "POST", "/act?name=" + (t.legOff ? "nrleg_off_now" : "nrleg_on"), 40000, (ok2, text2, json2) ->
-                    setProgress(text + "\n" + text2 + "\nIt stays like this until you press Restore everything."));
-        });
+        final LeverRun.Row chosen = rows.get(best);
+        setProgress("Applying: " + chosen.setting.label + "…");
+        Call.run(act, "POST", "/act?name=" + (chosen.fiveGOff ? "net_lte" : "net_5g"), 60000, (ok, text, json) ->
+                setProgress(text + "\nIt stays like this until you switch it back or press Restore everything. If mobile data is "
+                        + "down for a few minutes the phone puts 5G back by itself."));
     }
 
-    // ------------------------------------------------------------ 3. the Phone info screen
+    // ------------------------------------------------------------ 2. the Phone info screen
 
     private void buildMenus(LinearLayout col) {
-        col.addView(Ui.text(act, "3. Phone info screen", 16, Ui.FG, true), Ui.lp(act, 18));
+        col.addView(Ui.text(act, "2. Phone info screen", 16, Ui.FG, true), Ui.lp(act, 18));
         col.addView(Ui.text(act, "Opens Android's own Phone info screen on the phone. It shows the signal and the network in detail. "
                 + "It opens on the phone's own screen: use the Screen tab to see it and tap it (unlock the phone first).", 12, Ui.DIM, false),
                 Ui.lp(act, 4));
-        col.addView(Ui.button(act, "Phone info screen", v -> confirmMenu("Open the Phone info screen?", () -> menuCall("menu_usual", ""))),
+        col.addView(Ui.button(act, "Phone info screen", v -> confirmMenu("Open the Phone info screen?", () -> phoneInfo(0))),
                 Ui.lp(act, 6));
         menuView = Ui.text(act, menuMsg, 12, Ui.FG, false);
         mono(menuView);
@@ -340,16 +273,28 @@ final class LabSection {
         }
     }
 
-    private void menuCall(String action, String arg) {
+    /**
+     * Opens Android's own Phone info screen BY NAME (menu_open: every phone app since v0.2.79 knows it, checks the name and wakes
+     * the screen), trying the next place when the phone says it could not open this one. The older "usual screens" request would
+     * open a technician menu first on a phone app that is not updated yet.
+     */
+    private void phoneInfo(final int i) {
         setMenu("Asking the phone…");
-        String target = "/act?name=" + action + (arg.isEmpty() ? "" : "&arg=" + Http.enc(arg));
-        Call.run(act, "POST", target, 60000, (ok, text, json) -> setMenu(text));
+        final String comp = MenuScan.PHONE_INFO_SCREENS[i];
+        Call.run(act, "POST", "/act?name=menu_open&arg=" + Http.enc(comp), 60000, (ok, text, json) -> {
+            boolean opened = ok && text.startsWith("Opened");
+            if (!opened && i + 1 < MenuScan.PHONE_INFO_SCREENS.length) {
+                phoneInfo(i + 1);
+                return;
+            }
+            setMenu(opened || !ok ? text : "This phone has no Phone info screen that LinkMeter could open. The phone said: " + text);
+        });
     }
 
-    // ------------------------------------------------------------ 4. the best spot
+    // ------------------------------------------------------------ 3. the best spot
 
     private void buildHunt(LinearLayout col) {
-        col.addView(Ui.text(act, "4. Find the best spot for the phone", 16, Ui.FG, true), Ui.lp(act, 18));
+        col.addView(Ui.text(act, "3. Find the best spot for the phone", 16, Ui.FG, true), Ui.lp(act, 18));
         col.addView(Ui.text(act, "Often the biggest gain of all: a few dB more signal at the phone is worth more than any setting. "
                 + "Press Start, then hold or put the phone where you want to try (a window, higher up, outside on a sill, with its case "
                 + "off, its back to the window), wait about 10 seconds for the average to settle, and press \"Mark this spot\". "
