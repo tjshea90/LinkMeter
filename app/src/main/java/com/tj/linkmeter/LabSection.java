@@ -15,8 +15,8 @@ import java.util.List;
 
 /**
  * The part of the Bands tab for things this phone DOES obey (band locks it ignores): the 5G leg, a fair comparison of settings
- * on the upload speed, and a finder for the phone's hidden service menus. The views are thin; the logic is in NrLeg, LeverRun
- * and MenuScan (all tested on a computer). Like the band comparison, a run lives on in this object when the tab is left and shown
+ * on the upload speed, and the phone's own Phone info screen. The views are thin; the logic is in NrLeg and LeverRun
+ * (tested on a computer). Like the band comparison, a run lives on in this object when the tab is left and shown
  * again, so every callback checks that its view still exists.
  */
 final class LabSection {
@@ -46,11 +46,9 @@ final class LabSection {
     private String progressMsg = "";
     private String tableMsg = "";
 
-    // ---- the hidden menus
+    // ---- the Phone info screen
     private TextView menuView;
-    private LinearLayout screensBox;
     private String menuMsg = "";
-    private List<String> screens = new ArrayList<>();
 
     // ---- the placement helper
     private final SignalHunt hunt = new SignalHunt();
@@ -307,46 +305,25 @@ final class LabSection {
         });
     }
 
-    // ------------------------------------------------------------ 3. the hidden menus
+    // ------------------------------------------------------------ 3. the Phone info screen
 
     private void buildMenus(LinearLayout col) {
-        col.addView(Ui.text(act, "3. Hidden service menus", 16, Ui.FG, true), Ui.lp(act, 18));
-        col.addView(Ui.text(act, "Some phones hide a menu that can choose bands (Samsung's *#2263#, MediaTek's engineering menu). "
-                + "Verizon usually removes them, but this looks at what THIS phone really has: apps, the dialer codes it knows and "
-                + "the screens it can open. The menu opens on the phone's own screen: use the Screen tab to see it and tap it "
-                + "(unlock the phone first).", 12, Ui.DIM, false), Ui.lp(act, 4));
-        LinearLayout r1 = row(act);
-        r1.addView(Ui.button(act, "Look for service menus", v -> findMenus()), Ui.weight());
-        r1.addView(Ui.button(act, "Try the usual ones", v -> confirmMenu("Open a service menu?", () -> menuCall("menu_usual", ""))),
-                Ui.weight());
-        col.addView(r1, Ui.lp(act, 6));
-        col.addView(Ui.text(act, "Codes this app will dial (it dials nothing else: some service codes erase the phone). Verizon phones "
-                + "usually ignore them: the dialer then answers \"Connection problem or invalid MMI code\", which is harmless "
-                + "(these codes only ask the network a question) but opens nothing. The two buttons above open the screens "
-                + "directly and work better:", 12, Ui.DIM, false), Ui.lp(act, 8));
-        for (String[] c : MenuScan.SAFE_CODES) {
-            col.addView(codeButton(c[0], c[1]), Ui.lp(act, 2));
-        }
+        col.addView(Ui.text(act, "3. Phone info screen", 16, Ui.FG, true), Ui.lp(act, 18));
+        col.addView(Ui.text(act, "Opens Android's own Phone info screen on the phone. It shows the signal and the network in detail. "
+                + "It opens on the phone's own screen: use the Screen tab to see it and tap it (unlock the phone first).", 12, Ui.DIM, false),
+                Ui.lp(act, 4));
+        col.addView(Ui.button(act, "Phone info screen", v -> confirmMenu("Open the Phone info screen?", () -> menuCall("menu_usual", ""))),
+                Ui.lp(act, 6));
         menuView = Ui.text(act, menuMsg, 12, Ui.FG, false);
         mono(menuView);
         col.addView(menuView, Ui.lp(act, 6));
-        screensBox = new LinearLayout(act);
-        screensBox.setOrientation(LinearLayout.VERTICAL);
-        col.addView(screensBox, Ui.lp(act, 2));
-        paintScreens();
     }
 
-    private Button codeButton(final String code, String what) {
-        Button b = Ui.button(act, code + "   " + what, v -> confirmMenu("Dial " + code + "?", () -> menuCall("menu_dial", code)));
-        b.setTextSize(12);
-        return b;
-    }
-
-    /** Every menu action asks first, in plain words: the menus are made for factory and repair staff. */
+    /** The screen asks first, in plain words: it is made for factory and repair staff, and it has switches in it. */
     private void confirmMenu(String title, final Runnable go) {
         new AlertDialog.Builder(act)
                 .setTitle(title)
-                .setMessage("Service menus are made for the factory and for repair shops. Looking is safe. Only change band or network "
+                .setMessage("Service screens are made for the factory and for repair shops. Looking is safe. Only change band or network "
                         + "selection, and write down what it was before (usually \"all bands\" or \"auto\") so you can put it back. "
                         + "Never touch anything about IMEI, NVRAM, flashing, firmware, unlock, reset, or backup and restore. If mobile "
                         + "data stops working afterwards: set the band back to all bands or auto, press Restore everything (Phone tab on the tablet "
@@ -367,38 +344,6 @@ final class LabSection {
         setMenu("Asking the phone…");
         String target = "/act?name=" + action + (arg.isEmpty() ? "" : "&arg=" + Http.enc(arg));
         Call.run(act, "POST", target, 60000, (ok, text, json) -> setMenu(text));
-    }
-
-    private void findMenus() {
-        setMenu("Looking through the phone's apps and dialer codes (this can take half a minute)…");
-        Call.run(act, "POST", "/act?name=menu_find", 120000, (ok, text, json) -> {
-            if (!ok) {
-                setMenu(text);
-                return;
-            }
-            MenuScan.Reply reply = MenuScan.parseReply(text);
-            setMenu(MenuScan.summary(reply));
-            screens = reply.activities;
-            paintScreens();
-        });
-    }
-
-    private void paintScreens() {
-        if (screensBox == null) {
-            return;
-        }
-        screensBox.removeAllViews();
-        if (screens.isEmpty()) {
-            return;
-        }
-        screensBox.addView(Ui.text(act, "Screens this phone can open (tap to open on the phone):", 12, Ui.DIM, false));
-        for (int i = 0; i < screens.size() && i < 12; i++) {
-            final String comp = screens.get(i);
-            Button b = Ui.button(act, comp.length() > 46 ? comp.substring(0, 20) + "…" + comp.substring(comp.length() - 24) : comp,
-                    v -> confirmMenu("Open this screen?", () -> menuCall("menu_open", comp)));
-            b.setTextSize(11);
-            screensBox.addView(b, Ui.lp(act, 2));
-        }
     }
 
     // ------------------------------------------------------------ 4. the best spot

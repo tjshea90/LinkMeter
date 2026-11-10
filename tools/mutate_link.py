@@ -315,6 +315,11 @@ Y = [
  ("safety: Restore everything is not promised for the saver", "SafetyReport.java", "f.menuRecent\n                || f.batterySaver;", "f.menuRecent;"),
  ("safety: the Automatic choice is not mentioned", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (false) {\n                    // Restore everything stores Off"),
  ("safety: the Automatic choice is mentioned when the saver is off", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (true) {\n                    // Restore everything stores Off"),
+ ("safety: the 5G leg note does not name the older version", "SafetyReport.java", 'l.add("the 5G leg was switched off by an older version of LinkMeter");', 'l.add("the 5G leg was switched off");'),
+ ("safety: the band lock note does not name the older version", "SafetyReport.java", 'l.add("a band lock may be on, left by an older version of LinkMeter");', 'l.add("a band lock may be on");'),
+ ("safety: a band lock note is no radio change", "SafetyReport.java", "return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.menuRecent;", "return f.typesChanged || f.legChanged || f.radioBlip || f.airplaneTimer || f.menuRecent;"),
+ ("safety: a 5G leg note is not put back by Restore everything", "SafetyReport.java", "return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged", "return f.typesChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged"),
+ ("safety: the report lists a leg line again", "SafetyReport.java", 'sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append(\'\\n\');', 'sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append(\'\\n\');\n        sb.append("5G leg: on (normal)\\n");'),
 ]
 PACE2_FILES = ["ScreenPace.java"]
 PACE2_TEST = ROOT + "/tools/test/ScreenPaceTest.java"
@@ -397,7 +402,10 @@ N = [
  ("leg: an answer that says nothing forgets the flag", "NrLeg.java", "return Boolean.TRUE.equals(s.enabled) || s.result.equals", "return !Boolean.FALSE.equals(s.enabled) || s.result.equals"),
  ("leg: a leg reported on does not forget the flag", "NrLeg.java", "return Boolean.TRUE.equals(s.enabled) || s.result.equals", "return s.result.equals"),
  ("leg: a modem that cannot is told it was switched back on", "NrLeg.java", 'return "5G leg: this phone cannot switch it, so there was nothing to put back.";', 'return "5G leg: switched back on.";'),
- ("leg: a flag that stays hides the reason", "NrLeg.java", 'return "5G leg: could not be switched back on. " + describeSet("on", s);', 'return "5G leg: could not be switched back on.";'),
+ ("leg: a flag that stays hides the reason", "NrLeg.java", 'return "5G leg: could not be switched back on (" + why + ").";', 'return "5G leg: could not be switched back on.";'),
+ ("leg: the fixed sentence no longer says cannot", "NrLeg.java", "cannot switch the 5G leg any more", "does not switch the leg any more"),
+ ("leg: the fixed sentence reads like a state", "NrLeg.java", "(this phone's modem did not obey it), so nothing was changed.", "(5G leg is off now), so nothing was changed."),
+ ("leg: the fixed sentence is taken for an accepted answer", "NrLeg.java", 'REMOVED = "5G leg: this version', 'REMOVED = "5G leg: the modem accepted this version'),
  ("leg: an accepted request is said to be a fact", "NrLeg.java", 'return "5G leg: the modem accepted the request to switch it back on.";', 'return "5G leg: switched back on.";'),
 ]
 TYPES_FILES = ["TypesFlag.java"]

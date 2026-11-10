@@ -1,12 +1,11 @@
 package com.tj.linkmeter;
 
 /**
- * Offline test of NrLeg (the words the phone and the tablet share about the 5G leg). Run by tools/test.sh.
- * Prints "N checks, M failed".
+ * Offline test of NrLeg (what is left of the 5G leg on the phone). Run by tools/test.sh. Prints "N checks, M failed".
  *
- * What matters most: the comparison run decides what it is measuring from these words, so the text must NEVER say "5G leg is
- * off" unless the phone really reported the leg off, and never "5G leg is on" unless it reported it on, whatever the modem
- * answered (rejected, not supported, accepted but unchanged, an error, garbage).
+ * What matters most: (1) the stored note "an older version switched the 5G leg off" is forgotten whenever nothing can have been
+ * switched off (audit D1: on this modem it stayed for ever), and kept whenever the leg may still be off; (2) the one sentence the
+ * four old actions answer keeps a tablet that is not updated yet working (audit D3): the old comparison reads these words.
  */
 public final class NrLegTest {
     static int checks;
@@ -22,6 +21,29 @@ public final class NrLegTest {
 
     static NrLeg.State st(Boolean enabled, Boolean supported, String result, String error) {
         return new NrLeg.State(enabled, supported, result, error);
+    }
+
+    // How a tablet up to v0.2.102 read the phone's words: copies of that version's NrLeg.offFromText, accepted and cannot, so the
+    // contract of the fixed sentence stays pinned after the current helpers are gone.
+    static Boolean oldOffFromText(String text) {
+        if (text == null) {
+            return null;
+        }
+        if (text.contains("5G leg is off")) {
+            return Boolean.TRUE;
+        }
+        if (text.contains("5G leg is on")) {
+            return Boolean.FALSE;
+        }
+        return null;
+    }
+
+    static boolean oldAccepted(String text) {
+        return text != null && (text.startsWith("5G leg is") || text.startsWith("5G leg: the modem accepted"));
+    }
+
+    static boolean oldCannot(String text) {
+        return text != null && (text.contains("cannot switch the 5G leg") || text.contains("has no setNrDualConnectivityState"));
     }
 
     public static void main(String[] a) {
@@ -52,100 +74,23 @@ public final class NrLegTest {
             check(s.enabled == null, "capital letters are not guessed at (ShellMain only prints lower case)");
         }
 
-        // ---- the words, for every combination
-        String[] asks = {"on", "off", "off-now"};
-        String[] results = {"SUCCESS", "NOT_SUPPORTED", "RADIO_NOT_AVAILABLE", "ERROR_INVALID_ARG", "RADIO_ERROR", "7", "", "n/a"};
-        Boolean[] tri = {Boolean.TRUE, Boolean.FALSE, null};
-        String[] errors = {"", "boom"};
-        int combos = 0;
-        for (String ask : asks) {
-            for (String res : results) {
-                for (Boolean en : tri) {
-                    for (Boolean sup : tri) {
-                        for (String err : errors) {
-                            NrLeg.State s = st(en, sup, res, err);
-                            String t = NrLeg.describeSet(ask, s);
-                            String ctx = " [ask=" + ask + " result=" + res + " enabled=" + en + " supported=" + sup + " error=" + err + "]";
-                            combos++;
-                            check(t != null && !t.isEmpty(), "a set answer always has words" + ctx);
-                            Boolean off = NrLeg.offFromText(t);
-                            // I1/I2: the words never claim a state the phone did not report
-                            if (Boolean.TRUE.equals(off)) {
-                                check(Boolean.FALSE.equals(en) && err.isEmpty(), "never says 'off' unless the phone reported off" + ctx);
-                            }
-                            if (Boolean.FALSE.equals(off)) {
-                                check(Boolean.TRUE.equals(en) && err.isEmpty(), "never says 'on' unless the phone reported on" + ctx);
-                            }
-                            // an error is never read as a state
-                            if (!err.isEmpty()) {
-                                check(off == null, "an error says nothing about the state" + ctx);
-                                check(t.contains(err), "the error text is shown" + ctx);
-                            }
-                            // I3: accepted, and the phone reports what was asked -> the words say that state
-                            if (err.isEmpty() && res.equals("SUCCESS") && en != null) {
-                                boolean wantOff = ask.startsWith("off");
-                                if (en == !wantOff) {
-                                    check(Boolean.valueOf(wantOff).equals(off), "success + reported as asked -> the words say so" + ctx);
-                                } else {
-                                    check(off == null, "accepted but reported unchanged is never taken for the new state" + ctx);
-                                    check(t.contains("still reports"), "and says it is still reported the old way" + ctx);
-                                }
-                            }
-                            // accepted() is true exactly when the modem said SUCCESS and nothing went wrong
-                            check(NrLeg.accepted(t) == (err.isEmpty() && res.equals("SUCCESS")),
-                                    "accepted() agrees with SUCCESS and no error" + ctx + " text=" + t);
-                            // I5: a modem that cannot do it says so in words the tablet recognizes
-                            if (err.isEmpty() && res.equals("NOT_SUPPORTED")) {
-                                check(NrLeg.cannot(t), "not supported is recognized" + ctx);
-                                check(off == null, "not supported says nothing about the state" + ctx);
-                            }
-                            if (!res.equals("NOT_SUPPORTED") && !Boolean.FALSE.equals(sup)) {
-                                check(!NrLeg.cannot(t), "'cannot' only when it really cannot" + ctx);
-                            }
-                            // the "off" hint appears only for plain "off", where waiting makes sense
-                            if (err.isEmpty() && res.equals("SUCCESS") && en != null && ask.equals("off") && Boolean.TRUE.equals(en)) {
-                                check(t.contains("off now"), "plain off that is still on points to 'off now'" + ctx);
-                            }
-                        }
-                    }
-                }
-            }
+        // ---- D3: the one sentence the four old actions answer (nrleg_get, nrleg_off, nrleg_off_now, nrleg_on)
+        {
+            String t = NrLeg.REMOVED;
+            check(t.contains("cannot switch the 5G leg"), "it says the phone cannot switch the leg: an old tablet takes that as 'never possible'");
+            check(!t.contains("5G leg is on") && !t.contains("5G leg is off"), "and gives no reading an old tablet could take for a state");
+            check(oldCannot(t), "an old tablet recognizes it as 'cannot'");
+            check(oldOffFromText(t) == null, "an old tablet reads no state from it");
+            check(!oldAccepted(t), "an old tablet does not take it for an accepted request");
+            check(!t.startsWith("5G leg is") && !t.startsWith("5G leg: the modem accepted"), "it does not start like an accepted answer");
+            check(t.startsWith("5G leg:") && !t.contains("\n") && !t.contains("unknown action"), "one line of plain words, not an error");
         }
-        check(combos == 3 * 8 * 3 * 3 * 2, "all combinations were tried");
-
-        // ---- reading only
-        for (Boolean en : tri) {
-            for (Boolean sup : tri) {
-                for (String err : errors) {
-                    String t = NrLeg.describe(st(en, sup, "n/a", err));
-                    Boolean off = NrLeg.offFromText(t);
-                    String ctx = " [enabled=" + en + " supported=" + sup + " error=" + err + "]";
-                    check(!t.isEmpty(), "a read always has words" + ctx);
-                    if (!err.isEmpty()) {
-                        check(off == null, "a read error says nothing about the state" + ctx);
-                    } else if (en == null) {
-                        check(off == null, "an unknown state stays unknown" + ctx);
-                    } else {
-                        check(Boolean.valueOf(!en).equals(off), "a read says exactly the reported state" + ctx);
-                    }
-                    check(NrLeg.cannot(t) == (err.isEmpty() && Boolean.FALSE.equals(sup)), "a read says 'cannot' only if the modem said so" + ctx);
-                }
-            }
-        }
-
-        // ---- the tablet's reading of arbitrary text
-        check(NrLeg.offFromText(null) == null, "null text");
-        check(NrLeg.offFromText("") == null, "empty text");
-        check(NrLeg.offFromText("Failed (code 1): 5G leg is off") == Boolean.TRUE, "an off statement inside other text");
-        check(NrLeg.offFromText("the leg is off") == null, "similar words are not enough");
-        check(!NrLeg.cannot(null), "cannot(null)");
-        check(!NrLeg.accepted(null) && !NrLeg.accepted("") && !NrLeg.accepted("Failed (code 1): 5G leg is off"), "accepted() on other texts");
-        check(!NrLeg.accepted("Couldn't reach the phone: timed out"), "an unreachable phone is not 'accepted'");
 
         // ---- D1: may the stored 'an older version switched the 5G leg off' flag be forgotten after 'leg on'?
         String noCall = "this phone has no setNrDualConnectivityState(int)";
         String[] answers = {"SUCCESS", "NOT_SUPPORTED", "RADIO_NOT_AVAILABLE", "ERROR_INVALID_ARG", "RADIO_ERROR", "7", "", "n/a"};
         String[] errs = {"", "boom", noCall, "java.lang.IllegalStateException: Telephony service is null"};
+        Boolean[] tri = {Boolean.TRUE, Boolean.FALSE, null};
         int states = 0;
         for (String res : answers) {
             for (Boolean en : tri) {
@@ -180,6 +125,8 @@ public final class NrLegTest {
                         if (!err.isEmpty() && !err.equals(noCall)) {
                             check(line.contains(err), "a kept flag shows the error" + ctx);
                         }
+                        // this version never says what the leg IS from a word it did not read
+                        check(!line.contains("5G leg is on") && !line.contains("5G leg is off"), "no reading in the line" + ctx);
                     }
                 }
             }
@@ -194,10 +141,23 @@ public final class NrLegTest {
         check(NrLeg.mayForget(NrLeg.parse("OK nrdc state=on supported=yes result=SUCCESS")), "accepted and on: forgotten");
         check(NrLeg.mayForget(NrLeg.parse("OK nrdc state=off supported=yes result=SUCCESS")),
                 "accepted although the read still says off (that read means nothing on some modems): forgotten");
-        check(!NrLeg.mayForget(NrLeg.parse("OK nrdc state=off supported=yes result=RADIO_NOT_AVAILABLE")), "radio not available: tried again later");
+        check(!NrLeg.mayForget(NrLeg.parse("OK nrdc state=off supported=yes result=RADIO_NOT_AVAILABLE")), "radio not available: the flag stays");
+        check(NrLeg.restoreLine(NrLeg.parse("OK nrdc state=off supported=yes result=RADIO_NOT_AVAILABLE")).contains("radio is not available"),
+                "and the line says why");
         check(!NrLeg.mayForget(NrLeg.parse("ERR java.lang.SecurityException: not allowed")), "a refusal keeps the flag");
         check(!NrLeg.mayForget(NrLeg.parse("")) && !NrLeg.mayForget(NrLeg.parse(null)) && !NrLeg.mayForget(NrLeg.parse("garbage")),
                 "no readable answer keeps the flag");
+
+        // ---- WAITING FOR PART B of track T4: the tablet's comparison still reads the old words with these three (they go with it)
+        check(NrLeg.offFromText(null) == null, "null text");
+        check(NrLeg.offFromText("") == null, "empty text");
+        check(NrLeg.offFromText("Failed (code 1): 5G leg is off") == Boolean.TRUE, "an off statement inside other text");
+        check(NrLeg.offFromText("the leg is off") == null, "similar words are not enough");
+        check(!NrLeg.cannot(null), "cannot(null)");
+        check(NrLeg.cannot(NrLeg.REMOVED), "the fixed sentence is 'cannot'");
+        check(!NrLeg.accepted(null) && !NrLeg.accepted("") && !NrLeg.accepted("Failed (code 1): 5G leg is off"), "accepted() on other texts");
+        check(!NrLeg.accepted("Couldn't reach the phone: timed out"), "an unreachable phone is not 'accepted'");
+        check(!NrLeg.accepted(NrLeg.REMOVED) && NrLeg.offFromText(NrLeg.REMOVED) == null, "the fixed sentence is neither accepted nor a reading");
 
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);

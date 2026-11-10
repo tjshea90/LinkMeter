@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Tripwire: the app must have exactly the ways to dial / type that SAFETY.md says, and no others.
+"""Tripwire: the app dials NOTHING, places no call, sends no USSD, and types only through the guarded routes.
 
 Run by tools/test.sh (so the release pipeline runs it too). It reads the app's SOURCE, with comments removed, and fails if:
   * anything can place a call or send USSD (ACTION_CALL, CALL_PHONE, placeCall, sendUssdRequest, ...);
-  * the dialer is opened (android.intent.action.DIAL, tel:) anywhere except MenuScan.dialCommand, the one place that builds a dial
-    command and gives nothing unless the code is on the safe list;
-  * a secret-code broadcast is sent (am broadcast, SECRET_CODE outside the text parsing in MenuScan);
+  * any dial route exists, in ANY file: android.intent.action.DIAL, ACTION_DIAL, tel:, dialCommand, dialUri, SAFE_CODES, menu_dial
+    (versions up to v0.2.102 could dial seven fixed service codes; this phone's dialer answered "invalid MMI" to all of them, so the
+    app dials nothing now and the build fails if a dial route ever comes back);
+  * `am start` appears anywhere except Menus.java, or any `am start` is not exactly `am start -n '` (a screen by name, never an
+    action or an address);
+  * a secret-code broadcast is sent or looked for (am broadcast, SECRET_CODE, android_secret_code) in any file;
   * typed characters reach the phone by any route other than the guarded ones: ShellMain.typeText must check TypingFilter, the
     control channel must filter its text lines, the tablet must filter before sending, the one-shot text route must not accept * or #,
     the PIN route must be digits only;
-  * the keys the app may press (Screen.KEYS and every literal `input keyevent N`) include a digit, *, #, call or numeric-keypad key;
-  * the list of safe codes in docs/SAFETY.md differs from MenuScan.SAFE_CODES.
-Prints "N checks, M failed".
+  * the keys the app may press (Screen.KEYS and every literal `input keyevent N`) include a digit, *, #, call or numeric-keypad key,
+    or `input keyevent` appears anywhere except Screen.java and Menus.java (Menus only wakes the screen);
+  * docs/SAFETY.md still lists a block of safe dial codes, or any dial code in backticks (it must say that the app dials nothing).
+Prints "N checks, M failed". tools/mutate_dial.py breaks each of these rules in a scratch copy and checks that this test fails.
 """
 import os
 import re
@@ -81,25 +85,22 @@ for token in ["ACTION_CALL", "CALL_PHONE", "CALL_PRIVILEGED", "ANSWER_PHONE_CALL
         check(token not in text, "no way to call or send USSD: %s found in %s" % (token, name))
     check(token not in manifest, "the manifest has no %s" % token)
 
-# ---- 2. the dialer is opened in exactly one place
-for token in ["android.intent.action.DIAL", "tel:"]:
+# ---- 2. the app dials nothing: no dial route in any file
+for token in ["android.intent.action.DIAL", "ACTION_DIAL", "tel:", "dialCommand", "dialUri", "SAFE_CODES", "menu_dial", "isSafeDialCode", "isDialCode"]:
     holders = [n for n, t in sources.items() if token in t]
-    check(holders == ["MenuScan.java"], "%s appears only in MenuScan.java (found in %s)" % (token, holders))
-menu = sources["MenuScan.java"]
-m = re.search(r"static String dialCommand\(String code\) \{(.*?)\n    \}", menu, re.S)
-check(m is not None, "MenuScan.dialCommand exists")
-body = m.group(1) if m else ""
-check("isSafeDialCode(code)" in body and "return null" in body, "dialCommand gives nothing unless the code is on the safe list")
-check(menu.count("android.intent.action.DIAL") == 1, "and it is the only place that builds a dial command")
-check("dialCommand(" in sources["Menus.java"] and "DIAL" not in sources["Menus.java"] and "dialUri" not in sources["Menus.java"],
-      "Menus.dial uses dialCommand and builds nothing itself")
-check("isSafeDialCode" not in sources["Menus.java"] or "dialCommand" in sources["Menus.java"], "Menus does not dial on its own")
+    check(holders == [], "the app dials nothing: %s appears in %s" % (token, holders))
+for token in ["android.intent.action.DIAL", "scheme=\"tel\"", "scheme=\"voicemail\""]:
+    check(token not in manifest, "the manifest has no dial route: %s" % token)
 
-# ---- 3. no secret-code broadcast
+# ---- 3. screens are opened by name only, in one file; no secret-code broadcast and no looking for them
+holders = [n for n, t in sources.items() if "am start" in t]
+check(holders == ["Menus.java"], "`am start` is used only in Menus.java (found in %s)" % holders)
 for name, text in sources.items():
-    if name != "MenuScan.java":
-        check("SECRET_CODE" not in text, "no secret-code broadcast: SECRET_CODE in %s" % name)
-check("sendBroadcast" not in menu and "am broadcast" not in menu, "MenuScan only READS secret-code receivers, it sends nothing")
+    for m in re.finditer(r"am start", text):
+        check(text[m.start():m.start() + len("am start -n '")] == "am start -n '",
+              "every `am start` opens a screen by name (am start -n '...'), never by action or address: %s near %r" % (name, text[m.start():m.start() + 40]))
+for name, text in sources.items():
+    check("SECRET_CODE" not in text and "android_secret_code" not in text, "no secret-code broadcast or look-up: found in %s" % name)
 
 # ---- 4. typed characters
 shell = sources["ShellMain.java"]
@@ -136,22 +137,19 @@ for name, text in sources.items():
     for lit in re.findall(r'input keyevent (\d+)', text):
         check(int(lit) not in FORBIDDEN, "a literal `input keyevent %s` in %s is not a digit, *, #, call or keypad key" % (lit, name))
     if "input keyevent" in text:
-        check(name in ("Screen.java", "Actions.java", "Menus.java", "MenuScan.java"), "`input keyevent` only in the reviewed files (found in %s)" % name)
+        check(name in ("Screen.java", "Menus.java"), "`input keyevent` only in the reviewed files (found in %s)" % name)
 check("allowedKey(" in screen and screen.count("allowedKey(") >= 3, "tablet key presses go through the whitelist")
 
 # ---- 6. no permission to call
 check("CALL_PHONE" not in manifest and "CALL_PRIVILEGED" not in manifest, "the manifest asks for no call permission")
 
-# ---- 7. the document says the same as the code
-sc = re.search(r"SAFE_CODES = \{(.*?)\n    \};", menu, re.S)
-code_codes = re.findall(r'\{"([^"]+)",\s*"', sc.group(1)) if sc else []
-check(len(code_codes) >= 6, "the safe codes were read from MenuScan (%d)" % len(code_codes))
+# ---- 7. the document says the same as the code: the app dials nothing, so it lists no dial code
 with open(os.path.join(ROOT, "docs", "SAFETY.md"), encoding="utf-8") as f:
     doc = f.read()
-sect = re.search(r"<!-- safe-codes:start -->(.*?)<!-- safe-codes:end -->", doc, re.S)
-check(sect is not None, "docs/SAFETY.md has the marked list of safe codes")
-doc_codes = re.findall(r"`([*#0-9]+)`", sect.group(1)) if sect else []
-check(sorted(doc_codes) == sorted(code_codes), "SAFETY.md lists exactly the codes the app dials: doc %s, code %s" % (sorted(doc_codes), sorted(code_codes)))
+check("safe-codes" not in doc, "docs/SAFETY.md has no marked list of safe dial codes")
+check(re.search(r"`(?=[*#0-9]{3,}`)[*#0-9]*[*#][*#0-9]*`", doc) is None,
+      "and lists no dial code in backticks: %s" % re.findall(r"`(?=[*#0-9]{3,}`)[*#0-9]*[*#][*#0-9]*`", doc))
+check("dials nothing" in doc or "dials no code" in doc, "and says that the app dials nothing")
 
 print("%d checks, %d failed" % (checks, failed))
 sys.exit(1 if failed else 0)

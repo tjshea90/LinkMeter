@@ -28,16 +28,14 @@ import java.util.function.IntPredicate;
  * app_process, so it can call the phone's telephony system APIs, which a normal app
  * cannot. It runs one command, prints one result and exits.
  *
- *   info                 facts about what this phone's telephony API offers
  *   nt-get               read the allowed network types (the "Network mode" setting)
  *   nt-set MASK          set them
- *   bands-set lte:5,12   restrict the modem to those bands (";" separates networks)
- *   bands-clear          remove any band restriction
+ *   bands-clear          remove any band restriction (versions up to v0.2.102 could set one; this phone never obeyed it, so only
+ *                        the removal is left, for what such a version left behind)
  *   radio-cycle          switch the radio off for a few seconds and on again (the modem then searches for a network from
  *                        scratch, which is when a band restriction is applied); the radio is always switched back on
  *   radio-on             make sure the radio is on
- *   nrdc-get             is the 5G leg (NR dual connectivity) allowed? (see NrLeg for the answer's words)
- *   nrdc-set on|off|off-now   allow the 5G leg, or keep the phone from adding it (off-now drops it at once)
+ *   nrdc-set on          allow the 5G leg (NR dual connectivity) again, for what an older version left switched off (see NrLeg)
  *   sleep [nodoze]       put the device to sleep through the power service (nodoze: skip the Always-On Display)
  *   hotspot-start        switch the Wi-Fi hotspot on (the system's tethering service, as the shell user), and say whether it
  *                        really came on
@@ -83,8 +81,6 @@ public final class ShellMain {
         }
         TelephonyManager tm = telephony();
         switch (a[0]) {
-            case "info":
-                return info(tm);
             case "nt-get":
                 return "OK " + call(tm, "getAllowedNetworkTypesForReason", REASON_USER);
             case "nt-set":
@@ -93,18 +89,14 @@ public final class ShellMain {
                 }
                 return "OK " + call(tm, "setAllowedNetworkTypesForReason", REASON_USER,
                         Long.valueOf(Long.parseLong(a[1])));
-            case "bands-set":
-                return bandsSet(tm, a.length > 1 ? a[1] : "");
             case "bands-clear":
-                return bandsSet(tm, "");
+                return bandsClear(tm);
             case "radio-cycle":
                 return radioCycle(tm);
             case "radio-on":
                 return radioOn(tm);
-            case "nrdc-get":
-                return nrdc(tm, null);
             case "nrdc-set":
-                return nrdc(tm, a.length > 1 ? a[1] : "");
+                return nrdcOn(tm, a.length > 1 ? a[1] : "");
             default:
                 return "ERR unknown command";
         }
@@ -237,44 +229,6 @@ public final class ShellMain {
             throw new NoSuchMethodException(name + " with " + args.length + " arguments");
         }
         return m.invoke(target, args);
-    }
-
-    private static String info(TelephonyManager tm) {
-        StringBuilder sb = new StringBuilder("OK info\n");
-        sb.append("sdk=").append(android.os.Build.VERSION.SDK_INT).append('\n');
-        sb.append("defaultDataSub=").append(SubscriptionManager.getDefaultDataSubscriptionId()).append('\n');
-        try {
-            sb.append("allowedNetworkTypes(user)=")
-                    .append(call(tm, "getAllowedNetworkTypesForReason", REASON_USER)).append('\n');
-        } catch (Throwable t) {
-            sb.append("allowedNetworkTypes: ").append(unwrap(t)).append('\n');
-        }
-        try {
-            sb.append("supportedRadioAccessFamily=")
-                    .append(call(tm, "getSupportedRadioAccessFamily")).append('\n');
-        } catch (Throwable t) {
-            sb.append("supportedRadioAccessFamily: ").append(unwrap(t)).append('\n');
-        }
-        try {
-            sb.append("systemSelectionChannels=")
-                    .append(call(tm, "getSystemSelectionChannels")).append('\n');
-        } catch (Throwable t) {
-            sb.append("systemSelectionChannels: ").append(unwrap(t)).append('\n');
-        }
-        sb.append("methods:\n");
-        for (Method m : tm.getClass().getMethods()) {
-            String n = m.getName();
-            if (n.contains("SelectionChannels") || n.contains("AllowedNetworkTypes")
-                    || n.contains("PreferredNetworkType") || n.contains("Band")) {
-                sb.append("  ").append(n).append('(');
-                Class<?>[] ps = m.getParameterTypes();
-                for (int i = 0; i < ps.length; i++) {
-                    sb.append(i > 0 ? ", " : "").append(ps[i].getSimpleName());
-                }
-                sb.append(")\n");
-            }
-        }
-        return sb.toString().trim();
     }
 
     // ------------------------------------------------------------ live touch input
@@ -811,39 +765,22 @@ public final class ShellMain {
     }
 
     /**
-     * The 5G leg (NR dual connectivity): read it (want == null) or switch it (on, off, off-now). The numbers are read from the
-     * phone's own TelephonyManager, so a phone that numbers them differently still gets the right ones. Answer, read by NrLeg:
-     * "OK nrdc state=on|off|unknown supported=yes|no|unknown result=WORD|n/a" (WORD = the modem's own word, for example SUCCESS
-     * or NOT_SUPPORTED). "off" lets the modem drop the 5G cell when the current connection ends; "off-now" drops it at once.
+     * Allows the 5G leg (NR dual connectivity) again: the one request left, for a leg that a version up to v0.2.102 switched off
+     * (nothing switches it off any more; this modem answered NOT_SUPPORTED to that). The number is read from the phone's own
+     * TelephonyManager, so a phone that numbers it differently still gets the right one. Answer, read by NrLeg:
+     * "OK nrdc state=on|off|unknown supported=yes|no|unknown result=WORD" (WORD = the modem's own word, for example SUCCESS or
+     * NOT_SUPPORTED), or "ERR why".
      */
-    private static String nrdc(TelephonyManager tm, String want) throws Exception {
-        String result = "n/a";
-        if (want != null) {
-            String field;
-            int fallback;
-            switch (want) {
-                case "on":
-                    field = "NR_DUAL_CONNECTIVITY_ENABLE";
-                    fallback = 1;
-                    break;
-                case "off":
-                    field = "NR_DUAL_CONNECTIVITY_DISABLE";
-                    fallback = 2;
-                    break;
-                case "off-now":
-                    field = "NR_DUAL_CONNECTIVITY_DISABLE_IMMEDIATE";
-                    fallback = 3;
-                    break;
-                default:
-                    return "ERR unknown state '" + want + "' (use on, off or off-now)";
-            }
-            Method set = find(tm.getClass(), "setNrDualConnectivityState", 1);
-            if (set == null) {
-                return "ERR this phone has no setNrDualConnectivityState(int)";
-            }
-            Object r = set.invoke(tm, Integer.valueOf(intConstant(tm.getClass(), field, fallback)));
-            result = resultWord(tm.getClass(), r);
+    private static String nrdcOn(TelephonyManager tm, String want) throws Exception {
+        if (!"on".equals(want)) {
+            return "ERR unknown state '" + want + "' (only on is left)";
         }
+        Method set = find(tm.getClass(), "setNrDualConnectivityState", 1);
+        if (set == null) {
+            return "ERR this phone has no setNrDualConnectivityState(int)";
+        }
+        Object r = set.invoke(tm, Integer.valueOf(intConstant(tm.getClass(), "NR_DUAL_CONNECTIVITY_ENABLE", 1)));
+        String result = resultWord(tm.getClass(), r);
         String state = "unknown";
         try {
             state = Boolean.TRUE.equals(call(tm, "isNrDualConnectivityEnabled")) ? "on" : "off";
@@ -897,39 +834,9 @@ public final class ShellMain {
         return String.valueOf(v);
     }
 
-    /** spec looks like "lte:5,12;nr:5,71". An empty spec clears the restriction. */
-    private static String bandsSet(TelephonyManager tm, String spec) throws Exception {
-        if (!spec.matches("[a-z0-9,;:]*")) {
-            return "ERR bad band list";
-        }
-        Class<?> ras = Class.forName("android.telephony.RadioAccessSpecifier");
-        Constructor<?> k = ras.getConstructor(int.class, int[].class, int[].class);
+    /** Removes any band restriction (an empty list tells the modem to search everywhere again). */
+    private static String bandsClear(TelephonyManager tm) throws Exception {
         List<Object> list = new ArrayList<>();
-        if (!spec.isEmpty()) {
-            for (String part : spec.split(";")) {
-                String[] kv = part.split(":");
-                if (kv.length != 2) {
-                    return "ERR bad band list";
-                }
-                int ran;
-                switch (kv[0]) {
-                    case "lte":
-                        ran = 3; // AccessNetworkType.EUTRAN
-                        break;
-                    case "nr":
-                        ran = 6; // AccessNetworkType.NGRAN
-                        break;
-                    default:
-                        return "ERR unknown network " + kv[0];
-                }
-                String[] bs = kv[1].split(",");
-                int[] bands = new int[bs.length];
-                for (int i = 0; i < bs.length; i++) {
-                    bands[i] = Integer.parseInt(bs[i]);
-                }
-                list.add(k.newInstance(ran, bands, new int[0]));
-            }
-        }
         Method m = find(tm.getClass(), "setSystemSelectionChannels", 3);
         if (m == null) {
             return "ERR this phone has no setSystemSelectionChannels(list, executor, callback)";

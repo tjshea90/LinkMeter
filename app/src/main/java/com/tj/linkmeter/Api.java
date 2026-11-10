@@ -120,12 +120,8 @@ final class Api {
                 }
                 break;
             case "/cells":
-            case "/band":
-            case "/band/keep":
-            case "/band/status":
-            case "/bandinfo":
                 if (phone) {
-                    bands(c, r, out);
+                    cells(out);
                 } else {
                     Http.err(out, 404, "not a phone");
                 }
@@ -181,42 +177,10 @@ final class Api {
         }
     }
 
-    private static void bands(Context c, Http.Req r, OutputStream out) throws IOException {
+    private static void cells(OutputStream out) throws IOException {
         try {
-            switch (r.path) {
-                case "/cells":
-                    Http.json(out, 200, Cells.survey());
-                    break;
-                case "/bandinfo":
-                    Http.json(out, 200, "{\"ok\":true,\"out\":"
-                            + JSONObject.quote(Cells.shellMain(c, "info").out) + "}");
-                    break;
-                case "/band/keep":
-                    Cells.keep();
-                    Http.json(out, 200, "{\"ok\":true,\"out\":\"Lock kept.\"}");
-                    break;
-                case "/band/status":
-                    Http.json(out, 200, Cells.status());
-                    break;
-                default: {
-                    String set = r.q("set");
-                    if (!"POST".equals(r.method) || !set.matches("[a-z0-9,;:]*")) {
-                        Http.err(out, 400, "bad request");
-                        break;
-                    }
-                    String res = Cells.applyBands(c, set);
-                    if (res.contains("OK ")) {
-                        JSONObject j = new JSONObject(Cells.status());
-                        j.put("ok", true);
-                        j.put("out", res);
-                        Http.json(out, 200, j.toString());
-                    } else {
-                        Http.err(out, 409, res);
-                    }
-                    break;
-                }
-            }
-        } catch (IOException | org.json.JSONException e) {
+            Http.json(out, 200, Cells.survey());
+        } catch (IOException e) {
             Http.err(out, 409, String.valueOf(e.getMessage()));
         }
     }

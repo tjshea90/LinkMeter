@@ -1,9 +1,6 @@
 package com.tj.linkmeter;
 
 import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.SystemClock;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -17,22 +14,14 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Phone only: which cells and bands the phone can see, and an attempt to restrict
- * the modem to chosen bands. Whether the modem obeys depends on the phone, so every
- * answer is passed back to the tablet as it came. A band lock undoes itself after two
- * minutes unless the tablet confirms that mobile data still works.
+ * Phone only: which cells and bands the phone can see, and the way to run ShellMain. (Versions up to v0.2.102 also tried to lock
+ * the modem to chosen bands; this modem never obeyed, so that is gone. The phone still removes a lock such a version left: see
+ * Actions.cleanOldFlags and ShellMain "bands-clear".)
  */
 final class Cells {
     private static final int NONE = Integer.MIN_VALUE;
-    private static final long REVERT_MS = 120000L;
-    private static final Handler H = new Handler(Looper.getMainLooper());
     private static final Pattern START = Pattern.compile("CellInfo(Lte|Nr|Wcdma|Gsm|Tdscdma|Cdma)");
     private static final Pattern BANDS = Pattern.compile("mBands=\\[([0-9, ]*)]");
-
-    private static volatile Runnable pending;
-    private static volatile String lockSpec = "";
-    private static volatile boolean kept;
-    private static volatile long revertAt;
 
     private Cells() {}
 
@@ -201,85 +190,5 @@ final class Cells {
 
     private static int lteBand(int earfcn) {
         return RadioState.lteBand(earfcn);
-    }
-
-    // ------------------------------------------------------------ band lock
-
-    /** spec: "lte:5,12;nr:71", or empty to clear. The caller has already checked the characters. */
-    static String applyBands(Context c, String spec) throws IOException {
-        if (!spec.isEmpty()) {
-            Saved.rememberLock(c); // before the lock is asked for: a cut-off must still be undone
-        }
-        // if this throws (Shizuku went away) the lock may or may not be on: the flag stays, and the safety net clears it
-        Priv.Result r = shellMain(c, spec.isEmpty() ? "bands-clear" : "bands-set '" + spec + "'");
-        boolean ok = r.out.contains("OK ");
-        if (ok && !spec.isEmpty()) {
-            lockSpec = spec;
-            kept = false;
-            revertAt = SystemClock.elapsedRealtime() + REVERT_MS;
-            armRevert(c);
-            Guard.arm(c);
-        } else if (ok) {
-            clearState();
-            Saved.clearLock(c);
-        } else if (!spec.isEmpty()) {
-            Saved.clearLock(c); // the modem refused it: nothing is locked
-        }
-        return r.out;
-    }
-
-    /** What is locked right now, for the tablet: {"lock":"lte:5","kept":false,"left":97}. */
-    static String status() {
-        JSONObject o = new JSONObject();
-        try {
-            o.put("lock", lockSpec);
-            o.put("kept", kept);
-            o.put("left", (kept || lockSpec.isEmpty()) ? 0
-                    : Math.max(0, (revertAt - SystemClock.elapsedRealtime()) / 1000));
-        } catch (JSONException ignored) {
-            // plain values only
-        }
-        return o.toString();
-    }
-
-    /** The lock is gone (cleared by hand, undone by the timer, or by Restore). */
-    static void clearState() {
-        cancelRevert();
-        lockSpec = "";
-        kept = false;
-        revertAt = 0;
-    }
-
-    private static void armRevert(Context c) {
-        final Context app = c.getApplicationContext();
-        cancelRevert();
-        Runnable undo = () -> new Thread(() -> {
-            try {
-                if (shellMain(app, "bands-clear").out.contains("OK ")) {
-                    clearState();
-                    Saved.clearLock(app);
-                }
-            } catch (IOException ignored) {
-                // Shizuku is off; nothing more can be done from here
-            }
-        }, "linkmeter-band").start();
-        pending = undo;
-        H.postDelayed(undo, REVERT_MS);
-    }
-
-    private static void cancelRevert() {
-        Runnable p = pending;
-        if (p != null) {
-            H.removeCallbacks(p);
-            pending = null;
-        }
-    }
-
-    /** The tablet confirmed that data works: leave the lock in place. */
-    static void keep() {
-        cancelRevert();
-        if (!lockSpec.isEmpty()) {
-            kept = true;
-        }
     }
 }

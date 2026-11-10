@@ -31,13 +31,10 @@ final class Saved {
     }
 
     /**
-     * LinkMeter has switched the 5G leg (NR dual connectivity) off. Written BEFORE the change, so a session that is cut off in
-     * the middle is still undone: Restore everything (and the safety net) switch the leg back on while this is set.
+     * LEFT BY A VERSION UP TO v0.2.102 (this version never sets it, so nothing here writes it any more): that version switched
+     * the 5G leg (NR dual connectivity) off. Restore everything, the safety net and the clean-up at service start switch the leg
+     * back on and forget this note (NrLeg.mayForget).
      */
-    static void rememberNrLegChanged(Context c) {
-        sp(c).edit().putBoolean("nrleg", true).apply();
-    }
-
     static boolean nrLegChanged(Context c) {
         return sp(c).getBoolean("nrleg", false);
     }
@@ -48,11 +45,10 @@ final class Saved {
 
     // ---- the other things the safety net must be able to undo, even after the app was killed or the phone restarted
 
-    /** A band lock is (or may be) on. Written BEFORE the lock is asked for, cleared when it is gone. */
-    static void rememberLock(Context c) {
-        sp(c).edit().putBoolean("lock", true).apply();
-    }
-
+    /**
+     * LEFT BY A VERSION UP TO v0.2.102 (this version has no band locks and never sets it): a band lock is (or may be) on. Cleared
+     * when "bands-clear" has been answered OK.
+     */
     static boolean lockOn(Context c) {
         return sp(c).getBoolean("lock", false);
     }

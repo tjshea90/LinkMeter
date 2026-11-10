@@ -3,11 +3,13 @@ package com.tj.linkmeter;
 /**
  * No Android in here (tested in tools/test/NrLegTest.java).
  *
- * The "5G leg" of 5G UW. On Verizon the phone is connected to a 4G cell and, beside it, to a 5G cell (non-standalone, EN-DC).
- * In weak 5G the phone has to share its small uplink power between the two, and the 5G half is the weak one. Android can tell
- * the modem not to add that second leg (TelephonyManager.setNrDualConnectivityState): 5G stays allowed, but the strong 4G cell
- * carries everything. ShellMain talks to the modem and prints one line; this class reads that line and puts the answer into
- * words, so the phone and the tablet agree on the words (the tablet reads them back with {@link #offFromText}).
+ * The "5G leg" of 5G UW (the second, 5G cell beside the 4G one; TelephonyManager.setNrDualConnectivityState). Versions up to
+ * v0.2.102 could ask the modem to keep it off. THIS phone's modem never obeyed ("NOT_SUPPORTED"), so the switch is gone and this
+ * version never changes the leg. What is left here is small:
+ *  - the clean-up of a note an older version left ("the leg was switched off"): reading ShellMain's answer to "nrdc-set on",
+ *    the rule {@link #mayForget} and the words Restore everything prints ({@link #restoreLine});
+ *  - the ONE sentence the four old actions (nrleg_get, nrleg_off, nrleg_off_now, nrleg_on) answer, {@link #REMOVED}, so a tablet
+ *    that is not updated yet keeps working.
  *
  * ShellMain's line: "OK nrdc state=on|off|unknown supported=yes|no|unknown result=WORD|n/a", or "ERR why".
  */
@@ -66,55 +68,52 @@ final class NrLeg {
         return w.equals(yes) ? Boolean.TRUE : w.equals(no) ? Boolean.FALSE : null;
     }
 
-    /** The phone's words for the tablet when the leg was only read. */
-    static String describe(State s) {
+    /**
+     * What the four old actions nrleg_get, nrleg_off, nrleg_off_now and nrleg_on answer now: ONE fixed sentence (audit D3). A tablet
+     * up to v0.2.102 reads these words in its comparison, and an answer of "unknown action" would make it count the leg as
+     * unreadable and lose its baseline in every run (measured: 40 of 40). It contains "cannot switch the 5G leg", which such a
+     * tablet takes as "this phone can never do it" and goes on without the leg, and neither "5G leg is on" nor "5G leg is off",
+     * which it would take as a reading. Pinned in NrLegTest.
+     */
+    static final String REMOVED = "5G leg: this version of LinkMeter on the phone cannot switch the 5G leg any more "
+            + "(this phone's modem did not obey it), so nothing was changed.";
+
+    /** ShellMain's words when this phone's telephony has no such call at all. */
+    private static final String NO_CALL = "has no setNrDualConnectivityState";
+
+    /**
+     * May the stored flag "an older version switched the 5G leg off" be forgotten after the request "leg on" was answered with `s`?
+     * Yes when the phone reports the leg on, when the modem accepted, and when the modem says it cannot do this at all or the phone
+     * has no such call: then nothing was ever switched off, and (audit D1) the flag used to stay for ever on such a modem, keeping
+     * the safety net awake and the Safety check worried. Any other answer (an error, the radio not available, no answer) may mean the
+     * leg is still off, so the flag stays and the safety net tries again.
+     */
+    static boolean mayForget(State s) {
         if (!s.error.isEmpty()) {
-            return "5G leg: could not be read (" + s.error + ").";
+            return s.error.contains(NO_CALL);
         }
-        return stateWords(s) + support(s);
+        return Boolean.TRUE.equals(s.enabled) || s.result.equals("SUCCESS") || s.result.equals("NOT_SUPPORTED");
     }
 
-    private static String stateWords(State s) {
-        if (s.enabled == null) {
-            return "5G leg: the phone did not say whether it is on.";
+    /** The line Restore everything prints after it asked for "leg on" because the stored flag said the leg had been switched off. */
+    static String restoreLine(State s) {
+        if (!mayForget(s)) {
+            String why = !s.error.isEmpty() ? s.error
+                    : s.result.equals("RADIO_NOT_AVAILABLE") ? "the radio is not available right now"
+                    : "the modem answered " + (s.result.isEmpty() || s.result.equals("n/a") ? "nothing readable" : s.result);
+            return "5G leg: could not be switched back on (" + why + ").";
         }
-        return s.enabled ? "5G leg is on (the phone may add a 5G cell beside the 4G one)."
-                : "5G leg is off (the phone does not add a 5G cell beside the 4G one; 5G stays allowed).";
+        if (s.error.isEmpty() && Boolean.TRUE.equals(s.enabled)) {
+            return "5G leg: switched back on.";
+        }
+        if (s.error.isEmpty() && s.result.equals("SUCCESS")) {
+            return "5G leg: the modem accepted the request to switch it back on.";
+        }
+        return "5G leg: this phone cannot switch it, so there was nothing to put back.";
     }
 
-    private static String support(State s) {
-        return Boolean.FALSE.equals(s.supported) ? " The modem says it cannot switch the 5G leg." : "";
-    }
-
-    /** The phone's words after a set command. asked: "on", "off" or "off-now". */
-    static String describeSet(String asked, State s) {
-        if (!s.error.isEmpty()) {
-            return "5G leg: could not be switched " + asked + " (" + s.error + ").";
-        }
-        String r = s.result;
-        if (r.equals("NOT_SUPPORTED")) {
-            return "5G leg: this phone's modem says it cannot switch the 5G leg (not supported), so nothing was changed.";
-        }
-        if (r.equals("RADIO_NOT_AVAILABLE")) {
-            return "5G leg: the radio is not available right now; try again in a moment.";
-        }
-        if (!r.equals("SUCCESS")) {
-            return "5G leg: the modem answered " + (r.isEmpty() || r.equals("n/a") ? "nothing readable" : r)
-                    + ", so it probably did not change." + (s.enabled == null ? "" : " " + stateWords(s));
-        }
-        boolean wantOff = asked.startsWith("off");
-        if (s.enabled == null) {
-            return "5G leg: the modem accepted the request (" + asked + ") but the phone did not say what it is now.";
-        }
-        if (s.enabled == wantOff) {
-            // accepted, yet still reported the old way: "off" waits until the current connection ends
-            return "5G leg: the modem accepted \"" + asked + "\" but the phone still reports the leg "
-                    + (s.enabled ? "ON" : "OFF") + "."
-                    + (wantOff && asked.equals("off") ? " \"Off\" waits until the current connection ends: give it a minute, or use \"off now\"."
-                    : "");
-        }
-        return stateWords(s);
-    }
+    // ---- WAITING FOR PART B of track T4: the tablet's comparison (LeverRun, LeverLink) still reads the old words with these
+    // three. They go when those callers go.
 
     /**
      * Reads the phone's words back on the tablet: TRUE = the leg is off, FALSE = on, null = unknown. Only the plain statement counts;
@@ -144,36 +143,5 @@ final class NrLeg {
     /** True when the phone's words say the modem cannot do this at all. */
     static boolean cannot(String text) {
         return text != null && (text.contains("cannot switch the 5G leg") || text.contains(NO_CALL));
-    }
-
-    /** ShellMain's words when this phone's telephony has no such call at all. */
-    private static final String NO_CALL = "has no setNrDualConnectivityState";
-
-    /**
-     * May the stored flag "an older version switched the 5G leg off" be forgotten after the request "leg on" was answered with `s`?
-     * Yes when the phone reports the leg on, when the modem accepted, and when the modem says it cannot do this at all or the phone
-     * has no such call: then nothing was ever switched off, and (audit D1) the flag used to stay for ever on such a modem, keeping
-     * the safety net awake and the Safety check worried. Any other answer (an error, the radio not available, no answer) may mean the
-     * leg is still off, so the flag stays and the safety net tries again.
-     */
-    static boolean mayForget(State s) {
-        if (!s.error.isEmpty()) {
-            return s.error.contains(NO_CALL);
-        }
-        return Boolean.TRUE.equals(s.enabled) || s.result.equals("SUCCESS") || s.result.equals("NOT_SUPPORTED");
-    }
-
-    /** The line Restore everything prints after it asked for "leg on" because the stored flag said the leg had been switched off. */
-    static String restoreLine(State s) {
-        if (!mayForget(s)) {
-            return "5G leg: could not be switched back on. " + describeSet("on", s);
-        }
-        if (s.error.isEmpty() && Boolean.TRUE.equals(s.enabled)) {
-            return "5G leg: switched back on.";
-        }
-        if (s.error.isEmpty() && s.result.equals("SUCCESS")) {
-            return "5G leg: the modem accepted the request to switch it back on.";
-        }
-        return "5G leg: this phone cannot switch it, so there was nothing to put back.";
     }
 }

@@ -15,12 +15,11 @@ final class SafetyReport {
         String typesText = "";
         /** LinkMeter changed them and has not yet put them back. */
         boolean typesChanged;
-        /** True = the 5G leg is allowed (normal), false = switched off, null = unknown. */
-        Boolean legOn;
+        /**
+         * Left by a version up to v0.2.102 (this version never sets either): LinkMeter's note that the 5G leg was switched off, and
+         * its note that a band lock may be on. Restore everything and the safety net still clear them.
+         */
         boolean legChanged;
-        /** The band lock now ("" = none) and whether it was kept; lockFlag = LinkMeter's own note that a lock may be on. */
-        String lock = "";
-        boolean lockKept;
         boolean lockFlag;
         Boolean airplaneOn;
         Boolean dataEnabled;
@@ -48,10 +47,10 @@ final class SafetyReport {
             l.add("the network types were changed" + (f.types >= 0 && (f.types & (1L << 19)) == 0 ? " (5G is off)" : ""));
         }
         if (f.legChanged) {
-            l.add("the 5G leg was switched off");
+            l.add("the 5G leg was switched off by an older version of LinkMeter");
         }
-        if (f.lockFlag || !f.lock.isEmpty()) {
-            l.add("a band lock may be on" + (f.lock.isEmpty() ? "" : " (" + f.lock + (f.lockKept ? ", kept" : "") + ")"));
+        if (f.lockFlag) {
+            l.add("a band lock may be on, left by an older version of LinkMeter");
         }
         if (f.radioBlip) {
             l.add("a radio restart or the hotspot-off blip started and has not been confirmed as finished");
@@ -88,13 +87,13 @@ final class SafetyReport {
 
     /** Is anything in place that is NOT one of the boot items (so that Restore everything has something to put back)? */
     static boolean otherChanged(Facts f) {
-        return f.typesChanged || f.legChanged || f.lockFlag || !f.lock.isEmpty() || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged || f.menuRecent
+        return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged || f.menuRecent
                 || f.batterySaver;
     }
 
     /** Does the safety net have anything it could put back by itself? (The hotspot band and battery saver do not affect mobile data.) */
     static boolean radioChanged(Facts f) {
-        return f.typesChanged || f.legChanged || f.lockFlag || !f.lock.isEmpty() || f.radioBlip || f.airplaneTimer || f.menuRecent;
+        return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.menuRecent;
     }
 
     static String report(Facts f) {
@@ -113,8 +112,6 @@ final class SafetyReport {
         }
         sb.append('\n');
         sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append('\n');
-        sb.append("5G leg: ").append(f.legOn == null ? "cannot read" : f.legOn ? "on (normal)" : "off").append('\n');
-        sb.append("Band lock: ").append(f.lock.isEmpty() ? "none" : f.lock + (f.lockKept ? " (kept)" : "")).append('\n');
         java.util.List<String> ch = changes(f);
         if (ch.isEmpty()) {
             sb.append("\nLinkMeter has nothing changed on this phone.");

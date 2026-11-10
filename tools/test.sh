@@ -51,7 +51,7 @@ java -cp "$out" com.tj.linkmeter.LeverRunTest || fail=1
 echo "== Phone codes (TypingFilter: the remote keyboard never types * or #, over all 65,536 characters)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/TypingFilter.java tools/test/TypingFilterTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.TypingFilterTest || fail=1
-echo "== Phone codes (tripwire: no way to call, send USSD, or dial except the one guarded function; no digit, *, # or call key; the document lists exactly the safe codes)"
+echo "== Phone codes (tripwire: the app dials nothing and can place no call or USSD; typed text and keys only through the guarded routes; no digit, *, # or call key; the document lists no dial code)"
 python3 tools/test/test_dial_paths.py || fail=1
 echo "== Boot automation (BootNames, Subnet, BootPlan: the tablet hotspot's name and password, where to look for the phone, what the phone does by itself after a restart)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BootNames.java app/src/main/java/com/tj/linkmeter/Subnet.java tools/test/BootNamesTest.java || fail=1
@@ -100,7 +100,7 @@ java -cp "$out" com.tj.linkmeter.SafetyReportTest || fail=1
 echo "== Best spot for the phone (SignalHunt: the 10 s average, the upload score, the beep, marked spots)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SignalHunt.java tools/test/SignalHuntTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.SignalHuntTest || fail=1
-echo "== Service-menu finder (MenuScan: reading the phone's text, refusing anything unsafe, and the real shell commands with no built-in printf)"
+echo "== Phone info screen (MenuScan: a screen name is checked before the phone opens it, nothing that suggests erase, reset, IMEI, NVRAM, flash or unlock; Android's own Phone info screen is tried first)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/MenuScan.java tools/test/MenuScanTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.MenuScanTest || fail=1
 echo "== File manager core (paths, kinds, sorting, clipboard, DiskStore) and the transfer engine (copy, move, clashes, cancel, failures, against a model)"

@@ -241,14 +241,10 @@ final class Actions {
                 return Boot.setPairingKept(c, true);
             case "boot_keep_off":
                 return Boot.setPairingKept(c, false);
-            case "menu_find":
-                return Menus.find();
             case "menu_open":
                 return Menus.open(c, arg);
             case "menu_usual":
                 return Menus.usual(c);
-            case "menu_dial":
-                return Menus.dial(c, arg);
             case "airplane_off":
                 Saved.clearAirplaneUntil(c);
                 Saved.clearBlip(c);
@@ -274,13 +270,10 @@ final class Actions {
             case "net_get":
                 return netGet(c);
             case "nrleg_get":
-                return nrLeg(c, null);
             case "nrleg_off":
-                return nrLeg(c, "off");
             case "nrleg_off_now":
-                return nrLeg(c, "off-now");
             case "nrleg_on":
-                return nrLeg(c, "on");
+                return NrLeg.REMOVED; // the 5G leg switch is gone (this modem never obeyed it); a tablet up to v0.2.102 still asks
             case "net_lte": {
                 String res = setNr(c, false);
                 Guard.arm(c);
@@ -294,29 +287,6 @@ final class Actions {
             default:
                 throw new IOException("unknown action: " + name);
         }
-    }
-
-    /**
-     * The 5G leg (NR dual connectivity): read it (want == null) or switch it (on, off, off-now). Switching it off is remembered
-     * BEFORE it is done, and the safety net (Guard) is armed, so a cut-off or a dead connection still ends with the leg back on.
-     * The words of the answer are NrLeg's; the tablet reads them back.
-     */
-    private static String nrLeg(Context c, String want) throws IOException {
-        if (want == null) {
-            return NrLeg.describe(NrLeg.parse(Cells.shellMain(c, "nrdc-get").out));
-        }
-        if (!want.equals("on")) {
-            Saved.rememberNrLegChanged(c);
-        }
-        NrLeg.State s = NrLeg.parse(Cells.shellMain(c, "nrdc-set " + want).out);
-        if (want.equals("on")) {
-            if (Boolean.TRUE.equals(s.enabled) || (s.error.isEmpty() && s.result.equals("SUCCESS") && s.enabled == null)) {
-                Saved.clearNrLeg(c);
-            }
-        } else {
-            Guard.arm(c);
-        }
-        return NrLeg.describeSet(want, s);
     }
 
     /** okText when the shell command ended well; otherwise the phone did not do it, and what it printed says why. */
@@ -515,20 +485,7 @@ final class Actions {
         f.typesText = types >= 0 ? typesText(types) : "";
         forgetTypesIfBack(c, types); // a memory left by an older version although 5G is back as it was: it no longer counts as a change
         f.typesChanged = Saved.types(c) > 0;
-        try {
-            Boolean off = NrLeg.offFromText(NrLeg.describe(NrLeg.parse(Cells.shellMain(c, "nrdc-get").out)));
-            f.legOn = off == null ? null : Boolean.valueOf(!off);
-        } catch (IOException ignored) {
-            // Shizuku is off: unknown
-        }
-        f.legChanged = Saved.nrLegChanged(c);
-        try {
-            org.json.JSONObject j = new org.json.JSONObject(Cells.status());
-            f.lock = j.optString("lock", "");
-            f.lockKept = j.optBoolean("kept", false);
-        } catch (org.json.JSONException ignored) {
-            // plain values only
-        }
+        f.legChanged = Saved.nrLegChanged(c); // only an older version can have set these two; this version never does
         f.lockFlag = Saved.lockOn(c);
         try {
             f.airplaneOn = Boolean.valueOf(Settings.Global.getInt(c.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1);
@@ -641,6 +598,21 @@ final class Actions {
     }
 
     /**
+     * Removes any band restriction every time (one helper start: insurance if the stored note was lost) and forgets the note that a
+     * lock may be on. Nothing in this version sets a lock; the note can only come from an older one. Returns the line for Restore
+     * everything, or "" when no note was set: "Band lock: cleared." on every restore would only confuse in a version without locks.
+     */
+    private static String clearBandLock(Context c) throws IOException {
+        boolean noted = Saved.lockOn(c);
+        Priv.Result r = Cells.shellMain(c, "bands-clear");
+        boolean ok = r.out.contains("OK ");
+        if (ok) {
+            Saved.clearLock(c);
+        }
+        return noted ? "Band lock: " + (ok ? "cleared." : "could not be cleared (" + firstLine(r.out) + ").") + "\n" : "";
+    }
+
+    /**
      * Asks the modem for "leg on" because the stored flag says the 5G leg was switched off, and forgets the flag by NrLeg.mayForget
      * (audit D1: on a modem that answers NOT_SUPPORTED the flag used to stay for ever). Returns the line for Restore everything.
      */
@@ -667,11 +639,7 @@ final class Actions {
         }
         try {
             if (lock) {
-                Priv.Result r = Cells.shellMain(c, "bands-clear");
-                if (r.out.contains("OK ")) {
-                    Cells.clearState();
-                    Saved.clearLock(c);
-                }
+                clearBandLock(c);
             }
             if (leg) {
                 putLegBack(c);
@@ -688,18 +656,14 @@ final class Actions {
     static String restoreRadio(Context c) {
         StringBuilder sb = new StringBuilder();
         try {
-            Priv.Result r = Cells.shellMain(c, "bands-clear");
-            sb.append("Band lock: ").append(r.out.contains("OK ") ? "cleared."
-                    : "could not be cleared (" + firstLine(r.out) + ").").append('\n');
-            if (r.out.contains("OK ")) {
-                Cells.clearState();
-                Saved.clearLock(c);
-            }
+            sb.append(clearBandLock(c));
         } catch (IOException e) {
-            sb.append("Band lock: ").append(e.getMessage()).append('\n');
+            if (Saved.lockOn(c)) {
+                sb.append("Band lock: ").append(e.getMessage()).append('\n');
+            }
         }
         try {
-            Cells.shellMain(c, "radio-on"); // a band test may have been cut off while the radio was off
+            Cells.shellMain(c, "radio-on"); // an older version's band test may have been cut off while the radio was off
         } catch (IOException ignored) {
             // nothing more to do here
         }
