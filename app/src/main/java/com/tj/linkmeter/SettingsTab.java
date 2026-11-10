@@ -155,6 +155,7 @@ final class SettingsTab extends Tab {
                 busy(false);
                 say(text.contains("unknown action")
                         ? "The phone's app is too old for this. Update it first: Phone tab > Update phone from this tablet."
+                        : json != null ? text // the phone answered: its own words say why its side is not ready
                         : "The phone could not be asked: " + text + "\nThe setup needs the tablet on the phone's hotspot, and "
                         + "Shizuku running on the phone.");
                 return;

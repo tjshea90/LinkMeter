@@ -51,6 +51,9 @@ javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Js
   app/src/main/java/com/tj/linkmeter/LinkAuth.java app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/LinkServer.java \
   app/src/main/java/com/tj/linkmeter/LinkClient.java app/src/main/java/com/tj/linkmeter/BtAddr.java tools/test/LinkProtocolTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LinkProtocolTest || fail=1
+echo "== What the phone answers after a switch (SwitchWords: 'is on', 'is off', 'restarted' only when the phone's helper said OK; a switch that did not move is always a failure; 'not known' claims nothing; Standby is done only when the hotspot AND the screen went off)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SwitchWords.java tools/test/SwitchWordsTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.SwitchWordsTest || fail=1
 echo "== Staying awake (Holds: one connection or action cannot switch the wake lock off under another, a short hold cannot cut a long one short, and every hold runs out by itself; a pretend wake lock on a virtual clock)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/Holds.java tools/test/HoldsTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.HoldsTest || fail=1

@@ -80,53 +80,48 @@ final class Actions {
         }, "linkmeter-delayed").start();
     }
 
+    /** The answer as text, or as the error it is when the switch did not move. */
+    private static String said(SwitchWords.Said s) throws NotDone {
+        if (!s.done) {
+            throw new NotDone(s.text);
+        }
+        return s.text;
+    }
+
     /**
-     * The actions that can take a link away: the work itself, and what happened in plain words. Called a moment after the answer
-     * when the action cuts the link it came over ({@link #later}), and at once when it does not (over Bluetooth), so that the
-     * tablet then gets the real result. Returns only when the phone did it (or, for the hotspot, when the phone was asked and
-     * cannot say whether it did: the sentence then says exactly that); throws {@link NotDone} when it plainly did not.
+     * The actions that can take a link away: the work itself, and what happened in plain words (the words of the switches are
+     * SwitchWords'). Called a moment after the answer when the action cuts the link it came over ({@link #later}), and at once
+     * when it does not (over Bluetooth), so that the tablet then gets the real result. Returns only when the phone did it (or,
+     * for the hotspot, when the phone was asked and cannot say whether it did: the sentence then says exactly that); throws
+     * {@link NotDone} when it plainly did not.
      */
     static String perform(Context app, String name, boolean viaBluetooth) throws IOException {
         switch (name) {
             case "hotspot_on":
             case "boot_hotspot_on": {
-                String r = resultLine(Cells.shellMain(app, "hotspot-start").out);
+                String r = SwitchWords.resultLine(Cells.shellMain(app, "hotspot-start").out);
                 Boot.hotspotResult = r; // "start the phone after a restart" asks how it went once the tablet is on the hotspot
-                if (r.startsWith(UNSURE)) {
-                    return "The phone was asked to switch the hotspot on. It does not say whether it is on.";
-                }
-                if (!r.startsWith("OK")) {
-                    throw new NotDone(dot("The hotspot could not be switched on: " + afterWord(r)));
-                }
-                return "The hotspot is on.";
+                return said(SwitchWords.hotspotOn(r));
             }
             case "hotspot_off":
-                return hotspotOff(app, viaBluetooth);
-            case "hotspot_restart": {
+                return said(hotspotOff(app, viaBluetooth));
+            case "hotspot_restart":
                 // longer than the usual 40 s: off (up to 8 s), then on (up to 20 s for the phone's answer and 10 s to come up)
-                String r = resultLine(Cells.shellMain(app, "hotspot-restart", 55).out);
-                if (r.startsWith(UNSURE)) {
-                    return "The phone was asked to restart the hotspot. It does not say whether the hotspot is on.";
-                }
-                if (!r.startsWith("OK")) {
-                    throw new NotDone(dot("The hotspot could not be restarted: " + afterWord(r)));
-                }
-                return "The hotspot was restarted.";
-            }
+                return said(SwitchWords.hotspotRestart(SwitchWords.resultLine(Cells.shellMain(app, "hotspot-restart", 55).out)));
             case "radio_cycle": {
                 // for the phone's choice of cell: the modem searches from scratch when its radio comes back
                 markRadioRisk(app, name); // BEFORE the radio goes off: a cut-off must still be undone
                 String r;
                 try {
-                    r = resultLine(Cells.shellMain(app, "radio-cycle").out);
+                    r = SwitchWords.resultLine(Cells.shellMain(app, "radio-cycle").out);
                 } catch (IOException e) {
                     cycleState = "failed: " + e.getMessage();
                     throw e;
                 }
-                cycleState = r.startsWith("OK") ? "done" : "failed: " + r;
+                cycleState = SwitchWords.ok(r) ? "done" : "failed: " + r;
                 finishRadioRisk(app, name);
-                if (!r.startsWith("OK")) {
-                    throw new NotDone(dot("The radio restart failed: " + afterWord(r)));
+                if (!SwitchWords.ok(r)) {
+                    throw new NotDone(SwitchWords.dot("The radio restart failed: " + SwitchWords.afterWord(r)));
                 }
                 return "The radio was switched off for a few seconds and on again.";
             }
@@ -148,72 +143,21 @@ final class Actions {
         }
     }
 
-    /** The helper's third verdict, for the hotspot: it asked the phone, and the phone does not report the hotspot's state. */
-    private static final String UNSURE = "UNSURE";
-
-    /**
-     * The helper's verdict in what the shell printed: the last line that starts with OK, ERR or UNSURE (other lines can be
-     * warnings of the phone's own tools), or the last line of all if there is none.
-     */
-    static String resultLine(String out) {
-        String last = "";
-        String[] lines = out.split("\n");
-        for (int i = lines.length - 1; i >= 0; i--) {
-            String l = lines[i].trim();
-            if (l.startsWith("OK") || l.startsWith("ERR") || l.startsWith(UNSURE)) {
-                return l;
-            }
-            if (last.isEmpty()) {
-                last = l;
-            }
-        }
-        return last;
-    }
-
-    /** "OK the hotspot is on" -> "the hotspot is on"; "ERR no answer" -> "no answer". */
-    private static String afterWord(String line) {
-        String t = line.trim();
-        if (t.startsWith("OK ") || t.startsWith("ERR ") || t.startsWith(UNSURE + " ")) {
-            t = t.substring(t.indexOf(' ') + 1);
-        }
-        return t.isEmpty() ? "the phone gave no reason" : t;
-    }
-
-    /** Ends a sentence that was put together from the phone's own words, so two of them can stand next to each other. */
-    private static String dot(String sentence) {
-        String t = sentence.trim();
-        return t.endsWith(".") || t.endsWith("!") || t.endsWith("?") ? t : t + ".";
-    }
-
     /**
      * Switches the hotspot off. The direct way first (the system's tethering service, checked). Only if that fails, and only when
      * the request did not come over Bluetooth, the old way: airplane mode on for three seconds, which also switches the hotspot
      * off but takes mobile data (and Bluetooth) away for a moment.
      */
-    private static String hotspotOff(Context app, boolean viaBluetooth) throws IOException {
-        String direct = resultLine(Cells.shellMain(app, "hotspot-stop").out);
-        if (direct.startsWith("OK")) {
-            return "The hotspot is off.";
-        }
-        if (direct.startsWith(UNSURE)) {
-            return "The phone was asked to switch the hotspot off. It does not say whether it is off.";
-        }
-        if (viaBluetooth) {
-            throw new NotDone("The hotspot could not be switched off the direct way (" + afterWord(direct) + "). The other way, "
-                    + "airplane mode for three seconds, is not used over Bluetooth because it would cut this link too.");
+    private static SwitchWords.Said hotspotOff(Context app, boolean viaBluetooth) throws IOException {
+        String direct = SwitchWords.resultLine(Cells.shellMain(app, "hotspot-stop").out);
+        SwitchWords.Said said = SwitchWords.hotspotOff(direct, viaBluetooth);
+        if (said.done || viaBluetooth) {
+            return said;
         }
         markRadioRisk(app, "hotspot_off");
         Priv.run("cmd connectivity airplane-mode enable; sleep 3; cmd connectivity airplane-mode disable", 60);
         finishRadioRisk(app, "hotspot_off");
-        Boolean off = Radios.waitHotspot(app, false, 4000);
-        if (off == null) {
-            return "The hotspot could not be switched off the direct way (" + afterWord(direct) + "), so airplane mode was switched "
-                    + "on for three seconds. The phone does not say whether the hotspot is off.";
-        }
-        if (!off) {
-            throw new NotDone(dot("The hotspot could not be switched off: " + afterWord(direct)));
-        }
-        return "The hotspot is off (the direct way failed, so airplane mode was switched on for three seconds: " + afterWord(direct) + ").";
+        return SwitchWords.hotspotOffByAirplane(direct, Radios.waitHotspot(app, false, 4000));
     }
 
     /** The phone's own Wi-Fi switch (not the hotspot). Checked by asking Android afterwards. */
@@ -221,52 +165,29 @@ final class Actions {
         Priv.Result r = Priv.run("cmd wifi set-wifi-enabled " + (on ? "enabled" : "disabled") + " 2>&1 || svc wifi "
                 + (on ? "enable" : "disable") + " 2>&1", 20);
         if (!Radios.waitWifi(app, on, 6000)) {
-            throw new NotDone(dot("The phone's Wi-Fi did not switch " + (on ? "on" : "off") + (r.out.isEmpty() ? "" : ": " + firstLine(r.out))));
+            throw new NotDone(SwitchWords.dot("The phone's Wi-Fi did not switch " + (on ? "on" : "off") + (r.out.isEmpty() ? "" : ": " + firstLine(r.out))));
         }
         return "The phone's Wi-Fi is " + (on ? "on." : "off.");
     }
 
     /**
      * Standby: the hotspot off and the screen off, so the phone idles (days, not hours) until the tablet wakes it over Bluetooth
-     * with "hotspot on". Mobile data, calls and texts stay as they are.
-     *
-     * Two switches, so two outcomes. Both are always tried: a phone whose hotspot will not go off still saves battery with its
-     * screen off, and the other way round. Only when BOTH moved is the answer a plain one; if either did not, the answer is an
-     * error that says what became of each, because a phone that is half on standby is not on standby.
+     * with "hotspot on". Mobile data, calls and texts stay as they are. Both switches are always tried; what the answer is when
+     * one of them did not move is decided in {@link SwitchWords#standby}.
      */
     private static String standby(Context app, boolean viaBluetooth) throws IOException {
-        String hotspot;
-        String screen;
-        int done = 0;
-        try {
-            hotspot = hotspotOff(app, viaBluetooth);
-            done++;
-        } catch (NotDone e) {
-            hotspot = e.getMessage();
-        }
-        try {
-            screen = screenOff(app);
-            done++;
-        } catch (NotDone e) {
-            screen = e.getMessage();
-        }
-        if (done == 2) {
-            return hotspot + " " + screen + (viaBluetooth ? " To wake the phone: Hotspot on." : "");
-        }
-        throw new NotDone((done == 1 ? "Standby is only half done. " : "Standby did not work. ") + hotspot + " " + screen);
+        SwitchWords.Said hotspot = hotspotOff(app, viaBluetooth);
+        return said(SwitchWords.standby(hotspot, screenOff(app), viaBluetooth));
     }
 
     /** The checked Sleep (the same steps as the Screen tab's Sleep button). */
-    private static String screenOff(Context app) throws IOException {
+    private static SwitchWords.Said screenOff(Context app) {
         try {
             PowerSequence.Result res = Screen.powerNow(app, false, true);
-            if (!res.reached) {
-                throw new NotDone("The screen did not stay off (" + res.how + ").");
-            }
-            return "The screen is off.";
+            return SwitchWords.screenOff(res.reached, res.how);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new NotDone("The screen was not switched off: the phone was interrupted while doing it.");
+            return SwitchWords.screenOff(false, "the phone was interrupted while doing it");
         }
     }
 
@@ -335,7 +256,7 @@ final class Actions {
                 Saved.clearBlip(c);
                 return report(Priv.run("cmd connectivity airplane-mode disable", 15), "Airplane mode is off.");
             case "screen_off":
-                return screenOff(c); // checked: the old way pressed a key and said "off" whatever happened
+                return said(screenOff(c)); // checked: the old way pressed a key and said "off" whatever happened
             case "eco_on":
                 Eco.setSuppressed(false);
                 return Eco.apply(c);
@@ -409,7 +330,7 @@ final class Actions {
     /** okText when the shell command ended well; otherwise the phone did not do it, and what it printed says why. */
     private static String report(Priv.Result r, String okText) throws NotDone {
         if (!r.ok()) {
-            throw new NotDone(dot("The phone did not do that" + (r.timedOut ? " in time" : "") + (r.out.isEmpty() ? "" : ": " + firstLine(r.out))));
+            throw new NotDone(SwitchWords.dot("The phone did not do that" + (r.timedOut ? " in time" : "") + (r.out.isEmpty() ? "" : ": " + firstLine(r.out))));
         }
         return okText;
     }
@@ -561,11 +482,11 @@ final class Actions {
                 Saved.rememberHotspotBand(c, Integer.parseInt(m.group(1)));
             }
         }
-        String r = resultLine(Cells.shellMain(c, "hotspot-band " + arg).out);
-        if (!r.startsWith("OK")) {
-            throw new NotDone(dot("The hotspot's Wi-Fi band was not changed: " + afterWord(r)));
+        String r = SwitchWords.resultLine(Cells.shellMain(c, "hotspot-band " + arg).out);
+        if (!SwitchWords.ok(r)) {
+            throw new NotDone(SwitchWords.dot("The hotspot's Wi-Fi band was not changed: " + SwitchWords.afterWord(r)));
         }
-        return dot("The hotspot's Wi-Fi band is now " + afterWord(r));
+        return SwitchWords.dot("The hotspot's Wi-Fi band is now " + SwitchWords.afterWord(r));
     }
 
     // ------------------------------------------------------------ restore everything
@@ -844,12 +765,12 @@ final class Actions {
         if (hb > 0) {
             try {
                 String arg = hb == 1 ? "2" : (hb == 2 ? "5" : "auto");
-                String r = resultLine(Cells.shellMain(c, "hotspot-band " + arg).out);
-                if (r.startsWith("OK")) {
+                String r = SwitchWords.resultLine(Cells.shellMain(c, "hotspot-band " + arg).out);
+                if (SwitchWords.ok(r)) {
                     Saved.clearHotspotBand(c);
                     sb.append("Hotspot band: put back. Restart the hotspot to use it.\n");
                 } else {
-                    sb.append("Hotspot band: could not be put back (").append(afterWord(r)).append(").\n");
+                    sb.append("Hotspot band: could not be put back (").append(SwitchWords.afterWord(r)).append(").\n");
                 }
             } catch (IOException e) {
                 sb.append("Hotspot band: ").append(e.getMessage()).append('\n');

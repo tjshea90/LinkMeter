@@ -203,7 +203,8 @@ final class BtServer {
                 int st = i.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
                 if (st == BluetoothAdapter.STATE_ON || st == BluetoothAdapter.STATE_OFF || st == BluetoothAdapter.STATE_TURNING_OFF) {
                     final boolean gone = st != BluetoothAdapter.STATE_ON;
-                    door(() -> { // this runs on the screen's thread: the Bluetooth calls go to the door's
+                    // Android calls this on the screen's thread: the Bluetooth calls go to the door's
+                    door(() -> {
                         synchronized (LOCK) {
                             if (gone) {
                                 closeServerLocked();
@@ -489,6 +490,10 @@ final class BtServer {
         }
         if (adapter(c) == null) {
             throw new IOException("This phone has no Bluetooth.");
+        }
+        if (!Priv.ready()) {
+            // every step below goes through Shizuku; say so in a whole sentence, the tablet shows these words as they are
+            throw new IOException("The phone cannot get its Bluetooth side ready: " + Priv.stateText(Priv.state()) + " on the phone.");
         }
         StringBuilder sb = new StringBuilder();
         if (!hasPermission(c)) {

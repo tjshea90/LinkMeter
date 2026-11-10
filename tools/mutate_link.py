@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds or their tests: `python3 tools/mutate_link.py` (about 2 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords or their tests: `python3 tools/mutate_link.py` (about 2 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -93,8 +93,27 @@ H = [
  ("holds: the shortest need wins", "Holds.java", "longest = Math.max(longest, end - now);", "longest = longest == 0 ? end - now : Math.min(longest, end - now);"),
  ("holds: a hold of no time is no hold", "Holds.java", "now + Math.max(1, ms)", "now + ms"),
 ]
+WORDS_FILES = ["SwitchWords.java"]
+WORDS_TEST = ROOT + "/tools/test/SwitchWordsTest.java"
+W = [
+ ("words: a hotspot that did not come on is 'done'", "SwitchWords.java", 'return new Said(false, dot("The hotspot could not be switched on: " + afterWord(line)));', 'return new Said(true, dot("The hotspot could not be switched on: " + afterWord(line)));'),
+ ("words: a hotspot that was not restarted is 'done'", "SwitchWords.java", 'return new Said(false, dot("The hotspot could not be restarted: " + afterWord(line)));', 'return new Said(true, dot("The hotspot could not be restarted: " + afterWord(line)));'),
+ ("words: a hotspot that did not go off is 'done' over Bluetooth", "SwitchWords.java", "return new Said(false, viaBluetooth\n", "return new Said(viaBluetooth, viaBluetooth\n"),
+ ("words: anything that starts with OK counts as done", "SwitchWords.java", 'return line.equals(verdict) || line.startsWith(verdict + " ");', 'return line.startsWith(verdict);'),
+ ("words: 'not known' is said as 'on'", "SwitchWords.java", '"The phone was asked to switch the hotspot on. It does not say whether it is on."', '"The hotspot is on."'),
+ ("words: 'not known' is treated as a failure", "SwitchWords.java", 'return new Said(true, "The phone was asked to switch the hotspot off. It does not say whether it is off.");', 'return new Said(false, "The phone was asked to switch the hotspot off. It does not say whether it is off.");'),
+ ("words: after airplane mode, 'off' although still on", "SwitchWords.java", 'return off ? new Said(true, "The hotspot is off. " + why)', 'return true ? new Said(true, "The hotspot is off. " + why)'),
+ ("words: after airplane mode, 'not known' is said as 'off'", "SwitchWords.java", 'return new Said(true, why + " The phone does not say whether the hotspot is off.");', 'return new Said(true, "The hotspot is off. " + why);'),
+ ("words: the screen 'off' although it is not", "SwitchWords.java", ': new Said(false, "The screen did not stay off (" + how + ").");', ': new Said(true, "The screen did not stay off (" + how + ").");'),
+ ("words: Standby done with the hotspot still on", "SwitchWords.java", "if (hotspot.done && screen.done) {", "if (screen.done) {"),
+ ("words: Standby done with the screen still on", "SwitchWords.java", "if (hotspot.done && screen.done) {", "if (hotspot.done) {"),
+ ("words: half a Standby is called 'did not work'", "SwitchWords.java", "String lead = hotspot.done || screen.done ?", "String lead = hotspot.done && screen.done ?"),
+ ("words: 'Hotspot on' offered without Bluetooth", "SwitchWords.java", '(viaBluetooth ? " To wake the phone: Hotspot on." : "")', '" To wake the phone: Hotspot on."'),
+ ("words: the first verdict line wins, not the last", "SwitchWords.java", "for (int i = lines.length - 1; i >= 0; i--) {", "for (int i = 0; i < lines.length; i++) {"),
+ ("words: the phone's reason is dropped", "SwitchWords.java", 'return t.isEmpty() ? "the phone gave no reason" : t;', 'return "the phone gave no reason";'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
-          (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H)]
+          (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:
