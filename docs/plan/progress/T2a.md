@@ -1,4 +1,4 @@
-STATUS: WORKING
+STATUS: DONE
 TASK: Track T2 part a (battery saver on the phone), brief docs/plan/2026-11-10/briefs/T2a.md. Started from commit 08a2d00 (= main = ccr-071a4761-6jfasm) on branch ccr-dbf3eb41-2sjhj8. ONE session, no agents (CLAUDE.md).
 
 DONE SO FAR (all in the working tree; first part pushed as wip 753423f; the rest is NOT yet committed when these notes are written):
@@ -12,7 +12,7 @@ DONE SO FAR (all in the working tree; first part pushed as wip 753423f; the rest
 - SafetyReport: the saver is now a "change" line + Restore everything is promised for it + says it also switches the Automatic choice off; SafetyReportTest follows (28,735 checks). docs/SAFETY.md saver row split in two; docs/REMOTE_LINK.md saver section rewritten.
 - `./gradlew --no-daemon assembleRelease` was BUILD SUCCESSFUL after the Eco/Actions/Status/PhoneTab/HomeTab edits (before SafetyReport/doc edits).
 
-IN PROGRESS NOW: verification. `python3 tools/mutate_link.py saver:` running (output in scratchpad mutate-saver2.out; 24/60 caught, 0 missed at last look).
+IN PROGRESS NOW: nothing. T2a is finished and saved as checkpoint b648049 (NO_RELEASE) on branch ccr-dbf3eb41-2sjhj8: tools/test.sh exit 0, ./gradlew --no-daemon assembleRelease BUILD SUCCESSFUL, saver: 60/60 and safety: 4/4 breakages caught, tools/preview.sh drawn and Home looked at (state-home-saver-automatic.png, state-home-saver-needs-shizuku.png fit at 600 px).
 
 NEXT (in order):
  1. When saver: mutations finish: all caught? fix test for any MISSED. Then `python3 tools/mutate_link.py safety:` (4).
@@ -29,3 +29,9 @@ LEARNED:
 - D18 trap and its fix: see RemoteProfile.adoptOriginalTimeout above (story tests in SaverPlanTest cover 4 orders of saver/session).
 - NOT verified on a device (say so in the answer): isReachable on Android 16 / this tablet (a "no answer" restores, fails safe); `system aod_mode` being the Samsung switch (guarded: only written when the phone says 0/1); the unit/sign of BatteryManager current on this Samsung (Probe prints the raw number); ACTION_SCREEN_ON receiver with RECEIVER_NOT_EXPORTED (same pattern as Radios.watch).
 - Idea NOT done (record in HANDOFF): restore overwrites a setting the user changed by hand while the saver was on (RemoteProfile only restores values that still equal what it set). Cheap later: guard each restore with `[ "$(settings get ns key)" = "<target>" ] &&`.
+
+ANSWER (T2a): every finding of the brief is fixed in code, offline-tested, built; NOT seen on a device.
+- battery D1/D9/D10/D11/D12 (one stored switch, no Eco.suppressed, reconcile re-read under the lock, the phone's checkbox, Home's label, Off while Shizuku is down), D4/D5 (non-wakeup alarm, keeps the saver while the hotspot is on and the tablet answers, or a resting phone), D6 (aod_mode guarded), D13 (validated originals), D14 (own flags, no lock on a request), D18 (screen timeout left to a session, session told the real original), D19 (60 s back-off, RemoteProfile.CHECK without a thread while Shizuku is off), D20 (tether_offload_disabled no longer written), control-tab D16, plus `cur` in /s and Probe lines.
+- Files: SaverPlan.java (new), Eco.java (rewritten), Actions.java, Api.java (probe context), Status.java, RemoteProfile.java, PhoneTab.java (checkbox only), HomeTab.java (one line), SenderService.java (onServiceStop), SafetyReport.java; tests SaverPlanTest.java (new, 3,421 checks), SafetyReportTest.java (28,735), tools/test.sh, tools/mutate_link.py (saver: 60, safety: 4), PreviewTest.homeSaverWords; docs SAFETY.md, REMOTE_LINK.md; HANDOFF T2 line.
+- NOT known until a device tries it: InetAddress.isReachable on Android 16 / this tablet; system aod_mode being Samsung's switch; BatteryManager current unit/sign (Probe prints the raw number); ACTION_SCREEN_ON receiver with RECEIVER_NOT_EXPORTED.
+- NOT done on purpose: restore overwrites a setting the user changed by hand while the saver was on; ControlTab (T3) still shows its old Turn on/Turn off (they work through the aliases); PhoneTab's long restore explanation (T6a) does not yet mention that Restore everything stores Off.
