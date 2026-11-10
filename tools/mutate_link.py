@@ -206,6 +206,13 @@ F = [
 TROUBLE_FILES = ["Trouble.java"]
 TROUBLE_TEST = ROOT + "/tools/test/TroubleTest.java"
 T = [
+ ("trouble: no card when the tablet has stopped asking", "Trouble.java", "misses >= 2 || stopped || bluetoothTried;", "misses >= 2 || bluetoothTried;"),
+ ("trouble: no card after a miss over Bluetooth", "Trouble.java", "misses >= 2 || stopped || bluetoothTried;", "misses >= 2 || stopped;"),
+ ("trouble: no card for one miss, whatever else (the old rule)", "Trouble.java", "misses >= 2 || stopped || bluetoothTried;", "misses >= 2;"),
+ ("trouble: a card for every lost answer", "Trouble.java", "return !heardBefore || k != Kind.NO_ANSWER || misses >= 2 || stopped || bluetoothTried;", "return true;"),
+ ("trouble: a phone never heard waits for two misses", "Trouble.java", "return !heardBefore || k != Kind.NO_ANSWER", "return k != Kind.NO_ANSWER"),
+ ("trouble: a plain cause waits for two misses", "Trouble.java", "return !heardBefore || k != Kind.NO_ANSWER || misses", "return !heardBefore || misses"),
+ ("trouble: no card even after many misses", "Trouble.java", "k != Kind.NO_ANSWER || misses >= 2 || stopped", "k != Kind.NO_ANSWER || stopped"),
  ("trouble: 'After a phone restart' whatever happened", "Trouble.java", "return k == Kind.NO_ROUTE || k == Kind.NO_ANSWER;", "return true;"),
  ("trouble: no restart button when nothing could be tried", "Trouble.java", "return k == Kind.NO_ROUTE || k == Kind.NO_ANSWER;", "return k == Kind.NO_ANSWER;"),
  ("trouble: a phone that answered is 'can't reach the phone'", "Trouble.java", "return code == 401 ? Kind.NOT_PAIRED : Kind.PHONE_ERROR;", "return Kind.NO_ANSWER;"),

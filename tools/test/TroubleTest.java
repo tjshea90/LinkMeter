@@ -3,7 +3,8 @@ package com.tj.linkmeter;
 /**
  * Offline test of Trouble: why the Home tab has no status, and what its card then says and offers. The rule that must never
  * break: a phone that ANSWERED is never called unreachable, and "After a phone restart" is offered only when the phone did not
- * answer at all.
+ * answer at all. And: whenever the tablet will not ask again by itself, or Bluetooth was tried, the card (with its button) is
+ * on the screen; only one lost answer over the hotspot from a phone that had been heard is passed over.
  * Run by tools/test.sh. Prints "N checks, M failed". ASCII only.
  */
 public final class TroubleTest {
@@ -83,9 +84,44 @@ public final class TroubleTest {
         check(titles.size() == Trouble.Kind.values().length, "every cause has its own title");
     }
 
+    /** When is the card on the screen? */
+    static void whenShown() {
+        boolean[] tf = {false, true};
+        for (Trouble.Kind k : Trouble.Kind.values()) {
+            for (boolean heard : tf) {
+                for (int misses = 1; misses <= 12; misses++) {
+                    for (boolean stopped : tf) {
+                        for (boolean btTried : tf) {
+                            boolean shown = Trouble.shown(k, heard, misses, stopped, btTried);
+                            String at = k + ", heard " + heard + ", misses " + misses + ", stopped " + stopped + ", Bluetooth tried " + btTried;
+                            if (stopped) {
+                                check(shown, "the tablet has stopped asking by itself: the card and its button must be there (" + at + ")");
+                            }
+                            if (btTried) {
+                                check(shown, "Bluetooth was tried, so the next question is far away: the card must be there (" + at + ")");
+                            }
+                            if (!heard) {
+                                check(shown, "a phone that has not been heard at all: the card at once (" + at + ")");
+                            }
+                            if (k != Trouble.Kind.NO_ANSWER) {
+                                check(shown, "a plain cause is said at once (" + at + ")");
+                            }
+                            if (misses >= 2) {
+                                check(shown, "two misses in a row are news (" + at + ")");
+                            }
+                            boolean oneLostAnswer = k == Trouble.Kind.NO_ANSWER && heard && misses == 1 && !stopped && !btTried;
+                            check(shown == !oneLostAnswer, "only one lost answer over the hotspot from a phone that had been heard is passed over (" + at + ")");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) {
         kinds();
         cards();
+        whenShown();
         System.out.println(checks + " checks, " + failed + " failed");
         if (failed > 0) {
             System.exit(1);

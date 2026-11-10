@@ -489,9 +489,7 @@ final class HomeTab extends Tab {
             return;
         }
         Trouble.Kind k = s.trouble;
-        // At once when the phone has not been heard at all, or when the cause is plain (it answered, or nothing could be
-        // tried); after two misses when it had been heard and merely did not answer (one lost answer is not news).
-        if (k != null && (lastPhone == null || k != Trouble.Kind.NO_ANSWER || s.misses >= 2)) {
+        if (k != null && Trouble.shown(k, lastPhone != null, s.misses, s.stopped, s.btTried)) {
             boolean linkOk = BtLink.state(act) == LinkState.Kind.READY;
             String text = Trouble.text(k, Reach.BLUETOOTH.equals(s.via), s.btTried, linkOk ? "" : linkWords());
             if (k == Trouble.Kind.PHONE_ERROR) {

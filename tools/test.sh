@@ -70,7 +70,7 @@ java -cp "$out" com.tj.linkmeter.FollowUpTest || fail=1
 echo "== How often Home asks the phone (PollPace: over Bluetooth every 15 s in the first minute after a press, then once a minute, and not at all after five minutes; misses lengthen the wait; over the hotspot it never stops, and time spent on the hotspot is not counted against Bluetooth)"
 javac -proc:none -cp "$out" -d "$out" app/src/main/java/com/tj/linkmeter/PollPace.java tools/test/PollPaceTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PollPaceTest || fail=1
-echo "== Why Home has no status (Trouble: a phone that answered is never called unreachable; 'After a phone restart' only when it did not answer at all)"
+echo "== Why Home has no status (Trouble: a phone that answered is never called unreachable; 'After a phone restart' only when it did not answer at all; the card and its button are there whenever the tablet has stopped asking or Bluetooth was tried)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/Trouble.java tools/test/TroubleTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.TroubleTest || fail=1
 echo "== Safety net (GuardPolicy: when the phone undoes LinkMeter's changes by itself: never fights the user, always acts when data stays down)"

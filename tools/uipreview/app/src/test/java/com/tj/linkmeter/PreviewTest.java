@@ -501,6 +501,42 @@ public class PreviewTest {
         shot(a, "state-home-stopped-asking");
     }
 
+    /**
+     * A picture and a check. Reached over Bluetooth and left alone, and the question at the five minute mark is the FIRST one
+     * the phone does not answer: Home stops asking, and "Ask again" must be on the screen (it once was not: no card, every
+     * switch grey, and nothing to press).
+     */
+    @Test
+    public void homeStoppedOnAMiss() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(false, false);
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        p.btFails = true;
+        later(6 * 60 * 1000);
+        shot(a, "state-home-stopped-on-a-miss");
+        press(a, "Ask again");
+    }
+
+    /** The same for ONE miss over Bluetooth early on: the next question is half a minute away, so the button must be there now. */
+    @Test
+    public void homeOneMissOverBluetooth() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(false, false);
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        p.btFails = true;
+        later(15_000);
+        shot(a, "state-home-one-miss-over-bluetooth");
+        press(a, "Ask again");
+    }
+
     /** Before the hotspot goes off the tablet calls the phone over Bluetooth: the state while it does, and the question after a call that failed. */
     @Test
     public void homeOffAnyway() throws Exception {

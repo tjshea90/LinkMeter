@@ -35,6 +35,20 @@ final class Trouble {
         return asked ? Kind.NO_ANSWER : Kind.NO_ROUTE;
     }
 
+    /**
+     * Is the card shown for this miss? heardBefore: the phone has answered with its status since the app was opened (the screen
+     * still shows those values). misses: questions in a row without a status. stopped: the tablet does not ask again by itself
+     * (PollPace). bluetoothTried: the phone was called over Bluetooth for this question.
+     *
+     * Not for ONE lost answer over the hotspot from a phone that had been heard: the next question is a few seconds away, and
+     * a card that flashes up for every lost answer is noise. In every other case the user needs the card's button NOW: the
+     * switches are greyed out while the phone is not reached, and after a try over Bluetooth the next question is half a
+     * minute or more away, or never comes (stopped).
+     */
+    static boolean shown(Kind k, boolean heardBefore, int misses, boolean stopped, boolean bluetoothTried) {
+        return !heardBefore || k != Kind.NO_ANSWER || misses >= 2 || stopped || bluetoothTried;
+    }
+
     static String title(Kind k) {
         switch (k) {
             case NO_ROUTE:
