@@ -2,7 +2,7 @@
 # Save progress: log it, commit everything, push to GitHub.
 # Usage: tools/checkpoint.sh "what just changed"
 # Run it after every meaningful step. Every push is built and tested by GitHub (.github/workflows/build.yml).
-# A good build on a ccr-* session branch is merged into main by the pipeline itself when that is safe, and a
+# A good build on a session branch (claude/... or ccr-...) is merged into main by the pipeline itself when that is safe, and a
 # numbered release is published if the app changed. Nobody has to merge by hand.
 # Optional: COMMIT_TRAILER="Co-Authored-By: ..." adds a trailer paragraph to the commit message.
 # Saving never blocks: a stale HANDOFF.md only prints a warning, and a failed push is retried.

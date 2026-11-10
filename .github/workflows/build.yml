@@ -1,6 +1,6 @@
 name: build-apk
 
-# Every push to main, and to a Claude session branch (ccr-*), is built and tested.
+# Every push to main, and to a Claude session branch (claude/... or the older ccr-...), is built and tested.
 #   - A good build pushed to main is released.
 #   - A good build pushed to a session branch is first merged into main, as a fast-forward and only if that is
 #     safe (see "Decide what to do" below), and then released. Nobody has to say "merge it".
@@ -11,7 +11,7 @@ name: build-apk
 # [no-release]. A commit with [no-merge] or [wip] in its message stays off main.
 on:
   push:
-    branches: [main, 'ccr-*']
+    branches: [main, 'ccr-*', 'claude/**']
   workflow_dispatch:
     inputs:
       dry_run:
@@ -139,7 +139,7 @@ jobs:
             why="there is no main branch to merge into"
           elif [ "$ref" = main ]; then
             why="this is a push to main"
-          elif [[ "$ref" == ccr-* ]]; then
+          elif [[ "$ref" == ccr-* || "$ref" == claude/* ]]; then
             if [ "$sha" = "$main" ]; then
               why="main already is this commit"
             elif git merge-base --is-ancestor "$sha" "$main"; then
