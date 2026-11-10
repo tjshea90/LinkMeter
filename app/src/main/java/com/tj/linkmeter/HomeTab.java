@@ -516,10 +516,9 @@ final class HomeTab extends Tab {
             return;
         }
         LinkState.Kind link = BtLink.state(act);
-        if (s.phone != null && s.phone.has("bt") && link != LinkState.Kind.READY && link != LinkState.Kind.OFF_HERE
-                && link != LinkState.Kind.NO_BLUETOOTH && !BtLink.offerHidden(act)) {
+        if (s.phone != null && s.phone.has("bt") && LinkState.saidOnHome(link) && !BtLink.offerHidden(act)) {
             // On the hotspot, and the way to reach the phone WITHOUT the hotspot is not there: say so while it is easy to mend.
-            // (Not when the link is switched off here, which is the user's choice, nor to a phone app from before the link.)
+            // (Not to a phone app from before the link; which states of the link are worth a card: LinkState.saidOnHome.)
             banner.setVisibility(View.VISIBLE);
             if (link == LinkState.Kind.NO_ADDRESS || link == LinkState.Kind.NOT_ALLOWED) {
                 bannerTitle.setText("Reach the phone when its hotspot is off");
@@ -528,8 +527,8 @@ final class HomeTab extends Tab {
                 bannerMain.setText("Set it up");
             } else {
                 bannerTitle.setText("The Bluetooth link is not ready");
-                bannerText.setText(linkWords() + " Until it works, a hotspot that is switched off can only be switched on "
-                        + "again at the phone.");
+                bannerText.setText(linkWords() + " Without that link, a hotspot that is switched off can only be switched "
+                        + "on again at the phone.");
                 bannerMain.setText("Open " + SETTINGS);
             }
             bannerMain.setOnClickListener(v -> act.openTab(SETTINGS));

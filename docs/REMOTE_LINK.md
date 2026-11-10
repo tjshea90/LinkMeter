@@ -158,6 +158,10 @@ Nothing here has run on the devices, so the tablet is written to claim only what
   The tablet remembers for this: `btOkAt` (when a call was last answered; forgotten when the address changes),
   `btFailed` (the latest call did not get through) and `btPhone` (the phone's `bt` from its last status over the hotspot;
   a call that is answered over Bluetooth sets it to on).
+  HOME'S OWN CARD about the link (while the tablet is on the hotspot: "Reach the phone when its hotspot is off" / "The
+  Bluetooth link is not ready") is shown for a link that is missing or unproven, and NOT for "Not reached"
+  (`LinkState.saidOnHome`): one failed call after the link had worked is what a phone that was out of range leaves behind,
+  the tablet makes no Bluetooth call by itself to learn more, and the live call before "Hotspot off" tests the link anyway.
 - THE PHONE'S ADDRESS: learned from a status that came over the hotspot (Bluetooth replies are not signed). An address that
   a call has proved is NOT replaced by a different one from a status (`LinkState.takeAddress`); only Set up replaces it.
 - A SWITCH THAT WAS ONLY "SENT" (`FollowUp`, pure): when the reply has `"later": true` the phone has not acted yet. Home then
@@ -172,9 +176,14 @@ Nothing here has run on the devices, so the tablet is written to claim only what
   wakes a phone that may be on Standby, so: every 15 s during the first minute after the user did something on the screen,
   then once a minute, and after five minutes it stops and the screen says so and offers "Ask again". Misses lengthen the wait
   on either route. A press while a question is on its way does not start a second chain of questions.
+  The minute and the five minutes are time spent asking over Bluetooth with nobody at the screen: they start again at a
+  press AND when Bluetooth comes into use after the hotspot (`onBluetoothMs`, `HomeTab.btSince`). Time on the hotspot is not
+  counted, or a Home that had been open for an hour would stop for good at the first question that had to go over Bluetooth.
 - WHY THERE IS NO STATUS (`Trouble`, pure): the card on Home names the cause (not on the hotspot and no usable Bluetooth
   link / Bluetooth off on the tablet / asked and no answer / answered "not paired" / answered an error). "After a phone
-  restart" is offered only when the phone did not answer at all.
+  restart" is offered only when the phone did not answer at all. The card is shown at once (`Trouble.shown`), except for ONE
+  lost answer over the hotspot from a phone that had been heard. So whenever Home has stopped asking, or Bluetooth was tried
+  and the next question is half a minute away, "Ask again" is on the screen.
 
 ## Battery saver changes (`Eco`)
 

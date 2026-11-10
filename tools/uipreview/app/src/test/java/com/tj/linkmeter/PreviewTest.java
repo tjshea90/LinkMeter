@@ -637,6 +637,11 @@ public class PreviewTest {
         shot(a, "state-settings-link-ready");
         Cfg.setBtCall(RuntimeEnvironment.getApplication(), false, 0);
         a.openTab(Tab.HOME);
+        settle();
+        // one failed call after the link had worked (the phone was out of range once): Settings says so, Home has no card for it
+        if (findButton(a.getWindow().getDecorView(), "Open " + Tab.SETTINGS) != null) {
+            throw new AssertionError("Home shows 'The Bluetooth link is not ready' for one call that failed");
+        }
         a.openTab(Tab.SETTINGS);
         shot(a, "state-settings-link-not-reached");
         Cfg.setBtCall(RuntimeEnvironment.getApplication(), true, System.currentTimeMillis());

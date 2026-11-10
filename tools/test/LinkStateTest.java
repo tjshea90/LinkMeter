@@ -3,7 +3,8 @@ package com.tj.linkmeter;
 /**
  * Offline test of LinkState: what the tablet may say about the Bluetooth link. The rule that must never break: "Ready" is said
  * only when the phone's address is stored, a call to it has been answered, the latest call did not fail and the phone's last
- * status says its side is listening; and an address that a call has proved is not replaced by what a status says.
+ * status says its side is listening; and an address that a call has proved is not replaced by what a status says. Also: which
+ * states put a card on the Home tab (one failed call after the link had worked does not).
  * Run by tools/test.sh. Prints "N checks, M failed". ASCII only.
  */
 public final class LinkStateTest {
@@ -123,10 +124,29 @@ public final class LinkStateTest {
         check(LinkState.takeAddress("02:00:00:00:00:00", true, a), "a stored placeholder is no address: the phone's is taken");
     }
 
+    /** Which states put a card about the link on the Home tab. */
+    static void onHome() {
+        for (LinkState.Kind k : LinkState.Kind.values()) {
+            boolean said = LinkState.saidOnHome(k);
+            boolean missingOrUnproven = k == LinkState.Kind.NOT_ALLOWED || k == LinkState.Kind.NO_ADDRESS || k == LinkState.Kind.PHONE_OLD
+                    || k == LinkState.Kind.PHONE_NOT_LISTENING || k == LinkState.Kind.NOT_TESTED;
+            check(said == missingOrUnproven, "a card on Home exactly when the link is known to be missing or unproven: " + k + " -> " + said);
+        }
+        check(!LinkState.saidOnHome(LinkState.Kind.READY), "a link that is ready is not a card on Home");
+        check(!LinkState.saidOnHome(LinkState.Kind.NOT_REACHED), "one failed call after the link had worked is not a card on Home (Settings shows it)");
+        check(!LinkState.saidOnHome(LinkState.Kind.OFF_HERE) && !LinkState.saidOnHome(LinkState.Kind.NO_BLUETOOTH),
+                "nor is a link the user switched off here, or a tablet without Bluetooth");
+        check(LinkState.saidOnHome(LinkState.Kind.NOT_TESTED) && LinkState.saidOnHome(LinkState.Kind.NO_ADDRESS)
+                && LinkState.saidOnHome(LinkState.Kind.PHONE_NOT_LISTENING), "a link never tested, not set up, or not listening on the phone is");
+        // the phone left the house and came back: it worked, one call failed, the phone says "on" again over the hotspot
+        check(!LinkState.saidOnHome(LinkState.of(true, true, true, true, true, true, "on")), "the phone was out of range once: no card on Home");
+    }
+
     public static void main(String[] args) {
         everyCombination();
         scenarios();
         addresses();
+        onHome();
         System.out.println(checks + " checks, " + failed + " failed");
         if (failed > 0) {
             System.exit(1);

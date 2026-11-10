@@ -61,7 +61,7 @@ echo "== Which route a request takes (Reach: the hotspot first, Bluetooth only w
 javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Json.java app/src/main/java/com/tj/linkmeter/Http.java app/src/main/java/com/tj/linkmeter/Client.java \
   app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/Reach.java tools/test/ReachTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.ReachTest || fail=1
-echo "== Is the Bluetooth link ready? (LinkState: the tablet says 'Ready' only when the phone's address is stored, a call to it was answered, the latest call did not fail and the phone says it is listening; an address a call has proved is not replaced by what a status says)"
+echo "== Is the Bluetooth link ready? (LinkState: the tablet says 'Ready' only when the phone's address is stored, a call to it was answered, the latest call did not fail and the phone says it is listening; an address a call has proved is not replaced by what a status says; one failed call after the link had worked puts no card on Home)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BtAddr.java app/src/main/java/com/tj/linkmeter/LinkState.java tools/test/LinkStateTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LinkStateTest || fail=1
 echo "== What became of a switch the phone only answered with 'Sent' (FollowUp: 'is on' / 'is off' only for what the phone's status reported; a phone that stops answering is said to have stopped answering; otherwise 'not confirmed yet')"

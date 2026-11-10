@@ -70,6 +70,19 @@ final class LinkState {
         return "on".equals(phoneBt) ? Kind.READY : Kind.NOT_TESTED;
     }
 
+    /**
+     * Does the Home tab put a card about the link on the screen while the tablet is on the hotspot (where the link is easy to
+     * mend)? Yes when the link is known to be missing or unproven: not set up, not allowed, never tested, or the phone says its
+     * side is not listening. No when it is ready, and when this tablet has no Bluetooth or the link is switched off here
+     * (nothing to mend, or the user's choice). And no for {@link Kind#NOT_REACHED}: that only says the latest call failed after
+     * earlier ones had worked, which is what a phone that was out of range for a while leaves behind. On the hotspot the tablet
+     * makes no Bluetooth call by itself, so the card would stay for days and say more than is known. Settings shows that state,
+     * and before the hotspot is switched off the link is tested with a live call anyway.
+     */
+    static boolean saidOnHome(Kind k) {
+        return k != Kind.READY && k != Kind.OFF_HERE && k != Kind.NO_BLUETOOTH && k != Kind.NOT_REACHED;
+    }
+
     /** The word for the small label next to the card's heading. */
     static String chip(Kind k) {
         switch (k) {
