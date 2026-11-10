@@ -155,6 +155,11 @@ final class ScreenTab extends Tab {
         return "Screen";
     }
 
+    @Override
+    Icons.Kind icon() {
+        return Icons.Kind.SCREEN;
+    }
+
     // ------------------------------------------------------------ layout
 
     @Override

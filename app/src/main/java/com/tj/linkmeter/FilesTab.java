@@ -103,6 +103,11 @@ final class FilesTab extends Tab implements Transfers.Listener {
         return "Files";
     }
 
+    @Override
+    Icons.Kind icon() {
+        return Icons.Kind.FOLDER;
+    }
+
     private FileBrowser cur() {
         return br[side];
     }

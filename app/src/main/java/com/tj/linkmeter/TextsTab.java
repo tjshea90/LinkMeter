@@ -89,6 +89,11 @@ final class TextsTab extends Tab {
         return "Texts";
     }
 
+    @Override
+    Icons.Kind icon() {
+        return Icons.Kind.CHAT;
+    }
+
     // ------------------------------------------------------------ what the conversation screens use
 
     ExecutorService net() {

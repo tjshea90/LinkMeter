@@ -36,6 +36,11 @@ final class PhoneTab extends Tab {
     }
 
     @Override
+    Icons.Kind icon() {
+        return Icons.Kind.PHONE;
+    }
+
+    @Override
     View build() {
         LinearLayout col = Ui.column(act);
         col.addView(Ui.text(act, "LinkMeter · phone", 24, Ui.FG, true));

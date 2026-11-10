@@ -79,6 +79,11 @@ final class HomeTab extends Tab {
     }
 
     @Override
+    Icons.Kind icon() {
+        return Icons.Kind.HOUSE;
+    }
+
+    @Override
     View build() {
         LinearLayout col = Ui.column(act);
         col.addView(Ui.text(act, "LinkMeter", 22, Ui.FG, true));

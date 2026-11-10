@@ -10,7 +10,11 @@ final class Icons {
 
     enum Kind {
         BACK, HOME, RECENTS, VOL_UP, VOL_DOWN, KEYBOARD, POWER, LOCK, SLIDERS, FULL, EXIT_FULL, CLOSE,
-        ENTER, BACKSPACE, TAB, UP, DOWN, LEFT, RIGHT, PAPERCLIP
+        ENTER, BACKSPACE, TAB, UP, DOWN, LEFT, RIGHT, PAPERCLIP,
+        // the bottom bar's tabs
+        HOUSE, GAUGE, BARS, PHONE, SCREEN, FOLDER, CHAT, GEAR,
+        // the two ways to the phone
+        BLUETOOTH, HOTSPOT
     }
 
     /** The drawing operations the icons need. Angles are degrees, clockwise from 3 o'clock. */
@@ -180,6 +184,62 @@ final class Icons {
                 break;
             case PAPERCLIP:
                 p.poly(paperclip(cx, cy, r), false, false);
+                break;
+            case HOUSE:
+                p.poly(pts(cx, cy, r, -0.9f, -0.05f, 0f, -0.82f, 0.9f, -0.05f), false, false);
+                p.poly(pts(cx, cy, r, -0.62f, -0.22f, -0.62f, 0.78f, 0.62f, 0.78f, 0.62f, -0.22f), false, false);
+                p.poly(pts(cx, cy, r, -0.17f, 0.78f, -0.17f, 0.3f, 0.17f, 0.3f, 0.17f, 0.78f), false, false);
+                break;
+            case GAUGE:
+                // a speedometer: half a dial, a needle, its hub
+                p.arc(cx - 0.9f * r, cy - 0.7f * r, cx + 0.9f * r, cy + 1.1f * r, 180f, 180f);
+                p.line(cx - 0.9f * r, cy + 0.2f * r, cx + 0.9f * r, cy + 0.2f * r);
+                p.line(cx, cy + 0.2f * r, cx + 0.42f * r, cy - 0.38f * r);
+                p.dot(cx, cy + 0.2f * r, 0.12f * r);
+                break;
+            case BARS:
+                // signal bars, rising to the right
+                for (int i = 0; i < 4; i++) {
+                    float l = -0.86f + i * 0.46f;
+                    float top = 0.42f - i * 0.38f;
+                    p.poly(pts(cx, cy, r, l, 0.78f, l, top, l + 0.3f, top, l + 0.3f, 0.78f), true, true);
+                }
+                break;
+            case PHONE:
+                p.rrect(cx - 0.5f * r, cy - 0.88f * r, cx + 0.5f * r, cy + 0.88f * r, 0.16f * r);
+                p.line(cx - 0.14f * r, cy + 0.62f * r, cx + 0.14f * r, cy + 0.62f * r);
+                break;
+            case SCREEN:
+                // a phone's picture inside a frame: the remote screen
+                p.rrect(cx - 0.92f * r, cy - 0.7f * r, cx + 0.92f * r, cy + 0.7f * r, 0.14f * r);
+                p.rrect(cx - 0.26f * r, cy - 0.42f * r, cx + 0.26f * r, cy + 0.42f * r, 0.08f * r);
+                break;
+            case FOLDER:
+                p.poly(pts(cx, cy, r, -0.88f, -0.6f, -0.3f, -0.6f, -0.08f, -0.34f, 0.88f, -0.34f, 0.88f, 0.66f, -0.88f, 0.66f), true, false);
+                break;
+            case CHAT:
+                p.poly(pts(cx, cy, r, -0.88f, -0.7f, 0.88f, -0.7f, 0.88f, 0.34f, -0.2f, 0.34f, -0.56f, 0.8f, -0.56f, 0.34f, -0.88f, 0.34f), true, false);
+                p.line(cx - 0.5f * r, cy - 0.36f * r, cx + 0.5f * r, cy - 0.36f * r);
+                p.line(cx - 0.5f * r, cy - 0.02f * r, cx + 0.2f * r, cy - 0.02f * r);
+                break;
+            case GEAR:
+                p.circle(cx, cy, 0.3f * r);
+                p.circle(cx, cy, 0.62f * r);
+                for (int i = 0; i < 8; i++) {
+                    double a = Math.PI * i / 4;
+                    float ca = (float) Math.cos(a);
+                    float sa = (float) Math.sin(a);
+                    p.line(cx + 0.62f * r * ca, cy + 0.62f * r * sa, cx + 0.9f * r * ca, cy + 0.9f * r * sa);
+                }
+                break;
+            case BLUETOOTH:
+                p.poly(pts(cx, cy, r, -0.42f, -0.42f, 0.42f, 0.42f, 0f, 0.86f, 0f, -0.86f, 0.42f, -0.42f, -0.42f, 0.42f), false, false);
+                break;
+            case HOTSPOT:
+                // a dot that sends rings upward: the phone as a hotspot
+                p.dot(cx, cy + 0.5f * r, 0.16f * r);
+                p.arc(cx - 0.45f * r, cy + 0.05f * r, cx + 0.45f * r, cy + 0.95f * r, 215f, 110f);
+                p.arc(cx - 0.9f * r, cy - 0.4f * r, cx + 0.9f * r, cy + 1.4f * r, 222f, 96f);
                 break;
             default:
                 break;

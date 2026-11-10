@@ -39,7 +39,7 @@ public class MainActivity extends Activity {
     private boolean resumed;
     private FrameLayout content;
     private Tab[] tabs;
-    private Button[] bar;
+    private BarButton[] bar;
     private Tab cur;
     private int index;
     private View tabBar;
@@ -267,22 +267,28 @@ public class MainActivity extends Activity {
         root.addView(content, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
+        // The bottom bar: one icon with its name per screen; the one on show is lit.
         LinearLayout barRow = new LinearLayout(this);
         barRow.setOrientation(LinearLayout.HORIZONTAL);
         barRow.setBackgroundColor(Ui.CARD);
 
         tabs = t;
-        bar = new Button[tabs.length];
+        bar = new BarButton[tabs.length];
         for (int i = 0; i < tabs.length; i++) {
             final int idx = i;
-            Button b = Ui.button(this, tabs[i].title(), v -> showTab(idx, true));
-            b.setTextSize(12);
-            b.setPadding(0, b.getPaddingTop(), 0, b.getPaddingBottom());
-            barRow.addView(b, Ui.weight());
+            BarButton b = new BarButton(this, tabs[i].icon(), tabs[i].title(), v -> showTab(idx, true));
+            b.setLabelSize(11f);
+            barRow.addView(b, new LinearLayout.LayoutParams(0, Ui.dp(this, 58), 1f));
             bar[i] = b;
         }
-        tabBar = barRow;
-        root.addView(barRow, new LinearLayout.LayoutParams(
+        LinearLayout barBox = new LinearLayout(this);
+        barBox.setOrientation(LinearLayout.VERTICAL);
+        View line = new View(this);
+        line.setBackgroundColor(Ui.LINE);
+        barBox.addView(line, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 1))));
+        barBox.addView(barRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        tabBar = barBox;
+        root.addView(barBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         if (index >= tabs.length) {
@@ -314,7 +320,7 @@ public class MainActivity extends Activity {
         content.removeAllViews();
         content.addView(cur.build());
         for (int j = 0; j < bar.length; j++) {
-            bar[j].setAlpha(j == i ? 1f : 0.55f);
+            bar[j].setActive(j == i);
         }
         if (start && resumed) {
             cur.onShow();

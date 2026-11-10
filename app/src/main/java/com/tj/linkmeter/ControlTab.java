@@ -38,6 +38,11 @@ final class ControlTab extends Tab {
     }
 
     @Override
+    Icons.Kind icon() {
+        return Icons.Kind.PHONE;
+    }
+
+    @Override
     View build() {
         LinearLayout col = Ui.column(act);
         col.addView(Ui.text(act, "Control the phone", 22, Ui.FG, true));

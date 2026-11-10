@@ -92,6 +92,11 @@ final class BandsTab extends Tab {
     }
 
     @Override
+    Icons.Kind icon() {
+        return Icons.Kind.BARS;
+    }
+
+    @Override
     View build() {
         buttons.clear();
         LinearLayout col = Ui.column(act);

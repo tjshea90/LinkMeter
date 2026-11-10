@@ -59,6 +59,11 @@ final class SpeedTab extends Tab {
     }
 
     @Override
+    Icons.Kind icon() {
+        return Icons.Kind.GAUGE;
+    }
+
+    @Override
     View build() {
         LinearLayout col = Ui.column(act);
         col.addView(Ui.text(act, "Speed test", 22, Ui.FG, true));

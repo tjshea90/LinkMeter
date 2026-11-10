@@ -24,6 +24,11 @@ final class SettingsTab extends Tab {
     }
 
     @Override
+    Icons.Kind icon() {
+        return Icons.Kind.GEAR;
+    }
+
+    @Override
     View build() {
         LinearLayout col = Ui.column(act);
         col.addView(Ui.text(act, "Settings", 22, Ui.FG, true));

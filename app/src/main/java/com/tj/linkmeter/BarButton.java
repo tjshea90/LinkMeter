@@ -89,6 +89,12 @@ final class BarButton extends View {
         }
     }
 
+    /** The label's size in dp (the bottom bar uses a bigger one than the remote screen's narrow side bars). */
+    void setLabelSize(float dps) {
+        text.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dps, getResources().getDisplayMetrics()));
+        invalidate();
+    }
+
     /** Highlights the button (a mode that is on). */
     void setActive(boolean a) {
         if (a != active) {

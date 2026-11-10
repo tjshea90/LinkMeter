@@ -12,6 +12,11 @@ abstract class Tab {
 
     abstract String title();
 
+    /** The picture for this screen in the bottom bar. */
+    Icons.Kind icon() {
+        return Icons.Kind.RECENTS;
+    }
+
     abstract View build();
 
     /** The tab is on screen and the app is in front. Start any work here. */
