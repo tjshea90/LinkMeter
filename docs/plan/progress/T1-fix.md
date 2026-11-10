@@ -22,10 +22,17 @@ HANDLED SO FAR:
     fails: "asked 0 times"), new pictures state-home-one-answer-over-bluetooth and state-home-back-on-hotspot. Pretend has wifiFails; its Reach clock is
     SystemClock.elapsedRealtime. HANDOFF T1 line got one sentence.
 
-IN PROGRESS NOW: F4 (verdict: real, scenario 2 and the "smaller hole" stand after F3; scenario 1 now takes five minutes and ends with the card).
- Plan: pure rule Trouble.shown(kind, heardBefore, misses, stopped, bluetoothTried) used by HomeTab.paintBanner; checks in TroubleTest; "trouble:" breakages.
+ F4 FIXED in commit 2509a35 (verdict: real; after F3 its scenario 1 takes five minutes and ends with the card, scenario 2 and the single miss over
+    Bluetooth stood). New pure rule Trouble.shown(kind, heardBefore, misses, stopped, bluetoothTried), used by HomeTab.paintBanner: the card is shown
+    at once when Home has stopped asking or Bluetooth was tried. TroubleTest 2309 checks; 7 new "trouble:" breakages (20 of 20 caught); PreviewTest
+    homeStoppedOnAMiss and homeOneMissOverBluetooth (pictures and checks: press "Ask again"; with the old rule both fail "no button"). NOT DONE: the
+    reviewer's optional extra (after STOP try the hotspot route alone once a minute); see the end of the notes.
 
-NEXT: F4, F6, F8, F9, F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+IN PROGRESS NOW: F6 (verdict: real, and the same hole exists for the screen switch: screenPressed does not grey the card's button either).
+ Plan: HomeTab.bannerSends (the card's main button sends a switch) set in paintBanner; paintSwitches greys that button with the others; send(),
+ screenPressed() and confirmOff() return at once when busy; PreviewTest check homeOneSwitchAtATime.
+
+NEXT: F6, F8, F9, F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
