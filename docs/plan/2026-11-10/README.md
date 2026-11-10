@@ -36,8 +36,7 @@ Things the saves depend on (found by two checkers that tried to break them, 2026
   looks in the main tree.
 - All three save scripts take one lock and push every commit by itself (a finished step must be the head of its own
   push, or GitHub does not build it).
-- THE RELEASE STEP OF THE PIPELINE BREAKS with more than about 85 commits since the last release. The fix is
-  `tools/pending/release-notes.patch` and needs the user's yes, because it changes `.github/`. See `tools/pending/README.md`.
+- The release text leaves these commits out (the pipeline's release step was fixed on 2026-11-10, commit `34b7632`).
 
 ## Running a track (for the directing session)
 
@@ -63,10 +62,8 @@ Things the saves depend on (found by two checkers that tried to break them, 2026
    Deal with anything the fixer called too big. Only then tick the track's box in HANDOFF, set `<track>-run.md` to
    `STATUS: DONE`, and save.
 6. THE CLOSING SAVE OF EVERY TRACK IS A RELEASE (plain `tools/checkpoint.sh "..."`, a sentence the user understands),
-   as long as `tools/pending/release-notes.patch` is not merged: the pipeline's release step breaks with more than 80
-   commits since the last release. Count first:
-   `git rev-list --count --no-merges $(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)..HEAD`. 79 or more: do
-   not release, ask the user for the yes to the patch. Then check the run is green and the release exists.
+   so the user can try each stage on the devices. Then check that the run is green and the release exists, and give the
+   user the releases page.
 
 ## If a run was cut off (usage ran out, the worker restarted, the container is new)
 
