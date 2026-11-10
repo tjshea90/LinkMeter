@@ -100,7 +100,8 @@ final class Http {
         }
         String text = head.toString("ISO-8859-1");
         String[] lines = text.split("\r\n");
-        String[] first = lines[0].split(" ");
+        // a head of nothing but line ends splits into NO lines at all: that must be an ordinary "bad request", not a crash
+        String[] first = lines.length == 0 ? new String[0] : lines[0].split(" ");
         if (first.length < 2) {
             throw new IOException("bad request line");
         }

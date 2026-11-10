@@ -59,7 +59,12 @@ final class LinkServer {
             int bad = 0;
             boolean proven = false;
             while (true) {
-                Http.Req r = Http.readHead(in); // throws when the other side closes, or sends something that is not a request
+                Http.Req r;
+                try {
+                    r = Http.readHead(in); // throws when the other side closes, or sends something that is not a request
+                } catch (RuntimeException e) {
+                    return served; // bytes no parser expected: the same as garbage
+                }
                 watch.working();
                 r.via = Http.VIA_BT;
                 if (r.length != 0) {

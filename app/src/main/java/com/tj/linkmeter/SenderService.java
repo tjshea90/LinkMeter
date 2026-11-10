@@ -175,8 +175,9 @@ public class SenderService extends Service {
                 Http.err(out, 500, String.valueOf(e));
             }
             out.flush();
-        } catch (IOException ignored) {
-            // The other side went away or sent something odd. Nothing to do.
+        } catch (IOException | RuntimeException ignored) {
+            // The other side went away or sent something odd. Nothing to do. (RuntimeException too: an exception that escapes a
+            // worker thread would end the whole app, and what a stranger on the hotspot sends must never be able to do that.)
         } finally {
             closeQuietly(s);
         }
