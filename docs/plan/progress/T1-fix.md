@@ -15,7 +15,13 @@ THE TEN FINDINGS (short names, in the order handled; the full text is in the orc
 
 HANDLED SO FAR: (none yet)
 
-IN PROGRESS NOW: reading HomeTab, PollPace, Reach, BtLink for F3.
+IN PROGRESS NOW: F3 (verdict: REAL, fixing). Written but NOT yet committed (tree is dirty):
+ - PollPace.next has a new parameter onBluetoothMs; the five minutes and the first minute count min(since last press, since Bluetooth came into use).
+ - HomeTab: field btSince (-1 while not on Bluetooth), set in pollTask when s.btTried first becomes true; the card for "answered over Bluetooth, hs true" says
+   "The phone answered over Bluetooth this time" when s.onWifi (it no longer claims the tablet has not joined).
+ - tools/test/PollPaceTest.java extended (54271 checks), tools/mutate_link.py: 5 new "pace:" breakages, 18 of 18 caught.
+ - PreviewTest: Pretend.wifiFails, check homeKeepsAskingAfterOneAnswerOverBluetooth, Pretend's Reach clock is now SystemClock.elapsedRealtime.
+ About to: run tools/preview.sh (does the new check pass, and fail without the fix?), tools/test.sh, assembleRelease, then checkpoint.
 
 NEXT: F3, F4, F6, F8, F9, F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
