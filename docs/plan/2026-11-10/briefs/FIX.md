@@ -16,6 +16,13 @@ are sometimes wrong. For EACH finding:
 
 Two reviewers may have reported the same thing in different words: handle it once.
 
+The session can be cut off at any moment. Follow the section "Saving" of `COMMON.md` to the letter: look for your notes
+of an earlier run FIRST (`docs/plan/progress/<your progress name>.md`): findings it lists as handled are done, do not
+handle them again (your task may list more findings than the earlier run had: handle those that are not in your notes).
+Handle ONE finding at a time and save after each: your notes with its verdict (`tools/progress.sh`), and the code as a
+finished step when it builds and passes (`NO_RELEASE=1 tools/checkpoint.sh`) or as half-done work when it does not yet
+(`WIP=1 tools/checkpoint.sh`). Do not collect several fixes into one save at the end.
+
 Then run `tools/test.sh` and `./gradlew --no-daemon assembleRelease`, and `tools/preview.sh` if a screen changed (look at the
 pictures), and save as COMMON says (with `NO_RELEASE=1`). In HANDOFF's track list add half a sentence to the track's line
 only if something a new session must know has changed.

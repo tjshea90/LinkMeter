@@ -1,6 +1,7 @@
 # LinkMeter: what every reviewer on this task must know
 
-You are a REVIEWER. You read; you do not change the repository (no edits, no commits, no `tools/checkpoint.sh`, no push).
+You are a REVIEWER. You read; you do not change the repository (no edits, no commits, no `tools/checkpoint.sh`, no push),
+with ONE exception: your own notes, saved with `tools/progress.sh` (see "Your notes" below).
 You may build and run things: `tools/test.sh`, `./gradlew --no-daemon assembleRelease`, `tools/preview.sh` (it draws the
 screens to `tools/uipreview/out/*.png`; look at them with the Read tool), `python3 tools/mutate_link.py`. Scratch files go
 only under the scratch folder named in your task. Nobody else is changing the tree while you read.
@@ -8,6 +9,23 @@ only under the scratch folder named in your task. Nobody else is changing the tr
 Read first: `briefs/COMMON.md` next to this file (the devices, the rules the implementers were given), then `HANDOFF.md`
 newest block ("DECISIONS TAKEN", "THE TRACKS"). The implementers' own reports are appended to your task: treat them as
 claims to check, not as facts.
+
+## Your notes (the session can be cut off at any moment)
+
+Read the section "Saving" of `COMMON.md`: kind 1 ("Your notes") and "When you start" and "When you finish" apply to you
+exactly as written; kinds 2 and 3 do not (you change no code). In short:
+- BEFORE anything else look for `docs/plan/progress/<your progress name>.md` in your copy of the repository. `STATUS:
+  DONE` and the HEAD it names is the HEAD of your task: hand back the answer stored in it, do not review again. `STATUS:
+  DONE` for an OLDER head: your earlier findings stand as claims; check which are still true and review only what changed
+  since (`git diff <old head>..<new head>`). `STATUS: WORKING`: continue where it stops; do not re-read what CHECKED SO
+  FAR lists.
+- Keep your notes file in your scratch folder and push it with `tools/progress.sh <progress name> <file>` every 10
+  minutes, before every long command, and THE MOMENT a finding is established (write the finding in full: title, where,
+  scenario, fix, severity, confidence). A finding that is only in your head is lost when the session is cut off.
+- The notes name the HEAD you review, what you have checked so far (files, scenarios, commands run), and what is left.
+- Your last save has `STATUS: DONE` and your complete answer as JSON under `ANSWER`.
+
+## What you review
 
 What you review: the commits `BASE..HEAD` named in your task (`git log --oneline BASE..HEAD`, `git diff BASE..HEAD -- <files>`),
 within the scope your task names. Read the changed code in full, in the file, not only the diff lines.

@@ -1,0 +1,312 @@
+[
+ {
+  "part": "T1a",
+  "report": {
+   "summary": "T1a (phone side of the remote link) is done in three pushed NO_RELEASE checkpoints (97fa5f4, 03ee18c, c1e85f0); all three pipeline runs are green and main is at c1e85f0, no release. Every finding in the brief was checked against the code first; all were real except the premise of control D17 (see below). What changed: the link wake lock is counted per holder (new pure Holds, used by Awake) and is held from accept() until the greeting is out; BtServer opens/closes its listener on one background thread, retries by itself from the status (poke, at most every 30 s), hangs up when the phone-side switch goes off, evicts an unproven connection before a proven one, has recheck() for the phone's screen, and bt_setup refuses while the switch is off; a switch that did not move now answers 409 err (Actions.NotDone, words and verdict rule in the new pure SwitchWords); hotspot-start waits for the state \"on\", hotspot-restart waits for \"off\" first, hotspot-band reads the band back, \"Prepare phone\" judges each step; /screen/state|on|off pass the phone's screen switch; the hotspot answer is three-valued and `hs` is left out of /s when not known. One fact found by reading AOSP source: `cmd phone restart-modem` is refused for everybody but root on a non-user build, so \"Restart modem\" cannot work on the user's retail Samsung; it is therefore NOT made answer-first and now says so in plain words. One tablet line was adjusted (SettingsTab.setUp shows the phone's own words when bt_setup answers an error). Nothing was run on a device.",
+   "findings": [
+    {
+     "id": "bluetooth-glue D3",
+     "status": "fixed",
+     "note": "Real. BtServer.poke() (called from Status.json before `bt` is written) asks RemoteRoutes.listenAgain(state, msSinceLastTry): only for perm/error/off and at most every 30 s (LISTEN_AGAIN_MS); the retry runs on BtServer's own background thread (DOOR executor, no thread while idle). Never retries for disabled/none/on, never switches Bluetooth on. Files: BtServer.java, RemoteRoutes.java, Status.java."
+    },
+    {
+     "id": "bluetooth-glue D6",
+     "status": "fixed",
+     "note": "Real (one static non-counted lock; any connection's waiting()/finally released it). New pure Holds.java keeps holder -> end; Awake.linkBusy(c, who, ms)/linkDone(who) set the non-reference-counted lock to the longest remaining need, or release it when nobody holds. Checked in AOSP PowerManager that a non-counted acquire(ms) replaces the earlier timer, which is what Holds relies on. Each connection (BtServer.Conn) is its own holder. Files: Holds.java, Awake.java, BtServer.java."
+    },
+    {
+     "id": "bluetooth-glue D19",
+     "status": "fixed",
+     "note": "Real. acceptLoop takes Awake.linkBusy(conn, 5 s) right after accept() returns; the first Watch.waiting() (called by LinkServer right after the greeting is flushed) releases that connection's hold; it runs out by itself after 5 s. Because of Holds a 5 s hold can no longer cut another connection's 120 s hold short. File: BtServer.java."
+    },
+    {
+     "id": "bluetooth-glue D7 (HANDOFF decision 5)",
+     "status": "fixed",
+     "note": "Real. Plain failures on the act-then-answer path now throw Actions.NotDone (an IOException), which Api.act already answers as 409 {\"err\":sentence}: hotspot on/off/restart, radio_cycle, wifi_on/off, screen_off, standby, airplane_off/restart_modem (report()), setup, hotspot_band_*. Actions.later (answer-first) behaves as before (it catches and drops the outcome). Standby: both parts are always tried; 200 only when both moved; otherwise 409 'Standby is only half done. <hotspot sentence> <screen sentence>' or 'Standby did not work. ...'. Sentences and the rule 'only an OK line is done' are in the new pure SwitchWords.java. Tablet readers checked (Call.run, HomeTab.send, ControlTab.send/show, BootDriver.post, ScreenTab): all show `err`. One line adjusted: SettingsTab.setUp shows the phone's own words when the phone answered an error (it used to prefix 'The phone could not be asked' and append the hotspot/Shizuku advice). Files: Actions.java, SwitchWords.java, SettingsTab.java."
+    },
+    {
+     "id": "bluetooth-glue D10",
+     "status": "fixed",
+     "note": "Real. ShellMain.startWifiTethering: state 13 at entry = OK; state 12 at entry = wait up to 15 s for 13 instead of asking twice; after onTetheringStarted it waits up to 10 s for state 13 (waitAp) and answers ERR with the state in words otherwise. hotspot-stop and hotspot-start answer a third verdict line 'UNSURE ...' when the state cannot be read; Actions/SwitchWords then answer 200 'The phone was asked to switch the hotspot on|off. It does not say whether it is on|off.' instead of 'is on/off'. Files: ShellMain.java, SwitchWords.java, Actions.java."
+    },
+    {
+     "id": "bluetooth-glue D11 (phone part)",
+     "status": "fixed",
+     "note": "Real. BtAddr.find (first valid address anywhere) is deleted; new BtAddr.own accepts only the setting's bare answer line or the FIRST 'address:' line of the Bluetooth report, and stops with nothing when that line is hidden (XX:XX:..). The shell grep is now `grep -i -m 12 'address:'`; the decision is in the tested Java, not the grep. Files: BtAddr.java, BtServer.java (setup)."
+    },
+    {
+     "id": "bluetooth-glue D12 (phone part)",
+     "status": "fixed",
+     "note": "Real. BtServer.start/stop/recheck and the Bluetooth state receiver hand their work to one single-thread executor ('linkmeter-bt-door', core thread times out after 10 s, jobs catch RuntimeException); the main thread never takes BtServer's lock any more. Only bt_setup listens synchronously (it is already on a worker thread). File: BtServer.java."
+    },
+    {
+     "id": "bluetooth-glue D13",
+     "status": "fixed",
+     "note": "Real. Actions.later catches IOException | InterruptedException | RuntimeException; for radio_cycle it records 'failed: ...' unless perform already recorded an outcome. File: Actions.java."
+    },
+    {
+     "id": "battery D16",
+     "status": "fixed",
+     "note": "Real. Awake.work(app, who, 90 s) is released by Awake.workDone(who) in a finally of Actions.later; counted with a second Holds so two overlapping delayed actions cannot release each other's hold. Files: Awake.java, Actions.java."
+    },
+    {
+     "id": "bluetooth-glue D14 (phone part)",
+     "status": "fixed",
+     "note": "Real. nameAt is reset in BtServer.setup right after the grant, and also whenever a new listener starts (covers a permission given in Android's settings and Bluetooth coming on). The tablet half (ok2 ignored in SettingsTab.setUp) is part b's. File: BtServer.java."
+    },
+    {
+     "id": "bluetooth-glue D15",
+     "status": "fixed",
+     "note": "Real. BtServer keeps Conn{socket, proven}; proven is set in the handler (only a correctly signed request reaches it). When a third connection arrives RemoteRoutes.givesWay(proven[]) picks the oldest unproven one, else the oldest. Small remaining window: a tablet connection between accept and its first request is still unproven. Files: BtServer.java, RemoteRoutes.java."
+    },
+    {
+     "id": "bluetooth-glue D17",
+     "status": "fixed",
+     "note": "docs/REMOTE_LINK.md now says: wake lock 5 s from accept to greeting and up to 120 s per request, counted per connection; /act carries EVERY action name over Bluetooth (only the /band* routes are refused); plus the things this part changed (self-heal, eviction rule, error answers, UNSURE, Standby's two-part answer, bt_setup rules, hs left out, screen power routes, restart_modem). The ControlTab hotspot-off wording named in the same finding is tablet text and left for T3."
+    },
+    {
+     "id": "phone-screen D1",
+     "status": "fixed",
+     "note": "Real (latent). The disabled branch of BtServer.listenLocked now also closes every open connection (closeAllLocked). It takes effect when the screen calls BtServer.recheck() after Cfg.setBtLink(false) (T6); there is no per-request check of the switch."
+    },
+    {
+     "id": "phone-screen D2",
+     "status": "fixed",
+     "note": "Real. BtServer.recheck() = listen / stop listening as things are now, only while the service wants the door, never blocking (safe from the screen's thread). BtServer.start() is for the service only and does nothing while SenderService.active is false; setup() no longer calls start() (it used to set wanted=true outside the service). File: BtServer.java."
+    },
+    {
+     "id": "phone-screen D3",
+     "status": "fixed",
+     "note": "Real. BtServer.setup throws before any grant or Bluetooth switch when Cfg.btLink is off: 409 'The Bluetooth link is switched off on the phone, so nothing was changed. To use it, open LinkMeter on the phone and switch on \"Let the tablet reach this phone over Bluetooth\".' Beyond the finding: setup also answers an error when Shizuku is not ready, when the phone has no Bluetooth, and when the phone is not listening at the end (the whole report is then the error text); it retries listening once after 1.5 s if Bluetooth had only just come on."
+    },
+    {
+     "id": "phone-screen D15",
+     "status": "fixed",
+     "note": "`served` deleted (no reader wanted); `lastAt` is private and read by the new BtServer.lastAskedText(): \"\" or 'last asked over Bluetooth at <short time>' for T6's status line."
+    },
+    {
+     "id": "control-tab D9 / settings-contradictions D7 (HANDOFF decision 6)",
+     "status": "fixed",
+     "note": "Real. Screen.serve lets RemoteRoutes.screenPower(path) (/screen/state, /screen/on, /screen/off) pass Cfg.screenControl; frame, video, ctl, tap, swipe, key, text, pin and starting a profile stay behind it. The switch's explanation text on the phone's screen is T6's. Files: Screen.java, RemoteRoutes.java."
+    },
+    {
+     "id": "control-tab D12",
+     "status": "fixed",
+     "note": "Real (five commands joined with ';', result never looked at). Actions.setup runs each step by itself and judges its exit code; all good: 200 'The phone is prepared: ...'; any failure: 409 'Not every step worked. Not done: <step (first line of output)>; .... Done: ....'. The appops step is skipped below Android 11 and the notification grant below Android 13."
+    },
+    {
+     "id": "control-tab D17",
+     "status": "not_real",
+     "note": "The finding's premise (the modem restart takes the hotspot down before the reply) does not hold here. AOSP TelephonyShellCommand.handleRestartModemCommand (read today) refuses everybody but root on a non-user build with 'RestartModem: Permission denied.' and -1, so through Shizuku on a retail Samsung the command changes nothing; where it does run only the hotspot's internet pauses, its Wi-Fi stays. So restart_modem is NOT added to cutsLink (RemoteRoutes, its test and mutate_link.py unchanged for it; the test still pins that it keeps the link). What was really wrong is fixed instead: the refusal used to come back as 200 'Failed (code 255): ...'; it is now 409 'This phone does not let an app restart its modem, so nothing was changed. To make the phone look for its network again, switch airplane mode on and off at the phone.' The button itself (ControlTab, PhoneTab) cannot work on this phone and should go in T3/T6."
+    },
+    {
+     "id": "settings-contradictions D6 / control-tab D11",
+     "status": "fixed",
+     "note": "Real. ShellMain.hotspotRestart: stop, wait up to 8 s for state off, 'ERR the hotspot did not switch off (it is still on), so it was not restarted' if it never does, 1 s pause, then start (which itself waits for 'on'); Cells.shellMain got a timeout overload and the restart gets 55 s. ShellMain.hotspotBand reads getBand() back: 'OK <band>. Restart the hotspot to use it', 'ERR the phone kept <band>' (unchanged from before the call) or 'ERR the phone did not take <wanted>: it now has <band>'; Actions answers a sentence on success and 409 'The hotspot's Wi-Fi band was not changed: ...' otherwise. The Saved hotspot-band flag is left set after a refused change (the safe side for the Safety check)."
+    },
+    {
+     "id": "HS (bluetooth-glue.report section 9)",
+     "status": "fixed",
+     "note": "Radios.hotspot(c) is Boolean: TRUE / FALSE / null. Sources weighed by the pure RemoteRoutes.hotspotOn(api, announced, hotspotInterface): the hidden WifiManager.isWifiApEnabled; then the last WIFI_AP_STATE_CHANGED the service heard (new Radios.watch/unwatch receiver registered by SenderService; AOSP SoftApManager read today: since Android 12L it is a normal, non-sticky broadcast to apps holding ACCESS_WIFI_STATE, which this app holds; the sticky read is kept for Android 12 and older; only state 13 counts as on); then a hotspot interface with an address (proves on, never off). Status.json leaves `hs` OUT when null. RemoteRoutes.cutsLink takes the Boolean: null answers first for wifi_off (safe side). Actions uses Radios.waitHotspot (now TRUE/FALSE/null) only after the airplane-mode fallback and says 'The phone does not say whether the hotspot is off.' for null. The unused Radios.hotspotHow is deleted."
+    }
+   ],
+   "files_changed": [
+    "app/src/main/java/com/tj/linkmeter/Holds.java (new, pure)",
+    "app/src/main/java/com/tj/linkmeter/SwitchWords.java (new, pure)",
+    "app/src/main/java/com/tj/linkmeter/Awake.java",
+    "app/src/main/java/com/tj/linkmeter/BtServer.java",
+    "app/src/main/java/com/tj/linkmeter/BtAddr.java",
+    "app/src/main/java/com/tj/linkmeter/RemoteRoutes.java",
+    "app/src/main/java/com/tj/linkmeter/Radios.java",
+    "app/src/main/java/com/tj/linkmeter/Actions.java",
+    "app/src/main/java/com/tj/linkmeter/ShellMain.java",
+    "app/src/main/java/com/tj/linkmeter/Api.java",
+    "app/src/main/java/com/tj/linkmeter/Status.java",
+    "app/src/main/java/com/tj/linkmeter/Screen.java",
+    "app/src/main/java/com/tj/linkmeter/SenderService.java",
+    "app/src/main/java/com/tj/linkmeter/Cells.java",
+    "app/src/main/java/com/tj/linkmeter/SettingsTab.java (one expression in setUp)",
+    "tools/test/HoldsTest.java (new)",
+    "tools/test/SwitchWordsTest.java (new)",
+    "tools/test/LinkProtocolTest.java",
+    "tools/test.sh",
+    "tools/mutate_link.py",
+    "docs/REMOTE_LINK.md",
+    "HANDOFF.md (T1 line of THE TRACKS only)",
+    "CHECKPOINTS.md (appended by tools/checkpoint.sh)"
+   ],
+   "tests": "tools/test.sh passes (run on the committed tree). New: tools/test/HoldsTest.java, 225,702 checks (hand-written stories plus 400 random stories against a pretend wake lock), registered as 'Staying awake'. New: tools/test/SwitchWordsTest.java, 3,797 checks (verdict line, hotspot on/off/restart, airplane fallback, every Standby combination), registered as 'What the phone answers after a switch'. Changed: tools/test/LinkProtocolTest.java, 1,779 checks (was 1,525): new sections for the three-valued hotspot answer, cutsLink with 'not known', screenPower, givesWay, listenAgain and BtAddr.own (the BtAddr.find checks were rewritten for own). ReachTest unchanged at 301,253 checks. Deliberate breakages, all in tools/mutate_link.py (`python3 tools/mutate_link.py`): 88 caught, 0 missed = link suite 54 (17 of them new or rewritten for this part: 13 RemoteRoutes rules, 4 BtAddr.own rules) + reach: 11 (unchanged, still all caught) + new suite holds: 8 + new suite words: 15. One test was wrong and was fixed, not weakened: my first SwitchWordsTest put look-alike lines ('UNSURELY', 'ERROR OK ...') through a 'no verdict word left in the sentence' check although such lines are rightly passed on word for word as the phone's reason; they now have their own check (a look-alike is a failure). Not covered by any test: the Android glue (BtServer threads, Awake, the Radios receiver, ShellMain, Actions.setup wording).",
+   "not_known_until_a_device": [
+    "Whether the phone can tell that its hotspot is on on Android 16: the hidden isWifiApEnabled by reflection may be blocked, the announcement is only heard after a change that happens while the service runs, and Samsung's hotspot interface name may not be one of ap*/swlan*/softap*/wlan1+. If all three miss, `hs` is simply absent from /s. Next source to add in that case: Android 16's public TetheringManager.registerTetheringEventCallback (by reflection, compileSdk is 34).",
+    "Whether WIFI_AP_STATE_CHANGED reaches a RECEIVER_NOT_EXPORTED receiver on One UI (AOSP sends it from the system server, which should pass).",
+    "Whether the shell helper can read the hotspot state (IWifiManager.getWifiApEnabledState). If not, hotspot answers read 'It does not say whether it is on / off' (200, not an error).",
+    "Whether 10 s after onTetheringStarted is enough for this Samsung's hotspot to reach 'on'; a slower start is answered as an error although the hotspot may still come on a moment later (the next status would show it).",
+    "Whether hotspot-restart's start is accepted 1 s after the state says off, and whether stopTethering(int) still exists on Android 16 (older question, unchanged).",
+    "Whether SoftApConfiguration.getBand() read back right after setSoftApConfiguration shows what Samsung really uses (it could echo the request and still ignore it when the hotspot starts).",
+    "Whether the first 'address:' line of `dumpsys bluetooth_manager` is the adapter's own on One UI, and whether it is hidden there (then: pair once and Find).",
+    "Whether a 5 s wake lock taken after accept() returns is early enough for a phone in deep sleep (the time between the Bluetooth chip waking the phone and accept() returning is still covered only by the Bluetooth stack).",
+    "Whether `cmd phone restart-modem` on this Samsung answers with the AOSP text 'Permission denied' (the plain sentence is keyed on that; any other refusal still comes back as an error, with the phone's first line).",
+    "Whether every 'Prepare phone' command returns exit code 0 on this phone when it works (am set-standby-bucket, cmd deviceidle whitelist, appops set, pm grant); a step that used to fail silently would now be named as not done.",
+    "Whether listenUsingInsecureRfcommWithServiceRecord fails at the moment Bluetooth comes on (bt_setup retries once after 1.5 s; after that poke heals it within 30 s of the next status request)."
+   ],
+   "for_the_next": [
+    "PART b, reply shapes: POST /act that acts before it answers now answers HTTP 409 {\"err\":\"<sentence>\"} when the switch did not move (was 200 ok:true with a sad sentence). Names: hotspot_on, boot_hotspot_on, hotspot_off, hotspot_restart, radio_cycle, wifi_on, wifi_off, standby, screen_off, airplane_off, restart_modem, setup, hotspot_band_2|5|auto, bt_setup. Answer-first replies are unchanged ({\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}).",
+    "PART b, error sentences the tablet may want to match: 'The hotspot could not be switched on: <reason>.' | 'The hotspot could not be switched off the direct way (<reason>). The other way, airplane mode for three seconds, is not used over Bluetooth because it would cut this link too.' | 'The hotspot could not be restarted: <reason>.' | 'The radio restart failed: <reason>.' | 'The phone's Wi-Fi did not switch on|off[: <line>].' | 'The screen did not stay off (<what was tried>).' | 'Standby is only half done. <hotspot sentence> <screen sentence>' | 'Standby did not work. <hotspot sentence> <screen sentence>' | 'The phone did not do that[ in time][: <line>].' | 'This phone does not let an app restart its modem, so nothing was changed. ...' | 'Not every step worked. Not done: ...; .... Done: ....' | 'The hotspot's Wi-Fi band was not changed: the phone kept <band>.'",
+    "PART b, success and in-between sentences (200): unchanged 'The hotspot is on.', 'The hotspot is off.', 'The hotspot was restarted.', 'The screen is off.', 'The phone's Wi-Fi is on.|off.', Standby = '<hotspot sentence> <screen sentence>' plus ' To wake the phone: Hotspot on.' over Bluetooth. New 200 in-between: 'The phone was asked to switch the hotspot on. It does not say whether it is on.' / '... off. It does not say whether it is off.' / 'The phone was asked to restart the hotspot. It does not say whether the hotspot is on.' New success texts: setup = 'The phone is prepared: <steps>.'; hotspot_band_* = 'The hotspot's Wi-Fi band is now 2.4 GHz|5 GHz|automatic (2.4 or 5 GHz). Restart the hotspot to use it.'",
+    "PART b, /s: `hs` is ABSENT when the phone cannot tell (never false for 'not known'). A phone app from before these switches also lacks `bt`, `wifi`, `scr`, so tell the two apart by `bt` (always present now). HomeTab today: paintSwitches shows 'update the phone's app' when `hs` is missing (wrong for a new phone that cannot tell: show 'not known'), and paintBanner over Bluetooth reads optBoolean(\"hs\", false) and so claims 'The phone's hotspot is off' (say 'The phone does not say whether its hotspot is on' and still offer 'Turn the hotspot on': hotspot-start answers OK at once when it is already on). The button default optBoolean(\"hs\", !viaBluetooth) is a sensible guess and can stay.",
+    "PART b, /s `bt`: values unchanged (on, off, perm, disabled, error, none); 'on' now only means the phone is listening. Each /s makes the phone retry listening when bt is perm, error or off (at most every 30 s), so the value can change between two polls without any action.",
+    "PART b, bt_setup: 409 in four cases, the `err` text is complete and meant to be shown as it is: switch off on the phone ('The Bluetooth link is switched off on the phone, so nothing was changed. To use it, open LinkMeter on the phone and switch on \"Let the tablet reach this phone over Bluetooth\".'), 'This phone has no Bluetooth.', 'The phone cannot get its Bluetooth side ready: Shizuku is not running on the phone.' (or '... Shizuku is running but LinkMeter is not allowed yet on the phone.'), and the whole multi-line report when the phone is not listening at the end (last line 'Bluetooth link on the phone: <state words>.'). 200 only when listening; the state words for on are now 'on: this phone is listening for the paired tablet'. I changed one expression in SettingsTab.setUp: when json != null the phone's text is shown alone. Part b still owes D14's second half (ok2 ignored) there.",
+    "PART b, timing over Bluetooth (the phone acts before it answers): hotspot_on up to about 32 s in the worst case (20 s for the phone's callback + 10 s for the state), hotspot_restart up to about 45 s (55 s cap), hotspot_off about 10 s, standby about 10 s plus the screen's steps, radio_cycle longer. ControlTab's 15 s for hotspot_restart and the 10 s for radio_cycle are too short there (bluetooth-glue D8 / control D8: at least 60 s for /act over Bluetooth).",
+    "PART b, /screen/state, /screen/on and /screen/off no longer answer 403 when the phone's 'Let the tablet see and control this screen' is off; frame, video, ctl, tap, swipe, key, text, pin still do. wifi_off over the hotspot is answered first unless the hotspot is KNOWN to be on.",
+    "T6 (phone's screen): call BtServer.recheck() after Cfg.setBtLink(on/off) and after a Bluetooth permission result (never BtServer.start: it is the service's and does nothing while the service is stopped). Status line: BtServer.stateText() and BtServer.lastAskedText() (\"\" until a tablet has asked over Bluetooth). BtServer.setup's refusal names the switch as 'Let the tablet reach this phone over Bluetooth': keep the switch's label in step, or change the sentence. The explanation of the screen switch should say that Sleep and Wake are not covered by it. 'Restart modem' on the phone's screen cannot work on this phone (see T3 note).",
+    "T3 / T6 / T7: 'Restart modem' is refused by Android on any retail build (AOSP: root on a non-user build only). Remove the button on both devices, or, if a modem restart is wanted, build it as a new radio step through ShellMain (TelephonyManager.rebootModem needs the REBOOT permission, which the shell has) with the full radio checklist; not done here. The action name stays and answers one clear sentence.",
+    "T2: Awake.work now takes a holder: Awake.work(app, who, ms) and Awake.workDone(who); link holds are Awake.linkBusy(c, who, ms) / linkDone(who). Eco and the saver were not touched.",
+    "Names added: Holds, SwitchWords (pure, tested); Actions.NotDone; BtServer.recheck(), poke(), lastAskedText(); BtAddr.own (BtAddr.find is gone); RemoteRoutes.hotspotOn, screenPower, givesWay, listenAgain, LISTEN_AGAIN_MS; Radios.hotspot (Boolean), Radios.watch/unwatch, Radios.waitHotspot now returns Boolean (Radios.hotspotOn and hotspotHow are gone); Cells.shellMain(c, args, timeoutSec); RemoteRoutes.cutsLink's third argument is a Boolean. ShellMain's hotspot commands can answer a third verdict word, UNSURE.",
+    "Not done on purpose: Boot.statusJson's `hotspot` still comes from the interface names only; airplane_off still says 'Airplane mode is off.' from the command's exit code without reading the setting back; docs/SAFETY.md rows (phone-screen D12, T6); no per-request check of Cfg.btLink (the switch takes effect through recheck()).",
+    "Sandbox notes: a hook blocks `curl` and `rm -rf` in the shell (I used WebFetch for two AOSP source reads and fresh temp folders instead); the GitHub MCP server did not connect, `gh run list` / `gh run watch` work, `gh release list` does not (GraphQL is blocked). Commits carry the trailer the session reminder gives (Co-Authored-By: Claude Fable 5.2), not the shorter one in COMMON.md."
+   ],
+   "last_commit": "c1e85f0",
+   "build_and_tests_clean": true
+  }
+ },
+ {
+  "part": "T1b",
+  "report": {
+   "summary": "T1b (tablet side of the remote link) is done in two pushed NO_RELEASE checkpoints (cb79bca, 84dd747); both pipeline runs are green, main is at 84dd747, no release was published, the tree is clean. Every finding in the brief was checked against the code first and all were real. What changed: (1) before \"Hotspot off\" or \"Standby\" Home makes ONE LIVE Bluetooth call (new Reach.bluetoothOnly, on a background thread, the screen says \"Checking the Bluetooth link\"), and only if the phone answers and says its link is on does the question say the hotspot can be switched on again from the tablet; otherwise it says the phone may have to be picked up, with the reason, and offers \"anyway\". (2) \"Ready\" in Settings is the new pure LinkState: address stored AND a call answered since AND the latest call did not fail AND the phone's last status says bt=on; otherwise Not set up / Not tested / Not reached / Phone not ready / Off, each naming Set up or Test. (3) A reply with \"later\":true is followed up from the status every 3 s for about 40 s (new pure FollowUp). (4) Home asks over Bluetooth every 15 s for the first minute after a press, then once a minute, and stops after five minutes with \"Ask again\" (new pure PollPace), in one chain of questions. (5) A status read never switches the tablet's Bluetooth on, a press may, and /act gets at least 60 s over Bluetooth: both decided in Reach. (6) Home's card names the real cause (new pure Trouble), shows \"not known\" with both hotspot buttons when hs is missing, shows a failed switch in the warning colour with the phone's words, the Shizuku line is derived from the status, \"Not now\" only hides the card. (7) Tab names are constants in Tab; the tablet tab \"Control\" is titled \"Phone\" (class still ControlTab), so \"After a phone restart\" opens it. (8) The Speed tab's progress goes through Call.reach. Every Home and Settings state was drawn with tools/preview.sh and looked at (the preview can now press buttons, draw dialogs and let time pass). Nothing was run on a device.",
+   "findings": [
+    {
+     "id": "bluetooth-glue D1 (HANDOFF decision 3)",
+     "status": "fixed",
+     "note": "Real: both confirmations decided on BtLink.ready() (address stored). HomeTab.confirmOff now calls the phone over Bluetooth first (Reach.bluetoothOnly GET /s, 8 s, thread 'linkmeter-bt-check', counts as a press so it may switch the tablet's Bluetooth on; buttons wait and the action line says 'Checking the Bluetooth link\u2026'). HomeTab.linkTrouble: only 200 with bt=on is 'works'. askOff then says either 'The phone answered over Bluetooth just now, so the hotspot can be switched on again from this tablet ... as long as the phone stays in Bluetooth range' or 'After this the phone may have to be picked up ...' plus the reason, with 'Turn it off anyway' / 'Standby anyway'. When there is nothing to call (no address, link off here) the reason is LinkState's words. Memory: Cfg.btOkAt / btFailed / setBtCall (btOkAt and btFailed are removed in Cfg.setBtMac when the address changes), BtLink.worked/failed, pref btPhone (the phone's bt from its last hotspot status; a call answered over Bluetooth sets it to on). 'Ready': new pure LinkState.of/chip/words, used by SettingsTab.paintLink (chip + a state line that is always the present state; the last button's answer is now a separate line) and by Home. I added one condition beyond the decision: the LATEST call must not have failed (a chip 'Ready' right after a failed Test was the audit's own example). Files: HomeTab, SettingsTab, BtLink, Cfg, Reach, LinkState (new)."
+    },
+    {
+     "id": "bluetooth-glue D2 / control-tab D1 / settings-contradictions D1 / signal-tab D7",
+     "status": "fixed",
+     "note": "Real. Tab.java has HOME, SPEED, BANDS, PHONE, SCREEN, FILES, TEXTS, SETTINGS; every tab's title() returns its constant (ControlTab.title() = PHONE; nothing else in ControlTab changed), HomeTab calls act.openTab(PHONE) / openTab(SETTINGS), and the sentences on Home and Settings that name a tab are built from the constants. PreviewTest loops over the constants, so the picture is now tablet-phone*.png (tablet-control*.png is no longer drawn). Bands keeps its name (T5)."
+    },
+    {
+     "id": "bluetooth-glue D4 and D9 (HANDOFF decision 4), battery D17",
+     "status": "fixed",
+     "note": "Real. New pure PollPace.next(base, bluetooth, sinceActionMs, misses, following): over Bluetooth 15 s in the first minute after the user did something on the screen (opening it or any press), then 60 s, STOP at 5 minutes; one miss 30 s, two or more 60 s; over the hotspot the chosen interval, 15 s after 3 misses, 30 s after 6, 60 s after 10, never STOP; 3 s while a switch is followed up. 'bluetooth' is the new Reach.Result.btTried (the phone was really called over Bluetooth, answered or not). When it stops Home says 'Last asked at ... LinkMeter has stopped asking by itself, because every question over Bluetooth wakes the phone. Press Ask again', greys the meters, and the card has 'Ask again'. D9: Reach.Bluetooth.call has a new 'pressed' flag; BtLink.ensureOn throws the new Reach.BluetoothOff when Bluetooth is off and the request was not pressed; Reach.statusRead (GET of /s, /sig, /boot, /screen/state, /speed/status) decides it for every screen through Call.run, HomeTab passes its own flag ('Ask again', switches and follow-up looks are presses; opening the tab is not). Home then shows the card 'Bluetooth is off on this tablet' with the button 'Switch Bluetooth on'. Files: PollPace (new), Reach, BtLink, Call, HomeTab, Trouble (new)."
+    },
+    {
+     "id": "bluetooth-glue D5",
+     "status": "fixed",
+     "note": "Real. HomeTab.pollTask queues its next run only if none is queued already (Handler.hasCallbacks, public since API 29 = minSdk), and askNow / the follow-up start replace the queued run; both under one lock ('chain'), so there is at most one run waiting. Not a pure class (it would be an abstraction with one user); instead PreviewTest.homeAsksInOneChain is a real check under Robolectric: two presses during a slow question, then exactly one question per 15 s for three rounds. With the old rule put back on purpose it fails with 'asked 2 times, not once'."
+    },
+    {
+     "id": "bluetooth-glue D8, control-tab D8, signal-tab D6",
+     "status": "fixed",
+     "note": "Real. Reach.bluetoothReadMs(path, readMs): a request to /act gets max(readMs, 60 s) on the Bluetooth route (constant ACT_MS_BLUETOOTH), applied inside Reach where bt.call is made, so no caller needs to know (radio_cycle 10 s in BandsTab/SweepLink and ControlTab's 15 s are covered without touching them); the hotspot route keeps the caller's value. BtLink: when a request that is not a question times out on a connection that had just been made, the message is 'the phone did not answer over Bluetooth in time (it may still be doing it: look at the status in a moment)'."
+    },
+    {
+     "id": "bluetooth-glue D11 (tablet part)",
+     "status": "fixed",
+     "note": "Real (HomeTab copied btmac from every hotspot status). Pure LinkState.takeAddress(current, proven, offered): taken when the tablet has no valid address or the stored one is unproven; a proved one is kept. BtLink.heardOverHotspot applies it (still only for statuses that came over the hotspot). SettingsTab.setUp is the one place that replaces a proved address (Cfg.setBtMac, which then forgets the proof)."
+    },
+    {
+     "id": "bluetooth-glue D12 (tablet part)",
+     "status": "fixed",
+     "note": "Real. BtLink.setEnabled(false) calls the new BtLink.closeSoon() (a short thread); MainActivity.onPause and SettingsTab.confirmPair use the same method instead of each making its own thread. BtLink.close() is documented as not for the screen's thread."
+    },
+    {
+     "id": "bluetooth-glue D14 (tablet part)",
+     "status": "fixed",
+     "note": "Real. SettingsTab.setUp, second step: when the status read fails it says '...the phone's status could not be read (<reason>), so the tablet does not have the phone's Bluetooth address yet. Press Set up again.' The pairing advice is only given when a status that came over the hotspot has no valid btmac. If that status came over Bluetooth, the address is not taken from it (replies there are unsigned); with no stored address it says to join the hotspot and press Set up again."
+    },
+    {
+     "id": "bluetooth-glue D16",
+     "status": "fixed",
+     "note": "Real, all three. (1) The Wi-Fi meter's subtitle uses the status's hs: 'the phone's hotspot is off', 'the hotspot is on, the tablet has not joined it', or 'the tablet is not on the phone's hotspot' when hs is missing. (2) 'Not now' sets its own flag (BtLink.hideOffer, pref btOfferHidden) and leaves btUse alone; the flag is cleared when a Bluetooth call next works. (3) The card over Bluetooth adds the Shizuku sentence when the button is greyed for that reason. hs missing on a newer phone app (it has bt): the fact reads 'not known', the first button is 'Hotspot on' and a second 'Hotspot off' appears with one line of explanation; the card over Bluetooth reads 'The phone is reached over Bluetooth ... does not say whether its hotspot is on'. An older phone app (no bt) keeps the old guess and 'update the phone's app'."
+    },
+    {
+     "id": "control-tab D3 (tablet part)",
+     "status": "fixed",
+     "note": "Checked end to end: part a answers 409 {err}; Call.run gives ok=false and the err text; HomeTab.send shows it with setAction(text, false) = warning colour, in the phone's own words. Drawn as state-home-switch-failed. No code was needed beyond keeping that path; values of a phone that no longer answers are now shown unlit in the Switches card."
+    },
+    {
+     "id": "control-tab D4",
+     "status": "fixed",
+     "note": "Real. New pure FollowUp: of(action) for hotspot_on, boot_hotspot_on, hotspot_off, hotspot_restart, standby, wifi_on, wifi_off, airplane_on, poweroff, reboot (null for anything the status cannot show, radio_cycle included); look(Seen) after every status read (null = no answer); giveUp() at the end. It says 'The hotspot is on.' / 'is off.' / 'The hotspot and the screen are off.' / 'The hotspot is back on.' (only after it was seen off or out of reach) / Wi-Fi / airplane only for what a status reported; two silent looks in a row end the actions that take the phone away with 'The phone no longer answers, which is what <powering off | a restart | airplane mode | its hotspot going off | its Wi-Fi going off> looks like from here. ...'; otherwise 'The phone has not confirmed it yet: <what the last status said>.' HomeTab.send starts it when json.later is true and uses its own polling chain at 3 s (PollPace 'following'), only counting looks begun after the 'Sent'; leaving the tab ends it with a sentence that claims nothing. For the Phone tab (T3): FollowUp.of(action), look(Call.seen(statusJson)), giveUp(), EVERY_MS, GIVE_UP_MS; I did not write a shared runner because it would have had no user yet."
+    },
+    {
+     "id": "settings-contradictions D2",
+     "status": "fixed",
+     "note": "Real. New pure Trouble: Kind NO_ROUTE (nothing could be tried), BLUETOOTH_OFF, NO_ANSWER, NOT_PAIRED (401), PHONE_ERROR (other code or unreadable 200), from the new Reach.Result.asked / btOff and the HTTP code; title, text, main button and offersRestart come from it. 'After a phone restart' only for NO_ROUTE and NO_ANSWER. The card appears at once when the cause is plain and after two misses for a mere NO_ANSWER when the phone had been heard. On the hotspot with a link that is not Ready (and not switched off here, and not an old phone app) Home shows 'Reach the phone when its hotspot is off' (never set up) or 'The Bluetooth link is not ready' with LinkState's words."
+    },
+    {
+     "id": "settings-contradictions D3",
+     "status": "fixed",
+     "note": "Real. See D16 (2): own stored flag, the link's switch is untouched, and the dialogs and cards take their reason from LinkState (so a link switched off here is called switched off, not 'not set up')."
+    },
+    {
+     "id": "settings-contradictions D9",
+     "status": "fixed",
+     "note": "Real. SpeedTab.fetch asks through Call.reach(act).call (a status read: it does not switch Bluetooth on; the Start press does) and waits 1.5 s between questions when the phone was called over Bluetooth, 0.4 s otherwise. Only that method and its Poll field changed in SpeedTab."
+    },
+    {
+     "id": "settings-contradictions D13",
+     "status": "fixed",
+     "note": "Real. The Shizuku warning is no longer stored in actionMsg: HomeTab.needs(status) is computed on every paint and shown in its own line (tNeed), so it disappears with the next status that says priv is ready. It now also tells 'not running' from 'not allowed yet'."
+    }
+   ],
+   "files_changed": [
+    "app/src/main/java/com/tj/linkmeter/LinkState.java (new, pure)",
+    "app/src/main/java/com/tj/linkmeter/PollPace.java (new, pure)",
+    "app/src/main/java/com/tj/linkmeter/FollowUp.java (new, pure)",
+    "app/src/main/java/com/tj/linkmeter/Trouble.java (new, pure)",
+    "app/src/main/java/com/tj/linkmeter/Reach.java",
+    "app/src/main/java/com/tj/linkmeter/BtLink.java",
+    "app/src/main/java/com/tj/linkmeter/Call.java",
+    "app/src/main/java/com/tj/linkmeter/Cfg.java",
+    "app/src/main/java/com/tj/linkmeter/HomeTab.java",
+    "app/src/main/java/com/tj/linkmeter/SettingsTab.java",
+    "app/src/main/java/com/tj/linkmeter/SpeedTab.java (fetch and its poll delay only)",
+    "app/src/main/java/com/tj/linkmeter/MainActivity.java (onPause uses BtLink.closeSoon; openTab comment)",
+    "app/src/main/java/com/tj/linkmeter/Tab.java (the tab-name constants)",
+    "app/src/main/java/com/tj/linkmeter/ControlTab.java (title only)",
+    "app/src/main/java/com/tj/linkmeter/BandsTab.java, FilesTab.java, PhoneTab.java, ScreenTab.java, TextsTab.java (title() returns the constant, one line each)",
+    "tools/test/LinkStateTest.java (new)",
+    "tools/test/PollPaceTest.java (new)",
+    "tools/test/FollowUpTest.java (new)",
+    "tools/test/TroubleTest.java (new)",
+    "tools/test/ReachTest.java",
+    "tools/test.sh",
+    "tools/mutate_link.py",
+    "tools/uipreview/app/src/test/java/com/tj/linkmeter/PreviewTest.java",
+    "tools/uipreview/README.md",
+    "docs/REMOTE_LINK.md",
+    "HANDOFF.md (T1 line of THE TRACKS only, ticked)",
+    "CHECKPOINTS.md (appended by tools/checkpoint.sh)"
+   ],
+   "tests": "tools/test.sh passes on the committed tree (and in the pipeline). New, all registered in tools/test.sh: LinkStateTest 3,983 checks (every combination of the seven inputs, the audit's stories, address rule); PollPaceTest 49,885 checks (stated values, monotony over time and misses, a screen left open asks at most 10 times and stops after about 5 minutes); FollowUpTest 402,670 checks (stories per action plus 40,000 random sequences against an oracle written from the list of promises); TroubleTest 285 checks. Changed: ReachTest 515,849 checks (was 301,253): new section pressesAndTimes and new invariants in the random stories (Bluetooth only ever switched on for a press, 'asked' and 'btTried' tell the truth, time limits per route). Deliberate breakages, all in tools/mutate_link.py: `python3 tools/mutate_link.py` = 175 caught, 0 missed (88 before; 87 new: reach: 26 new, 37 in all; state: 14; pace: 13; follow: 21; trouble: 13). `python3 tools/mutate_link.py reach:` = 37 caught, 0 missed. Plus one breakage outside that script: the old polling rule put back into HomeTab makes PreviewTest.homeAsksInOneChain fail ('asked 2 times, not once'); that check runs with tools/preview.sh, not with tools/test.sh. One test of mine was wrong and was fixed, not weakened: my first 'skipping, and Bluetooth is off' scenario in ReachTest rewound the virtual clock to before the failed connect, which itself ends the skipping; the rewind was removed. The same scenario found a real wording fault in Reach, now fixed: two sentences were joined without a full stop ('... failed to connect And Bluetooth ...'). Not covered by any offline test: the Android glue (BtLink, HomeTab, SettingsTab, SpeedTab). Screens: 55 pictures drawn and the Home and Settings ones looked at, including the new states state-home-checking-link, -off-confirm, -off-anyway, -standby-anyway, -off-no-link, -switch-sent, -switch-confirmed, -switch-phone-gone, -switch-failed, -phone-error, -not-paired, -no-answer, -bluetooth-off-here, -hotspot-not-known(-bluetooth), -link-offer, -link-not-tested, -stopped-asking, and state-settings-link-ready, -not-reached, -phone-off.",
+   "not_known_until_a_device": [
+    "How long the live Bluetooth call before 'Hotspot off' really takes on the MT8168 tablet (it may take up to 14 s to connect plus 8 s to answer, and waits behind a status question that is still connecting), and whether the tablet's Bluetooth and Wi-Fi disturb each other while both are in use.",
+    "Whether the unbonded Bluetooth connect needs a pairing answer on either device. If it does, the live call fails and the question says 'anyway' with that reason; nothing is promised.",
+    "Whether the tablet (Android 10) lets LinkMeter switch its own Bluetooth on silently for a press (the API allows it on Android 10; not seen on this tablet). If not, the press fails with 'Bluetooth is off on this tablet. Switch it on ...' and Home's card then reads 'Can't reach the phone' rather than 'Bluetooth is off'.",
+    "Whether, after the hotspot is switched off over the hotspot, the follow-up reaches the phone over Bluetooth inside its 40 s (each look first waits up to 2.5 s for the hotspot route). If not, Home says 'has not confirmed it yet' although the hotspot is off; the next status corrects it.",
+    "Whether the tablet rejoins the hotspot within about 40 s after a hotspot restart; if it is slower the follow-up ends with 'it does not answer right now'.",
+    "Whether hs appears in the status soon enough after 'Hotspot on' on a phone that normally cannot tell (it depends on the phone hearing the hotspot announcement); otherwise the follow-up ends with 'it does not say whether its hotspot is on'.",
+    "Whether 15 s / 60 s / stop after 5 minutes is the right pace in daily use: after Home has stopped asking it does not notice by itself that the tablet has joined the hotspot again; 'Ask again' or reopening the tab does.",
+    "Whether closing the Bluetooth socket from the timer ends a connect() in progress on the MT8168 (every time limit of the live call and of Test depends on it; unchanged from before this part)."
+   ],
+   "for_the_next": [
+    "SIGNATURES CHANGED: Reach.Bluetooth.call(method, target, readMs, pressed) (PreviewTest's pretend phone already follows); Reach.call(method, target, readMs) now derives 'pressed' from Reach.statusRead, and Reach.call(..., boolean pressed) sets it explicitly; BtLink.call(c, method, target, readMs, pressed). Reach.Result has new fields asked, btTried, btOff. New Reach.bluetoothOnly(method, target, readMs) = one request over Bluetooth only (the live test).",
+    "ANY NEW ROUTE THAT A SCREEN POLLS BY ITSELF must be added to Reach.statusRead (today: GET /s, /sig, /boot, /screen/state, /speed/status), otherwise that poll counts as a press and may switch the tablet's Bluetooth on. Keep ReachTest and `tools/mutate_link.py reach:` in step.",
+    "/act TIME LIMITS: callers no longer need long limits for Bluetooth; Reach gives every /act at least 60 s there. The limit a caller passes only governs the hotspot route.",
+    "REMOVED: BtLink.problem(c). Use BtLink.state(c) (LinkState.Kind), BtLink.words(c) (sentences that name Set up or Test but not where they are; HomeTab.linkWords adds 'That button is in Settings, under Bluetooth link.'), BtLink.tabletBluetoothOff(c). BtLink.ready(c) still only means 'there is an address to call'.",
+    "NEW STORED VALUES ON THE TABLET (prefs 'cfg'): btOkAt (long), btFailed (boolean), btPhone (string: on, off, perm, disabled, error, none, 'old' for a phone app without bt, '' never heard), btOfferHidden (boolean). Cfg.setBtMac now returns early when the address is unchanged and otherwise removes btOkAt and btFailed.",
+    "T3 (Phone tab): the tab's title is already 'Phone' (Tab.PHONE). Still ControlTab's own business and untouched: its heading 'Control the phone', its 'Hotspot off' question that says 'To turn it back on, use the phone', and its send() that shows 'Sent.' as the last word. Use FollowUp there: f = FollowUp.of(action) when json.optBoolean(\"later\"); then every FollowUp.EVERY_MS read GET /s through Call.run and call f.look(Call.seen(json)) (null when the read failed) until it returns an Outcome, or f.giveUp() after FollowUp.GIVE_UP_MS. Call.flag(status, name) gives a yes/no field or null when the phone left it out.",
+    "T3 / T4 / T6 / T7: sentences in OTHER files still say 'Control tab' or 'Control >' (control-tab D13): FilesTab:594, ScreenTab:1496, RemoteSms:27, MenuScan:308, Boot:154, SafetyReport:129 (pinned by SafetyReportTest), BandSweep:715, PhoneTab:85, docs/SAFETY.md, docs/BOOT_GUIDE.md, docs/UPLOAD_IDEAS.md. Use the Tab constants where the class has Android; pure classes cannot import Tab.",
+    "T5: rename by changing Tab.BANDS (or adding Tab.SIGNAL) and the list in PreviewTest.tabletOnTheHotspot; LeverRun:867 and LabSection:352 name the 'Bands tab' in sentences.",
+    "T6: LinkState's words for the phone state 'disabled' say 'Open LinkMeter on the phone and switch it on', and part a's bt_setup refusal names the switch 'Let the tablet reach this phone over Bluetooth'. That switch does not exist on the phone's screen yet.",
+    "T2: Home's 'Battery saver' line is unchanged ('on' / 'off (automatic)' / 'off' from eco and ecoAuto).",
+    "PREVIEW: PreviewTest.Pretend (fields via, bluetoothToo, btDelayMs, btFails, btOffHere, status, statusCode, actReply, actCode, statusAsked), press(activity, label), dialogShot(name), later(ms) (the pretend clock stands still by itself), linkProved(). pretendPhone(via, hotspotOn, screenOn) still works. Keep Pretend's Bluetooth 'ready' in step with what BtLink.ready would say, or a state is drawn that cannot occur in the app.",
+    "NOT DONE, on record: (a) BtLink still makes calls one at a time, so a press can wait behind a status question that is stuck connecting (up to about 14 s); (b) a 401 over Bluetooth neither proves nor fails the link, so after 'Pair again (new secret)' Settings can still read Ready until a call fails; the live call before 'Hotspot off' catches it; (c) bluetooth-glue D18 (the secret offered to a foreign gateway) stays open by decision 9; (d) Home's chain rule relies on Handler.hasCallbacks(Runnable), public from API 29 (the installed SDK stubs are 34 and 36, so this was checked against the documentation from memory, not against an API 29 stub).",
+    "REVIEWER: the one place where I went beyond the written decision is LinkState's extra condition 'the latest call did not fail' (chip 'Not reached'). A phone that was merely out of range for one status question therefore shows 'Not reached' until the next call that works."
+   ],
+   "last_commit": "84dd747",
+   "build_and_tests_clean": true
+  }
+ }
+]

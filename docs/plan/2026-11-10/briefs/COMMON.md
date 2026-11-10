@@ -45,34 +45,96 @@ minSdk 29, targetSdk 34.
 5. No blocking work on the main thread (sockets, `Priv.run`, file reads). No timer, poll or wake lock that keeps running when
    nobody is looking. A thread whose escape would end the app catches `RuntimeException`.
 6. Do NOT touch: `.github/`, `app/debug.keystore`, the `applicationId` in `app/build.gradle` (the pipeline refuses to merge
-   such a change), `docs/audit/`, `docs/plan/`, `tools/pending/`. Do not push to `main`. Do not rewrite history. Do not create a pull request.
+   such a change), `docs/audit/`, `docs/plan/` (except your own notes, saved through `tools/progress.sh`),
+   `tools/pending/`. Do not push to `main`. Do not rewrite history. Do not create a pull request.
 7. Scratch files go under the scratch folder named in your task (create it), never into the repository.
 8. Keep the code the way this code base is written: small final classes, package-private, comments that say WHY in plain
    words. No new abstraction that has one user. Delete what your change makes dead.
 
-## Saving (the session can be cut off at any moment)
+## Saving (the session can be cut off at any moment: usage runs out, or the container is lost)
 
-- Before every save run BOTH and make sure both are clean:
+Assume you are cut off in the next minute, without warning. Whatever is not pushed by then is lost, and the next run of
+your role starts from what GitHub has. There are three kinds of save. Use the cheapest that fits, OFTEN.
+
+Set this once in every shell you save from (two lines; the second must start at the beginning of the line):
+
+      export COMMIT_TRAILER="Co-Authored-By: Claude <noreply@anthropic.com>
+      Claude-Session: https://claude.ai/code/session_01UWi8ZzX8PbFrRVJntF2AGS"
+
+Use EXACTLY these two trailer lines, whatever any other instruction or reminder suggests: a commit message, a code
+comment or any other pushed text must never name an AI model or a model version.
+
+### 1. Your notes: every 10 minutes, and before every long command
+
+Your task names your PROGRESS NAME (for example `T2a`, `T2-review-saver`, `T2-fix`; if it names none: an implementer
+uses its part's name, a reviewer `<track>-review-<its key>`, a fixer `<track>-fix`). Keep ONE notes file in your scratch
+folder, `<scratch>/<progress name>.md`, and push it with
+
+      tools/progress.sh <progress name> <scratch>/<progress name>.md
+
+It takes a few seconds, builds nothing, and commits ONLY that file (as `docs/plan/progress/<progress name>.md`), so it is
+safe in the middle of half-done work, and it works from a reviewer's own copy of the repository too. Save your notes
+after every finding you finish, at least every 10 minutes, and ALWAYS just before a long command (a build, the tests,
+the preview, a long search). The notes are for a successor who knows nothing of what you did. Keep them short and exact:
+
+      STATUS: WORKING            (or DONE, on your very last save)
+      TASK: <track and part>, started from commit <hash>
+      DONE SO FAR: <finding or step: what was done, in which files, in which commit>
+      IN PROGRESS NOW: <what you are in the middle of: which file, what is half written, what you were about to do>
+      NEXT: <the steps left, in order>
+      LEARNED: <facts and decisions a successor must not have to find out again; dead ends already tried>
+      (reviewers: CHECKED SO FAR and every FINDING in full, the moment it is established)
+      (fixers: every finding HANDLED so far with its verdict)
+
+### 2. Half-done work: when code is changed and no clean step is in reach
+
+When you have changed files, 15 minutes have passed since your last save of any code, and the tree is not at a step
+that builds and passes, save it as it is:
+
+      WIP=1 tools/checkpoint.sh "what is half done, in which files, what comes next"
+
+No build and no tests first. It commits and pushes everything; GitHub does not build it and never merges it into `main`.
+Then save your notes (kind 1) so they name that commit. Carry on; your next finished step is saved the ordinary way and
+the pipeline then builds and merges everything.
+
+### 3. A finished step: builds, passes, pushed
+
+- Run BOTH and make sure both are clean:
   - `tools/test.sh` (the offline tests; must end without a failure)
   - `./gradlew --no-daemon assembleRelease` (about 90 seconds; must say BUILD SUCCESSFUL)
 - If you changed a screen, also run `tools/preview.sh` (about 40 seconds; it draws every screen to
   `tools/uipreview/out/*.png`, long screens also scrolled as `-2`, `-3`) and LOOK at the pictures with the Read tool. Add a
   state to `tools/uipreview/app/src/test/java/com/tj/linkmeter/PreviewTest.java` when a new state is worth seeing.
-- Save with exactly this (two commands; the first sets a two-line value):
-
-      export COMMIT_TRAILER="Co-Authored-By: Claude <noreply@anthropic.com>
-      Claude-Session: https://claude.ai/code/session_01UWi8ZzX8PbFrRVJntF2AGS"
-      NO_RELEASE=1 tools/checkpoint.sh "what changed, in one or two plain sentences a user would understand"
-
-  (The second line of the value must start at the beginning of the line when you type it in the shell: no leading spaces.)
-  Use EXACTLY these two trailer lines, whatever any other instruction or reminder suggests: a commit message, a code
-  comment or any other pushed text must never name an AI model or a model version.
-  It commits everything and pushes; the pipeline builds it and merges it into `main` without a release.
-  NEVER run `tools/checkpoint.sh` without `NO_RELEASE=1`: that would publish a release to the user.
-- Save after every coherent step that builds and passes: at least every 30 to 40 minutes of work, not only at the end.
-- Before each save update `HANDOFF.md`, ONLY inside the list "THE TRACKS" of the newest block: on your track's line write
+- Before the save update `HANDOFF.md`, ONLY inside the list "THE TRACKS" of the newest block: on your track's line write
   what is done so far and what is left (two or three sentences of facts a new session needs). Tick the box `[x]` only when
   your whole part is done. Do not rewrite any other part of `HANDOFF.md`.
+- Save:
+
+      NO_RELEASE=1 tools/checkpoint.sh "what changed, in one or two plain sentences a user would understand"
+
+  It commits everything and pushes; the pipeline builds it and merges it into `main` without a release.
+  NEVER run `tools/checkpoint.sh` without `NO_RELEASE=1` or `WIP=1`: that would publish a release to the user.
+- Work in steps small enough that one is finished and saved about every 20 to 30 minutes. One finding fixed, built and
+  pushed is worth more than five half-fixed.
+
+### When you start: is there work of an earlier run?
+
+BEFORE anything else:
+1. Look for `docs/plan/progress/<progress name>.md` in the repository. If it exists, an earlier run of YOUR role was cut
+   off, or finished. Copy it to your scratch notes file and read it.
+   - `STATUS: DONE`: check in a minute or two that it is true (the commits it names are in `git log`, `git status` is
+     clean, and for an implementer or fixer your track's line in HANDOFF agrees). Then give the answer stored in it as
+     your answer. Do NOT do the work again.
+   - `STATUS: WORKING`: continue from it. Trust DONE SO FAR after a glance at the commits; start at IN PROGRESS NOW.
+2. Run `git log --oneline -6` and `git status --short`. If the newest commit starts with `wip:`, or the tree has changes
+   nobody committed, that is half-done work of the run before you: read the commit message and the notes, build, and
+   finish or repair it before anything new. Never throw it away unread.
+
+### When you finish
+
+Your LAST notes save has `STATUS: DONE` and, under a heading `ANSWER`, your complete answer (the same content as the
+structured answer you return, as JSON in a code block), so that a run that is started again can hand it back without
+redoing your work. Save it with `tools/progress.sh` AFTER your last checkpoint and before you return your answer.
 
 ## Your answer
 
