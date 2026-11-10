@@ -13,9 +13,17 @@ Rules for this project:
   - `WIP=1 tools/checkpoint.sh "what is half done, what comes next"`: half-done work that may not even compile. Nothing
     is built or merged. When 15 minutes pass without a finished step.
   - `NO_RELEASE=1 tools/checkpoint.sh "..."`: a finished step (tests and build first).
-- When resuming: a newest commit that starts with `wip:` is half-done work to finish, not to throw away, and
-  `docs/plan/progress/` holds the notes of the agents that were running (`STATUS: WORKING` = cut off, continue from it).
-  How to start a track again: `docs/plan/2026-11-10/README.md`.
+  - While an agent is working in the tree, nobody else uses `tools/checkpoint.sh` (its `git add -A` would take that
+    agent's half-edited files): save your own files with `tools/save-only.sh "what changed" <path>...`.
+- When resuming in a NEW session (a new branch): FIRST `git fetch --all` and
+  `git merge --ff-only origin/<the session branch HANDOFF names>`. Notes (`progress:`), half-done work (`wip:`) and
+  rule-book saves (`note:`) are commits that GitHub never merges into `main` by itself, so the newest ones are only on
+  that branch. A `wip:` commit is half-done work to finish, not to throw away. `docs/plan/progress/` holds the notes of
+  the agents (`STATUS: WORKING` = cut off, continue from it) and one `<track>-run.md` per track: `STATUS: RUNNING`
+  means that Workflow call must be made again first. How: `docs/plan/2026-11-10/README.md`, "If a run was cut off".
+- The release step of the pipeline fails with more than about 85 commits since the last release until
+  `tools/pending/release-notes.patch` is merged by hand, which needs the user's yes (`tools/pending/README.md`). Ask
+  before the last push of a task, not after.
 - No third-party libraries. The tablet is a low-RAM Go device.
 - Releases are automatic (standing instruction from the user, 2026-11-08). Cloud sessions work only on their designated
   session branch (`ccr-*`) and never push to `main` themselves. GitHub builds and tests every push; a good build on a

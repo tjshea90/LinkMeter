@@ -19,37 +19,65 @@ Three kinds of save, cheapest first. Every agent is told to use them (`briefs/CO
 
 | What | Command | Cost | What GitHub does |
 |---|---|---|---|
-| An agent's NOTES (what is done, what it is in the middle of, what is next, findings so far) | `tools/progress.sh <name> <notes-file>` every 10 minutes, after every finding, before every long command | seconds | nothing is built (`[skip ci]`); only `docs/plan/progress/<name>.md` is committed, whatever else is changed |
-| HALF-DONE WORK that may not even compile | `WIP=1 tools/checkpoint.sh "what is half done, what comes next"` when 15 minutes pass without a finished step | seconds | nothing is built, nothing is merged (`[wip] [skip ci]`) |
+| An agent's NOTES (what is done, what it is in the middle of, what is next, findings so far) | `tools/progress.sh <name> <notes-file>` every 10 minutes, after every finding, before every long command; `tools/progress.sh --show <name>` reads them back | seconds | nothing is built; only `docs/plan/progress/<name>.md` is committed, whatever else is changed |
+| HALF-DONE WORK that may not even compile | `WIP=1 tools/checkpoint.sh "what is half done, what comes next"` when 15 minutes pass without a finished step | seconds | nothing is built, nothing is merged |
 | A FINISHED STEP that builds and passes | `NO_RELEASE=1 tools/checkpoint.sh "..."` | tests + build first | built, tested, merged into `main`, no release |
 
-So after a cut-off at most a few minutes of thinking are lost, never pushed work. Reviewers save their findings the
-moment each is established; implementers and fixers work one finding at a time.
+What can still be lost: if the session is only paused (usage ran out, the container is still there), nothing: the
+tree keeps even uncommitted edits. If the container is lost too: at most the code changed since the last half-done save
+(15 minutes by the rules) and the notes since the last notes save (10 minutes). Reviewers save each finding the moment
+it is established; implementers and fixers work one finding at a time.
 
-## Running a track
+Things the saves depend on (found by two checkers that tried to break them, 2026-11-10):
+- Notes, half-done saves and rule-book saves are commits with `progress:`, `wip:` or `note:` in front and are NOT merged
+  into `main` by themselves. They are only on the session branch until the next finished step is merged.
+- A reviewer's copy of the repository is started from `main`, not from the working branch. So reviewers are told to move
+  their copy to the end of the track first, and every agent reads earlier notes with `tools/progress.sh --show`, which
+  looks in the main tree.
+- All three save scripts take one lock and push every commit by itself (a finished step must be the head of its own
+  push, or GitHub does not build it).
+- THE RELEASE STEP OF THE PIPELINE BREAKS with more than about 85 commits since the last release. The fix is
+  `tools/pending/release-notes.patch` and needs the user's yes, because it changes `.github/`. See `tools/pending/README.md`.
+
+## Running a track (for the directing session)
 
     Workflow({ scriptPath: "docs/plan/2026-11-10/track-workflow.js", args: {
       ...the track's entry in docs/plan/2026-11-10/tracks.json...,
-      base: "<commit before the track: git rev-parse --short HEAD>",
+      base: "<commit before the track: git log -1 --format=%h --grep='^checkpoint:'>",
       scratch: "<a folder outside the repository>" } })
 
-- BEFORE starting it, save the complete call (the args as JSON, and the date) as `docs/plan/progress/<track>-run.md` with
-  `tools/progress.sh <track>-run <file>`, so the same call can be made again.
-- Never run two implementers at once: their builds disturb each other.
-- After a track: check `tools/test.sh`, `./gradlew --no-daemon assembleRelease`, `python3 tools/mutate_link.py`, look at the
-  pictures of `tools/preview.sh`, check that the pipeline run is green and `main` followed, and that the track's line in
-  HANDOFF is true.
+1. BEFORE starting it, save the complete call as `docs/plan/progress/<track>-run.md` with
+   `tools/progress.sh <track>-run <file>`: first line `STATUS: RUNNING`, then the date and the args as JSON.
+2. Keep a scheduled check-in alive (`create_trigger` / `send_later` of the cloud session) whose message says: "if a track
+   call is running or you are mid-task, do nothing; otherwise read docs/plan/2026-11-10/README.md, 'If a run was cut
+   off', and make the unfinished call again". It restarts the work after the usage limit resets without the user having
+   to write. Delete it when the last track is closed.
+3. WHILE implementers or the fixer are running, the tree is theirs: save your own files (rule books, plans, run files)
+   only with `tools/progress.sh` or `tools/save-only.sh "what changed" <path>...`, NEVER with `tools/checkpoint.sh`
+   (its `git add -A` would take the agent's half-edited files along as a finished step). Never run two implementers at
+   once.
+4. WHEN THE CALL RETURNS OR STOPS, first save what it returned into `<track>-run.md` (still `STATUS: RUNNING`). If it
+   stopped (`stopped_at`), see the next section.
+5. Then check the track yourself: `tools/test.sh`, `./gradlew --no-daemon assembleRelease`, `python3 tools/mutate_link.py`,
+   the pictures of `tools/preview.sh`, the pipeline run green and `main` following, the track's line in HANDOFF true.
+   Deal with anything the fixer called too big. Only then tick the track's box in HANDOFF, set `<track>-run.md` to
+   `STATUS: DONE`, and save.
 
 ## If a run was cut off (usage ran out, the worker restarted, the container is new)
 
-1. `git fetch --all`, `git log --oneline -10`, `git status --short`. A newest commit that starts with `wip:` is half-done
-   work: do not throw it away; the agent that continues will finish it.
-2. Read `docs/plan/progress/`: `<track>-run.md` has the call that was running; each agent's file says `STATUS: DONE` or
-   `STATUS: WORKING` and what was in progress.
-3. Make the SAME Workflow call again (same script, same args; a new scratch folder is fine). Agents whose notes say DONE
-   hand back their stored answer in a minute; the one that was cut off reads its notes and the `wip:` commit and carries
-   on; agents that never started start. In the same session `resumeFromRunId` also works and is quicker, but it is not
-   needed.
+0. IN A NEW SESSION (a new branch): `git fetch --all`, then `git merge --ff-only origin/<the branch HANDOFF names>`
+   BEFORE anything else. The newest notes, any `wip:` commit and the run file are only on that branch, not on `main`.
+   (It always fast-forwards, because `main` only ever moves to commits of that branch.)
+1. `git log --oneline -15`, `git status --short`. Skip the `progress:` and `note:` commits; if the newest OTHER commit
+   starts with `wip:`, or the tree has uncommitted changes, that is half-done work: do not throw it away; the agent that
+   continues will finish it.
+2. Read `docs/plan/progress/`. EVERY `<track>-run.md` that says `STATUS: RUNNING` is a call to make again first, whether
+   the track's box in HANDOFF is ticked or not. Each agent's file says `STATUS: DONE` or `STATUS: WORKING`.
+3. Make the SAME Workflow call again (same script, same args; a new scratch folder is fine), with one addition: for every
+   implementer whose notes say `STATUS: DONE`, add it to `finished`, for example
+   `finished: { "T2a": "<the last checkpoint commit its ANSWER names>" }`; the script then does not start it again.
+   Reviewers and the fixer are started again and decide from their notes: DONE hands back the stored answer in a
+   minute, WORKING carries on. In the same session `resumeFromRunId` also works, but it is not needed.
 4. The script stops by itself, with `stopped_at` and the sentence `again`, when an agent returns nothing; it does not
    start a fixer after a reviewer was cut off.
 
