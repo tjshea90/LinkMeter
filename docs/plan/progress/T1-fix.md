@@ -38,13 +38,19 @@ HANDLED SO FAR:
     the last sentence of the "not ready" card is now "Without that link, a hotspot that is switched off can only be switched on again at the
     phone." LinkStateTest 3997 checks; 4 new "state:" breakages (18 of 18 caught); PreviewTest.settingsLinkStates checks that Home has no
     "Open Settings" card in that state (fails with the old rule in a scratch copy). docs/REMOTE_LINK.md says the three new rules (F3, F4, F9).
- F10 FIXED (verdict: real), being saved now: Reach.call joins with "Bluetooth was tried: " (claims nothing about whether the request arrived; the
+ F10 FIXED in commit 45268e7 (verdict: real). Reach.call joins with "Bluetooth was tried: " (claims nothing about whether the request arrived; the
     reviewer's "Over Bluetooth: " read badly after "..., and "). ReachTest 515853 checks (new: a lost answer over Bluetooth is never said not to
     have got through); mutate_link.py: 1 new "reach:" breakage, caught.
 
-IN PROGRESS NOW: saving F10 (test, build, preview, checkpoint). Then F7.
+IN PROGRESS NOW: F7 (verdict: real). NOT the reviewer's fix (401 -> failed() would show "Not reached ... did not get through" right above "The phone
+ answered over Bluetooth but does not know this tablet": a false sentence). Instead, written but NOT yet committed:
+ - LinkState.proves(code): 200 TRUE, 401 FALSE (proof void), else null. BtLink.callLocked: FALSE -> Cfg.forgetBtProof (removes btOkAt, btFailed) -> state NOT_TESTED.
+ - Cfg.resetToken also forgets the proof; SettingsTab.confirmPair repaints the link card at once.
+ - NOT_TESTED words: "... but it is not known whether a call to it works. Press Test." (true after a refusal and a new secret too).
+ - LinkStateTest proofs() (5204 checks), 5 new "state:" breakages (23 of 23 caught), PreviewTest.settingsNewSecret + findText, docs/REMOTE_LINK.md.
+ About to: run preview for settingsNewSecret (and against the old code in the scratch copy), then test, build, preview, checkpoint.
 
-NEXT: F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+NEXT: F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
