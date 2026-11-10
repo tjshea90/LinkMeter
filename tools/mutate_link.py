@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -452,6 +452,43 @@ LV = [
  ("lever: a row that is no better is recommended", "LeverRun.java", "if ((v == Verdict.CLEAR || v == Verdict.MAYBE) && (best < 0", "if ((v == Verdict.CLEAR || v == Verdict.MAYBE || v == Verdict.SAME) && (best < 0"),
  ("lever: the lowest of the better rows is recommended", "LeverRun.java", "rows.get(i).median() > rows.get(best).median()", "rows.get(i).median() < rows.get(best).median()"),
 ]
+SIGNAL_FILES = ["RadioState.java", "SignalRules.java"]
+SIGNAL_TEST = ROOT + "/tools/test/SignalRulesTest.java"
+SG = [
+ ("signal: an answer that says nothing reads as 4G only", "SignalRules.java", "return off == on ? Mode.UNKNOWN : off ? Mode.FOUR_G_ONLY : Mode.FIVE_G_ALLOWED;", "return on ? Mode.FIVE_G_ALLOWED : Mode.FOUR_G_ONLY;"),
+ ("signal: an answer that says nothing reads as 5G allowed", "SignalRules.java", "return off == on ? Mode.UNKNOWN : off ? Mode.FOUR_G_ONLY : Mode.FIVE_G_ALLOWED;", "return off ? Mode.FOUR_G_ONLY : Mode.FIVE_G_ALLOWED;"),
+ ("signal: words that say both are a mode", "SignalRules.java", "return off == on ? Mode.UNKNOWN : off ? Mode.FOUR_G_ONLY : Mode.FIVE_G_ALLOWED;", "return !off && !on ? Mode.UNKNOWN : off ? Mode.FOUR_G_ONLY : Mode.FIVE_G_ALLOWED;"),
+ ("signal: 'Forced to 4G' is not understood", "SignalRules.java", ' || text.contains("Forced to 4G")', ""),
+ ("signal: 'already allowed' is not understood", "SignalRules.java", ' || text.contains("already allowed")', ""),
+ ("signal: 'already off' is not understood", "SignalRules.java", ' || text.contains("5G is already off")', ""),
+ ("signal: an out-of-date 5G list is called 5G", "SignalRules.java", 's.nrCarrierInUse(false)) {\n            return Chip.FIVE_G;', 's.listsNr()) {\n            return Chip.FIVE_G;'),
+ ("signal: the plain 5G label is not 5G", "SignalRules.java", '"NR_NSA".equals(s.display) || s.nrCarrierInUse(false)', 's.nrCarrierInUse(false)'),
+ ("signal: 5G UW needs a listed 5G carrier too", "SignalRules.java", 'if ("NR_ADVANCED".equals(s.display)) {', 'if ("NR_ADVANCED".equals(s.display) && s.listsNr()) {'),
+ ("signal: 4G with carrier aggregation is not known", "SignalRules.java", 'return "LTE_CA".equals(s.display) || "LTE_ADVANCED_PRO".equals(s.display) ? Chip.FOUR_G : Chip.UNKNOWN;', "return Chip.UNKNOWN;"),
+ ("signal: the stale list is not named in the Network line", "SignalRules.java", "return s.staleNr(false) ? base", "return false ? base"),
+ ("signal: an unknown signal is shown as a number", "SignalRules.java", "return rsrp == Integer.MIN_VALUE ? ", "return rsrp == 0 ? "),
+ ("signal: a scan under a minute old is repeated", "SignalRules.java", "now - lastScanAt >= RESCAN_MS", "now - lastScanAt >= 0"),
+ ("signal: the tab scans while a comparison runs", "SignalRules.java", "return !comparing && (lastScanAt < 0", "return (lastScanAt < 0"),
+ ("signal: a clock that went back counts as a young scan", "SignalRules.java", " || now < lastScanAt);", ");"),
+ ("signal: the comparison starts over Bluetooth", "SignalRules.java", "return overBluetooth ? ", "return false ? "),
+ ("signal: the comparison starts with no phone", "SignalRules.java", "if (!reachable) {\n            return \"The phone cannot be reached, so there is nothing to measure.\";", "if (false) {\n            return \"The phone cannot be reached, so there is nothing to measure.\";"),
+ ("signal: Keep does not say when it ends", "SignalRules.java", '"It stays 4G only until you switch it back here or press Restore everything. If mobile data is down for some minutes "', '"It stays 4G only until you switch it back here or press Restore everything. "'),
+ ("signal: Keep for 5G allowed promises a safety net", "SignalRules.java", '"5G is allowed again, as it was when the comparison started."', '"5G is allowed again. If mobile data is down for some minutes the phone puts 5G back by itself."'),
+ ("signal: two unknown scans are 'the same cells'", "SignalRules.java", "(known && b.equals(a) ?", "(b.equals(a) ?"),
+]
+SEARCH_FILES = ["SearchFollow.java"]
+SEARCH_TEST = ROOT + "/tools/test/SearchFollowTest.java"
+SR = [
+ ("search: a phone that does not answer counts as a failure", "SearchFollow.java", "        if (!answered) {\n            return null;", "        if (!answered) {\n            return new Outcome(false, \"no answer\");"),
+ ("search: 'running' ends the wait", "SearchFollow.java", 'if (t.startsWith("done")) {', 'if (t.startsWith("done") || t.startsWith("running")) {'),
+ ("search: a failed restart is not noticed", "SearchFollow.java", 'if (t.startsWith("failed")) {', "if (false) {"),
+ ("search: a failed restart hides the reason", "SearchFollow.java", '(why.isEmpty() ? "." : ": " + why + ".")', '"."'),
+ ("search: an older phone app's answer keeps the wait going", "SearchFollow.java", 'if (t.contains("unknown action")) {', "if (false) {"),
+ ("search: one 'none' is already no record", "SearchFollow.java", "++none >= NONE_AFTER", "++none >= 1"),
+ ("search: 'running' does not start the count again", "SearchFollow.java", "            none = 0;\n", "            ;\n"),
+ ("search: giving up claims success", "SearchFollow.java", 'return new Outcome(false, "The phone did not say that the restart ended.', 'return new Outcome(true, "The phone did not say that the restart ended.'),
+ ("search: giving up says it searched", "SearchFollow.java", '"The phone did not say that the restart ended. Scan to see where it is now."', '"The phone searched for a network again."'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -462,7 +499,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (QUALITY_FILES, QUALITY_TEST, "com.tj.linkmeter.QualityPresetsTest", G), (ADDRESS_FILES, ADDRESS_TEST, "com.tj.linkmeter.PhoneAddressTest", A),
           (PHONETAB_FILES, PHONETAB_TEST, "com.tj.linkmeter.PhoneTabRulesTest", B),
           (LEG_FILES, LEG_TEST, "com.tj.linkmeter.NrLegTest", N), (TYPES_FILES, TYPES_TEST, "com.tj.linkmeter.TypesFlagTest", U),
-          (LEVER_FILES, LEVER_TEST, "com.tj.linkmeter.LeverRunTest", LV)]
+          (LEVER_FILES, LEVER_TEST, "com.tj.linkmeter.LeverRunTest", LV),
+          (SIGNAL_FILES, SIGNAL_TEST, "com.tj.linkmeter.SignalRulesTest", SG), (SEARCH_FILES, SEARCH_TEST, "com.tj.linkmeter.SearchFollowTest", SR)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

@@ -151,7 +151,7 @@ final class ControlTab extends Tab {
         tCurrent.setVisibility(View.GONE);
         bat.addView(tCurrent, Ui.lp(act, 8));
         bat.addView(Ui.hint(act, "Standby on " + HOME + " saves the most: it switches the phone's hotspot and screen off. "
-                + "4G only (in the " + BANDS + " tab) also saves battery."), Ui.lp(act, 6));
+                + "4G only (in the " + SIGNAL + " tab) also saves battery."), Ui.lp(act, 6));
         col.addView(bat, Ui.lp(act, 10));
 
         LinearLayout sw = Ui.card(act, "Switches", null);
@@ -517,17 +517,11 @@ final class ControlTab extends Tab {
         for (Button b : new Button[] {bWifiOn, bWifiOff, bRestart, bPoweroff, bRestore, bSafety, bRestartHotspot, bPrepare, bProbe}) {
             b.setEnabled(can);
         }
-        setChoiceEnabled(saver, can);
-        setChoiceEnabled(band, can);
+        saver.setEnabled(can);
+        band.setEnabled(can);
         boolean canUpdate = can && PhoneTabRules.updateBlocked(reachable, overBluetooth()).isEmpty();
         bUpdate.setEnabled(canUpdate);
         bannerMain.setEnabled(bannerSends ? (bannerKind == PhoneTabRules.Banner.VERSION ? canUpdate : can) : !busy);
-    }
-
-    private static void setChoiceEnabled(Ui.Choice c, boolean on) {
-        for (int i = 0; i < c.view.getChildCount(); i++) {
-            c.view.getChildAt(i).setEnabled(on);
-        }
     }
 
     private void showRestartCard() {
@@ -785,7 +779,7 @@ final class ControlTab extends Tab {
         }, "linkmeter-update").start();
     }
 
-    /** Asks the phone to put everything back and shows its report. Used by the Bands tab. */
+    /** Asks the phone to put everything back and shows its report. Used by the Signal tab (one implementation for both tabs). */
     static void restoreDialog(final MainActivity act) {
         Toast.makeText(act, "Asking the phone to restore everything…", Toast.LENGTH_SHORT).show();
         Call.run(act, "POST", "/act?name=restore", 90000, (ok, text, json) ->

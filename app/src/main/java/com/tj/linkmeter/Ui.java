@@ -337,6 +337,13 @@ final class Ui {
         int selected() {
             return selected;
         }
+
+        /** The choices can be pressed, or all wait (a request is out). */
+        void setEnabled(boolean on) {
+            for (int i = 0; i < view.getChildCount(); i++) {
+                view.getChildAt(i).setEnabled(on);
+            }
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ the result strip

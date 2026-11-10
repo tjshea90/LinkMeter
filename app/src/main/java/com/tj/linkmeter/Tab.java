@@ -12,7 +12,8 @@ abstract class Tab {
      */
     static final String HOME = "Home";
     static final String SPEED = "Speed";
-    static final String BANDS = "Bands";
+    /** What the phone is on, 4G only or 5G, the comparison, the best spot (SignalTab; it was called Bands up to v0.2.144). */
+    static final String SIGNAL = "Signal";
     /** On the tablet: the remote controls for the phone (the class is ControlTab). On the phone: its own screen (PhoneTab). */
     static final String PHONE = "Phone";
     static final String SCREEN = "Screen";

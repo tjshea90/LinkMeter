@@ -337,7 +337,7 @@ public class PreviewTest {
     public void tabletOnTheHotspot() throws Exception {
         pretendPhone("wifi", true, true);
         MainActivity a = tablet();
-        for (String t : new String[] {Tab.HOME, Tab.SPEED, Tab.BANDS, Tab.PHONE, Tab.SCREEN, Tab.FILES, Tab.TEXTS, Tab.SETTINGS}) {
+        for (String t : new String[] {Tab.HOME, Tab.SPEED, Tab.SIGNAL, Tab.PHONE, Tab.SCREEN, Tab.FILES, Tab.TEXTS, Tab.SETTINGS}) {
             try {
                 a.openTab(t);
                 if (a.shownTitle().equals(t)) {

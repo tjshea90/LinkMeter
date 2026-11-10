@@ -25,6 +25,12 @@ java -cp "$out" com.tj.linkmeter.PhoneAddressTest || fail=1
 echo "== The Phone tab's rules (PhoneTabRules: which banner wins, the battery current in words, a switch the phone does not report is 'not known', the update only over the hotspot)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhoneTabRules.java tools/test/PhoneTabRulesTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhoneTabRulesTest || fail=1
+echo "== The Signal tab's rules (SignalRules: the 4G or 5G switch and the chip never claim what the phone did not say, an out-of-date carrier list is not 5G, no scan while a comparison runs, no comparison over Bluetooth, what Keep says)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/RadioState.java app/src/main/java/com/tj/linkmeter/SignalRules.java tools/test/SignalRulesTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.SignalRulesTest || fail=1
+echo "== Searching for a network again (SearchFollow: done only when the phone said so, a silent phone is the restart and not a failure, a failed restart says why, giving up claims nothing)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SearchFollow.java tools/test/SearchFollowTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.SearchFollowTest || fail=1
 echo "== PhonePower (the Sleep / Wake button rules)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhonePower.java tools/test/PhonePowerTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhonePowerTest || fail=1
