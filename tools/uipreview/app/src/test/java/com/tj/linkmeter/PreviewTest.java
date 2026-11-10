@@ -529,6 +529,30 @@ public class PreviewTest {
         shot(a, "state-home-back-on-hotspot");
     }
 
+    /**
+     * The battery saver line on Home in the states where its words are long: Automatic but not on (the usual state while the hotspot
+     * is off), and Automatic while Shizuku is not running. Home never says "on" from the stored choice alone.
+     */
+    @Test
+    public void homeSaverWords() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(false, false).replace("\"eco\":true", "\"eco\":false");
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        shot(a, "state-home-saver-automatic");
+        Pretend q = new Pretend();
+        q.via = "bt";
+        q.status = Pretend.status(false, false).replace("\"eco\":true", "\"eco\":false").replace("\"priv\":2", "\"priv\":0");
+        q.install();
+        linkProved();
+        MainActivity b = tablet();
+        settle();
+        shot(b, "state-home-saver-needs-shizuku");
+    }
+
     /** Reached over Bluetooth and left alone for more than five minutes: Home stops asking and says so. */
     @Test
     public void homeStoppedAsking() throws Exception {
