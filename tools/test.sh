@@ -51,6 +51,10 @@ javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Js
   app/src/main/java/com/tj/linkmeter/LinkAuth.java app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/LinkServer.java \
   app/src/main/java/com/tj/linkmeter/LinkClient.java app/src/main/java/com/tj/linkmeter/BtAddr.java tools/test/LinkProtocolTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LinkProtocolTest || fail=1
+echo "== Which route a request takes (Reach: the hotspot first, Bluetooth only when the hotspot route cannot connect; never sent twice; fake routes on a virtual clock)"
+javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Json.java app/src/main/java/com/tj/linkmeter/Http.java app/src/main/java/com/tj/linkmeter/Client.java \
+  app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/Reach.java tools/test/ReachTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.ReachTest || fail=1
 echo "== Safety net (GuardPolicy: when the phone undoes LinkMeter's changes by itself: never fights the user, always acts when data stays down)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/GuardPolicy.java tools/test/GuardPolicyTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.GuardPolicyTest || fail=1

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient or the test: `python3 tools/mutate_link.py` (about 1 minute).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach or their tests: `python3 tools/mutate_link.py` (about 1 minute).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -51,44 +51,61 @@ M = [
  ("reply without a length accepted", "Client.java", "if (st.length < 0 || st.length > cap) {", "if (st.length > cap) {"),
  ("short reply accepted", "Client.java", '            if (r < 0) {\n                throw new IOException("closed");\n            }\n            off += r;', "            if (r < 0) {\n                break;\n            }\n            off += r;"),
 ]
-only = sys.argv[1:] 
+REACH_FILES = ["Json.java", "Http.java", "Client.java", "RemoteRoutes.java", "Reach.java"]
+REACH_TEST = ROOT + "/tools/test/ReachTest.java"
+R = [
+ ("reach: Bluetooth after ANY hotspot failure", "Reach.java", "} catch (IOException e) {\n                // the request may have arrived: say so, and do not send it again another way\n                noteWifi(true);\n                res.error = \"Couldn't reach the phone: \" + e.getMessage();\n                return res;\n            }", "} catch (IOException e) {\n                wifiError = \"x\";\n            }"),
+ ("reach: any route over Bluetooth", "Reach.java", "boolean btOk = bt.ready() && RemoteRoutes.overBluetooth(method, pathOf(target));", "boolean btOk = bt.ready();"),
+ ("reach: Bluetooth although not set up", "Reach.java", "boolean btOk = bt.ready() && RemoteRoutes.overBluetooth(method, pathOf(target));", "boolean btOk = RemoteRoutes.overBluetooth(method, pathOf(target));"),
+ ("reach: hotspot skipped for ever", "Reach.java", " && now - wifiFailedAt < SKIP_WIFI_MS;", ";"),
+ ("reach: hotspot never skipped", "Reach.java", "return btOk && btWorked && wifiFailedAt >= 0", "return false && wifiFailedAt >= 0"),
+ ("reach: hotspot skipped although Bluetooth failed", "Reach.java", "return btOk && btWorked && wifiFailedAt >= 0", "return btOk && wifiFailedAt >= 0"),
+ ("reach: hotspot tried without an address", "Reach.java", "if (wifi.known() && !skipWifi(btOk)) {", "if (!skipWifi(btOk)) {"),
+ ("reach: the query is taken for the path", "Reach.java", "return q < 0 ? target : target.substring(0, q);", "return target;"),
+ ("reach: 'hotspot down' not reported", "Reach.java", "                res.wifiDown = true;\n                wifiError", "                wifiError"),
+ ("reach: the last route not remembered", "Reach.java", "                lastVia = WIFI;\n", ""),
+ ("reach: a working hotspot does not end the skipping", "Reach.java", "wifiFailedAt = connected ? -1 : clock.now();", "if (!connected) wifiFailedAt = clock.now();"),
+]
+SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R)]
+only = sys.argv[1:]
 caught = missed = 0
-for m in M:
-    name, f, old, new = m[0], m[1], m[2], m[3]
-    extra = m[4] if len(m) > 4 else None
-    if only and not any(o in name for o in only):
-        continue
-    d = tempfile.mkdtemp()
-    try:
-        srcs = []
-        for x in FILES:
-            t = open(FM + x).read()
-            if x == f:
-                assert old in t, "pattern not found for: " + name
-                t = t.replace(old, new, 1)
-            if extra and x == extra[0]:
-                assert extra[1] in t, "extra pattern not found for: " + name
-                t = t.replace(extra[1], extra[2], 1)
-            os.makedirs(d + "/src", exist_ok=True)
-            open(d + "/src/" + x, "w").write(t)
-            srcs.append(d + "/src/" + x)
-        c = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", d + "/out"] + srcs + [TEST], capture_output=True, text=True)
-        if c.returncode != 0:
-            print("DOES NOT COMPILE: %s\n%s" % (name, c.stderr[-600:]))
-            missed += 1
-            continue
-        try:
-            r = subprocess.run(["java", "-cp", d + "/out", "com.tj.linkmeter.LinkProtocolTest"], capture_output=True, text=True, timeout=120)
-            bad = r.returncode != 0
-            last = [l for l in r.stdout.strip().split("\n") if l][-1] if r.stdout.strip() else r.stderr[-200:]
-        except subprocess.TimeoutExpired:
-            bad, last = True, "(the test hung: counted as caught)"
-        if bad:
-            caught += 1
-            print("caught   %-45s %s" % (name, last[:70]))
-        else:
-            missed += 1
-            print("MISSED   %-45s %s" % (name, last[:70]))
-    finally:
-        shutil.rmtree(d, ignore_errors=True)
+for FILES, TEST, TESTCLASS, M in SUITES:
+  for m in M:
+      name, f, old, new = m[0], m[1], m[2], m[3]
+      extra = m[4] if len(m) > 4 else None
+      if only and not any(o in name for o in only):
+          continue
+      d = tempfile.mkdtemp()
+      try:
+          srcs = []
+          for x in FILES:
+              t = open(FM + x).read()
+              if x == f:
+                  assert old in t, "pattern not found for: " + name
+                  t = t.replace(old, new, 1)
+              if extra and x == extra[0]:
+                  assert extra[1] in t, "extra pattern not found for: " + name
+                  t = t.replace(extra[1], extra[2], 1)
+              os.makedirs(d + "/src", exist_ok=True)
+              open(d + "/src/" + x, "w").write(t)
+              srcs.append(d + "/src/" + x)
+          c = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", d + "/out"] + srcs + [TEST], capture_output=True, text=True)
+          if c.returncode != 0:
+              print("DOES NOT COMPILE: %s\n%s" % (name, c.stderr[-600:]))
+              missed += 1
+              continue
+          try:
+              r = subprocess.run(["java", "-cp", d + "/out", TESTCLASS], capture_output=True, text=True, timeout=120)
+              bad = r.returncode != 0
+              last = [l for l in r.stdout.strip().split("\n") if l][-1] if r.stdout.strip() else r.stderr[-200:]
+          except subprocess.TimeoutExpired:
+              bad, last = True, "(the test hung: counted as caught)"
+          if bad:
+              caught += 1
+              print("caught   %-45s %s" % (name, last[:70]))
+          else:
+              missed += 1
+              print("MISSED   %-45s %s" % (name, last[:70]))
+      finally:
+          shutil.rmtree(d, ignore_errors=True)
 print("%d caught, %d missed" % (caught, missed))
