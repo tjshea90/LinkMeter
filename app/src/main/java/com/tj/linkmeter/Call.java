@@ -18,7 +18,8 @@ final class Call {
         void done(boolean ok, String text, JSONObject json);
     }
 
-    private static Reach reach;
+    /** Package-visible so the screen preview (tools/uipreview) can put a pretend phone here. */
+    static Reach reach;
 
     /** The one chooser of routes for this app (the hotspot first, Bluetooth when the hotspot route cannot connect): see {@link Reach}. */
     static synchronized Reach reach(Context c) {
@@ -36,7 +37,11 @@ final class Call {
                     if (host.isEmpty()) {
                         throw new Client.ConnectFailed(new IOException("the tablet is not on the phone's hotspot"));
                     }
-                    return Client.call(host, method, target, Cfg.token(app), 2500, readMs);
+                    try {
+                        return Client.call(host, method, target, Cfg.token(app), 2500, readMs);
+                    } catch (Client.ConnectFailed e) {
+                        throw new Client.ConnectFailed(new IOException(Client.why(e))); // still "nothing was sent", in plainer words
+                    }
                 }
             }, new Reach.Bluetooth() {
                 @Override

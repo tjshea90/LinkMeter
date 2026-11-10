@@ -68,6 +68,10 @@ public class MainActivity extends Activity {
         if (cur != null) {
             cur.onHide();
         }
+        if (Cfg.TABLET.equals(Cfg.mode(this))) {
+            // no Bluetooth connection is kept while the app is out of sight (a run that goes on in the background opens a new one)
+            new Thread(BtLink::close, "linkmeter-bt-close").start();
+        }
         super.onPause();
     }
 
@@ -298,7 +302,12 @@ public class MainActivity extends Activity {
         return root;
     }
 
-    /** Switches to the tab with this title ("Control"), for a button on another tab. Does nothing if there is no such tab. */
+    /** The title of the tab on show, or "". */
+    String shownTitle() {
+        return cur == null ? "" : cur.title();
+    }
+
+    /** Switches to the tab with this title ("Phone"), for a button on another tab. Does nothing if there is no such tab. */
     void openTab(String title) {
         if (tabs == null) {
             return;

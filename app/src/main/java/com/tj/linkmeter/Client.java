@@ -29,6 +29,28 @@ final class Client {
         }
     }
 
+    /** Why a connection could not be made, in words for the user (the kind of failure says more than its message). */
+    static String why(ConnectFailed e) {
+        Throwable c = e.getCause();
+        if (c instanceof java.net.SocketTimeoutException) {
+            return "no answer (is the phone's hotspot on, and LinkMeter running on the phone?)";
+        }
+        if (c instanceof java.net.NoRouteToHostException) {
+            return "no route to it (is the tablet on the phone's hotspot?)";
+        }
+        if (c instanceof java.net.ConnectException) {
+            String m = String.valueOf(c.getMessage());
+            if (m.contains("EPERM")) {
+                return "Android blocked this app's network access (check its permissions in Settings > App info, or restart the tablet)";
+            }
+            return m.contains("ENETUNREACH") || m.contains("EHOSTUNREACH")
+                    ? "the tablet is not on the phone's hotspot"
+                    : "the phone refused the connection (open LinkMeter on the phone and tap Start)";
+        }
+        String m = String.valueOf(e.getMessage());
+        return m.contains("EPERM") ? "Android blocked this app's network access (check its permissions in Settings > App info, or restart the tablet)" : m;
+    }
+
     /** For tests only: talk to this port instead of {@link Http#PORT}. */
     static volatile int portOverride = 0;
 
