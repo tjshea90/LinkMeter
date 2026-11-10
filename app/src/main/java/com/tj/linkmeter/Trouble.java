@@ -74,8 +74,8 @@ final class Trouble {
                 return "The tablet is not on the phone's hotspot. Join it in the tablet's Wi-Fi settings, or switch the hotspot "
                         + "on at the phone." + (linkWords.isEmpty() ? "" : " " + linkWords);
             case BLUETOOTH_OFF:
-                return "The tablet is not on the phone's hotspot, and its own Bluetooth is switched off. LinkMeter does not "
-                        + "switch it on just to read the status. This button does, and asks the phone again.";
+                return "The phone could not be reached over its hotspot, and this tablet's Bluetooth is switched off. LinkMeter "
+                        + "does not switch it on just to read the status. This button does, and asks the phone again.";
             case NOT_PAIRED:
                 return overBluetooth
                         ? "The phone answered over Bluetooth, but it has not been paired with this tablet. Pairing needs the "

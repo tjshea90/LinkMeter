@@ -58,6 +58,8 @@ public class PreviewTest {
         int statusCode = 200;
         String actReply = "{\"ok\":true,\"out\":\"Done.\"}";
         int actCode = 200;
+        /** How often the status was asked for. */
+        final java.util.concurrent.atomic.AtomicInteger statusAsked = new java.util.concurrent.atomic.AtomicInteger();
 
         static String status(boolean hotspotOn, boolean screenOn) {
             return STATUS.replace("%HS%", String.valueOf(hotspotOn)).replace("%SCR%", String.valueOf(screenOn));
@@ -100,6 +102,9 @@ public class PreviewTest {
         }
 
         Client.Resp answer(String target) {
+            if (target.equals("/s")) {
+                statusAsked.incrementAndGet();
+            }
             if (target.equals("/s") && statusCode != 200) {
                 Client.Resp r = new Client.Resp();
                 r.code = statusCode;
@@ -414,6 +419,38 @@ public class PreviewTest {
         later(3100);
         later(3100);
         shot(a, "state-home-switch-phone-gone");
+    }
+
+    /**
+     * Not a picture but a check: a press while a question is on its way must not start a second chain of questions (each
+     * chain would ask at the full rate, and over Bluetooth every question wakes the phone).
+     */
+    @Test
+    public void homeAsksInOneChain() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(false, true);
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle(); // the first question is answered
+        p.btDelayMs = 700; // from now on a question takes a while
+        press(a, "Ask again"); // one is on its way ...
+        Thread.sleep(200);
+        ShadowLooper.idleMainLooper();
+        press(a, "Ask again"); // ... and the user presses again
+        Thread.sleep(2500);
+        settle();
+        p.btDelayMs = 0;
+        for (int round = 1; round <= 3; round++) {
+            int before = p.statusAsked.get();
+            later(15_000); // in the first minute after a press: one question every 15 s
+            int asked = p.statusAsked.get() - before;
+            if (asked != 1) {
+                throw new AssertionError("15 s later (round " + round + ") the phone was asked " + asked
+                        + " times, not once: more than one chain of questions is running");
+            }
+        }
     }
 
     /** Reached over Bluetooth and left alone for more than five minutes: Home stops asking and says so. */

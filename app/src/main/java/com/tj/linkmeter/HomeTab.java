@@ -496,7 +496,7 @@ final class HomeTab extends Tab {
         }
         LinkState.Kind link = BtLink.state(act);
         if (s.phone != null && s.phone.has("bt") && link != LinkState.Kind.READY && link != LinkState.Kind.OFF_HERE
-                && link != LinkState.Kind.NO_BLUETOOTH && !Cfg.getBool(act, "btOfferHidden", false)) {
+                && link != LinkState.Kind.NO_BLUETOOTH && !BtLink.offerHidden(act)) {
             // On the hotspot, and the way to reach the phone WITHOUT the hotspot is not there: say so while it is easy to mend.
             // (Not when the link is switched off here, which is the user's choice, nor to a phone app from before the link.)
             banner.setVisibility(View.VISIBLE);
@@ -516,8 +516,7 @@ final class HomeTab extends Tab {
             bannerOther.setVisibility(View.VISIBLE);
             bannerOther.setText("Not now");
             bannerOther.setOnClickListener(v -> {
-                // hides this offer and nothing else: the link's own switch is in Settings and stays as it is
-                Cfg.setBool(act, "btOfferHidden", true);
+                BtLink.hideOffer(act); // hides this card and nothing else: the link's own switch is in Settings and stays as it is
                 banner.setVisibility(View.GONE);
             });
             return;
@@ -690,7 +689,14 @@ final class HomeTab extends Tab {
         paintSwitches();
         setAction("Checking the Bluetooth link…", true);
         new Thread(() -> {
-            final String why = linkTrouble(Call.reach(act).bluetoothOnly("GET", "/s", 8000));
+            String w;
+            try {
+                w = linkTrouble(Call.reach(act).bluetoothOnly("GET", "/s", 8000));
+            } catch (RuntimeException e) {
+                // an escape from this thread would end the app; a test that could not be made is a test that failed
+                w = "Bluetooth could not be tried on this tablet (" + e + ").";
+            }
+            final String why = w;
             act.ui.post(() -> {
                 busy = false;
                 setAction("", true);

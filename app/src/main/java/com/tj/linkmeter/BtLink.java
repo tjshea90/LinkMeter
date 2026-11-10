@@ -107,6 +107,19 @@ final class BtLink {
         }
     }
 
+    /**
+     * Home's card about the link ("set it up", or "it is not ready") was answered with "Not now". The card then stays away,
+     * and nothing else changes: the link is used as before. It may come back once a call over Bluetooth has worked again,
+     * because a link that fails after that is news.
+     */
+    static boolean offerHidden(Context c) {
+        return Cfg.getBool(c, "btOfferHidden", false);
+    }
+
+    static void hideOffer(Context c) {
+        Cfg.setBool(c, "btOfferHidden", true);
+    }
+
     /** The phone answered a signed request over Bluetooth just now: the address is proved and the phone's side is listening. */
     private static void worked(Context c) {
         long now = System.currentTimeMillis();
@@ -116,6 +129,9 @@ final class BtLink {
         }
         if (!"on".equals(phoneSays(c))) {
             Cfg.setStr(c, "btPhone", "on");
+        }
+        if (offerHidden(c)) {
+            Cfg.setBool(c, "btOfferHidden", false);
         }
     }
 

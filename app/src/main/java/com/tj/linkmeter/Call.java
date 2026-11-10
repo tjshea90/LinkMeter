@@ -80,7 +80,14 @@ final class Call {
             boolean ok = false;
             String text;
             JSONObject json = null;
-            Reach.Result res = reach(act).call(method, target, readMs);
+            Reach.Result res;
+            try {
+                res = reach(act).call(method, target, readMs);
+            } catch (RuntimeException e) {
+                // an escape from this thread would end the app; said as what it is, a request that could not be made
+                res = new Reach.Result();
+                res.error = "LinkMeter could not send that (" + e + ").";
+            }
             if (res.resp == null) {
                 text = res.error;
             } else {

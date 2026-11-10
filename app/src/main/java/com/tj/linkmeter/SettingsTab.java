@@ -48,7 +48,7 @@ final class SettingsTab extends Tab {
     @Override
     View build() {
         LinearLayout col = Ui.column(act);
-        col.addView(Ui.title(act, "Settings"));
+        col.addView(Ui.title(act, SETTINGS));
         buildLink(col);
         buildConnection(col);
         buildTablet(col);
@@ -163,9 +163,6 @@ final class SettingsTab extends Tab {
     private void setUp() {
         if (!permitted()) {
             return;
-        }
-        if (Cfg.getBool(act, "btOfferHidden", false)) {
-            Cfg.setBool(act, "btOfferHidden", false); // the link is being set up after all: Home may speak about it again
         }
         busy(true);
         say("Asking the phone to get its side ready…");
@@ -293,7 +290,7 @@ final class SettingsTab extends Tab {
         });
         card.addView(host);
         card.addView(Ui.hint(act, "Leave it empty: on the phone's hotspot the tablet finds the phone by itself. Type an address "
-                + "only if Home says it cannot find the phone."), Ui.lp(act, 0));
+                + "only if " + HOME + " says it cannot find the phone."), Ui.lp(act, 0));
 
         card.addView(Ui.text(act, "Ask the phone for its status every", 14, Ui.FG, false), Ui.lp(act, 12));
         final long[] values = {15000L, 5000L, 2000L};
@@ -312,14 +309,14 @@ final class SettingsTab extends Tab {
     private void buildTablet(LinearLayout col) {
         LinearLayout card = Ui.card(act, "This tablet", null);
         Ui.Toggle keep = new Ui.Toggle(act, "Keep the screen on in every tab",
-                "The Screen tab keeps the tablet awake by itself while it is open (its own option). This is for all the other tabs.",
+                "The " + SCREEN + " tab keeps the tablet awake by itself while it is open (its own option). This is for all the other tabs.",
                 Cfg.keepOn(act), (b, on) -> {
                     Cfg.setKeepOn(act, on);
                     act.applyKeepOn();
                 });
         card.addView(keep.view, Ui.lp(act, 6));
         Ui.Toggle share = new Ui.Toggle(act, "Let the phone browse this tablet's files",
-                "Runs a small file service on the tablet (a notification shows while it is on). The Files tab on the tablet does "
+                "Runs a small file service on the tablet (a notification shows while it is on). The " + FILES + " tab on the tablet does "
                 + "not need it.", Cfg.shareFiles(act), (b, on) -> {
                     Cfg.setShareFiles(act, on);
                     if (on) {
@@ -359,11 +356,11 @@ final class SettingsTab extends Tab {
         new AlertDialog.Builder(act)
                 .setTitle("Make a new secret?")
                 .setMessage("The phone will no longer know this tablet until they are paired again: on the phone tap Pair tablet "
-                        + "(with the tablet on the phone's hotspot), then open Home here.")
+                        + "(with the tablet on the phone's hotspot), then open " + HOME + " here.")
                 .setPositiveButton("New secret", (d, w) -> {
                     Cfg.resetToken(act);
                     BtLink.closeSoon(); // its connection was made with the old secret
-                    Toast.makeText(act, "Done. On the phone tap Pair tablet, then open Home.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(act, "Done. On the phone tap Pair tablet, then open " + HOME + ".", Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton("Cancel", null)
                 .show();

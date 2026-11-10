@@ -209,3 +209,9 @@ Nothing here has run on the devices, so the tablet is written to claim only what
    at once, without waiting for a change).
 6. Whether the hotspot's state can be read by the shell helper (`getWifiApEnabledState`); if not, the hotspot answers read
    "It does not say whether it is on / off."
+7. How long the live Bluetooth call before "Hotspot off" takes on the tablet (expected 1 to 5 s; it is given up to 14 s to
+   connect and 8 s to answer), and whether the tablet's Bluetooth and Wi-Fi get in each other's way while both are in use.
+8. Whether, after the hotspot is switched off over the hotspot, the tablet's follow-up reaches the phone over Bluetooth inside
+   its 40 s (each look first waits up to 2.5 s for the hotspot route). If not, Home says "has not confirmed it yet" although
+   the hotspot is off; the next status puts it right.
+9. Whether the tablet (Android 10) lets LinkMeter switch its Bluetooth on without a question when a button needs it.
