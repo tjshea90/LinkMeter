@@ -28,11 +28,16 @@ HANDLED SO FAR:
     homeStoppedOnAMiss and homeOneMissOverBluetooth (pictures and checks: press "Ask again"; with the old rule both fail "no button"). NOT DONE: the
     reviewer's optional extra (after STOP try the hotspot route alone once a minute); see the end of the notes.
 
-IN PROGRESS NOW: F6 (verdict: real, and the same hole exists for the screen switch: screenPressed does not grey the card's button either).
- Plan: HomeTab.bannerSends (the card's main button sends a switch) set in paintBanner; paintSwitches greys that button with the others; send(),
- screenPressed() and confirmOff() return at once when busy; PreviewTest check homeOneSwitchAtATime.
+ F6 FIXED in commit 4ff46ba (verdict: real; the same hole existed for the screen switch). HomeTab.bannerSends marks the card's main button as one
+    that sends a switch; paintSwitches greys and frees it with the others (send() no longer greys bannerMain itself); send(), screenPressed() and
+    confirmOff() return at once while busy. PreviewTest.homeOneSwitchAtATime (a check; with the old greying in a scratch copy it fails "during the
+    Bluetooth check: Turn the hotspot on can still be pressed").
+ F8 FIXED (verdict: real), being saved now: HomeTab.onHide says "... The lines above show the phone's latest answer, which may be from before the
+    switch." New picture state-home-left-during-follow-up (PreviewTest.homeLeftDuringFollowUp).
 
-NEXT: F6, F8, F9, F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+IN PROGRESS NOW: saving F8 (test, build, preview, checkpoint). Then F9.
+
+NEXT: F9, F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
