@@ -10,3 +10,6 @@ local.properties
 
 # simple-workflow plugin artifacts (local-only; delete entries to share via git)
 .simple-workflow
+
+# Copies of the repository made for reviewers by the workflow tool (never part of the app)
+.claude/worktrees/
