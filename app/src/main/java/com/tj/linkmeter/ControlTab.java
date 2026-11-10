@@ -49,6 +49,8 @@ final class ControlTab extends Tab {
     /** Counts the follow-ups, so that a look from one that has ended cannot go on. */
     private int followGen;
     private boolean moreOpen;
+    /** A question is on the screen: a second tap on the same button must not stack another one (confirming both would send twice). */
+    private boolean questionOpen;
     private long ownCode = -2;
 
     // ---- the last answer, kept across a rebuild of the views (a tab is rebuilt each time it is shown)
@@ -656,11 +658,16 @@ final class ControlTab extends Tab {
     // ------------------------------------------------------------------------------------------------ questions before a press
 
     private void confirm(String title, String message, String go, final Runnable then) {
+        if (questionOpen) {
+            return;
+        }
+        questionOpen = true;
         new AlertDialog.Builder(act)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton(go, (d, w) -> then.run())
                 .setNegativeButton("Cancel", null)
+                .setOnDismissListener(d -> questionOpen = false)
                 .show();
     }
 

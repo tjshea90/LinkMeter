@@ -25,13 +25,12 @@ question, type the pairing number, press Start inside Shizuku, open Shizuku with
 ## Setting it up (once)
 
 1. Update both devices to the newest release.
-2. Phone: nothing to do yet. Tablet: open LinkMeter > Phone tab and scroll to the card "Start the phone after a restart".
-3. While everything works as usual (Shizuku running on the phone, tablet on the phone's hotspot) tap **One-time setup** > Do it.
+2. Phone: nothing to do yet. Tablet: open LinkMeter > Phone tab and scroll to the card "After a phone restart".
+3. While everything works as usual (Shizuku running on the phone, tablet on the phone's hotspot) tap **Tablet hotspot and one-time setup**, then **One-time setup** > Do it.
    This gives LinkMeter on the phone the permission to switch wireless debugging on, and turns on "Boot assist". **Undo the setup**
    takes all of it back.
-4. Optional: **Keep the pairing**. Android forgets a wireless-debugging pairing that was not used for 7 days, and you would have to
-   pair again. This switch stops that (it is the developer option "Disable adb authorization timeout"). **Forget after 7 days**
-   puts it back.
+4. Optional: the switch **Keep the pairing longer than 7 days**. Android forgets a wireless-debugging pairing that was not used for 7 days, and you would have to
+   pair again. This switch stops that (it is the developer option "Disable adb authorization timeout"). Switch it off to put it back.
 
 ## After every restart of the phone
 
@@ -40,7 +39,7 @@ question, type the pairing number, press Start inside Shizuku, open Shizuku with
 2. Tablet: Phone tab > **Start everything**. (On the Home tab the button "Phone not answering? Start it after a restart"
    takes you there.) Allow the location question the first time: Android 10 wants it before an app may make a hotspot; LinkMeter
    does not read your location. If the tablet's Wi-Fi is off, the panel to switch it on opens first.
-3. **The very first time only:** the card shows the tablet hotspot's name (`DIRECT-LM-Tablet`) and its password. On the phone join
+3. **The very first time only:** the details of the card (**Tablet hotspot and one-time setup**, opened by themselves while a run is on) show the tablet hotspot's name (`DIRECT-LM-Tablet`) and its password. On the phone join
    it like any Wi-Fi (Settings > Connections > Wi-Fi; if it is not listed, Add network and type them). If Android says the network
    has no internet, choose to stay connected. From then on the phone joins it by itself.
 4. Phone: a notification "Shizuku isn't running" appears. Tap it, then **Start** in Shizuku. If Android asks "Allow wireless

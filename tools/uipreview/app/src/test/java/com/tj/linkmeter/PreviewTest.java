@@ -59,6 +59,8 @@ public class PreviewTest {
         String status = status(true, true);
         /** An older phone app: it does not know the actions that came later (the battery saver's one switch). */
         boolean olderPhone;
+        /** What the phone answers to GET /boot (null: the usual answer, Shizuku running). */
+        String bootBody;
         int statusCode = 200;
         String actReply = "{\"ok\":true,\"out\":\"Done.\"}";
         int actCode = 200;
@@ -119,6 +121,12 @@ public class PreviewTest {
                 Client.Resp r = new Client.Resp();
                 r.code = statusCode;
                 r.body = "{\"err\":\"not paired\"}";
+                return r;
+            }
+            if (bootBody != null && target.startsWith("/boot")) {
+                Client.Resp r = new Client.Resp();
+                r.code = 200;
+                r.body = bootBody;
                 return r;
             }
             if (olderPhone && target.startsWith("/act?name=eco_auto")) {
@@ -821,16 +829,22 @@ public class PreviewTest {
             throw new AssertionError("no question is open");
         }
         d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        ShadowLooper.idleMainLooper(); // the dialog is dismissed by a message, as it is for a finger: nobody taps faster than that
     }
 
     static void answerNo() {
         AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
         if (d != null && d.isShowing()) {
             d.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            ShadowLooper.idleMainLooper();
         }
     }
 
     static MainActivity phoneTab(Pretend p) throws Exception {
+        // a new boot driver for each picture: the flow of an earlier picture (a run in the middle) must not leak into this one
+        java.lang.reflect.Field inst = BootDriver.class.getDeclaredField("instance");
+        inst.setAccessible(true);
+        inst.set(null, null);
         p.install();
         linkProved();
         MainActivity a = tablet();
@@ -840,6 +854,78 @@ public class PreviewTest {
             throw new AssertionError("the Phone tab did not open: " + a.shownTitle());
         }
         return a;
+    }
+
+    /**
+     * The boot flow in a state the tablet cannot be put in under test (a run needs the tablet's real Wi-Fi and its location
+     * permission): its own steps are run on the pure flow, the driver's flow, with times that make it go on or time out.
+     */
+    static void bootRun(MainActivity a, boolean timeOut) throws Exception {
+        BootDriver driver = BootDriver.get(a);
+        java.lang.reflect.Field f = BootDriver.class.getDeclaredField("flow");
+        f.setAccessible(true);
+        BootFlow flow = (BootFlow) f.get(driver);
+        BootFlow.Obs o = new BootFlow.Obs();
+        o.now = 1000;
+        o.hotspot = BootFlow.Hotspot.ON;
+        o.hotspotInfo = "DIRECT-LM-Tablet";
+        flow.start(o);
+        o.now = 20000;
+        flow.tick(o);
+        if (timeOut) {
+            o.now = 31 * 60 * 1000L;
+            flow.tick(o);
+        }
+        later(1500); // the card repaints itself every second while a run is on
+    }
+
+    /** Shizuku is running on the phone: the card "After a phone restart" at rest, with nothing to do. */
+    @Test
+    public void phoneTabBootAtRest() throws Exception {
+        Pretend p = new Pretend();
+        p.status = phoneStatus(true);
+        MainActivity a = phoneTab(p);
+        shot(a, "state-phone-boot-rest");
+    }
+
+    /** The phone was restarted: Shizuku is not running, the card says so, and the details are one tap away. */
+    @Test
+    public void phoneTabBootNoShizuku() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = phoneStatus(false, "\"priv\":2", "\"priv\":0");
+        p.bootBody = "{\"priv\":0,\"wifi\":true,\"ip\":\"\",\"wadb\":false,\"dev\":true,\"write\":true,\"hotspot\":false,\"assist\":true,\"keep\":false,\"note\":\"\",\"vc\":1}";
+        MainActivity a = phoneTab(p);
+        press(a, "After a phone restart");
+        settle();
+        shot(a, "state-phone-boot-noshizuku");
+        press(a, "Tablet hotspot and one-time setup");
+        settle();
+        shot(a, "state-phone-boot-details");
+    }
+
+    /** A run in the middle: its steps, and the details opened by themselves. */
+    @Test
+    public void phoneTabBootRunning() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = phoneStatus(false, "\"priv\":2", "\"priv\":0");
+        p.bootBody = "{\"priv\":0,\"wifi\":true,\"ip\":\"\",\"wadb\":false,\"dev\":true,\"write\":true,\"hotspot\":false,\"assist\":true,\"keep\":false,\"note\":\"\",\"vc\":1}";
+        MainActivity a = phoneTab(p);
+        bootRun(a, false);
+        shot(a, "state-phone-boot-running");
+    }
+
+    /** A run that did not get anywhere: what it says, and the steps it got through. */
+    @Test
+    public void phoneTabBootFailed() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = phoneStatus(false, "\"priv\":2", "\"priv\":0");
+        p.bootBody = "{\"priv\":0,\"wifi\":true,\"ip\":\"\",\"wadb\":false,\"dev\":true,\"write\":true,\"hotspot\":false,\"assist\":true,\"keep\":false,\"note\":\"\",\"vc\":1}";
+        MainActivity a = phoneTab(p);
+        bootRun(a, true);
+        shot(a, "state-phone-boot-failed");
     }
 
     /** Reached over the hotspot, the saver on, the battery current known: the tab as it is on a good day. */

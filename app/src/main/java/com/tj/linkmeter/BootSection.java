@@ -9,15 +9,20 @@ import android.graphics.Typeface;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * Tablet only. A card of the Phone tab: "Start the phone after a restart" (see docs/BOOT_FLOW.md). One big button runs
+ * Tablet only. The card "After a phone restart" in the Phone tab (see docs/BOOT_FLOW.md and docs/BOOT_GUIDE.md). One big button runs
  * the whole order (the tablet makes its own hotspot, the phone joins it, wireless debugging goes on, Shizuku is started on the phone,
- * the phone becomes the hotspot and the tablet joins it); the rest are the single steps by hand, the tablet hotspot's name and
- * password, and the one-time setup on the phone. The work is done by {@link BootDriver}; this only shows it.
+ * the phone becomes the hotspot and the tablet joins it). Behind a quiet button are the single steps by hand, the tablet hotspot's
+ * name and password, and the one-time setup on the phone. The work is done by {@link BootDriver}; this only shows it.
+ *
+ * What is shown is what is true: while nothing runs, the line at the top says what the phone itself last said about Shizuku (read
+ * once with GET /boot, when the card is shown and when its details are opened); the steps are shown only while a run is on or has
+ * just ended. Nothing here asks the phone on a timer.
  */
 final class BootSection implements BootDriver.Listener {
     private final MainActivity act;
@@ -30,8 +35,18 @@ final class BootSection implements BootDriver.Listener {
     private TextView setupView;
     private Button startBtn;
     private Button cancelBtn;
+    private Button detailsBtn;
+    private Button netShareBtn;
+    private LinearLayout details;
+    private Ui.Toggle keepToggle;
+    private CompoundButton.OnCheckedChangeListener keepListener;
+    private boolean detailsOpen;
     private boolean shown;
     private long lastPoll;
+    /** The phone's Shizuku state from its last /boot answer (Priv.OFF, NO_PERM, READY), or -1 while it has not answered. */
+    private int priv = -1;
+    /** The phone's own word on whether the 7-day pairing timeout is off; null while not known. */
+    private Boolean keepOn;
 
     BootSection(MainActivity a) {
         act = a;
@@ -43,80 +58,108 @@ final class BootSection implements BootDriver.Listener {
         t.setTextIsSelectable(true);
     }
 
-    void build(LinearLayout col) {
-        col.addView(Ui.text(act, "Start the phone after a restart", 18, Ui.FG, true), Ui.lp(act, 18));
-        col.addView(Ui.text(act, "When the phone restarts, Shizuku has to be started again. This does what you did by hand: the tablet makes "
-                + "its own hotspot, the phone joins it, wireless debugging goes on, you start Shizuku on the phone, then the phone "
-                + "becomes the hotspot and the tablet joins it. What Android does not let an app do stays with you, and the steps "
-                + "below say exactly when.", 12, Ui.DIM, false), Ui.lp(act, 4));
-
-        LinearLayout r = row();
-        startBtn = Ui.button(act, "Start everything", v -> startPressed());
-        cancelBtn = Ui.button(act, "Cancel", v -> driver.cancel());
-        r.addView(startBtn, Ui.weight());
-        r.addView(cancelBtn, Ui.weight());
-        col.addView(r, Ui.lp(act, 8));
-        headline = Ui.text(act, "", 14, Ui.FG, true);
-        col.addView(headline, Ui.lp(act, 8));
-        note = Ui.text(act, "", 12, Ui.AMBER, false);
-        col.addView(note, Ui.lp(act, 2));
+    void build(LinearLayout card) {
+        card.addView(Ui.heading(act, "After a phone restart"));
+        card.addView(Ui.hint(act, "When the phone restarts, its helper Shizuku stops and the switches do not work. Unlock the phone "
+                + "once, then press Start everything."), Ui.lp(act, 2));
+        // the steps come first and the line that says what is going on or what to do now after them: the flow's own sentences
+        // refer to "the steps above"
         steps = Ui.text(act, "", 12, Ui.FG, false);
         mono(steps);
-        col.addView(steps, Ui.lp(act, 6));
-        phone = Ui.text(act, "", 12, Ui.DIM, false);
-        col.addView(phone, Ui.lp(act, 6));
+        card.addView(steps, Ui.lp(act, 8));
+        headline = Ui.text(act, "", 14, Ui.FG, true);
+        card.addView(headline, Ui.lp(act, 8));
+        note = Ui.hint(act, "");
+        note.setTextColor(Ui.AMBER);
+        card.addView(note, Ui.lp(act, 2));
+        startBtn = Ui.primary(act, "Start everything", v -> startPressed());
+        cancelBtn = Ui.button(act, "Cancel", v -> driver.cancel());
+        card.addView(Ui.row(act, startBtn, cancelBtn), Ui.lp(act, 8));
+        phone = Ui.hint(act, "");
+        card.addView(phone, Ui.lp(act, 4));
+        detailsBtn = Ui.quiet(act, "Tablet hotspot and one-time setup", v -> toggleDetails());
+        card.addView(detailsBtn, Ui.lp(act, 10));
 
-        col.addView(Ui.text(act, "The tablet's hotspot", 15, Ui.FG, true), Ui.lp(act, 16));
-        col.addView(Ui.text(act, "The tablet has no hotspot of its own, so LinkMeter makes one the phone can join (Wi-Fi Direct, with the "
-                + "same name and password every time; the third try uses a local-only hotspot like NetShare's, with a new random "
-                + "password each time). FIRST TIME ONLY: on the phone join this Wi-Fi once (Settings > Connections > Wi-Fi, pick the "
-                + "name; if it is not listed use Add network and type the name and the password; stay connected even without internet). "
-                + "After that the phone joins it by itself whenever the tablet makes it (the phone's Wi-Fi must be on). Android 10 "
-                + "asks for the location permission before an app may make a hotspot; LinkMeter does not read your location.",
-                12, Ui.DIM, false), Ui.lp(act, 2));
-        LinearLayout h = row();
-        h.addView(Ui.button(act, "Start hotspot", v -> act.requestLocation(() -> {
-            driver.hotspot().start();
-            paint();
-        })), Ui.weight());
-        h.addView(Ui.button(act, "Stop hotspot", v -> {
-            driver.hotspot().stop();
-            paint();
-        }), Ui.weight());
-        h.addView(Ui.button(act, "Wi-Fi switch", v -> openWifi()), Ui.weight());
-        col.addView(h, Ui.lp(act, 6));
+        details = new LinearLayout(act);
+        details.setOrientation(LinearLayout.VERTICAL);
+        details.setVisibility(View.GONE);
+
+        details.addView(Ui.heading(act, "The tablet's hotspot"), Ui.lp(act, 12));
+        details.addView(Ui.hint(act, "The tablet makes a hotspot the phone can join, with the same name and password every time. "
+                + "The first time, join it once on the phone and stay connected even without internet."), Ui.lp(act, 2));
         hotView = Ui.text(act, "", 13, Ui.FG, false);
         mono(hotView);
-        col.addView(hotView, Ui.lp(act, 6));
-        LinearLayout h2 = row();
-        h2.addView(Ui.button(act, "Copy password", v -> copyPassword()), Ui.weight());
-        h2.addView(Ui.button(act, "Open NetShare", v -> openNetShare()), Ui.weight());
-        col.addView(h2, Ui.lp(act, 4));
+        details.addView(hotView, Ui.lp(act, 6));
+        details.addView(Ui.row(act,
+                Ui.button(act, "Start hotspot", v -> act.requestLocation(() -> {
+                    driver.hotspot().start();
+                    paint();
+                })),
+                Ui.button(act, "Stop hotspot", v -> {
+                    driver.hotspot().stop();
+                    paint();
+                })), Ui.lp(act, 6));
+        details.addView(Ui.row(act,
+                Ui.button(act, "Tablet Wi-Fi", v -> openWifi()),
+                Ui.button(act, "Copy password", v -> copyPassword())), Ui.lp(act, 2));
+        netShareBtn = Ui.button(act, "Open NetShare", v -> openNetShare());
+        netShareBtn.setVisibility(TabletHotspot.netShareIntent(act) == null ? View.GONE : View.VISIBLE); // only when it is installed
+        details.addView(netShareBtn, Ui.lp(act, 2));
+        details.addView(Ui.divider(act));
 
-        col.addView(Ui.text(act, "One-time setup on the phone", 15, Ui.FG, true), Ui.lp(act, 16));
-        col.addView(Ui.text(act, "Needs Shizuku running on the phone NOW, and the tablet on the phone's hotspot (the usual way). It gives LinkMeter "
-                + "the permission to switch wireless debugging on by itself, and switches Boot assist on: after a restart the phone then "
-                + "switches wireless debugging on as soon as it is on a Wi-Fi network, and shows a notification that opens Shizuku. "
-                + "Undo the setup takes it all back. \"Keep the pairing\" stops Android from forgetting the wireless-debugging pairing "
-                + "after 7 days (so you are not asked for the pairing number again).", 12, Ui.DIM, false), Ui.lp(act, 2));
-        LinearLayout s1 = row();
-        s1.addView(Ui.button(act, "One-time setup", v -> confirmSetup()), Ui.weight());
-        s1.addView(Ui.button(act, "Undo the setup", v -> confirmUndo()), Ui.weight());
-        col.addView(s1, Ui.lp(act, 6));
-        LinearLayout s2 = row();
-        s2.addView(Ui.button(act, "Keep the pairing", v -> confirmKeep(true)), Ui.weight());
-        s2.addView(Ui.button(act, "Forget after 7 days", v -> setup("boot_keep_off", 30000)), Ui.weight());
-        col.addView(s2, Ui.lp(act, 4));
+        details.addView(Ui.heading(act, "One-time setup on the phone"), Ui.lp(act, 6));
+        details.addView(Ui.hint(act, "Lets LinkMeter switch wireless debugging on by itself after a restart. Needs Shizuku running on "
+                + "the phone now, and the tablet on the phone's hotspot."), Ui.lp(act, 2));
+        details.addView(Ui.row(act,
+                Ui.button(act, "One-time setup", v -> confirmSetup()),
+                Ui.button(act, "Undo the setup", v -> confirmUndo())), Ui.lp(act, 6));
+        keepListener = (b, on) -> {
+            if (on) {
+                confirmKeep();
+            } else {
+                setup("boot_keep_off", 30000); // taking the pairing timeout back needs no question
+            }
+        };
+        keepToggle = new Ui.Toggle(act, "Keep the pairing longer than 7 days",
+                "Android forgets a wireless-debugging pairing after 7 days. This keeps it.", false, keepListener);
+        details.addView(keepToggle.view, Ui.lp(act, 6));
         setupView = Ui.text(act, "", 12, Ui.FG, false);
         mono(setupView);
-        col.addView(setupView, Ui.lp(act, 6));
+        details.addView(setupView, Ui.lp(act, 6));
+        card.addView(details);
         paint();
     }
 
-    private LinearLayout row() {
-        LinearLayout r = new LinearLayout(act);
-        r.setOrientation(LinearLayout.HORIZONTAL);
-        return r;
+    private void toggleDetails() {
+        if (detailsOpen) {
+            detailsOpen = false;
+            details.setVisibility(View.GONE);
+            detailsBtn.setText("Tablet hotspot and one-time setup");
+        } else {
+            openDetails();
+        }
+    }
+
+    private void openDetails() {
+        detailsOpen = true;
+        details.setVisibility(View.VISIBLE);
+        detailsBtn.setText("Hide the details");
+        readPhone();
+    }
+
+    /** One status read of the phone's /boot: its Shizuku state and its 7-day pairing setting. Never while the tab is hidden. */
+    private void readPhone() {
+        if (!shown) {
+            return;
+        }
+        Call.run(act, "GET", "/boot", 4000, (ok, text, json) -> {
+            if (!shown || headline == null || !ok || json == null) {
+                return;
+            }
+            priv = json.has("priv") ? json.optInt("priv", -1) : -1;
+            keepOn = json.has("keep") ? Boolean.valueOf(json.optBoolean("keep")) : null;
+            paint();
+        });
     }
 
     /** The tab is on screen: follow the driver, and look at the hotspot (every second while something is going on, else every five). */
@@ -124,6 +167,7 @@ final class BootSection implements BootDriver.Listener {
         shown = true;
         driver.setListener(this);
         paint();
+        readPhone();
         act.ui.removeCallbacks(refresh); // never a second loop beside one that is already running
         act.ui.postDelayed(refresh, 1000);
     }
@@ -158,18 +202,45 @@ final class BootSection implements BootDriver.Listener {
         paint();
     }
 
+    /** The line at the top: while a run is on or has just ended, the run's own words; otherwise what the phone itself last said. */
+    private String fact() {
+        if (driver.active()) {
+            return driver.headline();
+        }
+        if (priv == Priv.READY) {
+            return "Shizuku is running on the phone: nothing to do.";
+        }
+        if (priv == Priv.OFF) {
+            return "Shizuku is not running on the phone.";
+        }
+        if (priv == Priv.NO_PERM) {
+            return "Shizuku is running, but LinkMeter is not allowed in it yet. Open LinkMeter on the phone and tap Allow.";
+        }
+        return driver.headline();
+    }
+
     private void paint() {
         if (headline == null) {
             return;
         }
         boolean running = driver.running();
+        boolean active = driver.active();
         startBtn.setEnabled(!running);
-        cancelBtn.setEnabled(running);
-        String hl = driver.headline();
-        headline.setText(hl);
-        note.setText(driver.note().isEmpty() ? driver.lastCommandResult() : driver.note());
-        steps.setText(driver.active() ? driver.steps() : "");
-        phone.setText(driver.phoneSummary());
+        cancelBtn.setVisibility(running ? View.VISIBLE : View.GONE);
+        headline.setText(fact());
+        String n = driver.note().isEmpty() ? driver.lastCommandResult() : driver.note();
+        note.setText(n);
+        note.setVisibility(n.isEmpty() ? View.GONE : View.VISIBLE);
+        steps.setText(active ? driver.steps() : "");
+        steps.setVisibility(active ? View.VISIBLE : View.GONE);
+        phone.setText(active ? driver.phoneSummary() : "");
+        phone.setVisibility(active ? View.VISIBLE : View.GONE);
+        if (running && !detailsOpen) {
+            openDetails(); // a run is on: the hotspot and what it needs from the phone are what the user is looking for
+        }
+        if (keepOn != null) {
+            keepToggle.show(keepOn.booleanValue(), keepListener);
+        }
         TabletHotspot t = driver.hotspot();
         StringBuilder sb = new StringBuilder();
         switch (t.state()) {
@@ -250,6 +321,7 @@ final class BootSection implements BootDriver.Listener {
                 setupView.setText(text);
                 setupView.setTextColor(ok ? Ui.FG : Ui.AMBER);
             }
+            readPhone(); // what the phone says now (also puts the pairing switch where the phone has it)
         });
     }
 
@@ -274,14 +346,16 @@ final class BootSection implements BootDriver.Listener {
                 .show();
     }
 
-    private void confirmKeep(final boolean keep) {
+    /** The switch was turned on: ask first, and put it back where the phone has it if the answer is no. */
+    private void confirmKeep() {
         new AlertDialog.Builder(act)
                 .setTitle("Keep the pairing")
                 .setMessage("Android forgets a wireless-debugging pairing that has not been used for 7 days. This switches that off, so the "
                         + "pairing stays until you remove it in Developer options. It is the same as the developer option \"Disable adb "
-                        + "authorization timeout\". Needs Shizuku running on the phone now; undo it with Forget after 7 days.")
-                .setPositiveButton("Do it", (d, w) -> setup(keep ? "boot_keep_on" : "boot_keep_off", 30000))
-                .setNegativeButton("Cancel", null)
+                        + "authorization timeout\". Needs Shizuku running on the phone now; switch it off here to undo it.")
+                .setPositiveButton("Do it", (d, w) -> setup("boot_keep_on", 30000))
+                .setNegativeButton("Cancel", (d, w) -> keepToggle.show(Boolean.TRUE.equals(keepOn), keepListener))
+                .setOnCancelListener(d -> keepToggle.show(Boolean.TRUE.equals(keepOn), keepListener))
                 .show();
     }
 }
