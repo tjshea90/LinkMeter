@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -387,7 +387,31 @@ B = [
  ("phonetab: any error means an older phone", "PhoneTabRules.java", "return answer != null && answer.contains(\"unknown action\");", "return answer != null;"),
  ("phonetab: a phone app that is not known has a version", "PhoneTabRules.java", "return code >= 0 ? (name", "return code >= -1 ? (name"),
 ]
-SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
+LEG_FILES = ["NrLeg.java"]
+LEG_TEST = ROOT + "/tools/test/NrLegTest.java"
+N = [
+ ("leg: a modem that cannot switch it keeps the flag for ever", "NrLeg.java", ' || s.result.equals("SUCCESS") || s.result.equals("NOT_SUPPORTED");', ' || s.result.equals("SUCCESS");'),
+ ("leg: a phone with no such call keeps the flag", "NrLeg.java", "return s.error.contains(NO_CALL);", "return false;"),
+ ("leg: any error forgets the flag", "NrLeg.java", "return s.error.contains(NO_CALL);", "return true;"),
+ ("leg: a radio that is not available forgets the flag", "NrLeg.java", ' || s.result.equals("SUCCESS") || s.result.equals("NOT_SUPPORTED");', ' || s.result.equals("SUCCESS") || s.result.equals("NOT_SUPPORTED") || s.result.equals("RADIO_NOT_AVAILABLE");'),
+ ("leg: an answer that says nothing forgets the flag", "NrLeg.java", "return Boolean.TRUE.equals(s.enabled) || s.result.equals", "return !Boolean.FALSE.equals(s.enabled) || s.result.equals"),
+ ("leg: a leg reported on does not forget the flag", "NrLeg.java", "return Boolean.TRUE.equals(s.enabled) || s.result.equals", "return s.result.equals"),
+ ("leg: a modem that cannot is told it was switched back on", "NrLeg.java", 'return "5G leg: this phone cannot switch it, so there was nothing to put back.";', 'return "5G leg: switched back on.";'),
+ ("leg: a flag that stays hides the reason", "NrLeg.java", 'return "5G leg: could not be switched back on. " + describeSet("on", s);', 'return "5G leg: could not be switched back on.";'),
+ ("leg: an accepted request is said to be a fact", "NrLeg.java", 'return "5G leg: the modem accepted the request to switch it back on.";', 'return "5G leg: switched back on.";'),
+]
+TYPES_FILES = ["TypesFlag.java"]
+TYPES_TEST = ROOT + "/tools/test/TypesFlagTest.java"
+U = [
+ ("types: the second change replaces the first mask", "TypesFlag.java", "return remembered > 0 ? remembered : mask;", "return mask;"),
+ ("types: a stored 0 counts as a mask", "TypesFlag.java", "return remembered > 0 ? remembered : mask;", "return remembered >= 0 ? remembered : mask;"),
+ ("types: the memory is never forgotten", "TypesFlag.java", "return remembered > 0 && (now < 0 || now != remembered);", "return remembered > 0;"),
+ ("types: the memory is always forgotten", "TypesFlag.java", "return remembered > 0 && (now < 0 || now != remembered);", "return false;"),
+ ("types: a mask that could not be read forgets the memory", "TypesFlag.java", "return remembered > 0 && (now < 0 || now != remembered);", "return remembered > 0 && now >= 0 && now != remembered;"),
+ ("types: a phone with more types than before counts as back", "TypesFlag.java", "return remembered > 0 && (now < 0 || now != remembered);", "return remembered > 0 && (now < 0 || (now & remembered) != remembered);"),
+ ("types: nothing stored counts as needed", "TypesFlag.java", "return remembered > 0 && (now < 0 || now != remembered);", "return now < 0 || now != remembered;"),
+]
+SUITES =[(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
           (FOLLOW_FILES, FOLLOW_TEST, "com.tj.linkmeter.FollowUpTest", F), (TROUBLE_FILES, TROUBLE_TEST, "com.tj.linkmeter.TroubleTest", T),
@@ -395,7 +419,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (SAFETYREPORT_FILES, SAFETYREPORT_TEST, "com.tj.linkmeter.SafetyReportTest", Y),
           (PACE2_FILES, PACE2_TEST, "com.tj.linkmeter.ScreenPaceTest", Z), (POWER_FILES, POWER_TEST, "com.tj.linkmeter.PhonePowerTest", Q),
           (QUALITY_FILES, QUALITY_TEST, "com.tj.linkmeter.QualityPresetsTest", G), (ADDRESS_FILES, ADDRESS_TEST, "com.tj.linkmeter.PhoneAddressTest", A),
-          (PHONETAB_FILES, PHONETAB_TEST, "com.tj.linkmeter.PhoneTabRulesTest", B)]
+          (PHONETAB_FILES, PHONETAB_TEST, "com.tj.linkmeter.PhoneTabRulesTest", B),
+          (LEG_FILES, LEG_TEST, "com.tj.linkmeter.NrLegTest", N), (TYPES_FILES, TYPES_TEST, "com.tj.linkmeter.TypesFlagTest", U)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

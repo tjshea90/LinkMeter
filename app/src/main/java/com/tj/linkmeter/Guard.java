@@ -25,6 +25,7 @@ final class Guard {
     private static final Handler H = new Handler(Looper.getMainLooper());
     private static final GuardPolicy POLICY = new GuardPolicy();
     private static final AtomicBoolean RECOVERING = new AtomicBoolean();
+    private static final AtomicBoolean CLEANING = new AtomicBoolean();
     private static Context appCtx;
     private static boolean running;
     private static long lastNoticeAt;
@@ -45,6 +46,19 @@ final class Guard {
         if (Saved.pendingRadio(appCtx)) {
             POLICY.arm(SystemClock.elapsedRealtime());
             start();
+            final Context app = appCtx;
+            if (CLEANING.compareAndSet(false, true)) {
+                // what an older version left (a band lock, a "5G leg off" request, a stale types memory) is undone once, if Shizuku is ready
+                new Thread(() -> {
+                    try {
+                        Actions.cleanOldFlags(app);
+                    } catch (RuntimeException ignored) {
+                        // the flags stay: the safety net and Restore everything still deal with them
+                    } finally {
+                        CLEANING.set(false);
+                    }
+                }, "linkmeter-clean").start();
+            }
         }
     }
 

@@ -42,6 +42,9 @@ java -cp "$out" com.tj.linkmeter.SurveyCommandTest || fail=1
 echo "== 5G leg (NrLeg: the words the phone and the tablet share about it; never claims a state the phone did not report)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/NrLeg.java tools/test/NrLegTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.NrLegTest || fail=1
+echo "== Network types memory (TypesFlag: remembered only just before a real write, kept as the first mask, forgotten as soon as the phone is exactly as it was; a whole fair comparison leaves nothing behind)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/TypesFlag.java tools/test/TypesFlagTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.TypesFlagTest || fail=1
 echo "== Fair comparison of settings (LeverRun: random order within rounds, a sign-test verdict, a setting counts only when the phone really took it, always put back; simulated phones)"
 javac -proc:none -cp "$out" -d "$out" app/src/main/java/com/tj/linkmeter/LeverRun.java tools/test/LeverRunTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LeverRunTest || fail=1

@@ -142,6 +142,63 @@ public final class NrLegTest {
         check(!NrLeg.accepted(null) && !NrLeg.accepted("") && !NrLeg.accepted("Failed (code 1): 5G leg is off"), "accepted() on other texts");
         check(!NrLeg.accepted("Couldn't reach the phone: timed out"), "an unreachable phone is not 'accepted'");
 
+        // ---- D1: may the stored 'an older version switched the 5G leg off' flag be forgotten after 'leg on'?
+        String noCall = "this phone has no setNrDualConnectivityState(int)";
+        String[] answers = {"SUCCESS", "NOT_SUPPORTED", "RADIO_NOT_AVAILABLE", "ERROR_INVALID_ARG", "RADIO_ERROR", "7", "", "n/a"};
+        String[] errs = {"", "boom", noCall, "java.lang.IllegalStateException: Telephony service is null"};
+        int states = 0;
+        for (String res : answers) {
+            for (Boolean en : tri) {
+                for (Boolean sup : tri) {
+                    for (String err : errs) {
+                        NrLeg.State s = st(en, sup, res, err);
+                        boolean forget = NrLeg.mayForget(s);
+                        String line = NrLeg.restoreLine(s);
+                        String ctx = " [result=" + res + " enabled=" + en + " supported=" + sup + " error=" + err + "]";
+                        states++;
+                        if (!err.isEmpty() && !err.equals(noCall)) {
+                            check(!forget, "an error that may mean the leg is still off keeps the flag" + ctx);
+                        }
+                        if (err.equals(noCall)) {
+                            check(forget, "a phone with no such call never switched anything off: forget" + ctx);
+                        }
+                        if (err.isEmpty() && (res.equals("SUCCESS") || res.equals("NOT_SUPPORTED"))) {
+                            check(forget, "the modem accepted, or cannot do it at all: forget" + ctx);
+                        }
+                        if (err.isEmpty() && Boolean.TRUE.equals(en)) {
+                            check(forget, "the phone reports the leg on: forget" + ctx);
+                        }
+                        if (err.isEmpty() && !Boolean.TRUE.equals(en) && !res.equals("SUCCESS") && !res.equals("NOT_SUPPORTED")) {
+                            check(!forget, "any other answer keeps the flag" + ctx);
+                        }
+                        // the line Restore everything prints never claims more than was checked
+                        check(!line.isEmpty() && !line.contains("\n"), "one line of words" + ctx);
+                        check(line.startsWith("5G leg:"), "the line says what it is about" + ctx);
+                        check(line.startsWith("5G leg: switched back on.") == (err.isEmpty() && Boolean.TRUE.equals(en)),
+                                "'switched back on' only when the phone reported the leg on" + ctx);
+                        check(line.contains("could not be switched back on") == !forget, "'could not' exactly when the flag stays" + ctx);
+                        if (!err.isEmpty() && !err.equals(noCall)) {
+                            check(line.contains(err), "a kept flag shows the error" + ctx);
+                        }
+                    }
+                }
+            }
+        }
+        check(states == 8 * 3 * 3 * 4, "all 288 states were tried");
+        // the same, from the lines ShellMain really prints
+        check(NrLeg.mayForget(NrLeg.parse("OK nrdc state=off supported=no result=NOT_SUPPORTED")),
+                "the user's modem (NOT_SUPPORTED, reads 'off' because it has nothing to report): the flag is forgotten");
+        check(NrLeg.restoreLine(NrLeg.parse("OK nrdc state=off supported=no result=NOT_SUPPORTED")).contains("nothing to put back"),
+                "and Restore everything says nothing was changed");
+        check(NrLeg.mayForget(NrLeg.parse("ERR " + noCall)), "a phone without the call: forgotten");
+        check(NrLeg.mayForget(NrLeg.parse("OK nrdc state=on supported=yes result=SUCCESS")), "accepted and on: forgotten");
+        check(NrLeg.mayForget(NrLeg.parse("OK nrdc state=off supported=yes result=SUCCESS")),
+                "accepted although the read still says off (that read means nothing on some modems): forgotten");
+        check(!NrLeg.mayForget(NrLeg.parse("OK nrdc state=off supported=yes result=RADIO_NOT_AVAILABLE")), "radio not available: tried again later");
+        check(!NrLeg.mayForget(NrLeg.parse("ERR java.lang.SecurityException: not allowed")), "a refusal keeps the flag");
+        check(!NrLeg.mayForget(NrLeg.parse("")) && !NrLeg.mayForget(NrLeg.parse(null)) && !NrLeg.mayForget(NrLeg.parse("garbage")),
+                "no readable answer keeps the flag");
+
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }

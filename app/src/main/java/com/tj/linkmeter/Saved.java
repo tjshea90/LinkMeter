@@ -14,12 +14,12 @@ final class Saved {
         return c.getApplicationContext().getSharedPreferences("restore", Context.MODE_PRIVATE);
     }
 
-    /** The allowed network types before the first change. Only the first call is kept. */
+    /**
+     * Stores the allowed network types as they were before the first change. The caller decides what to store (TypesFlag.beforeWrite
+     * keeps the first mask ever stored) and calls this only just before a REAL write.
+     */
     static void rememberTypes(Context c, long mask) {
-        SharedPreferences p = sp(c);
-        if (!p.contains("nt")) {
-            p.edit().putLong("nt", mask).apply();
-        }
+        sp(c).edit().putLong("nt", mask).apply();
     }
 
     static long types(Context c) {

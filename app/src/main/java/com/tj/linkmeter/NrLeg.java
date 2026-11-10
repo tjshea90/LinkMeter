@@ -143,6 +143,37 @@ final class NrLeg {
 
     /** True when the phone's words say the modem cannot do this at all. */
     static boolean cannot(String text) {
-        return text != null && (text.contains("cannot switch the 5G leg") || text.contains("has no setNrDualConnectivityState"));
+        return text != null && (text.contains("cannot switch the 5G leg") || text.contains(NO_CALL));
+    }
+
+    /** ShellMain's words when this phone's telephony has no such call at all. */
+    private static final String NO_CALL = "has no setNrDualConnectivityState";
+
+    /**
+     * May the stored flag "an older version switched the 5G leg off" be forgotten after the request "leg on" was answered with `s`?
+     * Yes when the phone reports the leg on, when the modem accepted, and when the modem says it cannot do this at all or the phone
+     * has no such call: then nothing was ever switched off, and (audit D1) the flag used to stay for ever on such a modem, keeping
+     * the safety net awake and the Safety check worried. Any other answer (an error, the radio not available, no answer) may mean the
+     * leg is still off, so the flag stays and the safety net tries again.
+     */
+    static boolean mayForget(State s) {
+        if (!s.error.isEmpty()) {
+            return s.error.contains(NO_CALL);
+        }
+        return Boolean.TRUE.equals(s.enabled) || s.result.equals("SUCCESS") || s.result.equals("NOT_SUPPORTED");
+    }
+
+    /** The line Restore everything prints after it asked for "leg on" because the stored flag said the leg had been switched off. */
+    static String restoreLine(State s) {
+        if (!mayForget(s)) {
+            return "5G leg: could not be switched back on. " + describeSet("on", s);
+        }
+        if (s.error.isEmpty() && Boolean.TRUE.equals(s.enabled)) {
+            return "5G leg: switched back on.";
+        }
+        if (s.error.isEmpty() && s.result.equals("SUCCESS")) {
+            return "5G leg: the modem accepted the request to switch it back on.";
+        }
+        return "5G leg: this phone cannot switch it, so there was nothing to put back.";
     }
 }

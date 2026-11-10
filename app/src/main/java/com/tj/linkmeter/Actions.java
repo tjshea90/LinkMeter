@@ -391,27 +391,32 @@ final class Actions {
             return "Couldn't read the phone's current network types, so nothing was changed.\n"
                     + "The phone said:\n" + g.out;
         }
-        Saved.rememberTypes(c, mask);
         long target = allow5g ? (mask | NR_BIT) : (mask & ~NR_BIT);
         if (target == mask) {
+            forgetTypesIfBack(c, mask);
             return allow5g ? "5G is already allowed (" + typesText(mask) + ")."
                     : "5G is already off. The phone is on " + typesText(mask) + ".";
         }
+        Saved.rememberTypes(c, TypesFlag.beforeWrite(Saved.types(c), mask)); // just before a real write, never for a press that changes nothing
         // The phone prints types as words ("LTE|LTE_CA"); which form the set command takes
         // is not documented, so try the likely ones and keep the first that reads back right.
         String[] forms = {"'" + typesText(target) + "'", String.valueOf(target)};
         StringBuilder log = new StringBuilder();
+        long lastRead = mask;
         for (String f : forms) {
             for (String slot : new String[] {"", "-s 0 "}) {
                 String cmd = SET_TYPES + " " + slot + f;
                 Priv.Result s = Priv.run(cmd, 15);
                 log.append("$ ").append(cmd).append('\n').append(s.out).append('\n');
-                if (parseTypes(Priv.run(GET_TYPES, 15).out) == target) {
+                lastRead = parseTypes(Priv.run(GET_TYPES, 15).out);
+                if (lastRead == target) {
+                    forgetTypesIfBack(c, target);
                     return allow5g ? "5G is allowed again (" + typesText(target) + ")."
                             : "Forced to 4G. The phone is now on " + typesText(target) + ".";
                 }
             }
         }
+        forgetTypesIfBack(c, lastRead); // no form took: if the phone is still as it was, there is nothing to put back
         Priv.Result usage = Priv.run(SET_TYPES + " 2>&1 | head -20", 15);
         return "The phone did not accept the change.\n" + log.toString().trim()
                 + "\nUsage the phone printed:\n" + usage.out
@@ -447,14 +452,16 @@ final class Actions {
             return null;
         }
         apiNote = "";
-        Saved.rememberTypes(c, mask);
         long target = allow5g ? (mask | NR_BIT) : (mask & ~NR_BIT);
         if (target == mask) {
+            forgetTypesIfBack(c, mask);
             return allow5g ? "5G is already allowed (" + typesText(mask) + ")."
                     : "5G is already off. The phone is on " + typesText(mask) + ".";
         }
+        Saved.rememberTypes(c, TypesFlag.beforeWrite(Saved.types(c), mask)); // just before a real write
         Priv.Result s = Cells.shellMain(c, "nt-set " + target);
         long now = parseOk(Cells.shellMain(c, "nt-get").out);
+        forgetTypesIfBack(c, now);
         if (now == target) {
             return allow5g ? "5G is allowed again (" + typesText(target) + ")."
                     : "Forced to 4G. The phone is now on " + typesText(target) + ".";
@@ -506,6 +513,7 @@ final class Actions {
         long types = currentTypes(c);
         f.types = types;
         f.typesText = types >= 0 ? typesText(types) : "";
+        forgetTypesIfBack(c, types); // a memory left by an older version although 5G is back as it was: it no longer counts as a change
         f.typesChanged = Saved.types(c) > 0;
         try {
             Boolean off = NrLeg.offFromText(NrLeg.describe(NrLeg.parse(Cells.shellMain(c, "nrdc-get").out)));
@@ -632,6 +640,50 @@ final class Actions {
         }
     }
 
+    /**
+     * Asks the modem for "leg on" because the stored flag says the 5G leg was switched off, and forgets the flag by NrLeg.mayForget
+     * (audit D1: on a modem that answers NOT_SUPPORTED the flag used to stay for ever). Returns the line for Restore everything.
+     */
+    private static String putLegBack(Context c) throws IOException {
+        NrLeg.State leg = NrLeg.parse(Cells.shellMain(c, "nrdc-set on").out);
+        if (NrLeg.mayForget(leg)) {
+            Saved.clearNrLeg(c);
+        }
+        return NrLeg.restoreLine(leg);
+    }
+
+    /**
+     * Once at every start of the phone's service: what an older version (up to v0.2.102) left in place is undone, because this
+     * version has no button for it and the safety net would keep looking until somebody pressed Restore everything. That is a band
+     * lock, a request to switch the 5G leg off, and a memory of the network types that no longer differs from the phone. Only
+     * "bands-clear", "leg on" and one read of the types run, and only while Shizuku is ready. Runs on a thread of its own.
+     */
+    static void cleanOldFlags(Context c) {
+        boolean lock = Saved.lockOn(c);
+        boolean leg = Saved.nrLegChanged(c);
+        boolean types = Saved.types(c) > 0;
+        if ((!lock && !leg && !types) || !Priv.ready()) {
+            return;
+        }
+        try {
+            if (lock) {
+                Priv.Result r = Cells.shellMain(c, "bands-clear");
+                if (r.out.contains("OK ")) {
+                    Cells.clearState();
+                    Saved.clearLock(c);
+                }
+            }
+            if (leg) {
+                putLegBack(c);
+            }
+            if (types) {
+                forgetTypesIfBack(c, currentTypes(c));
+            }
+        } catch (IOException ignored) {
+            // Shizuku went away in between: the flags stay and the safety net or Restore everything deals with them
+        }
+    }
+
     /** Puts the radio back: no band lock, and the network types as they were (or the usual default). */
     static String restoreRadio(Context c) {
         StringBuilder sb = new StringBuilder();
@@ -663,15 +715,8 @@ final class Actions {
             }
         }
         if (Saved.nrLegChanged(c)) {
-            // LinkMeter switched the 5G leg off: put it back on (a normal phone has it on)
             try {
-                NrLeg.State leg = NrLeg.parse(Cells.shellMain(c, "nrdc-set on").out);
-                if (Boolean.TRUE.equals(leg.enabled) || (leg.error.isEmpty() && leg.result.equals("SUCCESS"))) {
-                    Saved.clearNrLeg(c);
-                    sb.append("5G leg: switched back on.\n");
-                } else {
-                    sb.append("5G leg: could not be switched back on. ").append(NrLeg.describeSet("on", leg)).append('\n');
-                }
+                sb.append(putLegBack(c)).append('\n');
             } catch (IOException e) {
                 sb.append("5G leg: ").append(e.getMessage()).append('\n');
             }
@@ -702,6 +747,17 @@ final class Actions {
             sb.append("Network types: ").append(e.getMessage()).append('\n');
         }
         return sb.toString();
+    }
+
+    /**
+     * The phone's allowed types were just read as `now`: forget the stored "types were changed" mask when the phone is exactly as it
+     * was (TypesFlag.stillNeeded), so the safety net and the Safety check stop worrying about a change that has been undone.
+     */
+    private static void forgetTypesIfBack(Context c, long now) {
+        long was = Saved.types(c);
+        if (was > 0 && !TypesFlag.stillNeeded(was, now)) {
+            Saved.clearTypes(c);
+        }
     }
 
     /** The allowed network types right now, or -1 if they can't be read. */
