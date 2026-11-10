@@ -196,7 +196,34 @@ final class Cfg {
     }
 
     static void setBtMac(Context c, String mac) {
-        sp(c).edit().putString("btMac", mac).apply();
+        SharedPreferences p = sp(c);
+        if (mac.equals(p.getString("btMac", ""))) {
+            return;
+        }
+        // what the tablet learned by calling the old address says nothing about the new one
+        p.edit().putString("btMac", mac).remove("btOkAt").remove("btFailed").apply();
+    }
+
+    /**
+     * Tablet: when the phone last answered a request over Bluetooth at the stored address (wall clock), 0 if it never has.
+     * Forgotten when the address changes ({@link #setBtMac}).
+     */
+    static long btOkAt(Context c) {
+        return sp(c).getLong("btOkAt", 0L);
+    }
+
+    /** Tablet: did the latest call over Bluetooth fail to get through? */
+    static boolean btFailed(Context c) {
+        return sp(c).getBoolean("btFailed", false);
+    }
+
+    /** Tablet: the latest call over Bluetooth was answered (at this wall-clock time), or did not get through. */
+    static void setBtCall(Context c, boolean worked, long at) {
+        SharedPreferences.Editor e = sp(c).edit().putBoolean("btFailed", !worked);
+        if (worked) {
+            e.putLong("btOkAt", at);
+        }
+        e.apply();
     }
 
     /** Phone: switch on the battery-saving profile by itself when the tablet connects. */

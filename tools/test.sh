@@ -57,10 +57,22 @@ java -cp "$out" com.tj.linkmeter.SwitchWordsTest || fail=1
 echo "== Staying awake (Holds: one connection or action cannot switch the wake lock off under another, a short hold cannot cut a long one short, and every hold runs out by itself; a pretend wake lock on a virtual clock)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/Holds.java tools/test/HoldsTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.HoldsTest || fail=1
-echo "== Which route a request takes (Reach: the hotspot first, Bluetooth only when the hotspot route cannot connect; never sent twice; fake routes on a virtual clock)"
+echo "== Which route a request takes (Reach: the hotspot first, Bluetooth only when the hotspot route cannot connect; never sent twice; a status read never switches the tablet's Bluetooth on, a press may; an action gets at least a minute over Bluetooth; fake routes on a virtual clock)"
 javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Json.java app/src/main/java/com/tj/linkmeter/Http.java app/src/main/java/com/tj/linkmeter/Client.java \
   app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/Reach.java tools/test/ReachTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.ReachTest || fail=1
+echo "== Is the Bluetooth link ready? (LinkState: the tablet says 'Ready' only when the phone's address is stored, a call to it was answered, the latest call did not fail and the phone says it is listening; an address a call has proved is not replaced by what a status says)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/BtAddr.java app/src/main/java/com/tj/linkmeter/LinkState.java tools/test/LinkStateTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.LinkStateTest || fail=1
+echo "== What became of a switch the phone only answered with 'Sent' (FollowUp: 'is on' / 'is off' only for what the phone's status reported; a phone that stops answering is said to have stopped answering; otherwise 'not confirmed yet')"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/FollowUp.java tools/test/FollowUpTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.FollowUpTest || fail=1
+echo "== How often Home asks the phone (PollPace: over Bluetooth every 15 s in the first minute after a press, then once a minute, and not at all after five minutes; misses lengthen the wait; over the hotspot it never stops)"
+javac -proc:none -cp "$out" -d "$out" app/src/main/java/com/tj/linkmeter/PollPace.java tools/test/PollPaceTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.PollPaceTest || fail=1
+echo "== Why Home has no status (Trouble: a phone that answered is never called unreachable; 'After a phone restart' only when it did not answer at all)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/Trouble.java tools/test/TroubleTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.TroubleTest || fail=1
 echo "== Safety net (GuardPolicy: when the phone undoes LinkMeter's changes by itself: never fights the user, always acts when data stays down)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/GuardPolicy.java tools/test/GuardPolicyTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.GuardPolicyTest || fail=1

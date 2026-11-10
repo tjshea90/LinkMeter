@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords or their tests: `python3 tools/mutate_link.py` (about 2 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -80,6 +80,32 @@ R = [
  ("reach: 'hotspot down' not reported", "Reach.java", "                res.wifiDown = true;\n                wifiError", "                wifiError"),
  ("reach: the last route not remembered", "Reach.java", "                lastVia = WIFI;\n", ""),
  ("reach: a working hotspot does not end the skipping", "Reach.java", "wifiFailedAt = connected ? -1 : clock.now();", "if (!connected) wifiFailedAt = clock.now();"),
+ ("reach: a status read counts as a press", "Reach.java", "return call(method, target, readMs, !statusRead(method, pathOf(target)));", "return call(method, target, readMs, true);"),
+ ("reach: a button does not count as a press", "Reach.java", "return call(method, target, readMs, !statusRead(method, pathOf(target)));", "return call(method, target, readMs, false);"),
+ ("reach: a status read with a query is a press", "Reach.java", "!statusRead(method, pathOf(target))", "!statusRead(method, target)"),
+ ("reach: Bluetooth may always be switched on", "Reach.java", "bluetoothReadMs(pathOf(target), readMs), pressed);", "bluetoothReadMs(pathOf(target), readMs), true);"),
+ ("reach: Bluetooth may never be switched on", "Reach.java", "bluetoothReadMs(pathOf(target), readMs), pressed);", "bluetoothReadMs(pathOf(target), readMs), false);"),
+ ("reach: the status is not a status read", "Reach.java", '("/s".equals(path) || "/sig".equals(path)', '("/sig".equals(path)'),
+ ("reach: the speed test's progress is not a status read", "Reach.java", ' || "/speed/status".equals(path));', ');'),
+ ("reach: every question is a status read", "Reach.java", 'return "GET".equals(method) && ("/s".equals(path)', 'return "GET".equals(method) || ("/s".equals(path)'),
+ ("reach: a press on a status path is a status read", "Reach.java", 'return "GET".equals(method) && ("/s".equals(path)', 'return ("/s".equals(path)'),
+ ("reach: an action gets no extra time over Bluetooth", "Reach.java", 'return "/act".equals(path) ? Math.max(readMs, ACT_MS_BLUETOOTH) : readMs;', "return readMs;"),
+ ("reach: an action's longer limit is cut to a minute", "Reach.java", 'return "/act".equals(path) ? Math.max(readMs, ACT_MS_BLUETOOTH) : readMs;', 'return "/act".equals(path) ? ACT_MS_BLUETOOTH : readMs;'),
+ ("reach: everything gets a minute over Bluetooth", "Reach.java", 'return "/act".equals(path) ? Math.max(readMs, ACT_MS_BLUETOOTH) : readMs;', "return Math.max(readMs, ACT_MS_BLUETOOTH);"),
+ ("reach: the minute is half a minute", "Reach.java", "static final int ACT_MS_BLUETOOTH = 60_000;", "static final int ACT_MS_BLUETOOTH = 30_000;"),
+ ("reach: the extra time is not used on the Bluetooth call", "Reach.java", "bt.call(method, target, bluetoothReadMs(pathOf(target), readMs), pressed);", "bt.call(method, target, readMs, pressed);"),
+ ("reach: the hotspot route gets the Bluetooth time", "Reach.java", "res.resp = wifi.call(method, target, readMs);", "res.resp = wifi.call(method, target, bluetoothReadMs(pathOf(target), readMs));"),
+ ("reach: 'Bluetooth is off' not reported", "Reach.java", "            res.btOff = true; // nothing was sent, and nothing was switched on\n", ""),
+ ("reach: Bluetooth that is off counts as tried", "Reach.java", "            res.btOff = true; // nothing was sent, and nothing was switched on\n", "            res.btOff = true;\n            res.btTried = true;\n"),
+ ("reach: Bluetooth that is off still counts as working", "Reach.java", "res.btOff = true; // nothing was sent, and nothing was switched on\n            noteBt(false);", "res.btOff = true; // nothing was sent, and nothing was switched on"),
+ ("reach: 'Bluetooth is off' said as a call that failed", "Reach.java", 'res.error = before + (res.btOff ? res.error + "." : "Bluetooth did not get through either: " + res.error);', 'res.error = before + "Bluetooth did not get through either: " + res.error;'),
+ ("reach: a failed Bluetooth call is not counted as tried", "Reach.java", "} catch (IOException e) {\n            res.asked = true;\n            res.btTried = true;", "} catch (IOException e) {\n            res.asked = true;"),
+ ("reach: the live test takes the hotspot when it can", "Reach.java", "bluetooth(res, method, target, readMs, true);\n        return res;", "return call(method, target, readMs, true);"),
+ ("reach: the live test is not a press", "Reach.java", "bluetooth(res, method, target, readMs, true);\n        return res;", "bluetooth(res, method, target, readMs, false);\n        return res;"),
+ ("reach: the live test runs without a link", "Reach.java", "if (!bt.ready() || !RemoteRoutes.overBluetooth(method, pathOf(target))) {\n            res.error", "if (!RemoteRoutes.overBluetooth(method, pathOf(target))) {\n            res.error"),
+ ("reach: the live test sends anything over Bluetooth", "Reach.java", "if (!bt.ready() || !RemoteRoutes.overBluetooth(method, pathOf(target))) {\n            res.error", "if (!bt.ready()) {\n            res.error"),
+ ("reach: 'asked' although nothing was tried", "Reach.java", "Result res = new Result();\n        boolean btOk", "Result res = new Result();\n        res.asked = true;\n        boolean btOk"),
+ ("reach: 'asked' forgotten for the hotspot route", "Reach.java", "        if (wifi.known() && !skipWifi(btOk)) {\n            res.asked = true;\n", "        if (wifi.known() && !skipWifi(btOk)) {\n"),
 ]
 HOLDS_FILES = ["Holds.java"]
 HOLDS_TEST = ROOT + "/tools/test/HoldsTest.java"
@@ -112,8 +138,87 @@ W = [
  ("words: the first verdict line wins, not the last", "SwitchWords.java", "for (int i = lines.length - 1; i >= 0; i--) {", "for (int i = 0; i < lines.length; i++) {"),
  ("words: the phone's reason is dropped", "SwitchWords.java", 'return t.isEmpty() ? "the phone gave no reason" : t;', 'return "the phone gave no reason";'),
 ]
+STATE_FILES = ["BtAddr.java", "LinkState.java"]
+STATE_TEST = ROOT + "/tools/test/LinkStateTest.java"
+S = [
+ ("state: Ready without a call that was answered", "LinkState.java", "        if (!proven) {\n            return Kind.NOT_TESTED;\n        }\n", ""),
+ ("state: Ready right after a call that failed", "LinkState.java", "        if (lastFailed) {\n            return Kind.NOT_REACHED;\n        }\n", ""),
+ ("state: Ready without the phone's own word", "LinkState.java", 'return "on".equals(phoneBt) ? Kind.READY : Kind.NOT_TESTED;', "return Kind.READY;"),
+ ("state: the phone's own word is ignored", "LinkState.java", 'if (!phoneBt.isEmpty() && !"on".equals(phoneBt)) {', "if (false) {"),
+ ("state: Ready without an address", "LinkState.java", "        if (!address) {\n            return Kind.NO_ADDRESS;\n        }\n", ""),
+ ("state: Ready with the link switched off here", "LinkState.java", "        if (!enabled) {\n            return Kind.OFF_HERE;\n        }\n", ""),
+ ("state: an old phone app is not named", "LinkState.java", "        if (OLD_APP.equals(phoneBt)) {\n            return Kind.PHONE_OLD;\n        }\n", ""),
+ ("state: a call that failed is 'not tested'", "LinkState.java", "return Kind.NOT_REACHED;", "return Kind.NOT_TESTED;"),
+ ("state: 'not tested' is shown as Ready", "LinkState.java", '            case NOT_TESTED:\n                return "Not tested";', '            case NOT_TESTED:\n                return "Ready";'),
+ ("state: 'not reached' does not name the way forward", "LinkState.java", "did not get through. Press Test: the phone must be in range", "did not get through: the phone must be in range"),
+ ("state: Set up is named for a switch only the phone has", "LinkState.java", "is switched off there. Open LinkMeter on the phone and switch it on.", "is switched off there. Press Set up."),
+ ("state: a proved address is replaced by what a status says", "LinkState.java", "return !BtAddr.valid(current) || !proven;", "return true;"),
+ ("state: an unproved address is never replaced", "LinkState.java", "return !BtAddr.valid(current) || !proven;", "return !BtAddr.valid(current);"),
+ ("state: a placeholder is taken for the phone's address", "LinkState.java", "if (!BtAddr.valid(offered) || offered.equals(current)) {", "if (offered == null || offered.equals(current)) {"),
+]
+PACE_FILES = ["FollowUp.java", "PollPace.java"]
+PACE_TEST = ROOT + "/tools/test/PollPaceTest.java"
+P = [
+ ("pace: over Bluetooth it never stops", "PollPace.java", "            if (sinceActionMs >= BT_STOP_AFTER_MS) {\n                return STOP;\n            }\n", ""),
+ ("pace: over Bluetooth it stops only after an hour", "PollPace.java", "static final long BT_STOP_AFTER_MS = 5 * 60_000L;", "static final long BT_STOP_AFTER_MS = 60 * 60_000L;"),
+ ("pace: every 15 s over Bluetooth for as long as it runs (the old rule)", "PollPace.java", "long step = sinceActionMs < BT_FRESH_FOR_MS ? BT_FRESH_MS : BT_SLOW_MS;", "long step = BT_FRESH_MS;"),
+ ("pace: the first minute lasts five", "PollPace.java", "static final long BT_FRESH_FOR_MS = 60_000L;", "static final long BT_FRESH_FOR_MS = 300_000L;"),
+ ("pace: over Bluetooth as often as over the hotspot", "PollPace.java", "return Math.max(baseMs, step);", "return baseMs;"),
+ ("pace: a long chosen interval is cut short over Bluetooth", "PollPace.java", "return Math.max(baseMs, step);", "return step;"),
+ ("pace: misses do not lengthen the wait over Bluetooth", "PollPace.java", "            if (misses == 1) {\n                step = Math.max(step, 30_000L);\n            } else if (misses >= 2) {\n                step = BT_SLOW_MS;\n            }\n", ""),
+ ("pace: one miss shortens the slow phase", "PollPace.java", "step = Math.max(step, 30_000L);", "step = 30_000L;"),
+ ("pace: misses do not lengthen the wait over the hotspot", "PollPace.java", "return misses >= 3 ? Math.max(baseMs, 15_000L) : baseMs;", "return baseMs;"),
+ ("pace: many misses over the hotspot stay at 15 s", "PollPace.java", "        if (misses >= 10) {\n            return Math.max(baseMs, 60_000L);\n        }\n        if (misses >= 6) {\n            return Math.max(baseMs, 30_000L);\n        }\n", ""),
+ ("pace: the hotspot route stops by itself too", "PollPace.java", "        if (bluetooth) {\n            if (sinceActionMs", "        if (true) {\n            if (sinceActionMs"),
+ ("pace: following a switch is no faster", "PollPace.java", "        if (following) {\n            return FollowUp.EVERY_MS;\n        }\n", ""),
+ ("pace: following a switch only over the hotspot", "PollPace.java", "if (following) {", "if (following && !bluetooth) {"),
+]
+FOLLOW_FILES = ["FollowUp.java"]
+FOLLOW_TEST = ROOT + "/tools/test/FollowUpTest.java"
+F = [
+ ("follow: 'the hotspot is on' for any status", "FollowUp.java", 'return seen != null && is(seen.hotspot, true) ? new Outcome(true, "The hotspot is on.") : null;', 'return seen != null ? new Outcome(true, "The hotspot is on.") : null;'),
+ ("follow: 'not known' is taken for off", "FollowUp.java", "return field != null && field.booleanValue() == wanted;", "return (field != null && field.booleanValue()) == wanted;"),
+ ("follow: silence is taken for 'the hotspot is off'", "FollowUp.java", 'if (seen != null && is(seen.hotspot, false)) {\n                    return new Outcome(true, "The hotspot is off.");', 'if (seen == null || is(seen.hotspot, false)) {\n                    return new Outcome(true, "The hotspot is off.");'),
+ ("follow: one lost answer is 'gone'", "FollowUp.java", "static final int GONE_AFTER = 2;", "static final int GONE_AFTER = 1;"),
+ ("follow: silent looks need not be in a row", "FollowUp.java", "silent = seen == null ? silent + 1 : 0;", "silent = seen == null ? silent + 1 : silent;"),
+ ("follow: Standby done with the screen still on", "FollowUp.java", "if (seen != null && is(seen.hotspot, false) && is(seen.screen, false)) {", "if (seen != null && is(seen.hotspot, false)) {"),
+ ("follow: Standby done with the hotspot still on", "FollowUp.java", "if (seen != null && is(seen.hotspot, false) && is(seen.screen, false)) {", "if (seen != null && is(seen.screen, false)) {"),
+ ("follow: a restart is 'back on' although it never went off", "FollowUp.java", "return seen != null && is(seen.hotspot, true) && wentAway ? new", "return seen != null && is(seen.hotspot, true) ? new"),
+ ("follow: a restart never counts as having been away", "FollowUp.java", "        if (seen == null || is(seen.hotspot, false)) {\n            wentAway = true;\n        }\n", ""),
+ ("follow: silence fits 'hotspot on'", "FollowUp.java", '!action.equals("hotspot_on") && !action.equals("boot_hotspot_on")', '!action.equals("boot_hotspot_on")'),
+ ("follow: silence fits a restart of the hotspot", "FollowUp.java", ' && !action.equals("hotspot_restart")', ''),
+ ("follow: power off is 'done' while the phone still answers", "FollowUp.java", "default: // poweroff, reboot: there is no status that could confirm them\n                return gone ? silence() : null;", "default: // poweroff, reboot: there is no status that could confirm them\n                return gone || seen != null ? silence() : null;"),
+ ("follow: silence after 'hotspot off' is never settled", "FollowUp.java", '                    return new Outcome(true, "The hotspot is off.");\n                }\n                return gone ? silence() : null;', '                    return new Outcome(true, "The hotspot is off.");\n                }\n                return null;'),
+ ("follow: silence is said as 'the hotspot is off'", "FollowUp.java", 'return new Outcome(true, "The phone no longer answers, which is what " + what + " looks like from here. " + then);', 'return new Outcome(true, "The hotspot is off.");'),
+ ("follow: 'not confirmed' is shown as fine", "FollowUp.java", 'return new Outcome(false, "The phone has not confirmed it yet: " + why + ".");', 'return new Outcome(true, "The phone has not confirmed it yet: " + why + ".");'),
+ ("follow: the radio restart is followed with nothing to see", "FollowUp.java", '            case "reboot":\n                return new FollowUp(action);', '            case "reboot":\n            case "radio_cycle":\n                return new FollowUp(action);'),
+ ("follow: 'hotspot off' is not followed", "FollowUp.java", '            case "hotspot_off":\n            case "hotspot_restart":\n            case "standby":\n            case "wifi_on":', '            case "hotspot_restart":\n            case "standby":\n            case "wifi_on":'),
+ ("follow: the phone's Wi-Fi 'on' from the hotspot's state", "FollowUp.java", "return seen != null && is(seen.wifi, true) ? new", "return seen != null && is(seen.hotspot, true) ? new"),
+ ("follow: airplane mode 'on' for any status", "FollowUp.java", "if (seen != null && is(seen.airplane, true)) {", "if (seen != null) {"),
+ ("follow: giving up after silence quotes an older status", "FollowUp.java", "        last = seen;\n", "        last = seen == null ? last : seen;\n"),
+ ("follow: giving up says 'still off' for a hotspot nobody can tell", "FollowUp.java", 'return notYet(last.hotspot == null ? "it does not say whether its hotspot is on" : "its status still says the hotspot is off");', 'return notYet("its status still says the hotspot is off");'),
+]
+TROUBLE_FILES = ["Trouble.java"]
+TROUBLE_TEST = ROOT + "/tools/test/TroubleTest.java"
+T = [
+ ("trouble: 'After a phone restart' whatever happened", "Trouble.java", "return k == Kind.NO_ROUTE || k == Kind.NO_ANSWER;", "return true;"),
+ ("trouble: no restart button when nothing could be tried", "Trouble.java", "return k == Kind.NO_ROUTE || k == Kind.NO_ANSWER;", "return k == Kind.NO_ANSWER;"),
+ ("trouble: a phone that answered is 'can't reach the phone'", "Trouble.java", "return code == 401 ? Kind.NOT_PAIRED : Kind.PHONE_ERROR;", "return Kind.NO_ANSWER;"),
+ ("trouble: 'not paired' is shown as an error", "Trouble.java", "return code == 401 ? Kind.NOT_PAIRED : Kind.PHONE_ERROR;", "return Kind.PHONE_ERROR;"),
+ ("trouble: every error is 'not paired'", "Trouble.java", "return code == 401 ? Kind.NOT_PAIRED : Kind.PHONE_ERROR;", "return Kind.NOT_PAIRED;"),
+ ("trouble: Bluetooth switched off is 'no answer'", "Trouble.java", "        if (bluetoothOff) {\n            return Kind.BLUETOOTH_OFF;\n        }\n", ""),
+ ("trouble: nothing tried is 'no answer'", "Trouble.java", "return asked ? Kind.NO_ANSWER : Kind.NO_ROUTE;", "return Kind.NO_ANSWER;"),
+ ("trouble: asked and silent is 'nothing to try'", "Trouble.java", "return asked ? Kind.NO_ANSWER : Kind.NO_ROUTE;", "return Kind.NO_ROUTE;"),
+ ("trouble: 'Ask again' where Bluetooth has to be switched on", "Trouble.java", 'return k == Kind.BLUETOOTH_OFF ? "Switch Bluetooth on" : "Ask again";', 'return "Ask again";'),
+ ("trouble: Bluetooth named as tried when it was not", "Trouble.java", '(bluetoothTried ? "Neither the hotspot nor Bluetooth got through." : "The phone did not answer.")', '"Neither the hotspot nor Bluetooth got through."'),
+ ("trouble: a phone that answered an error is said to be out of reach", "Trouble.java", 'return "The phone is there and answered, but not with its status. The two apps may be of different versions. "\n                        + "Put the same version on both.";', 'return "The phone did not answer. Is the phone on and in range?";'),
+ ("trouble: the same advice whichever way the phone answered", "Trouble.java", "                return overBluetooth\n", "                return false\n"),
+ ("trouble: Bluetooth blamed although it was tried", "Trouble.java", '+ (bluetoothTried || linkWords.isEmpty() ? "" :', '+ (linkWords.isEmpty() ? "" :'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
-          (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W)]
+          (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
+          (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
+          (FOLLOW_FILES, FOLLOW_TEST, "com.tj.linkmeter.FollowUpTest", F), (TROUBLE_FILES, TROUBLE_TEST, "com.tj.linkmeter.TroubleTest", T)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

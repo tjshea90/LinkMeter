@@ -1,0 +1,55 @@
+package com.tj.linkmeter;
+
+/**
+ * No Android in here (tested in tools/test/PollPaceTest.java). How long the Home tab waits before it asks the phone for its
+ * status again.
+ *
+ * Over the hotspot a question costs next to nothing (the hotspot is awake anyway), so the tablet asks as often as the user
+ * chose. Over Bluetooth every question wakes a phone that may be on Standby, which exists so that the phone can idle for days:
+ * there the tablet asks every 15 s only during the first minute after the user did something on the screen, then once a
+ * minute, and after about five minutes it stops and the screen offers "Ask again". A phone that does not answer is asked
+ * less and less often on either route.
+ */
+final class PollPace {
+    private PollPace() {}
+
+    /** Do not ask again by itself. */
+    static final long STOP = -1L;
+
+    static final long BT_FRESH_MS = 15_000L;
+    static final long BT_FRESH_FOR_MS = 60_000L;
+    static final long BT_SLOW_MS = 60_000L;
+    static final long BT_STOP_AFTER_MS = 5 * 60_000L;
+
+    /**
+     * The wait before the next question, in ms, or {@link #STOP}.
+     * baseMs: the interval chosen in Settings. bluetooth: the last question went out over Bluetooth (answered or not).
+     * sinceActionMs: how long ago the user last did something on this screen (opened it, pressed a button).
+     * misses: how many questions in a row got no status. following: a switch was pressed and answered "sent", and the screen
+     * is looking for what became of it (FollowUp): every 3 s on either route, for the short time that lasts.
+     */
+    static long next(long baseMs, boolean bluetooth, long sinceActionMs, int misses, boolean following) {
+        if (following) {
+            return FollowUp.EVERY_MS;
+        }
+        if (bluetooth) {
+            if (sinceActionMs >= BT_STOP_AFTER_MS) {
+                return STOP;
+            }
+            long step = sinceActionMs < BT_FRESH_FOR_MS ? BT_FRESH_MS : BT_SLOW_MS;
+            if (misses == 1) {
+                step = Math.max(step, 30_000L);
+            } else if (misses >= 2) {
+                step = BT_SLOW_MS;
+            }
+            return Math.max(baseMs, step);
+        }
+        if (misses >= 10) {
+            return Math.max(baseMs, 60_000L);
+        }
+        if (misses >= 6) {
+            return Math.max(baseMs, 30_000L);
+        }
+        return misses >= 3 ? Math.max(baseMs, 15_000L) : baseMs;
+    }
+}

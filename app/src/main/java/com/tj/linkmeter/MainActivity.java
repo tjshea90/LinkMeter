@@ -70,7 +70,7 @@ public class MainActivity extends Activity {
         }
         if (Cfg.TABLET.equals(Cfg.mode(this))) {
             // no Bluetooth connection is kept while the app is out of sight (a run that goes on in the background opens a new one)
-            new Thread(BtLink::close, "linkmeter-bt-close").start();
+            BtLink.closeSoon();
         }
         super.onPause();
     }
@@ -307,7 +307,7 @@ public class MainActivity extends Activity {
         return cur == null ? "" : cur.title();
     }
 
-    /** Switches to the tab with this title ("Phone"), for a button on another tab. Does nothing if there is no such tab. */
+    /** Switches to the tab with this title (one of the names in {@link Tab}), for a button on another tab. Does nothing if this role has no such tab. */
     void openTab(String title) {
         if (tabs == null) {
             return;

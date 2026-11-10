@@ -1,10 +1,12 @@
 package com.tj.linkmeter;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.ScrollView;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -17,7 +19,9 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.shadows.ShadowAlertDialog;
 import org.robolectric.shadows.ShadowLooper;
+import org.robolectric.shadows.ShadowSystemClock;
 
 /**
  * Draws the app's screens to PNG files (tools/uipreview/out), so they can be looked at without a device. The user's tablet is
@@ -37,30 +41,87 @@ public class PreviewTest {
             + "\"cells\":[{\"t\":\"LTE\",\"reg\":1,\"bands\":[66],\"earfcn\":66611,\"rsrp\":-104,\"rsrq\":-11,\"lvl\":2},"
             + "{\"t\":\"NR\",\"reg\":0,\"bands\":[77],\"rsrp\":-110}]}";
 
+    static final String MAC = "5C:F3:70:8A:1B:2C";
+
+    /** The pretend phone behind {@link Call#reach}: what it answers, and over which route. Change the fields, then {@link #install}. */
+    static final class Pretend {
+        /** "wifi", "bt" or "": the route the tablet has to the phone. */
+        String via = "wifi";
+        /** With via "wifi": the Bluetooth link is set up as well (for the live test before the hotspot is switched off). */
+        boolean bluetoothToo;
+        /** A call over Bluetooth takes this long, and fails if btFails. */
+        long btDelayMs;
+        boolean btFails;
+        /** The tablet's own Bluetooth is switched off: a status read leaves it off. */
+        boolean btOffHere;
+        String status = status(true, true);
+        int statusCode = 200;
+        String actReply = "{\"ok\":true,\"out\":\"Done.\"}";
+        int actCode = 200;
+
+        static String status(boolean hotspotOn, boolean screenOn) {
+            return STATUS.replace("%HS%", String.valueOf(hotspotOn)).replace("%SCR%", String.valueOf(screenOn));
+        }
+
+        void install() {
+            final Pretend p = this;
+            Call.reach = new Reach(new Reach.Wifi() {
+                @Override
+                public boolean known() {
+                    return p.via.equals("wifi");
+                }
+
+                @Override
+                public Client.Resp call(String method, String target, int readMs) throws IOException {
+                    return p.answer(target);
+                }
+            }, new Reach.Bluetooth() {
+                @Override
+                public boolean ready() {
+                    return p.via.equals("bt") || p.bluetoothToo;
+                }
+
+                @Override
+                public Client.Resp call(String method, String target, int readMs, boolean pressed) throws IOException {
+                    if (p.btOffHere && !pressed) {
+                        throw new Reach.BluetoothOff();
+                    }
+                    try {
+                        Thread.sleep(p.btDelayMs);
+                    } catch (InterruptedException e) {
+                        throw new IOException("interrupted");
+                    }
+                    if (p.btFails) {
+                        throw new IOException("the phone did not answer the Bluetooth call (is it in range, with Bluetooth on and LinkMeter running?)");
+                    }
+                    return p.answer(target);
+                }
+            }, System::currentTimeMillis);
+        }
+
+        Client.Resp answer(String target) {
+            if (target.equals("/s") && statusCode != 200) {
+                Client.Resp r = new Client.Resp();
+                r.code = statusCode;
+                r.body = "{\"err\":\"not paired\"}";
+                return r;
+            }
+            if (target.startsWith("/act?name=hotspot") || target.startsWith("/act?name=standby")) {
+                Client.Resp r = new Client.Resp();
+                r.code = actCode;
+                r.body = actReply;
+                return r;
+            }
+            return PreviewTest.answer(target, status);
+        }
+    }
+
     /** via: "wifi", "bt" or "" (the phone cannot be reached). */
     static void pretendPhone(final String via, final boolean hotspotOn, final boolean screenOn) {
-        final String status = STATUS.replace("%HS%", String.valueOf(hotspotOn)).replace("%SCR%", String.valueOf(screenOn));
-        Call.reach = new Reach(new Reach.Wifi() {
-            @Override
-            public boolean known() {
-                return via.equals("wifi");
-            }
-
-            @Override
-            public Client.Resp call(String method, String target, int readMs) throws IOException {
-                return answer(target, status);
-            }
-        }, new Reach.Bluetooth() {
-            @Override
-            public boolean ready() {
-                return via.equals("bt");
-            }
-
-            @Override
-            public Client.Resp call(String method, String target, int readMs) throws IOException {
-                return answer(target, status);
-            }
-        }, System::currentTimeMillis);
+        Pretend p = new Pretend();
+        p.via = via;
+        p.status = Pretend.status(hotspotOn, screenOn);
+        p.install();
     }
 
     static Client.Resp answer(String target, String status) {
@@ -89,6 +150,15 @@ public class PreviewTest {
             Thread.sleep(250);
             ShadowLooper.idleMainLooper();
         }
+    }
+
+    /**
+     * Lets this much time pass. The pretend clock stands still by itself, so anything a screen does "in a few seconds" (asking
+     * the phone again) only happens when the test moves the clock.
+     */
+    static void later(long ms) throws Exception {
+        ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(ms));
+        settle();
     }
 
     static void shot(Activity a, String name) throws Exception {
@@ -143,11 +213,56 @@ public class PreviewTest {
         return Robolectric.buildActivity(MainActivity.class).setup().get();
     }
 
+    /** The Bluetooth link as it is after a Set up that worked: the phone's address stored, and a call to it answered. */
+    static void linkProved() {
+        Cfg.setBtMac(RuntimeEnvironment.getApplication(), MAC);
+        Cfg.setBtCall(RuntimeEnvironment.getApplication(), true, System.currentTimeMillis());
+        Cfg.setStr(RuntimeEnvironment.getApplication(), "btPhone", "on");
+    }
+
+    static Button findButton(View v, String label) {
+        if (v instanceof Button && label.contentEquals(((Button) v).getText()) && v.isShown()) {
+            return (Button) v;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                Button b = findButton(g.getChildAt(i), label);
+                if (b != null) {
+                    return b;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Presses the button with this label, as a finger would (a button that is greyed out does nothing). */
+    static void press(Activity a, String label) {
+        Button b = findButton(a.getWindow().getDecorView(), label);
+        if (b == null) {
+            throw new AssertionError("no button \"" + label + "\" on the screen");
+        }
+        if (!b.isEnabled()) {
+            throw new AssertionError("the button \"" + label + "\" is greyed out");
+        }
+        b.performClick();
+    }
+
+    /** Draws the question that is open on top of the screen. */
+    static void dialogShot(String name) throws Exception {
+        settle();
+        AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
+        if (d == null || !d.isShowing()) {
+            throw new AssertionError("no question is open for " + name);
+        }
+        save(d.getWindow().getDecorView(), name);
+    }
+
     @Test
     public void tabletOnTheHotspot() throws Exception {
         pretendPhone("wifi", true, true);
         MainActivity a = tablet();
-        for (String t : new String[] {"Home", "Speed", "Signal", "Phone", "Screen", "Files", "Texts", "Settings", "Bands", "Control"}) {
+        for (String t : new String[] {Tab.HOME, Tab.SPEED, Tab.BANDS, Tab.PHONE, Tab.SCREEN, Tab.FILES, Tab.TEXTS, Tab.SETTINGS}) {
             try {
                 a.openTab(t);
                 if (a.shownTitle().equals(t)) {
@@ -163,7 +278,7 @@ public class PreviewTest {
     @Test
     public void homeOverBluetooth() throws Exception {
         pretendPhone("bt", false, false);
-        Cfg.setBtMac(RuntimeEnvironment.getApplication(), "5C:F3:70:8A:1B:2C");
+        linkProved();
         MainActivity a = tablet();
         shot(a, "state-home-bluetooth");
     }
@@ -172,11 +287,184 @@ public class PreviewTest {
     public void homeUnreachable() throws Exception {
         pretendPhone("", false, false);
         MainActivity a = tablet();
-        settle();
-        settle(); // two failed questions before the screen calls the phone unreachable
-        a.openTab("Speed");
-        a.openTab("Home");
         shot(a, "state-home-unreachable");
+    }
+
+    /** The phone is asked over both routes and does not answer. */
+    @Test
+    public void homeNoAnswer() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.btFails = true;
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        shot(a, "state-home-no-answer");
+    }
+
+    /** The phone answers, with an error: the card must not say it cannot be reached. */
+    @Test
+    public void homePhoneError() throws Exception {
+        Pretend p = new Pretend();
+        p.statusCode = 500;
+        p.install();
+        MainActivity a = tablet();
+        shot(a, "state-home-phone-error");
+    }
+
+    /** The phone answers over Bluetooth that it does not know this tablet. */
+    @Test
+    public void homeNotPaired() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.statusCode = 401;
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        shot(a, "state-home-not-paired");
+    }
+
+    /** Off the hotspot with the tablet's own Bluetooth switched off: the status read leaves it off and offers the button. */
+    @Test
+    public void homeBluetoothOffHere() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.btOffHere = true;
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        shot(a, "state-home-bluetooth-off-here");
+    }
+
+    /** The phone cannot tell whether its hotspot is on ("hs" is left out of its status): not known, and both buttons. */
+    @Test
+    public void homeHotspotNotKnown() throws Exception {
+        Pretend p = new Pretend();
+        p.status = Pretend.status(true, true).replace("\"hs\":true,", "");
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        shot(a, "state-home-hotspot-not-known");
+        p.via = "bt";
+        a.openTab(Tab.SPEED);
+        a.openTab(Tab.HOME);
+        shot(a, "state-home-hotspot-not-known-bluetooth");
+    }
+
+    /** On the hotspot with a Bluetooth link that has never been tried: Home says so while it is easy to mend. */
+    @Test
+    public void homeLinkNotTested() throws Exception {
+        pretendPhone("wifi", true, true);
+        MainActivity a = tablet();
+        shot(a, "state-home-link-not-tested");
+    }
+
+    /** A switch that did not move comes back as an error: shown as a failure, in the phone's own words. */
+    @Test
+    public void homeSwitchFailed() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(false, true);
+        p.actCode = 409;
+        p.actReply = "{\"err\":\"The hotspot could not be switched on: the phone refused the request.\"}";
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        press(a, "Turn the hotspot on");
+        shot(a, "state-home-switch-failed");
+    }
+
+    /** A switch the phone only answered with "Sent": Home looks at the status until it shows the result. */
+    @Test
+    public void homeSwitchSentThenConfirmed() throws Exception {
+        Pretend p = new Pretend();
+        p.status = Pretend.status(true, true);
+        p.bluetoothToo = true;
+        p.actReply = "{\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}";
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        press(a, "Hotspot off");
+        dialogShot("state-home-off-confirm");
+        ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        shot(a, "state-home-switch-sent");
+        p.via = "bt"; // the hotspot is gone; the phone answers over Bluetooth that it is off
+        p.status = Pretend.status(false, true);
+        later(3100);
+        shot(a, "state-home-switch-confirmed");
+    }
+
+    /** The same switch with no Bluetooth link to fall back on: the phone simply stops answering, and Home says exactly that. */
+    @Test
+    public void homeSwitchSentThenSilence() throws Exception {
+        Pretend p = new Pretend();
+        p.status = Pretend.status(true, true).replace("\"btmac\":\"" + MAC + "\",", ""); // the link was never set up
+        p.actReply = "{\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}";
+        p.install();
+        MainActivity a = tablet();
+        shot(a, "state-home-link-offer");
+        press(a, "Not now");
+        press(a, "Hotspot off");
+        dialogShot("state-home-off-no-link");
+        ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle();
+        p.via = "";
+        later(3100);
+        later(3100);
+        shot(a, "state-home-switch-phone-gone");
+    }
+
+    /** Reached over Bluetooth and left alone for more than five minutes: Home stops asking and says so. */
+    @Test
+    public void homeStoppedAsking() throws Exception {
+        pretendPhone("bt", false, false);
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        later(6 * 60 * 1000);
+        shot(a, "state-home-stopped-asking");
+    }
+
+    /** Before the hotspot goes off the tablet calls the phone over Bluetooth: the state while it does, and the question after a call that failed. */
+    @Test
+    public void homeOffAnyway() throws Exception {
+        Pretend p = new Pretend();
+        p.bluetoothToo = true;
+        p.btDelayMs = 3000;
+        p.btFails = true;
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        settle();
+        press(a, "Hotspot off");
+        shot(a, "state-home-checking-link");
+        Thread.sleep(3000);
+        dialogShot("state-home-off-anyway");
+        ShadowAlertDialog.getLatestAlertDialog().dismiss();
+        p.btDelayMs = 0;
+        press(a, "Standby");
+        dialogShot("state-home-standby-anyway");
+    }
+
+    /** The Bluetooth card in Settings in its states: ready, never tested, and a phone that says its Bluetooth is off. */
+    @Test
+    public void settingsLinkStates() throws Exception {
+        pretendPhone("wifi", true, true);
+        linkProved();
+        MainActivity a = tablet();
+        a.openTab(Tab.SETTINGS);
+        shot(a, "state-settings-link-ready");
+        Cfg.setBtCall(RuntimeEnvironment.getApplication(), false, 0);
+        a.openTab(Tab.HOME);
+        a.openTab(Tab.SETTINGS);
+        shot(a, "state-settings-link-not-reached");
+        Cfg.setBtCall(RuntimeEnvironment.getApplication(), true, System.currentTimeMillis());
+        Cfg.setStr(RuntimeEnvironment.getApplication(), "btPhone", "off");
+        a.openTab(Tab.SPEED);
+        a.openTab(Tab.SETTINGS);
+        shot(a, "state-settings-link-phone-off");
     }
 
     @Test

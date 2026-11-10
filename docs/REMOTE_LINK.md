@@ -135,6 +135,46 @@ is on." After an answer-first action nobody is left to tell; the next status sho
 3. After a failed hotspot connect the hotspot route is skipped for a few seconds while Bluetooth works (no 2.5 s wait on every
    request), then tried again, so the tablet returns to the hotspot by itself when it is back.
 4. The Bluetooth connection is closed when the app leaves the foreground and after 30 s without a request.
+5. A status read that a screen makes by itself (`/s`, `/sig`, `/boot`, `/screen/state`, `/speed/status` with GET) never
+   switches the tablet's Bluetooth on (`Reach.statusRead`): the user may have switched it off on purpose. The result then
+   says "Bluetooth is off on this tablet" and Home shows a button "Switch Bluetooth on". Anything the user pressed (a switch,
+   "Ask again", Set up, Test, Find, the live test below) may switch it on.
+6. Over Bluetooth the phone acts BEFORE it answers, so every `/act` request gets at least 60 s there, whatever the screen
+   allowed for the hotspot route (`Reach.bluetoothReadMs`, one place for all screens). If no answer comes in time on a
+   connection that had just been made, the message says the phone may still be doing it.
+
+## What the tablet checks before it says something
+
+Nothing here has run on the devices, so the tablet is written to claim only what it has just seen.
+
+- BEFORE THE HOTSPOT GOES OFF (`HomeTab.confirmOff`): "Hotspot off" and "Standby" first make ONE LIVE call to the phone over
+  Bluetooth (`Reach.bluetoothOnly`, a status read, on a background thread, the screen says "Checking the Bluetooth link").
+  Only if the phone answers, and its status says its link is on, does the question say the hotspot can be switched on again
+  from the tablet. Otherwise it says the phone may have to be picked up, gives the reason, and offers "anyway". A stored
+  address, or a call that worked yesterday, is not asked: it proves nothing about now.
+- "READY" IN SETTINGS (`LinkState`, pure, fed by `BtLink.state`): the phone's address is stored AND a request over Bluetooth
+  has been answered since that address was stored AND the latest call did not fail AND the phone's last status says `bt` =
+  on. Anything less is named: Not set up, Not tested, Not reached, Phone not ready (with the phone's own reason), Off.
+  The tablet remembers for this: `btOkAt` (when a call was last answered; forgotten when the address changes),
+  `btFailed` (the latest call did not get through) and `btPhone` (the phone's `bt` from its last status over the hotspot;
+  a call that is answered over Bluetooth sets it to on).
+- THE PHONE'S ADDRESS: learned from a status that came over the hotspot (Bluetooth replies are not signed). An address that
+  a call has proved is NOT replaced by a different one from a status (`LinkState.takeAddress`); only Set up replaces it.
+- A SWITCH THAT WAS ONLY "SENT" (`FollowUp`, pure): when the reply has `"later": true` the phone has not acted yet. Home then
+  reads the status every 3 s for up to about 40 s and says what the STATUS shows: "The hotspot is on.", "The hotspot is
+  off.", "The hotspot and the screen are off.", "The hotspot is back on." (only after it was seen off or out of reach in
+  between). For the actions that take the phone out of reach (power off, restart, airplane mode, and hotspot off or Standby
+  with no working Bluetooth link) two looks in a row without an answer end it with "The phone no longer answers, which is
+  what ... looks like from here." When the time is over: "The phone has not confirmed it yet: ..." with what the last
+  status said. The radio restart is not followed this way (no status field shows it; `radio_cycle_state` is its question).
+  The Phone tab can use the same class: `FollowUp.of(action)`, `look(Call.seen(status))` after each read, `giveUp()`.
+- HOW OFTEN HOME ASKS (`PollPace`, pure): over the hotspot as often as chosen in Settings. Over Bluetooth every question
+  wakes a phone that may be on Standby, so: every 15 s during the first minute after the user did something on the screen,
+  then once a minute, and after five minutes it stops and the screen says so and offers "Ask again". Misses lengthen the wait
+  on either route. A press while a question is on its way does not start a second chain of questions.
+- WHY THERE IS NO STATUS (`Trouble`, pure): the card on Home names the cause (not on the hotspot and no usable Bluetooth
+  link / Bluetooth off on the tablet / asked and no answer / answered "not paired" / answered an error). "After a phone
+  restart" is offered only when the phone did not answer at all.
 
 ## Battery saver changes (`Eco`)
 

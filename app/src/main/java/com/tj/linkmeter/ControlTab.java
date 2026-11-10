@@ -32,9 +32,10 @@ final class ControlTab extends Tab {
         super(a);
     }
 
+    /** On screen this tab is "Phone". The class keeps its name: PhoneTab is the phone's own screen. */
     @Override
     String title() {
-        return "Control";
+        return PHONE;
     }
 
     @Override

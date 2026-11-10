@@ -100,7 +100,7 @@ final class FilesTab extends Tab implements Transfers.Listener {
 
     @Override
     String title() {
-        return "Files";
+        return FILES;
     }
 
     @Override

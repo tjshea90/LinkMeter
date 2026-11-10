@@ -13,6 +13,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.IOException;
+import java.text.DateFormat;
+import java.util.Date;
 
 /**
  * The tablet's own settings, in groups: the Bluetooth link (the way to the phone while its hotspot is off), the connection, this
@@ -21,6 +23,7 @@ import java.io.IOException;
 final class SettingsTab extends Tab {
     private TextView linkChip;
     private TextView linkState;
+    private TextView linkSaid;
     private Button setUpBtn;
     private Button testBtn;
     private Button findBtn;
@@ -34,7 +37,7 @@ final class SettingsTab extends Tab {
 
     @Override
     String title() {
-        return "Settings";
+        return SETTINGS;
     }
 
     @Override
@@ -71,9 +74,13 @@ final class SettingsTab extends Tab {
         card.addView(head);
         card.addView(Ui.hint(act, "Reaches the phone while its hotspot is off, so the tablet can switch the hotspot (and the phone's "
                 + "Wi-Fi, screen and standby) on and off by itself. It carries the switches and the status only: internet, files, "
-                + "texts and the phone's screen still need the hotspot. Nothing has to be done on the phone."), Ui.lp(act, 2));
+                + "texts and the phone's screen still need the hotspot."), Ui.lp(act, 2));
+        // how far the link can be relied on, from what the tablet knows: always the present state, whatever a button last said
         linkState = Ui.body(act, "");
         card.addView(linkState, Ui.lp(act, 8));
+        // what the last press of a button here answered
+        linkSaid = Ui.hint(act, "");
+        card.addView(linkSaid, Ui.lp(act, 6));
         setUpBtn = Ui.primary(act, "Set up", v -> setUp());
         testBtn = Ui.button(act, "Test", v -> test());
         card.addView(Ui.row(act, setUpBtn, testBtn), Ui.lp(act, 8));
@@ -93,30 +100,39 @@ final class SettingsTab extends Tab {
         paintLink();
     }
 
+    /**
+     * The chip and the state line say how far the link can be relied on, from what the tablet has seen (LinkState): "Ready"
+     * only when the phone's address is stored, a call to it has been answered, the latest call did not fail and the phone's last
+     * status says its side is listening. Anything less is named, with the button that is the way forward.
+     */
     private void paintLink() {
         if (linkChip == null) {
             return;
         }
-        String problem = BtLink.problem(act);
+        LinkState.Kind k = BtLink.state(act);
         boolean on = BtLink.enabled(act);
-        boolean ready = BtLink.ready(act);
-        if (!on) {
-            Ui.paintChip(linkChip, "Off", Ui.GREY);
-        } else if (ready) {
-            Ui.paintChip(linkChip, "Ready", Ui.GREEN);
-        } else {
-            Ui.paintChip(linkChip, "Not set up", Ui.AMBER);
+        boolean ready = k == LinkState.Kind.READY;
+        Ui.paintChip(linkChip, LinkState.chip(k), ready ? Ui.GREEN : on ? Ui.AMBER : Ui.GREY);
+        StringBuilder state = new StringBuilder(BtLink.words(act));
+        long okAt = Cfg.btOkAt(act);
+        if (okAt > 0 && on) {
+            String name = Cfg.getStr(act, "btName", "");
+            state.append("\nLast answered over Bluetooth: ")
+                    .append(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(new Date(okAt)))
+                    .append(name.isEmpty() ? "" : " (" + name + ")").append('.');
         }
-        String name = Cfg.getStr(act, "btName", "");
-        String base = ready
-                ? "Ready. The tablet calls the phone" + (name.isEmpty() ? "" : " (" + name + ")") + " over Bluetooth whenever the hotspot "
-                + "route does not answer." + (problem.isEmpty() ? "" : "\n" + problem)
-                : problem;
-        linkState.setText(linkMsg.isEmpty() ? base : linkMsg);
-        linkState.setTextColor(linkMsg.isEmpty() && !ready && on ? Ui.AMBER : Ui.FG);
+        if (on && BtLink.tabletBluetoothOff(act)) {
+            state.append("\nBluetooth is off on this tablet right now. A button that needs it switches it on; reading the "
+                    + "status does not.");
+        }
+        linkState.setText(state);
+        linkState.setTextColor(!ready && on ? Ui.AMBER : Ui.FG);
+        linkSaid.setText(linkMsg);
+        linkSaid.setVisibility(linkMsg.isEmpty() ? View.GONE : View.VISIBLE);
+        boolean callable = BtLink.ready(act); // there is an address to call
         setUpBtn.setEnabled(on && !linkBusy);
-        setUpBtn.setText(ready ? "Set up again" : "Set up");
-        testBtn.setEnabled(on && ready && !linkBusy);
+        setUpBtn.setText(callable ? "Set up again" : "Set up");
+        testBtn.setEnabled(on && callable && !linkBusy);
         findBtn.setEnabled(on && !linkBusy);
     }
 
@@ -148,13 +164,16 @@ final class SettingsTab extends Tab {
         if (!permitted()) {
             return;
         }
+        if (Cfg.getBool(act, "btOfferHidden", false)) {
+            Cfg.setBool(act, "btOfferHidden", false); // the link is being set up after all: Home may speak about it again
+        }
         busy(true);
         say("Asking the phone to get its side ready…");
         Call.run(act, "POST", "/act?name=bt_setup", 60000, (ok, text, json) -> {
             if (!ok) {
                 busy(false);
                 say(text.contains("unknown action")
-                        ? "The phone's app is too old for this. Update it first: Phone tab > Update phone from this tablet."
+                        ? "The phone's app is too old for this. Update it first: " + PHONE + " tab > Update phone from this tablet."
                         : json != null ? text // the phone answered: its own words say why its side is not ready
                         : "The phone could not be asked: " + text + "\nThe setup needs the tablet on the phone's hotspot, and "
                         + "Shizuku running on the phone.");
@@ -163,19 +182,31 @@ final class SettingsTab extends Tab {
             final String phoneSaid = text;
             say(phoneSaid + "\nReading the phone's Bluetooth address…");
             Call.run(act, "GET", "/s", 6000, (ok2, text2, json2) -> {
-                String mac = json2 == null ? "" : json2.optString("btmac", "");
-                String name = json2 == null ? "" : json2.optString("btname", "");
-                if (!name.isEmpty()) {
-                    Cfg.setStr(act, "btName", name);
-                }
-                if (!BtAddr.valid(mac)) {
+                if (!ok2 || json2 == null) {
+                    // the question did not get an answer: that says nothing about the phone's address, so no pairing advice
                     busy(false);
-                    say(phoneSaid + "\nThe phone did not tell its Bluetooth address. Pair the phone and the tablet once in "
-                            + "Android's Bluetooth settings (on both: Settings > Bluetooth, tap the other device), then press "
-                            + "\"Find the phone among paired Bluetooth devices\".");
+                    say(phoneSaid + "\nThen the phone's status could not be read (" + text2 + "), so the tablet does not have "
+                            + "the phone's Bluetooth address yet. Press Set up again.");
                     return;
                 }
-                Cfg.setBtMac(act, mac);
+                if (Reach.WIFI.equals(Call.lastVia(act))) {
+                    // (only a status that came over the hotspot is believed about the address: Bluetooth replies are not signed)
+                    BtLink.heardOverHotspot(act, json2);
+                    String mac = json2.optString("btmac", "");
+                    if (!BtAddr.valid(mac)) {
+                        busy(false);
+                        say(phoneSaid + "\nThe phone did not tell its Bluetooth address. Pair the phone and the tablet once in "
+                                + "Android's Bluetooth settings (on both: Settings > Bluetooth, tap the other device), then press "
+                                + "\"Find the phone among paired Bluetooth devices\".");
+                        return;
+                    }
+                    Cfg.setBtMac(act, mac); // Set up is the one place where an address that had been proved is replaced
+                } else if (!BtAddr.valid(Cfg.btMac(act))) {
+                    busy(false);
+                    say(phoneSaid + "\nThe tablet has to be on the phone's hotspot to learn the phone's Bluetooth address. Join "
+                            + "the hotspot and press Set up again.");
+                    return;
+                }
                 say(phoneSaid + "\nCalling the phone over Bluetooth to try it…");
                 tryLink(phoneSaid + "\n");
             });
@@ -197,9 +228,10 @@ final class SettingsTab extends Tab {
             String out;
             try {
                 BtLink.close(); // a fresh connection: this is a test of calling, not of a connection that happens to be open
-                Client.Resp r = BtLink.call(act, "GET", "/s", 8000);
+                Client.Resp r = BtLink.call(act, "GET", "/s", 8000, true);
                 if (r.code == 200) {
-                    out = "The Bluetooth link works. When the phone's hotspot is off, the Home tab offers \"Turn the hotspot on\".";
+                    out = "The phone answered over Bluetooth just now. When its hotspot is off, the " + HOME + " tab offers "
+                            + "\"Turn the hotspot on\".";
                 } else if (r.code == 401) {
                     out = "The phone answered over Bluetooth but does not know this tablet. Pair them in LinkMeter first (on the "
                             + "phone: Pair tablet, with the tablet on the hotspot).";
@@ -269,8 +301,9 @@ final class SettingsTab extends Tab {
         int sel = cur >= 15000L ? 0 : cur <= 2000L ? 2 : 1;
         Ui.Choice every = new Ui.Choice(act, new String[] {"15 s", "5 s", "2 s"}, sel, i -> Cfg.setIntervalMs(act, values[i]));
         card.addView(every.view, Ui.lp(act, 2));
-        card.addView(Ui.hint(act, "Only while the Home tab is open. Longer saves battery on both devices; over Bluetooth it is "
-                + "never more often than every 15 s."), Ui.lp(act, 2));
+        card.addView(Ui.hint(act, "Only while the " + HOME + " tab is open. Longer saves battery on both devices. Over Bluetooth "
+                + "every question wakes the phone, so there it is every 15 s at most, once a minute after the first minute, and "
+                + "not at all after five minutes."), Ui.lp(act, 2));
         col.addView(card, Ui.lp(act, 12));
     }
 
@@ -304,7 +337,7 @@ final class SettingsTab extends Tab {
     private void buildPairing(LinearLayout col) {
         LinearLayout card = Ui.card(act, "Pairing and app", null);
         card.addView(Ui.hint(act, "Tablet app " + version() + ". The phone's version and the button that updates the phone are in "
-                + "the Phone tab."), Ui.lp(act, 2));
+                + "the " + PHONE + " tab."), Ui.lp(act, 2));
         card.addView(Ui.row(act,
                 Ui.button(act, "App info and permissions", v -> act.openAppInfo()),
                 Ui.button(act, "Switch role", v -> confirmRole())), Ui.lp(act, 8));
@@ -329,7 +362,7 @@ final class SettingsTab extends Tab {
                         + "(with the tablet on the phone's hotspot), then open Home here.")
                 .setPositiveButton("New secret", (d, w) -> {
                     Cfg.resetToken(act);
-                    new Thread(BtLink::close, "linkmeter-bt-close").start(); // its connection was made with the old secret
+                    BtLink.closeSoon(); // its connection was made with the old secret
                     Toast.makeText(act, "Done. On the phone tap Pair tablet, then open Home.", Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton("Cancel", null)

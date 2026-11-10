@@ -1,0 +1,94 @@
+package com.tj.linkmeter;
+
+/**
+ * No Android in here (tested in tools/test/TroubleTest.java). Why the Home tab has no status from the phone, so that its card
+ * names the real cause and offers the button that helps. One card used to say "Can't reach the phone" (and blame the hotspot
+ * and the Bluetooth setup) for all of these, also when the phone had answered.
+ */
+final class Trouble {
+    private Trouble() {}
+
+    enum Kind {
+        /** Nothing could be tried: the tablet is not on the phone's hotspot and has no usable Bluetooth link. */
+        NO_ROUTE,
+        /** Bluetooth was the way left, it is switched off on this tablet, and a status read does not switch it on. */
+        BLUETOOTH_OFF,
+        /** The phone was asked and did not answer. */
+        NO_ANSWER,
+        /** The phone answered: it does not know this tablet. */
+        NOT_PAIRED,
+        /** The phone answered with an error, or with something this app cannot read. */
+        PHONE_ERROR
+    }
+
+    /**
+     * answered: a reply came back (code is its HTTP code; a 200 that could not be read is still an answer).
+     * asked: a route was really tried. bluetoothOff: see {@link Reach.Result#btOff}.
+     */
+    static Kind of(boolean answered, int code, boolean asked, boolean bluetoothOff) {
+        if (answered) {
+            return code == 401 ? Kind.NOT_PAIRED : Kind.PHONE_ERROR;
+        }
+        if (bluetoothOff) {
+            return Kind.BLUETOOTH_OFF;
+        }
+        return asked ? Kind.NO_ANSWER : Kind.NO_ROUTE;
+    }
+
+    static String title(Kind k) {
+        switch (k) {
+            case NO_ROUTE:
+                return "Not connected to the phone";
+            case BLUETOOTH_OFF:
+                return "Bluetooth is off on this tablet";
+            case NOT_PAIRED:
+                return "The phone does not know this tablet";
+            case PHONE_ERROR:
+                return "The phone answered with an error";
+            default:
+                return "Can't reach the phone";
+        }
+    }
+
+    /** The main button of the card. */
+    static String button(Kind k) {
+        return k == Kind.BLUETOOTH_OFF ? "Switch Bluetooth on" : "Ask again";
+    }
+
+    /**
+     * Is "After a phone restart" offered? Only when the phone did not answer at all: a phone that answers, even with a refusal,
+     * is running LinkMeter and does not need to be started.
+     */
+    static boolean offersRestart(Kind k) {
+        return k == Kind.NO_ROUTE || k == Kind.NO_ANSWER;
+    }
+
+    /**
+     * The card's text (the line above the card already gives the error as it came). overBluetooth: the answer, if any, came
+     * over Bluetooth. bluetoothTried: the phone was called over Bluetooth. linkWords: why the Bluetooth link cannot be relied
+     * on, "" when it is ready (LinkState.words).
+     */
+    static String text(Kind k, boolean overBluetooth, boolean bluetoothTried, String linkWords) {
+        switch (k) {
+            case NO_ROUTE:
+                return "The tablet is not on the phone's hotspot. Join it in the tablet's Wi-Fi settings, or switch the hotspot "
+                        + "on at the phone." + (linkWords.isEmpty() ? "" : " " + linkWords);
+            case BLUETOOTH_OFF:
+                return "The tablet is not on the phone's hotspot, and its own Bluetooth is switched off. LinkMeter does not "
+                        + "switch it on just to read the status. This button does, and asks the phone again.";
+            case NOT_PAIRED:
+                return overBluetooth
+                        ? "The phone answered over Bluetooth, but it has not been paired with this tablet. Pairing needs the "
+                        + "phone's hotspot: switch it on at the phone, open LinkMeter there and tap Pair tablet."
+                        : "The phone answered, but it has not been paired with this tablet. On the phone open LinkMeter and tap "
+                        + "Pair tablet. The tablet then pairs by itself within a few seconds.";
+            case PHONE_ERROR:
+                return "The phone is there and answered, but not with its status. The two apps may be of different versions. "
+                        + "Put the same version on both.";
+            default:
+                return (bluetoothTried ? "Neither the hotspot nor Bluetooth got through." : "The phone did not answer.")
+                        + " Is the phone on and in range? After a restart of the phone LinkMeter starts only once the phone has "
+                        + "been unlocked." + (bluetoothTried || linkWords.isEmpty() ? "" : " Bluetooth was not tried. " + linkWords);
+        }
+    }
+}

@@ -152,7 +152,7 @@ final class ScreenTab extends Tab {
 
     @Override
     String title() {
-        return "Screen";
+        return SCREEN;
     }
 
     @Override

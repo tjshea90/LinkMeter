@@ -32,7 +32,7 @@ final class PhoneTab extends Tab {
 
     @Override
     String title() {
-        return "Phone";
+        return PHONE;
     }
 
     @Override

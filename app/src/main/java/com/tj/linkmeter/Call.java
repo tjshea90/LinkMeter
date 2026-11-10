@@ -50,8 +50,8 @@ final class Call {
                 }
 
                 @Override
-                public Client.Resp call(String method, String target, int readMs) throws IOException {
-                    return BtLink.call(app, method, target, readMs);
+                public Client.Resp call(String method, String target, int readMs, boolean pressed) throws IOException {
+                    return BtLink.call(app, method, target, readMs, pressed);
                 }
             }, SystemClock::elapsedRealtime);
         }
@@ -61,6 +61,17 @@ final class Call {
     /** "wifi", "bt" or "": the route that carried the last answer (for a line on the screen). */
     static String lastVia(Context c) {
         return reach(c).lastVia();
+    }
+
+    /** A status of the phone as {@link FollowUp} looks at it; null for no status (the phone did not answer). */
+    static FollowUp.Seen seen(JSONObject status) {
+        return status == null ? null : new FollowUp.Seen(flag(status, "hs"), flag(status, "scr"), flag(status, "wifi"),
+                flag(status, "air"));
+    }
+
+    /** A yes/no field of the phone's status, or null when the phone left it out (it cannot tell, or its app is older). */
+    static Boolean flag(JSONObject status, String name) {
+        return status.has(name) ? Boolean.valueOf(status.optBoolean(name)) : null;
     }
 
     static void run(final MainActivity act, final String method, final String target,

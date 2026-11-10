@@ -88,7 +88,7 @@ final class BandsTab extends Tab {
 
     @Override
     String title() {
-        return "Bands";
+        return BANDS;
     }
 
     @Override

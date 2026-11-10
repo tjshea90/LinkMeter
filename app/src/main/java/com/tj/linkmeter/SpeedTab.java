@@ -6,15 +6,14 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import java.io.IOException;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
  * Speed test of the phone's mobile data, shown on the tablet. The test runs on the
- * phone. This tab asks for progress about 2.5 times a second, only while a test is
- * running and only while the tab is on screen.
+ * phone. This tab asks for progress about 2.5 times a second (every 1.5 s when the phone
+ * is reached over Bluetooth), only while a test is running and only while the tab is on screen.
  */
 final class SpeedTab extends Tab {
     private SpeedView view;
@@ -32,6 +31,8 @@ final class SpeedTab extends Tab {
     private static final class Poll {
         JSONObject json;
         String error = "";
+        /** The phone was called over Bluetooth for this: ask less often (each question wakes it, and the link is slow). */
+        boolean bluetooth;
     }
 
     private final Runnable task = new Runnable() {
@@ -44,7 +45,7 @@ final class SpeedTab extends Tab {
             final Poll p = fetch();
             act.ui.post(() -> apply(p));
             if (polling && bg == h && (p.json == null || isRunning(p.json))) {
-                h.postDelayed(this, 400);
+                h.postDelayed(this, p.bluetooth ? 1500 : 400);
             }
         }
     };
@@ -55,7 +56,7 @@ final class SpeedTab extends Tab {
 
     @Override
     String title() {
-        return "Speed";
+        return SPEED;
     }
 
     @Override
@@ -142,26 +143,26 @@ final class SpeedTab extends Tab {
         return ph == SpeedTest.PING || ph == SpeedTest.DOWN || ph == SpeedTest.UP;
     }
 
-    /** Worker thread. */
+    /**
+     * Worker thread. Asked through the one chooser of routes, as Start and Stop are, so a test that was started while the phone
+     * is reached over Bluetooth shows its progress and its result too.
+     */
     private Poll fetch() {
         Poll p = new Poll();
-        String host = Net.phoneHost(act);
-        if (host.isEmpty()) {
-            p.error = "The tablet is not on the phone's hotspot.";
-            return p;
-        }
-        try {
-            Client.Resp r = Client.call(host, "GET", "/speed/status?from=" + from,
-                    Cfg.token(act), 2000, 4000);
-            if (r.code == 200) {
-                p.json = new JSONObject(r.body);
-            } else if (r.code == 401) {
-                p.error = "Not paired. On the phone tap Pair tablet.";
-            } else {
-                p.error = "The phone replied with an error (" + r.code + ").";
+        Reach.Result res = Call.reach(act).call("GET", "/speed/status?from=" + from, 4000);
+        p.bluetooth = res.btTried;
+        if (res.resp == null) {
+            p.error = res.error;
+        } else if (res.resp.code == 200) {
+            try {
+                p.json = new JSONObject(res.resp.body);
+            } catch (JSONException e) {
+                p.error = "Couldn't read the phone's reply.";
             }
-        } catch (IOException | JSONException e) {
-            p.error = "Couldn't reach the phone: " + e.getMessage();
+        } else if (res.resp.code == 401) {
+            p.error = "Not paired. On the phone tap Pair tablet.";
+        } else {
+            p.error = "The phone replied with an error (" + res.resp.code + ").";
         }
         return p;
     }
