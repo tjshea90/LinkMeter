@@ -107,6 +107,9 @@ is on." After an answer-first action nobody is left to tell; the next status sho
   fails AND the request did not come over Bluetooth, the old airplane-mode blip (3 s) is used (it also takes Bluetooth down for
   a moment, which is why it is not used on the Bluetooth link).
 - `hotspot_restart`: stop, wait until the state says off (an error if it never does), then start as above.
+- For both, "off" is the state off (11) and also failed (14): after a start that failed Android keeps saying "failed" until
+  the next start, and such a hotspot is not running (`RemoteRoutes.hotspotDown`, the same reading as the status' `hs`). So
+  `hotspot-stop` then answers "off (it already was)" and `hotspot-restart` only starts.
 - The helper's hotspot answers start with `OK`, `ERR` or `UNSURE` (asked, but this phone does not report the hotspot's state).
 - `wifi_on` / `wifi_off`: `cmd wifi set-wifi-enabled enabled|disabled` (fallback `svc wifi enable|disable`), checked with
   `WifiManager.isWifiEnabled()`. Switching the phone's Wi-Fi ON may switch its hotspot OFF on phones that cannot do both.

@@ -83,6 +83,16 @@ final class RemoteRoutes {
     }
 
     /**
+     * Is a hotspot in this state (the Wi-Fi service's numbers, as above) DOWN: nothing is running, so there is nothing to
+     * switch off, and a start may be asked? 11 (off) and 14 (failed). After a start that failed Android leaves the state at 14
+     * until the next start, and a hotspot that never came up is not on. Not 10 (still going off). And never anything else:
+     * a state that is not known (-1) is not "down".
+     */
+    static boolean hotspotDown(int state) {
+        return state == 11 || state == 14;
+    }
+
+    /**
      * The screen requests that are power switches: sleep, wake, and the question which of the two it is. They show nothing of
      * what is on the screen and move nothing on it, so the phone's switch "Let the tablet see and control this screen" does not
      * stop them (the Standby action switches the screen off as well). The picture, touches and typing stay behind that switch.

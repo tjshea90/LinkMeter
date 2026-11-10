@@ -344,6 +344,20 @@ public final class LinkProtocolTest {
             check(RemoteRoutes.hotspotOn(null, none, false) == null, "nothing can tell: NOT KNOWN, never 'off' (" + none + ")");
             check(Boolean.TRUE.equals(RemoteRoutes.hotspotOn(null, none, true)), "nothing announced, but a hotspot interface is up: on (" + none + ")");
         }
+        // "down" for the helper that switches the hotspot: nothing to stop, and a start may be asked
+        for (int state = -3; state <= 20; state++) {
+            boolean down = RemoteRoutes.hotspotDown(state);
+            check(down == (state == 11 || state == 14), "down is off (11) or failed to start (14), nothing else: " + state + " -> " + down);
+            if (down) {
+                check(Boolean.FALSE.equals(RemoteRoutes.hotspotOn(null, state, false)), "what the helper calls down, the status calls off (" + state + ")");
+            }
+            if (Boolean.TRUE.equals(RemoteRoutes.hotspotOn(null, state, false)) || RemoteRoutes.hotspotOn(null, state, false) == null) {
+                check(!down, "a hotspot that is on, or whose state is not known, is never 'down' (" + state + ")");
+            }
+        }
+        check(RemoteRoutes.hotspotDown(14), "a hotspot whose last start failed is down: 'Hotspot off' has nothing to do, a restart only starts");
+        check(!RemoteRoutes.hotspotDown(10) && !RemoteRoutes.hotspotDown(12) && !RemoteRoutes.hotspotDown(13) && !RemoteRoutes.hotspotDown(-1),
+                "still going off, coming up, on, and not known are not down");
     }
 
     /** The phone's screen switch, the full door, and listening again. */

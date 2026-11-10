@@ -21,6 +21,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.IntPredicate;
 
 /**
  * NOT part of the normal app. Shizuku starts this class as the "shell" user with
@@ -491,13 +492,13 @@ public final class ShellMain {
     }
 
     /**
-     * Waits (up to ms) for the hotspot to reach the wanted state. Returns the last state read: the wanted one, another one, or
+     * Waits (up to ms) for the hotspot to reach a wanted state. Returns the last state read: a wanted one, another one, or
      * -1 at once if this phone does not report the state (waiting would then tell nothing).
      */
-    private static int waitAp(int want, long ms) throws InterruptedException {
+    private static int waitAp(IntPredicate wanted, long ms) throws InterruptedException {
         long end = SystemClock.elapsedRealtime() + ms;
         int st = apState();
-        while (st != want && st >= 0 && SystemClock.elapsedRealtime() < end) {
+        while (!wanted.test(st) && st >= 0 && SystemClock.elapsedRealtime() < end) {
             Thread.sleep(500);
             st = apState();
         }
@@ -616,7 +617,7 @@ public final class ShellMain {
         if (st == 12) {
             // already coming up (asked a moment ago, or switched on at the phone): a second request could be refused as a
             // duplicate, so wait for the first one
-            st = waitAp(13, 15000);
+            st = waitAp(s -> s == 13, 15000);
             return st == 13 ? okText : "ERR the hotspot was switching on and did not finish (it is " + apWord(st) + ")" + hint;
         }
         // Two shapes of the same call exist: (type, executor, callback) on older Android and (request, executor, callback) on
@@ -689,7 +690,7 @@ public final class ShellMain {
         }
         // "started": the request was taken. On some Android versions the hotspot is still coming up at this point, and it can
         // still fail. Say "on" only when the hotspot's own state says so.
-        st = waitAp(13, 10000);
+        st = waitAp(s -> s == 13, 10000);
         if (st == 13) {
             return okText;
         }
@@ -701,10 +702,12 @@ public final class ShellMain {
 
     /**
      * Switches the Wi-Fi hotspot off the direct way (the system's tethering service) and then looks whether it really went off,
-     * so the answer is what happened and not what was asked.
+     * so the answer is what happened and not what was asked. "Off" is the state off, and also "failed": a hotspot whose last
+     * start failed is not running, and Android keeps saying "failed" until the next start (RemoteRoutes.hotspotDown). Taking
+     * that for "still on" made Standby say "only half done", and sent "Hotspot off" on to airplane mode, for nothing.
      */
     private static String hotspotStop(Context ctx) throws Exception {
-        if (apState() == 11) {
+        if (RemoteRoutes.hotspotDown(apState())) {
             return "OK the hotspot is off (it already was)";
         }
         String[] why = new String[1];
@@ -713,8 +716,8 @@ public final class ShellMain {
             return "ERR " + why[0];
         }
         call(tm, "stopTethering", 0); // 0 = Wi-Fi
-        int st = waitAp(11, 8000);
-        if (st == 11) {
+        int st = waitAp(RemoteRoutes::hotspotDown, 8000);
+        if (RemoteRoutes.hotspotDown(st)) {
             return "OK the hotspot is off";
         }
         if (st < 0) {
@@ -733,12 +736,12 @@ public final class ShellMain {
         if (tm == null) {
             return "ERR " + why[0];
         }
-        if (apState() != 11) {
+        if (!RemoteRoutes.hotspotDown(apState())) { // (a hotspot whose last start failed is down: it only needs the start)
             call(tm, "stopTethering", 0);
-            int st = waitAp(11, 8000);
+            int st = waitAp(RemoteRoutes::hotspotDown, 8000);
             if (st < 0) {
                 Thread.sleep(3000); // this phone does not report the state: give the hotspot the time it usually needs to go off
-            } else if (st != 11) {
+            } else if (!RemoteRoutes.hotspotDown(st)) {
                 return "ERR the hotspot did not switch off (it is still " + apWord(st) + "), so it was not restarted";
             } else {
                 Thread.sleep(1000); // off: a moment for the Wi-Fi chip before it is asked to start again
