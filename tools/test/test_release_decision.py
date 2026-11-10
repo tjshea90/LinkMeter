@@ -171,16 +171,6 @@ case("push to main with an app change: release", False, True, lambda w: commit(w
 case("push to main, docs only: no release", False, False, lambda w: commit(w, {"README.md": "d\n"}, "docs"), ref="main")
 case("push to main, [no-release]", False, False, lambda w: commit(w, APP, "x [no-release]"), ref="main")
 case("another branch: nothing", False, False, on_branch(APP), ref="feature-x")
-# ---- the newer name of a session branch (claude/<name>) is treated exactly like ccr-<name>
-case("claude/ session branch, app change: merge and release", True, True, on_branch(APP), ref="claude/some-session-1a2b3c")
-case("claude/ session branch, docs only: merge, no release", True, False, on_branch({"README.md": "more docs\n"}),
-     ref="claude/some-session-1a2b3c")
-case("claude/ session branch, workflow changed: by hand", False, False,
-     on_branch({".github/workflows/build.yml": "name: y\n"}), ref="claude/some-session-1a2b3c")
-case("claude/ session branch, [no-merge]: neither", False, False, on_branch(APP, "checkpoint: step [no-merge]"),
-     ref="claude/some-session-1a2b3c")
-case("a branch that only looks like one (claudex/...): nothing", False, False, on_branch(APP), ref="claudex/abc")
-case("a branch that only looks like one (my-claude/...): nothing", False, False, on_branch(APP), ref="my-claude/abc")
 case("no earlier release tag at all: release", True, True, on_branch({"README.md": "d\n"}), tag=None)
 
 

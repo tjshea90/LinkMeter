@@ -8,10 +8,11 @@ Rules for this project:
 - Keep `HANDOFF.md` Status current before each checkpoint.
 - No third-party libraries. The tablet is a low-RAM Go device.
 - Releases are automatic (standing instruction from the user, 2026-11-08). Cloud sessions work only on their designated
-  session branch (`claude/<name>`; older sessions had `ccr-*`) and never push to `main` themselves. GitHub builds and tests
-  every push; a good build on a session branch is merged into `main` by the pipeline when that is safe, and published as a
-  numbered release (v0.2.N) if the app changed (`.github/workflows/build.yml`, explained in `HANDOFF.md`). The user never has
-  to say "merge it".
+  session branch (`ccr-*`) and never push to `main` themselves. GitHub builds and tests every push; a good build on a
+  session branch is merged into `main` by the pipeline when that is safe, and published as a numbered release (v0.2.N) if
+  the app changed (`.github/workflows/build.yml`, explained in `HANDOFF.md`). The user never has to say "merge it".
+  - If your branch is named `claude/<name>` instead, a push starts NO run: the pipeline does not know that name yet. The
+    fix is written but waits for the user's yes (`tools/pending/claude-branches.patch`, explained in `tools/pending/README.md`).
   - `NO_RELEASE=1 tools/checkpoint.sh "..."` for intermediate saves (merged into main, no release); plain
     `tools/checkpoint.sh "..."` for the last push of a task, so the user gets a numbered release.
     `[no-merge]` in a commit message keeps that commit off main.
