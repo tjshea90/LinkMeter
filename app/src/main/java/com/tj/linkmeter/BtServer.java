@@ -527,6 +527,15 @@ final class BtServer {
                     + "settings (on both: Settings > Bluetooth), then press \"Find the phone\" on the tablet.\n");
         }
         listenNow(); // on this thread, so the next line reports what is true now (does nothing unless the service is running)
+        if ("error".equals(state)) {
+            // Bluetooth that has only just come on can refuse the first try: one more, a moment later
+            try {
+                Thread.sleep(1500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            listenNow();
+        }
         sb.append("Bluetooth link on the phone: ").append(stateText()).append('.');
         if (!"on".equals(state)) {
             throw new IOException(sb.toString());

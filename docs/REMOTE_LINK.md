@@ -93,7 +93,7 @@ gets the real result:
 an ordinary phone it changes nothing (the phone now says so), and where it does work the hotspot's Wi-Fi stays up.
 
 When the phone acts first, a switch that did not move comes back as an ERROR (409 with `err`), never as 200 with a sad
-sentence (`Actions.NotDone`): hotspot not switched on / off / restarted, Wi-Fi not switched, the screen not off, the radio
+sentence (`Actions.NotDone`; the sentences and the rule "only OK is done" are in the pure, tested `SwitchWords`): hotspot not switched on / off / restarted, Wi-Fi not switched, the screen not off, the radio
 restart failed, a shell command refused. So the tablet's "ok" means "done". The one in-between answer is for the hotspot when
 the phone took the request and does not report the hotspot's state: 200, and the sentence says "It does not say whether it
 is on." After an answer-first action nobody is left to tell; the next status shows what happened.
