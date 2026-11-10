@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -244,10 +244,71 @@ T = [
  ("trouble: the same advice whichever way the phone answered", "Trouble.java", "                return overBluetooth\n", "                return false\n"),
  ("trouble: Bluetooth blamed although it was tried", "Trouble.java", '+ (bluetoothTried || linkWords.isEmpty() ? "" :', '+ (linkWords.isEmpty() ? "" :'),
 ]
+SAVER_FILES = ["SaverPlan.java", "ProfilePlan.java"]
+SAVER_TEST = ROOT + "/tools/test/SaverPlanTest.java"
+V = [
+ ("saver: switches on without Shizuku", "SaverPlan.java", "if (!shizukuReady || waiting(now, failedAt)) {\n            return Act.NOTHING;", "if (waiting(now, failedAt)) {\n            return Act.NOTHING;"),
+ ("saver: no wait after a failure", "SaverPlan.java", "if (!shizukuReady || waiting(now, failedAt)) {\n            return Act.NOTHING;", "if (!shizukuReady) {\n            return Act.NOTHING;"),
+ ("saver: a failure is waited for for ever", "SaverPlan.java", "return failedAt > 0 && now - failedAt < RETRY_MS;", "return failedAt > 0;"),
+ ("saver: a failure is never waited for", "SaverPlan.java", "return failedAt > 0 && now - failedAt < RETRY_MS;", "return false;"),
+ ("saver: switches on without the tablet", "SaverPlan.java", "return tabletHere ? Act.APPLY : Act.NOTHING;", "return Act.APPLY;"),
+ ("saver: never switches on", "SaverPlan.java", "return tabletHere ? Act.APPLY : Act.NOTHING;", "return Act.NOTHING;"),
+ ("saver: Automatic and on is applied again", "SaverPlan.java", "if (auto == on) {\n            return Act.NOTHING; // Automatic and on", "if (false) {\n            return Act.NOTHING; // Automatic and on"),
+ ("saver: Off and on is not put back by a request", "SaverPlan.java", "        return Act.RESTORE;\n    }\n\n    enum Verdict", "        return Act.NOTHING;\n    }\n\n    enum Verdict"),
+ ("saver: Off and on waits for the tablet", "SaverPlan.java", "        return Act.RESTORE;\n    }\n\n    enum Verdict", "        return tabletHere ? Act.RESTORE : Act.NOTHING;\n    }\n\n    enum Verdict"),
+ ("saver: Off does not end the saver by alarm", "SaverPlan.java", "gone = true; // Off is the user's word", "gone = false; // Off is the user's word"),
+ ("saver: the ten minutes are ignored", "SaverPlan.java", "if (since < IDLE_MS) {\n                return again(IDLE_MS - since);", "if (false) {\n                return again(IDLE_MS - since);"),
+ ("saver: looks again too soon", "SaverPlan.java", "return again(IDLE_MS - since);", "return again(IDLE_MS);"),
+ ("saver: looks again after the wrong time", "SaverPlan.java", "return again(IDLE_MS); // still in use", "return again(1000); // still in use"),
+ ("saver: asks the tablet although the hotspot is not known", "SaverPlan.java", "if (Boolean.TRUE.equals(hotspotOn)) {\n                if (tabletAnswers == null) {", "if (!Boolean.FALSE.equals(hotspotOn)) {\n                if (tabletAnswers == null) {"),
+ ("saver: a tablet that answers is gone", "SaverPlan.java", "gone = !tabletAnswers.booleanValue();", "gone = tabletAnswers.booleanValue();"),
+ ("saver: a tablet that does not answer is kept", "SaverPlan.java", "gone = !tabletAnswers.booleanValue();", "gone = false;"),
+ ("saver: a resting phone is restored", "SaverPlan.java", "gone = screenOn; // a hotspot", "gone = true; // a hotspot"),
+ ("saver: a phone in a hand is kept", "SaverPlan.java", "gone = screenOn; // a hotspot", "gone = false; // a hotspot"),
+ ("saver: restores without Shizuku", "SaverPlan.java", "if (!gone || !shizukuReady) {", "if (!gone) {"),
+ ("saver: a saver that is off is watched", "SaverPlan.java", "if (!on) {\n            return new Idle(Verdict.NOTHING_TO_WATCH, 0);", "if (false) {\n            return new Idle(Verdict.NOTHING_TO_WATCH, 0);"),
+ ("saver: an error text is believed", "SaverPlan.java", "return v != null && (v.equals(\"null\") || digits(v));", "return v != null;"),
+ ("saver: an empty answer is believed", "SaverPlan.java", "return v != null && (v.equals(\"null\") || digits(v));", "return v != null && (v.isEmpty() || v.equals(\"null\") || digits(v));"),
+ ("saver: long numbers are believed", "SaverPlan.java", "v.matches(\"\\\\d{1,10}\")", "v.matches(\"\\\\d{1,30}\")"),
+ ("saver: negative numbers are believed", "SaverPlan.java", "v.matches(\"\\\\d{1,10}\")", "v.matches(\"-?\\\\d{1,10}\")"),
+ ("saver: the display switch is touched whatever it says", "SaverPlan.java", "return i == AOD ? (\"0\".equals(v) || \"1\".equals(v)) : valueOk(v);", "return valueOk(v);"),
+ ("saver: a phone without the display switch is reported", "SaverPlan.java", "if (i == AOD && \"null\".equals(v)) {\n                continue;", "if (false) {\n                continue;"),
+ ("saver: values that are already right are stored", "SaverPlan.java", "if (v.equals(PROFILE[i][2])) {\n                continue;", "if (false) {\n                continue;"),
+ ("saver: the timeout is written under a session", "SaverPlan.java", "PROFILE[i][2], !session));", "PROFILE[i][2], true));"),
+ ("saver: the session's record is not used", "SaverPlan.java", "String v = session ? sessionOriginal : (i < read.length ? read[i] : null);", "String v = i < read.length ? read[i] : null;"),
+ ("saver: an unreadable setting is not named", "SaverPlan.java", "run.unreadable.add(subject(PROFILE[i][1]));", ""),
+ ("saver: an unreadable setting counts as read", "SaverPlan.java", "run.unreadable.add(subject(PROFILE[i][1]));\n                continue;", "run.unreadable.add(subject(PROFILE[i][1]));\n                run.readable++;\n                continue;"),
+ ("saver: the first answer for a key wins", "SaverPlan.java", "if (i >= 0 && i < v.length) {\n                    v[i] = l.substring(eq + 1).trim();", "if (i >= 0 && i < v.length && v[i] == null) {\n                    v[i] = l.substring(eq + 1).trim();"),
+ ("saver: a write the phone ignored counts as done", "SaverPlan.java", "(e.target.equals(back[e.idx]) ? a.changed : a.failed).add(e);", "a.changed.add(e);"),
+ ("saver: a write is not read back", "SaverPlan.java", ".append(\"; echo R\").append(e.idx).append(\"=$(settings get \").append(e.ns).append(' ').append(e.key).append(\"); \");", ".append(\"; \");"),
+ ("saver: a failed write is called done", "SaverPlan.java", "return a.failed.isEmpty();", "return true;"),
+ ("saver: unknown stored names are trusted", "SaverPlan.java", "if (f.length == 3 && known(f[0], f[1]) && valueOk(f[2])) {", "if (f.length == 3 && valueOk(f[2])) {"),
+ ("saver: stored values are not checked", "SaverPlan.java", "if (f.length == 3 && known(f[0], f[1]) && valueOk(f[2])) {", "if (f.length == 3 && known(f[0], f[1])) {"),
+ ("saver: the older version's setting is not known", "SaverPlan.java", "        for (String[] p : OLD) {\n            if (p[0].equals(ns) && p[1].equals(key)) {\n                return true;\n            }\n        }\n        return false;", "        return false;"),
+ ("saver: null is written back as a number", "SaverPlan.java", "if (e.original.equals(\"null\")) {\n                sb.append(\"settings delete \")", "if (false) {\n                sb.append(\"settings delete \")"),
+ ("saver: the timeout is written during a session", "SaverPlan.java", "if (e.isTimeout() && sessionOwnsTimeout) {", "if (false) {"),
+ ("saver: the session is not told the original", "SaverPlan.java", "handOver = e.original;", ""),
+ ("saver: Bluetooth is not switched back for an old profile", "SaverPlan.java", "if (bluetoothBack) {", "if (false) {"),
+ ("saver: old stored values are not checked", "SaverPlan.java", "String v = (o == null || i >= o.length || o[i] == null) ? null : o[i].trim();\n            if (valueOk(v)) {", "String v = (o == null || i >= o.length || o[i] == null) ? null : o[i].trim();\n            if (v != null) {"),
+ ("saver: the older version's order is mixed up", "SaverPlan.java", "{\"global\", \"wifi_scan_always_enabled\"},\n        {\"global\", \"ble_scan_always_enabled\"},\n        {\"secure\", \"doze_always_on\"},\n        {\"global\", \"tether_offload_disabled\"},", "{\"global\", \"ble_scan_always_enabled\"},\n        {\"global\", \"wifi_scan_always_enabled\"},\n        {\"secure\", \"doze_always_on\"},\n        {\"global\", \"tether_offload_disabled\"},"),
+ ("saver: the stored form has no namespace", "SaverPlan.java", "sb.append(e.ns).append(' ').append(e.key).append(' ').append(e.original).append('\\n');", "sb.append(e.key).append(' ').append(e.key).append(' ').append(e.original).append('\\n');"),
+ ("saver: the waiting timeout is not mentioned", "SaverPlan.java", "if (run.timeoutWaits()) {", "if (false) {"),
+ ("saver: an unreadable setting is not mentioned", "SaverPlan.java", "if (!run.unreadable.isEmpty()) {", "if (false) {"),
+ ("saver: a failure is worded as success", "SaverPlan.java", "if (!a.failed.isEmpty()) {\n            sb.append(a.changed.isEmpty()", "if (false) {\n            sb.append(a.changed.isEmpty()"),
+ ("saver: the same feature is named twice", "SaverPlan.java", "String s = phrase(e.key, e.target);\n            if (!l.contains(s)) {", "String s = phrase(e.key, e.target);\n            if (true) {"),
+ ("saver: Restore everything does not say the saver is off", "SaverPlan.java", "\" The battery saver is now switched off. Switch it on again in the Phone tab.\"", "\" Done.\""),
+ ("saver: the current takes the phone's sign", "SaverPlan.java", "return Integer.valueOf((int) (charging ? ma : -ma));", "return Integer.valueOf((int) (raw < 0 ? -ma : ma));"),
+ ("saver: microamps are shown as milliamps", "SaverPlan.java", "long ma = mag > 20000 ? Math.round(mag / 1000.0) : mag;", "long ma = mag;"),
+ ("saver: the unit is guessed too early", "SaverPlan.java", "long ma = mag > 20000 ? Math.round", "long ma = mag > 2000 ? Math.round"),
+ ("saver: a flat zero is shown while discharging", "SaverPlan.java", "if (mag == 0 && !charging) {", "if (false) {"),
+ ("saver: 'not supported' is shown as a number", "SaverPlan.java", "if (raw == Long.MIN_VALUE) {\n            return null;", "if (false) {\n            return null;"),
+ ("saver: an absurd current is shown", "SaverPlan.java", "if (ma > 30000) {", "if (false) {"),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
-          (FOLLOW_FILES, FOLLOW_TEST, "com.tj.linkmeter.FollowUpTest", F), (TROUBLE_FILES, TROUBLE_TEST, "com.tj.linkmeter.TroubleTest", T)]
+          (FOLLOW_FILES, FOLLOW_TEST, "com.tj.linkmeter.FollowUpTest", F), (TROUBLE_FILES, TROUBLE_TEST, "com.tj.linkmeter.TroubleTest", T),
+          (SAVER_FILES, SAVER_TEST, "com.tj.linkmeter.SaverPlanTest", V)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

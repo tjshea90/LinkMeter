@@ -10,6 +10,9 @@ out=$(mktemp -d)
 echo "== ProfilePlan (the phone's remote-session settings)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/ProfilePlan.java tools/test/ProfilePlanTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.ProfilePlanTest || fail=1
+echo "== Battery saver (SaverPlan: switches on only while the tablet is here, an Off choice always wins, the saver follows the tablet's real use of the hotspot, only numbers and known names reach the shell, a profile of the older version is still put back, the Screen tab's timeout is never overwritten; the real shell lines against a fake phone)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SaverPlan.java app/src/main/java/com/tj/linkmeter/ProfilePlan.java tools/test/SaverPlanTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.SaverPlanTest || fail=1
 echo "== PhonePower (the Sleep / Wake button rules)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhonePower.java tools/test/PhonePowerTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhonePowerTest || fail=1
