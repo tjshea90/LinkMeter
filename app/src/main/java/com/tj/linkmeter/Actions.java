@@ -216,14 +216,12 @@ final class Actions {
             case "bt_setup":
                 return BtServer.setup(c);
             case "eco_auto_on":
+            case "eco_on": // the name an older tablet app sends: the same one switch
                 // the stored choice: the saver switches on by itself whenever the tablet connects (and now)
-                Cfg.setEcoAuto(c, true);
-                Eco.setSuppressed(false);
-                return Eco.apply(c) + " It switches on by itself when the tablet connects.";
+                return Eco.setAuto(c, true);
             case "eco_auto_off":
-                Cfg.setEcoAuto(c, false);
-                Eco.setSuppressed(true);
-                return Eco.restore(c) + " It stays off until you switch it on.";
+            case "eco_off":
+                return Eco.setAuto(c, false);
             case "boot_wadb":
                 return Boot.enableWadb(c);
             case "boot_notify":
@@ -257,12 +255,6 @@ final class Actions {
                 return report(Priv.run("cmd connectivity airplane-mode disable", 15), "Airplane mode is off.");
             case "screen_off":
                 return said(screenOff(c)); // checked: the old way pressed a key and said "off" whatever happened
-            case "eco_on":
-                Eco.setSuppressed(false);
-                return Eco.apply(c);
-            case "eco_off":
-                Eco.setSuppressed(true);
-                return Eco.restore(c);
             case "setup":
                 return setup(c);
             case "restore":
@@ -777,8 +769,8 @@ final class Actions {
             }
         }
         try {
-            Eco.setSuppressed(true);
-            sb.append("Battery saver: ").append(Eco.restore(c)).append('\n');
+            // the saver's settings go back AND the choice is stored as Off: otherwise the tablet's next request would switch it on again
+            sb.append("Battery saver: ").append(Eco.setAuto(c, false, SaverPlan.RESTORE_ALL_NOTE)).append('\n');
         } catch (IOException e) {
             sb.append("Battery saver: ").append(e.getMessage()).append('\n');
         }
@@ -861,7 +853,7 @@ final class Actions {
     }
 
     /** Facts about this phone's shell commands, for working out what it supports. Contains no IDs. */
-    static String probe() throws IOException {
+    static String probe(Context c) throws IOException {
         String[] cmds = {
             "getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk;"
                     + " getprop ro.board.platform; getprop gsm.version.baseband",
@@ -880,12 +872,16 @@ final class Actions {
             "dumpsys telephony.registry 2>&1 | grep -E 'mPhysicalChannelConfigs|mTelephonyDisplayInfo' | cut -c1-2500 | head -4",
             "getprop 2>&1 | grep -iE 'ril|radio|telephony|mtk' "
                     + "| grep -viE 'imei|imsi|iccid|serial|msisdn|number' | head -40",
+            // the battery saver: what the display switches say now (the stock one and Samsung's), and the battery's own current
+            "settings get secure doze_always_on; settings get system aod_mode; settings get system screen_off_timeout",
+            "cat /sys/class/power_supply/battery/current_now 2>&1; dumpsys battery 2>&1 | head -30",
         };
         StringBuilder sb = new StringBuilder();
         for (String cmd : cmds) {
             sb.append("$ ").append(cmd).append('\n');
             sb.append(Priv.run(cmd, 20).out).append("\n\n");
         }
+        sb.append("$ the battery current as the app reads it (BatteryManager)\n").append(Status.currentText(c)).append("\n\n");
         return sb.toString();
     }
 }

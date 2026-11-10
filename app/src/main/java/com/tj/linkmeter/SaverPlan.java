@@ -514,6 +514,20 @@ final class SaverPlan {
         return l;
     }
 
+    /**
+     * The words for the saver on the tablet's Home screen, from what the phone's status says. "On" is only ever said for a saver that
+     * is on; the stored choice alone is called by its name. priv is the phone's Shizuku state (2 = ready), -1 when it did not say.
+     */
+    static String homeFact(boolean on, boolean auto, int priv) {
+        if (on) {
+            return auto ? "on" : "on, going off";
+        }
+        if (!auto) {
+            return "off";
+        }
+        return priv >= 0 && priv != 2 ? "automatic, needs Shizuku" : "automatic: starts when the tablet is on the hotspot";
+    }
+
     /** True when the switch-on did what it should: nothing failed. */
     static boolean done(Applied a) {
         return a.failed.isEmpty();

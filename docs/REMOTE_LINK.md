@@ -125,8 +125,9 @@ is on." After an answer-first action nobody is left to tell; the next status sho
   address line counts, `BtAddr.own`; a phone that hides it gets the "pair once, then Find" advice), listen. It does nothing,
   and says so as an error, while the phone-side switch is off; and its whole report comes back as an error when the phone is
   not listening at the end.
-- `eco_auto_on` / `eco_auto_off`: the battery saver's Automatic switch, stored on the phone (the old "Turn off" was only kept in
-  memory and came back after the phone's service restarted).
+- `eco_auto_on` / `eco_auto_off` (an older tablet app sends `eco_on` / `eco_off`: the same two): the battery saver's ONE switch,
+  Automatic or Off, stored on the phone. Storing never fails; with Shizuku down the answer is a plain "Stored..." sentence, not an
+  error. See "Battery saver changes" below.
 - `/s` additionally reports: `hs` (hotspot on; LEFT OUT when the phone cannot tell, so "not known" never reads as "off":
   `Radios.hotspot` asks the Wi-Fi manager's hidden answer, then the last hotspot announcement the service heard, then looks
   for a hotspot interface), `wifi` (phone's Wi-Fi switch), `scr` (screen on), `air` (airplane mode), `bt` (the link's state
@@ -196,11 +197,49 @@ Nothing here has run on the devices, so the tablet is written to claim only what
   lost answer over the hotspot from a phone that had been heard. So whenever Home has stopped asking, or Bluetooth was tried
   and the next question is half a minute away, "Ask again" is on the screen.
 
-## Battery saver changes (`Eco`)
+## Battery saver changes (`Eco`, its decisions are in `SaverPlan` and tested offline)
 
-- It no longer switches Bluetooth off: that would cut the remote link, idle Bluetooth costs almost nothing, and it broke the
-  user's Bluetooth accessories. A profile applied by an OLDER version still gets its Bluetooth switched back on by restore.
-- Automatic / Off is a stored switch the tablet can set (`eco_auto_on|off`).
+- ONE stored switch, Automatic or Off (`Cfg.ecoAuto`, Automatic by default), changed only through `Eco.setAuto`: by the tablet's
+  `eco_auto_on|off`, by the phone's own checkbox, and by Restore everything, which puts the settings back AND stores Off and
+  says so ("The battery saver is now switched off. Switch it on again in the Phone tab."). The saver itself is "on" while its
+  settings are in place (`eco` in `/s`; `ecoAuto` is the stored choice). `eco` and `ecoAuto` are two facts: Home never says
+  "on" from the choice alone (`SaverPlan.homeFact`).
+- Brought in line in one place (`SaverPlan.reconcile`), on every request the tablet makes over Wi-Fi and when the service
+  starts. Automatic and not on, with the tablet here: switch on. Off and on: switch off, even when the choice was made before
+  the phone's app restarted or while Shizuku was down. It asks again under the saver's lock before it acts, so a "turn off"
+  cannot be undone by a request that was already on its way. A failed switch is not tried again for a minute. A request over
+  Bluetooth does not count as "the tablet is here": Bluetooth only means the hotspot is off.
+- What it changes: background Wi-Fi scanning and background Bluetooth scanning off (`wifi_scan_always_enabled`,
+  `ble_scan_always_enabled`), the always-on display off (`doze_always_on`, and Samsung's `aod_mode`, which is written only when the
+  phone answers 0 or 1 for it; NOT verified on this phone), the screen timeout 15 s. `tether_offload_disabled` is no longer
+  written (set while the hotspot is already up it cannot take effect); a profile that an older version left is still put back.
+  Never Bluetooth itself (that would cut the remote link, and it broke the user's accessories), never Data Saver, never the
+  system power saving mode (Data Saver blocks tethering on stock Android; the others have side effects nobody has checked on this
+  phone).
+- Honest about what happened: a value is believed only when `settings get` printed 1 to 10 digits or null; anything else leaves
+  that setting out of the run (it is named in the answer and tried again at the next switch-on, and it never reaches the
+  shell). The originals are stored by name before anything is written, only for the settings that really change. Every write is
+  read back; a write the phone did not take is an error answer (409) that names it, and the saver is left so that switching it
+  off puts back what did change. A profile applied by the version before this one (`o0..o4` and a Bluetooth note) is put back
+  by the same restore.
+- When it ends by itself: ten minutes after the tablet was last heard over Wi-Fi, an alarm decides whether the tablet is gone
+  (`SaverPlan.idle`). It is an `ELAPSED_REALTIME` alarm: it needs no permission and never wakes the phone, it goes off at the
+  first wake after it was due (the old timer counted awake time only, so after Standby the values stayed on a phone carried
+  away). If the hotspot is on and the tablet's last address answers one `InetAddress.isReachable` (NOT verified on Android 16 or
+  against this tablet; "does not answer" simply ends the saver, which is the safe side), the tablet is still using the hotspot
+  with another app in front: the saver stays and the alarm looks again in ten minutes. If the hotspot is off or not known and the
+  phone's screen is off (a resting phone, for example on Standby), the saver stays too: nobody sees the short screen timeout.
+  Anything else means the tablet is gone or somebody is using the phone, and the phone's own settings go back. The same decision
+  runs when the screen comes on (a receiver registered only while the saver is on), so a phone picked up after Standby gets its
+  settings back at once. No alarm, receiver or thread stays behind once the saver is off and the service is stopped.
+- The Screen tab's session owns the screen timeout while it runs (`RemoteProfile`, `ProfilePlan`). The saver then leaves the
+  timeout alone, both ways, and tells the session what the timeout was before the saver (`RemoteProfile.adoptOriginalTimeout`):
+  a session that started while the saver was on has read the saver's 15 s as "the original" and would otherwise put that back
+  at its end.
+- `/s` carries `cur`, the battery's present current in milliamps (negative while discharging; left out when the phone does not
+  say): the first field evidence of what the saver and Standby save. Makers differ in unit and sign, so `SaverPlan.milliamps`
+  takes the unit from the size (above 20,000 it must be microamps) and the sign from whether the phone is charging; Probe
+  prints the raw number, so the first readings show whether that guess is right.
 - NOT built on purpose: "switch the hotspot off when the tablet has been quiet for N minutes". LinkMeter only hears from the
   tablet while its app is open, so it cannot tell "nobody uses the hotspot" from "the user is watching a film in another app".
   The phone's own setting does this properly (Samsung: Mobile Hotspot > Configure > Advanced > Turn off when no device connected),

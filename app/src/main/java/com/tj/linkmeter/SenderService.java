@@ -210,6 +210,7 @@ public class SenderService extends Service {
         }
         BtServer.stop();
         Radios.unwatch(getApplicationContext());
+        Eco.onServiceStop(getApplicationContext()); // no alarm and no screen receiver of the battery saver may outlive the service
         super.onDestroy();
     }
 

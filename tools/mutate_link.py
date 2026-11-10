@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java) fail.
 
 Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
@@ -274,7 +274,7 @@ V = [
  ("saver: the display switch is touched whatever it says", "SaverPlan.java", "return i == AOD ? (\"0\".equals(v) || \"1\".equals(v)) : valueOk(v);", "return valueOk(v);"),
  ("saver: a phone without the display switch is reported", "SaverPlan.java", "if (i == AOD && \"null\".equals(v)) {\n                continue;", "if (false) {\n                continue;"),
  ("saver: values that are already right are stored", "SaverPlan.java", "if (v.equals(PROFILE[i][2])) {\n                continue;", "if (false) {\n                continue;"),
- ("saver: the timeout is written under a session", "SaverPlan.java", "PROFILE[i][2], !session));", "PROFILE[i][2], true));"),
+ ("saver: the timeout is written under a session", "SaverPlan.java", "PROFILE[i][2], i, !session));", "PROFILE[i][2], i, true));"),
  ("saver: the session's record is not used", "SaverPlan.java", "String v = session ? sessionOriginal : (i < read.length ? read[i] : null);", "String v = i < read.length ? read[i] : null;"),
  ("saver: an unreadable setting is not named", "SaverPlan.java", "run.unreadable.add(subject(PROFILE[i][1]));", ""),
  ("saver: an unreadable setting counts as read", "SaverPlan.java", "run.unreadable.add(subject(PROFILE[i][1]));\n                continue;", "run.unreadable.add(subject(PROFILE[i][1]));\n                run.readable++;\n                continue;"),
@@ -297,6 +297,10 @@ V = [
  ("saver: a failure is worded as success", "SaverPlan.java", "if (!a.failed.isEmpty()) {\n            sb.append(a.changed.isEmpty()", "if (false) {\n            sb.append(a.changed.isEmpty()"),
  ("saver: the same feature is named twice", "SaverPlan.java", "String s = phrase(e.key, e.target);\n            if (!l.contains(s)) {", "String s = phrase(e.key, e.target);\n            if (true) {"),
  ("saver: Restore everything does not say the saver is off", "SaverPlan.java", "\" The battery saver is now switched off. Switch it on again in the Phone tab.\"", "\" Done.\""),
+ ("saver: Home says on for a saver that is off", "SaverPlan.java", "        if (!auto) {\n            return \"off\";\n        }\n        return priv >= 0", "        if (!auto) {\n            return \"on\";\n        }\n        return priv >= 0"),
+ ("saver: Home says on from the choice alone", "SaverPlan.java", "return priv >= 0 && priv != 2 ? \"automatic, needs Shizuku\" : \"automatic: starts when the tablet is on the hotspot\";", "return \"on\";"),
+ ("saver: Home ignores that Shizuku is down", "SaverPlan.java", "return priv >= 0 && priv != 2 ? \"automatic, needs Shizuku\" :", "return false ? \"automatic, needs Shizuku\" :"),
+ ("saver: Home calls a saver that is going off plain on", "SaverPlan.java", "return auto ? \"on\" : \"on, going off\";", "return \"on\";"),
  ("saver: the current takes the phone's sign", "SaverPlan.java", "return Integer.valueOf((int) (charging ? ma : -ma));", "return Integer.valueOf((int) (raw < 0 ? -ma : ma));"),
  ("saver: microamps are shown as milliamps", "SaverPlan.java", "long ma = mag > 20000 ? Math.round(mag / 1000.0) : mag;", "long ma = mag;"),
  ("saver: the unit is guessed too early", "SaverPlan.java", "long ma = mag > 20000 ? Math.round", "long ma = mag > 2000 ? Math.round"),
@@ -304,11 +308,20 @@ V = [
  ("saver: 'not supported' is shown as a number", "SaverPlan.java", "if (raw == Long.MIN_VALUE) {\n            return null;", "if (false) {\n            return null;"),
  ("saver: an absurd current is shown", "SaverPlan.java", "if (ma > 30000) {", "if (false) {"),
 ]
+SAFETYREPORT_FILES = ["SafetyReport.java"]
+SAFETYREPORT_TEST = ROOT + "/tools/test/SafetyReportTest.java"
+Y = [
+ ("safety: the battery saver is not a change", "SafetyReport.java", "if (f.batterySaver) {\n            l.add(\"the battery saver is on:", "if (false) {\n            l.add(\"the battery saver is on:"),
+ ("safety: Restore everything is not promised for the saver", "SafetyReport.java", "f.menuRecent\n                || f.batterySaver;", "f.menuRecent;"),
+ ("safety: the Automatic choice is not mentioned", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (false) {\n                    // Restore everything stores Off"),
+ ("safety: the Automatic choice is mentioned when the saver is off", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (true) {\n                    // Restore everything stores Off"),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
           (FOLLOW_FILES, FOLLOW_TEST, "com.tj.linkmeter.FollowUpTest", F), (TROUBLE_FILES, TROUBLE_TEST, "com.tj.linkmeter.TroubleTest", T),
-          (SAVER_FILES, SAVER_TEST, "com.tj.linkmeter.SaverPlanTest", V)]
+          (SAVER_FILES, SAVER_TEST, "com.tj.linkmeter.SaverPlanTest", V),
+          (SAFETYREPORT_FILES, SAFETYREPORT_TEST, "com.tj.linkmeter.SafetyReportTest", Y)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

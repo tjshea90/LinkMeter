@@ -131,16 +131,18 @@ public final class SafetyReportTest {
             f.pairingKept = (m & 1024) != 0;
             f.bootAssist = (m & 2048) != 0;
             f.guardWatching = (m & 1) != 0;
-            boolean any = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 512 | 1024 | 2048)) != 0;
+            boolean any = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | 512 | 1024 | 2048)) != 0;
             String r = SafetyReport.report(f);
             combos++;
             check(any == r.contains("Still changed by LinkMeter"), "a change is reported exactly when there is one [mask " + m + "]");
             check(any != r.contains("nothing changed on this phone"), "'nothing changed' exactly when there is nothing [mask " + m + "]");
-            check(SafetyReport.changes(f).size() == Integer.bitCount(m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 512 | 1024 | 2048)) - (((m & 4) != 0 && (m & 128) != 0) ? 1 : 0),
+            check(SafetyReport.changes(f).size() == Integer.bitCount(m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 | 512 | 1024 | 2048)) - (((m & 4) != 0 && (m & 128) != 0) ? 1 : 0),
                     "one line per change (a lock flag and a lock are one line) [mask " + m + "]");
-            check(r.contains("Battery saver profile: on") == ((m & 256) != 0), "the battery saver is only mentioned when on [mask " + m + "]");
+            check(r.contains("the battery saver is on") == ((m & 256) != 0), "the battery saver is a change exactly when it is on [mask " + m + "]");
+            check(r.contains("switches the battery saver's Automatic choice off") == ((m & 256) != 0),
+                    "Restore everything says it also switches the saver's Automatic choice off, exactly when the saver is on [mask " + m + "]");
             boolean boot = (m & (512 | 1024 | 2048)) != 0;
-            boolean other = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128)) != 0;
+            boolean other = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256)) != 0;
             check(boot == r.contains("Undo the setup"), "the boot setup is mentioned exactly when one of its items is in place [mask " + m + "]");
             check(other == r.contains("Restore everything puts it back"), "Restore everything is promised exactly when there is something it puts back [mask " + m + "]");
         }

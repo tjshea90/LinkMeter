@@ -85,7 +85,7 @@ final class Api {
                 break;
             case "/probe":
                 if (phone) {
-                    probe(out);
+                    probe(c, out);
                 } else {
                     Http.err(out, 404, "not a phone");
                 }
@@ -237,9 +237,9 @@ final class Api {
         }
     }
 
-    private static void probe(OutputStream out) throws IOException {
+    private static void probe(Context c, OutputStream out) throws IOException {
         try {
-            Http.text(out, 200, Actions.probe());
+            Http.text(out, 200, Actions.probe(c));
         } catch (IOException e) {
             Http.err(out, 409, String.valueOf(e.getMessage()));
         }

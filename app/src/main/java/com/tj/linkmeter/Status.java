@@ -31,17 +31,23 @@ final class Status {
         try {
             // Sticky broadcast: a plain read, no receiver is registered.
             Intent b = c.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            boolean charging = false;
             if (b != null) {
                 int level = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
                 int scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
-                int status = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
                 int temp = b.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
+                charging = isCharging(b);
                 o.put("bat", (level >= 0 && scale > 0) ? Math.round(level * 100f / scale) : -1);
-                o.put("chg", status == BatteryManager.BATTERY_STATUS_CHARGING
-                        || status == BatteryManager.BATTERY_STATUS_FULL);
+                o.put("chg", charging);
                 if (temp != Integer.MIN_VALUE) {
                     o.put("tmp", temp / 10.0);
                 }
+            }
+            // the battery's present current in milliamps (negative while discharging): the first field evidence of what the saver
+            // and Standby save. Left out when the phone does not say.
+            Integer cur = SaverPlan.milliamps(rawCurrent(c), charging);
+            if (cur != null) {
+                o.put("cur", cur.intValue());
             }
             String upd = Updater.lastResult(c);
             if (!upd.isEmpty()) {
@@ -75,6 +81,31 @@ final class Status {
             // Nothing to do: the tablet just gets whatever was filled in so far.
         }
         return o.toString();
+    }
+
+    private static boolean isCharging(Intent battery) {
+        int status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+        return status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
+    }
+
+    /** The number BatteryManager gives for the present current (the maker decides its unit and sign), or Long.MIN_VALUE when it says nothing. */
+    private static long rawCurrent(Context c) {
+        try {
+            BatteryManager bm = (BatteryManager) c.getSystemService(Context.BATTERY_SERVICE);
+            return bm == null ? Long.MIN_VALUE : bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
+        } catch (RuntimeException e) {
+            return Long.MIN_VALUE;
+        }
+    }
+
+    /** For Probe: the raw number, how it is read, and whether the phone is charging, so the first reading shows this maker's unit. */
+    static String currentText(Context c) {
+        long raw = rawCurrent(c);
+        Intent b = c.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        boolean charging = b != null && isCharging(b);
+        Integer ma = SaverPlan.milliamps(raw, charging);
+        return "raw " + (raw == Long.MIN_VALUE ? "not supported" : String.valueOf(raw)) + ", charging " + charging + ", read as "
+                + (ma == null ? "not reported" : ma + " mA (the number looks like " + (Math.abs(raw) > 20000 ? "microamps" : "milliamps") + ")");
     }
 
     /**

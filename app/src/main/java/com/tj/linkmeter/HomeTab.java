@@ -594,7 +594,7 @@ final class HomeTab extends Tab {
             } else {
                 fScreen.set("--", Ui.DIM);
             }
-            fSaver.set(p.optBoolean("eco", false) ? "on" : (p.optBoolean("ecoAuto", true) ? "off (automatic)" : "off"),
+            fSaver.set(SaverPlan.homeFact(p.optBoolean("eco", false), p.optBoolean("ecoAuto", true), p.optInt("priv", -1)),
                     reachable ? Ui.FG : Ui.DIM);
         }
         // Not known (a newer phone app that cannot tell): both hotspot buttons. An older app: the old guess, on when the

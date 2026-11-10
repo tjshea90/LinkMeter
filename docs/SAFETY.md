@@ -69,7 +69,8 @@ key list, or if this list stops matching the code.
 | Radio restart (off 4 s, on) and the "Hotspot off" airplane blip | radio power | no (a restart turns the radio on) | written down first and forced back on after, also after a crash |
 | Airplane mode "on" from the tablet | Android settings | yes | ends by itself after 15 min; Restore; quick settings |
 | Hotspot Wi-Fi band | hotspot config | yes | Restore everything; Settings > Mobile hotspot |
-| Battery saver profile, screen timeout and brightness during a remote session | Android settings | yes | each value is saved first and put back; also by itself 10 min after the tablet is gone |
+| Battery saver (background Wi-Fi and Bluetooth scanning off, the always-on display off, a 15 second screen timeout; on while the tablet uses the hotspot) | Android settings | yes | each changed value is saved first and put back: by the Off choice, by Restore everything (which also stores Off, so the saver stays off), by itself when the tablet has been gone for 10 min (it stays on while the hotspot is on and the tablet answers, or while the phone rests with its screen off), and when the phone's screen comes on and the tablet is gone |
+| Screen timeout and brightness during a remote screen session | Android settings | yes | each value is saved first and put back when the tablet leaves; also by itself a minute after it is gone |
 | Service menus opened from here | the phone's own menu | what you change in it | see section 7 |
 | "Start the phone after a restart": the one-time permission to change secure settings (`WRITE_SECURE_SETTINGS`) | Android's permissions | yes | Undo the setup (tablet, Control tab: `pm revoke`); see section 8 |
 | Wireless debugging switched on by LinkMeter after a restart | Android settings | no: Android switches it off by itself when the Wi-Fi goes | switch it off in Developer options; Undo the setup stops LinkMeter doing it |

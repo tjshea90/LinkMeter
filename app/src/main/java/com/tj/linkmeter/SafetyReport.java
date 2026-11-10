@@ -30,6 +30,7 @@ final class SafetyReport {
         boolean airplaneTimer;
         boolean menuRecent;
         boolean hotspotBandChanged;
+        /** The battery saver's settings are in place (Eco.isOn). */
         boolean batterySaver;
         boolean guardWatching;
         /** "Start the phone after a restart": LinkMeter holds WRITE_SECURE_SETTINGS (given once through Shizuku). */
@@ -73,6 +74,10 @@ final class SafetyReport {
         if (f.bootAssist) {
             l.add("Boot assist is on: after a restart the phone switches wireless debugging on by itself and shows a notification that opens Shizuku");
         }
+        if (f.batterySaver) {
+            l.add("the battery saver is on: it turned off background scanning and the always-on display and shortened the screen timeout, "
+                    + "and puts them back by itself (it never touches mobile data)");
+        }
         return l;
     }
 
@@ -83,7 +88,8 @@ final class SafetyReport {
 
     /** Is anything in place that is NOT one of the boot items (so that Restore everything has something to put back)? */
     static boolean otherChanged(Facts f) {
-        return f.typesChanged || f.legChanged || f.lockFlag || !f.lock.isEmpty() || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged || f.menuRecent;
+        return f.typesChanged || f.legChanged || f.lockFlag || !f.lock.isEmpty() || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged || f.menuRecent
+                || f.batterySaver;
     }
 
     /** Does the safety net have anything it could put back by itself? (The hotspot band and battery saver do not affect mobile data.) */
@@ -124,13 +130,14 @@ final class SafetyReport {
             }
             if (otherChanged(f)) {
                 sb.append("Restore everything puts it back (this app, LinkMeter > Phone, or the Restore button in the notification).");
+                if (f.batterySaver) {
+                    // Restore everything stores Off for the saver too (Eco.setAuto): left on Automatic, the tablet's next request would switch it on again
+                    sb.append(" It also switches the battery saver's Automatic choice off. Switch it on again in the Phone tab.");
+                }
             }
             if (bootChanged(f)) {
                 sb.append(otherChanged(f) ? "\n" : "").append("The boot items stay until you undo them: on the tablet, Control tab > Undo the setup (Restore everything leaves them alone).");
             }
-        }
-        if (f.batterySaver) {
-            sb.append("\nBattery saver profile: on (it restores its own settings; it never touches mobile data).");
         }
         return sb.toString().trim();
     }

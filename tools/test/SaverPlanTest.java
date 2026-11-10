@@ -419,6 +419,20 @@ public final class SaverPlanTest {
         yes(SaverPlan.OFF_STORED_WAITING.contains("Shizuku"), "Off while Shizuku is down says what it waits for");
     }
 
+    private static void homeWords() {
+        eq("on", SaverPlan.homeFact(true, true, 2), "on and automatic: on");
+        eq("on, going off", SaverPlan.homeFact(true, false, 2), "on but Off was chosen: it is not called plain on or off");
+        eq("on, going off", SaverPlan.homeFact(true, false, 0), "...whatever Shizuku says");
+        eq("off", SaverPlan.homeFact(false, false, 2), "off and Off");
+        eq("automatic: starts when the tablet is on the hotspot", SaverPlan.homeFact(false, true, 2), "off but Automatic: named by its choice, not called on");
+        eq("automatic: starts when the tablet is on the hotspot", SaverPlan.homeFact(false, true, -1), "...also when the phone did not say about Shizuku");
+        eq("automatic, needs Shizuku", SaverPlan.homeFact(false, true, 0), "Automatic but Shizuku is not running: it cannot start");
+        eq("automatic, needs Shizuku", SaverPlan.homeFact(false, true, 1), "...or not allowed yet");
+        for (int priv = -1; priv <= 2; priv++) {
+            yes(!SaverPlan.homeFact(false, true, priv).equals("on") && !SaverPlan.homeFact(false, false, priv).equals("on"), "never 'on' for a saver that is off");
+        }
+    }
+
     private static void current() {
         eq(null, SaverPlan.milliamps(Long.MIN_VALUE, false), "not supported");
         eq(null, SaverPlan.milliamps(0, false), "0 on a phone that is not charging is 'not reported'");
@@ -1195,6 +1209,7 @@ public final class SaverPlanTest {
         restoring();
         writingAndChecking();
         sentences();
+        homeWords();
         current();
         realShellLines();
         stories();

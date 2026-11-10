@@ -3,6 +3,7 @@ package com.tj.linkmeter;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -17,6 +18,8 @@ final class PhoneTab extends Tab {
     private TextView phonePerm;
     private TextView textsInfo;
     private Button toggle;
+    private CheckBox ecoBox;
+    private CompoundButton.OnCheckedChangeListener ecoListener;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -128,12 +131,30 @@ final class PhoneTab extends Tab {
         screenCtl.setOnCheckedChangeListener((view, checked) -> Cfg.setScreenControl(act, checked));
         col.addView(screenCtl, Ui.lp(act, 4));
 
-        CheckBox eco = new CheckBox(act);
-        eco.setText("Switch battery saver on by itself when the tablet connects");
-        eco.setTextColor(Ui.FG);
-        eco.setChecked(Cfg.ecoAuto(act));
-        eco.setOnCheckedChangeListener((view, checked) -> Cfg.setEcoAuto(act, checked));
-        col.addView(eco, Ui.lp(act, 4));
+        ecoBox = new CheckBox(act);
+        ecoBox.setText("Switch battery saver on by itself when the tablet connects");
+        ecoBox.setTextColor(Ui.FG);
+        ecoBox.setChecked(Cfg.ecoAuto(act));
+        // The same switch the tablet's buttons move (Eco.setAuto): it also puts the phone's settings back when Off is chosen.
+        // The choice is stored at once; the shell work is off the main thread. refresh() repaints the box from the stored value.
+        ecoListener = (view, checked) -> {
+            Cfg.setEcoAuto(act, checked);
+            final android.content.Context app = act.getApplicationContext();
+            new Thread(() -> {
+                String said;
+                try {
+                    said = Eco.setAuto(app, checked);
+                } catch (java.io.IOException e) {
+                    said = String.valueOf(e.getMessage());
+                } catch (RuntimeException e) {
+                    said = "The battery saver could not be changed.";
+                }
+                final String shown = said;
+                act.ui.post(() -> Toast.makeText(act, shown, Toast.LENGTH_LONG).show());
+            }, "linkmeter-eco-switch").start();
+        };
+        ecoBox.setOnCheckedChangeListener(ecoListener);
+        col.addView(ecoBox, Ui.lp(act, 4));
 
         col.addView(Ui.button(act, "Battery settings for this app", v -> act.openBatterySettings()),
                 Ui.lp(act, 12));
@@ -238,5 +259,10 @@ final class PhoneTab extends Tab {
                 : "On, but not ready. " + missing);
         files.setText(Files.hasAccess(act) ? "All files access is allowed."
                 : "All files access is not allowed yet (needed for the Files tab).");
+        if (ecoBox != null && ecoBox.isChecked() != Cfg.ecoAuto(act)) {
+            ecoBox.setOnCheckedChangeListener(null); // painting from the stored choice must not store it again
+            ecoBox.setChecked(Cfg.ecoAuto(act));
+            ecoBox.setOnCheckedChangeListener(ecoListener);
+        }
     }
 }

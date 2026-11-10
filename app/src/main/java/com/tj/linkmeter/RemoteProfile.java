@@ -31,6 +31,8 @@ final class RemoteProfile {
     /** No request from the tablet and no stream open for this long: the tablet is gone. */
     private static final long LEASE_MS = 60 * 1000L;
     private static final long CHECK_MS = 15 * 1000L;
+    /** While Shizuku is not running there is nothing the check could do: it looks again this much later, and starts no thread. */
+    private static final long WAIT_FOR_SHIZUKU_MS = 60 * 1000L;
     private static final Handler H = new Handler(Looper.getMainLooper());
     private static volatile long lastSeen;
     private static volatile Context appCtx;
@@ -44,6 +46,11 @@ final class RemoteProfile {
             }
             long idle = SystemClock.elapsedRealtime() - lastSeen;
             if (Screen.openStreams() == 0 && idle > LEASE_MS) {
+                if (!Priv.ready()) {
+                    // Shizuku is off (after a restart): ending would only fail. Look again in a minute, without a thread.
+                    H.postDelayed(this, WAIT_FOR_SHIZUKU_MS);
+                    return;
+                }
                 new Thread(() -> {
                     try {
                         end(app);
@@ -80,6 +87,18 @@ final class RemoteProfile {
     /** The screen timeout from before the remote session changed it (the text "null" if it was not set). */
     static String originalTimeout(Context c) {
         return prefs(c).getString("o" + T, "null");
+    }
+
+    /**
+     * The battery saver was switched off while this session owns the screen timeout, so it left the timeout alone (the screen
+     * must stay on). It tells the session what the timeout was before the saver, because a session that started while the saver
+     * was on has read the saver's short timeout as "the original" and would put that back at its end. Called under the Eco lock
+     * (as begin and end are), so the session cannot end in between.
+     */
+    static void adoptOriginalTimeout(Context c, String original) {
+        if (ownsTimeout(c) && SaverPlan.valueOk(original)) {
+            prefs(c).edit().putString("o" + T, original).commit();
+        }
     }
 
     /** The service just started: if a session was left half-way (reboot, crash), end it soon. */
