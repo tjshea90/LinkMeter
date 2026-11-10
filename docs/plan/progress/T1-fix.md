@@ -54,12 +54,17 @@ HANDLED SO FAR:
     breakages caught; PreviewTest.screenTabLeavesBluetoothAlone + Pretend.btCalls (a check: with the old poll 10 Bluetooth calls in 30 s);
     docs/REMOTE_LINK.md point 5.
 
-IN PROGRESS NOW: F1 (verdict: real by the code; whether this Samsung leaves the state at 14 is not known). Written but NOT yet committed:
- - RemoteRoutes.hotspotDown(state): 11 or 14. ShellMain: waitAp takes a predicate; hotspotStop's first test, both waits after stopTethering and
-   hotspotRestart's "does it need stopping" use hotspotDown. LinkProtocolTest checks + 3 new "hotspot:" breakages (8 of 8 caught). docs/REMOTE_LINK.md.
- About to: test, build, checkpoint (no screen changed).
+ F1 FIXED in commit 13f55d2 (verdict: real by the code; whether this Samsung leaves the state at 14 after a failed start is not known).
+    RemoteRoutes.hotspotDown(state): 11 or 14. ShellMain: waitAp takes a predicate; hotspotStop's first test, both waits after stopTethering and
+    hotspotRestart's "does it need stopping" use hotspotDown. LinkProtocolTest checks + 3 new "hotspot:" breakages (8 of 8 caught).
+    R8 keeps the new call (checked in mapping.txt).
 
-NEXT: F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+IN PROGRESS NOW: F2 (verdict: real by the code; whether a listen ever fails at STATE_ON on this phone is not known). Written but NOT yet committed:
+ - BtServer.secondTry(): if the state is "error" after a try the phone made by itself, wait 1.5 s (outside LOCK) and listenNow() once more.
+   Used by start(), by the receiver's STATE_ON job, and by setup() (which had the same lines inline). No offline test is possible (Android Bluetooth).
+ About to: test, build, checkpoint. Then: decide on the reviewer's optional extra for F4, full mutate_link.py, final notes with ANSWER.
+
+NEXT: (after F2) final checks; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
