@@ -34,14 +34,17 @@ HANDLED SO FAR:
     Bluetooth check: Turn the hotspot on can still be pressed").
  F8 FIXED in commit 7278693 (verdict: real). HomeTab.onHide says "... The lines above show the phone's latest answer, which may be from before the
     switch." New picture state-home-left-during-follow-up (PreviewTest.homeLeftDuringFollowUp).
- F9 FIXED (verdict: real), being saved now: new pure rule LinkState.saidOnHome(kind) (no Home card for NOT_REACHED; Settings keeps "Not reached");
+ F9 FIXED in commit 358f1e2 (verdict: real). New pure rule LinkState.saidOnHome(kind) (no Home card for NOT_REACHED; Settings keeps "Not reached");
     the last sentence of the "not ready" card is now "Without that link, a hotspot that is switched off can only be switched on again at the
     phone." LinkStateTest 3997 checks; 4 new "state:" breakages (18 of 18 caught); PreviewTest.settingsLinkStates checks that Home has no
     "Open Settings" card in that state (fails with the old rule in a scratch copy). docs/REMOTE_LINK.md says the three new rules (F3, F4, F9).
+ F10 FIXED (verdict: real), being saved now: Reach.call joins with "Bluetooth was tried: " (claims nothing about whether the request arrived; the
+    reviewer's "Over Bluetooth: " read badly after "..., and "). ReachTest 515853 checks (new: a lost answer over Bluetooth is never said not to
+    have got through); mutate_link.py: 1 new "reach:" breakage, caught.
 
-IN PROGRESS NOW: saving F9 (test, build, preview, checkpoint). Then F10.
+IN PROGRESS NOW: saving F10 (test, build, preview, checkpoint). Then F7.
 
-NEXT: F10, F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+NEXT: F7, F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
