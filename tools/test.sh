@@ -22,6 +22,9 @@ java -cp "$out" com.tj.linkmeter.QualityPresetsTest || fail=1
 echo "== Phone address field (PhoneAddress: only a complete IPv4 address or nothing is ever stored, and the line under the field says which one is in use)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhoneAddress.java tools/test/PhoneAddressTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhoneAddressTest || fail=1
+echo "== The Phone tab's rules (PhoneTabRules: which banner wins, the battery current in words, a switch the phone does not report is 'not known', the update only over the hotspot)"
+javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhoneTabRules.java tools/test/PhoneTabRulesTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.PhoneTabRulesTest || fail=1
 echo "== PhonePower (the Sleep / Wake button rules)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhonePower.java tools/test/PhonePowerTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhonePowerTest || fail=1

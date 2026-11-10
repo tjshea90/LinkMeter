@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -368,6 +368,25 @@ A = [
  ("address: a half typed address is not said to be unsaved", "PhoneAddress.java", "return notSaved ? \"Not saved yet: type all four numbers, or clear the field. \" + line : line;", "return line;"),
  ("address: a found address is said to be typed", "PhoneAddress.java", 'line = "Using: " + found + ", found by itself.";', 'line = "Using: the address you typed, " + found + ".";'),
 ]
+PHONETAB_FILES = ["PhoneTabRules.java"]
+PHONETAB_TEST = ROOT + "/tools/test/PhoneTabRulesTest.java"
+B = [
+ ("phonetab: an unreachable phone shows no banner", "PhoneTabRules.java", "if (!reachable) {\n            return Banner.UNREACHABLE;\n        }", "if (false) {\n            return Banner.UNREACHABLE;\n        }"),
+ ("phonetab: airplane mode does not win over Shizuku", "PhoneTabRules.java", "if (Boolean.TRUE.equals(airplane)) {\n            return Banner.AIRPLANE;\n        }\n        if (Boolean.FALSE.equals(shizukuRunning)) {\n            return Banner.SHIZUKU_OFF;\n        }", "if (Boolean.FALSE.equals(shizukuRunning)) {\n            return Banner.SHIZUKU_OFF;\n        }\n        if (Boolean.TRUE.equals(airplane)) {\n            return Banner.AIRPLANE;\n        }"),
+ ("phonetab: a phone that does not say about Shizuku gets the Shizuku banner", "PhoneTabRules.java", "if (Boolean.FALSE.equals(shizukuRunning)) {", "if (!Boolean.TRUE.equals(shizukuRunning)) {"),
+ ("phonetab: an older Shizuku answer is read as not allowed", "PhoneTabRules.java", "if (Boolean.TRUE.equals(shizukuRunning) && Boolean.FALSE.equals(shizukuAllowed)) {", "if (Boolean.TRUE.equals(shizukuRunning) && !Boolean.TRUE.equals(shizukuAllowed)) {"),
+ ("phonetab: only an older phone app gets the version banner", "PhoneTabRules.java", "phoneCode >= 0 && ownCode >= 0 && phoneCode != ownCode", "phoneCode >= 0 && ownCode >= 0 && phoneCode < ownCode"),
+ ("phonetab: an unknown version gets the version banner", "PhoneTabRules.java", "phoneCode >= 0 && ownCode >= 0 && phoneCode != ownCode", "phoneCode != ownCode"),
+ ("phonetab: the version banner is never shown", "PhoneTabRules.java", "return Banner.VERSION;", "return Banner.NONE;"),
+ ("phonetab: charging is said as using", "PhoneTabRules.java", "if (v > 0) {\n            return \"The phone is charging at about \" + v + \" mA.\";", "if (v > 0) {\n            return \"The phone is using about \" + v + \" mA.\";"),
+ ("phonetab: the current keeps its minus sign", "PhoneTabRules.java", "(-v) + \" mA.\"", "v + \" mA.\""),
+ ("phonetab: a missing current is said as zero", "PhoneTabRules.java", "if (cur == null) {\n            return null;\n        }", "if (cur == null) {\n            return \"The phone's battery current is 0 mA.\";\n        }"),
+ ("phonetab: a switch that is not known reads as off", "PhoneTabRules.java", "return on == null ? \"not known\" : on.booleanValue() ? \"on\" : \"off\";", "return on != null && on.booleanValue() ? \"on\" : \"off\";"),
+ ("phonetab: the update is allowed over Bluetooth", "PhoneTabRules.java", "return overBluetooth ? \"needs the hotspot: the app is too big to send over Bluetooth\" : \"\";", "return \"\";"),
+ ("phonetab: the update is allowed with no phone", "PhoneTabRules.java", "if (!reachable) {\n            return \"The phone cannot be reached.\";\n        }", "if (false) {\n            return \"The phone cannot be reached.\";\n        }"),
+ ("phonetab: any error means an older phone", "PhoneTabRules.java", "return answer != null && answer.contains(\"unknown action\");", "return answer != null;"),
+ ("phonetab: a phone app that is not known has a version", "PhoneTabRules.java", "return code >= 0 ? (name", "return code >= -1 ? (name"),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -375,7 +394,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (SAVER_FILES, SAVER_TEST, "com.tj.linkmeter.SaverPlanTest", V),
           (SAFETYREPORT_FILES, SAFETYREPORT_TEST, "com.tj.linkmeter.SafetyReportTest", Y),
           (PACE2_FILES, PACE2_TEST, "com.tj.linkmeter.ScreenPaceTest", Z), (POWER_FILES, POWER_TEST, "com.tj.linkmeter.PhonePowerTest", Q),
-          (QUALITY_FILES, QUALITY_TEST, "com.tj.linkmeter.QualityPresetsTest", G), (ADDRESS_FILES, ADDRESS_TEST, "com.tj.linkmeter.PhoneAddressTest", A)]
+          (QUALITY_FILES, QUALITY_TEST, "com.tj.linkmeter.QualityPresetsTest", G), (ADDRESS_FILES, ADDRESS_TEST, "com.tj.linkmeter.PhoneAddressTest", A),
+          (PHONETAB_FILES, PHONETAB_TEST, "com.tj.linkmeter.PhoneTabRulesTest", B)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

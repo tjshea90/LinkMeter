@@ -717,48 +717,14 @@ final class HomeTab extends Tab {
         busy = true;
         paintSwitches();
         setAction("Checking the Bluetooth link…", true);
-        new Thread(() -> {
-            String w;
-            try {
-                w = linkTrouble(Call.reach(act).bluetoothOnly("GET", "/s", 8000));
-            } catch (RuntimeException e) {
-                // an escape from this thread would end the app; a test that could not be made is a test that failed
-                w = "Bluetooth could not be tried on this tablet (" + e + ").";
+        LinkCheck.run(act, why -> {
+            busy = false;
+            setAction("", true);
+            paintSwitches();
+            if (polling && fHotspot != null) { // this screen is still the one on show
+                askOff(standby, why.isEmpty(), why);
             }
-            final String why = w;
-            act.ui.post(() -> {
-                busy = false;
-                setAction("", true);
-                paintSwitches();
-                if (polling && fHotspot != null) { // this screen is still the one on show
-                    askOff(standby, why.isEmpty(), why);
-                }
-            });
-        }, "linkmeter-bt-check").start();
-    }
-
-    /** What the live call over Bluetooth showed: "" when the phone answered and says its link is on, else the reason. */
-    private static String linkTrouble(Reach.Result res) {
-        if (res.resp == null) {
-            String e = res.error;
-            return (res.btTried ? "Bluetooth was tried just now and did not get through: " : "Bluetooth could not be tried: ")
-                    + e + (e.endsWith(".") || e.endsWith(")") ? "" : ".") + " Test and Set up are in " + SETTINGS
-                    + ", under Bluetooth link.";
-        }
-        if (res.resp.code == 401) {
-            return "The phone answered over Bluetooth just now, but it does not know this tablet.";
-        }
-        if (res.resp.code != 200) {
-            return "The phone answered over Bluetooth just now with an error (" + res.resp.code + ").";
-        }
-        try {
-            if ("on".equals(new JSONObject(res.resp.body).optString("bt", ""))) {
-                return "";
-            }
-        } catch (JSONException e) {
-            // not a status: said below
-        }
-        return "The phone answered over Bluetooth just now, but its status does not say that its Bluetooth link is on.";
+        });
     }
 
     private void askOff(final boolean standby, boolean linkWorks, String why) {
