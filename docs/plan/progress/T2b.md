@@ -1,16 +1,14 @@
-STATUS: WORKING
-TASK: Track T2 part b (the tablet's waste and four small settings faults), brief docs/plan/2026-11-10/briefs/T2b.md. Started from commit b648049 (T2a finished) on branch ccr-dbf3eb41-2sjhj8. ONE session, no agents.
+STATUS: DONE
+TASK: Track T2 part b (the tablet's waste and four small settings faults), brief docs/plan/2026-11-10/briefs/T2b.md. Started from commit b648049 on branch ccr-dbf3eb41-2sjhj8. ONE session, no agents.
 
-DONE SO FAR: nothing of part b yet (T2a is done: see `tools/progress.sh --show T2a`).
-
-IN PROGRESS NOW: reading the code for the seven findings. Plan (in order, one finished step each):
- 1. ScreenPace (pure, new) + ScreenPaceTest + mutations: the Screen tab lets go of hold-awake and asks every 15 s once the phone's screen has been off 2 min (counted from the later of "went off" and "last touch") or the tab was untouched 30 min; a touch (new Tab.onUserInteraction hook from MainActivity) or the phone's screen coming on takes both back at once; generation number on statePoll (D23); the option's hint says it lets go when the phone's screen is off. CHECK /screen/state is in Reach.statusRead (or hotspot-only, which it already is via Call.runOverHotspot).
- 2. ONE Sleep target: PhonePower.SLEEP = "/screen/off?nodoze=1" used by HomeTab, ScreenTab button and ScreenTab leave; remove the option sleepFullOff (AdvancedPanel line ~295, ScreenPrefs getter/setter); old phone apps ignore the query.
- 3. ControlTab: replace the two postDelayed(this::onShow) after "Update phone" by a status-only refresh guarded by a shown flag; BootSection.onShow removes its old loop first; tick every 1 s only while a boot run is active or the tablet's own hotspot is not off, otherwise 5 s.
- 4. KBPS: drop 300 from ScreenPrefs.KBPS (phone floor is 500); a stored 300 must map to the nearest step.
- 5. Custom quality numbers kept in their own keys; the chip cycle includes Custom when custom numbers exist.
- 6. Settings' phone address: store only a complete IPv4 or empty (pure rule + test); show "Using: <addr>, found by itself / the typed address".
- 7. Speed tab sentence: "Uses about as many MB as the download and upload speeds added together (around 20 MB at 10 Mbit/s)." after checking SpeedTest's arithmetic.
- Then: tools/test.sh, gradlew, mutate_link.py, tools/preview.sh (look at tablet-screen*, tablet-settings*, tablet-speed*), HANDOFF T2 line ("BUILT, review pending"), NO_RELEASE checkpoint, own review pass of all of T2, plain tools/checkpoint.sh (release).
-
-LEARNED: see T2a notes (trailer, no rm -rf hook, no cd, JAVA_TOOL_OPTIONS noise). Do not edit app sources while a verification build is running.
+DONE SO FAR (all saved; finished step = checkpoint 0d3d452 NO_RELEASE, closing release save = checkpoint 0dc4121):
+ 1. ScreenPace (pure) + ScreenPaceTest (315 checks) + 13 breakages (pace2:): the Screen tab RESTS (no hold-awake, asks every 15 s) once the phone's screen has been off 2 min (from the later of "went off" and the last touch) or the tab was untouched 30 min; a touch (Tab.onUserInteraction <- MainActivity.onUserInteraction) or the phone's screen coming on ends the rest at once; ONE poll chain with a generation number (D23); heldAwake only re-applied when it changes; the option's hint says it lets go. /screen/state is in Reach.statusRead and is asked hotspot-only (checked).
+ 2. ONE Sleep target PhonePower.SLEEP = "/screen/off?nodoze=1" / WAKE = "/screen/on" for HomeTab, the Sleep button and leaving the tab; option sleepFullOff removed (AdvancedPanel, ScreenPrefs, reset). Old phone apps ignore the word. PhonePowerTest + 2 breakages (power:).
+ 3. ControlTab.refreshStatus (only while shown) replaces the two delayed onShow calls after "Update phone"; BootSection.onShow removes its old loop first; ticks 1 s only while a boot run is active or the tablet's own hotspot is not off, else 5 s.
+ 4. KBPS: 300 removed (phone floors at 500); vidKbps() floors a stored 300.
+ 5. QualityPresets (pure) + test (47 checks) + 10 breakages (quality:); ScreenPrefs keeps custom numbers in cVidW/cVidK/cPicW/cPicQ (saveCustom when Custom, restored by setPreset(CUSTOM), saved before a preset overwrites them, cleared by Reset all); chip cycles Saver, Fast, Balanced, Sharp, Custom (if any); options row offers Custom.
+ 6. PhoneAddress (pure) + test (47 checks) + 11 breakages (address:): SettingsTab stores only a complete IPv4 or "", and shows "Using: ..." ("the address you typed" / "found by itself" / "found none on its Wi-Fi network") plus "Not saved yet" while half typed.
+ 7. SpeedTab sentence: about as many MB as download + upload speeds added together (around 20 MB at 10 Mbit/s each way); SpeedTest runs 8 s each way.
+VERIFIED on the final tree: tools/test.sh exit 0; ./gradlew --no-daemon assembleRelease BUILD SUCCESSFUL; mutate_link.py: saver 60/60, safety 4/4, pace2 13/13, power 2/2, quality 10/10, address 11/11 caught, plus a sample of 61 older breakages (holds, words, trouble, pace) all caught; tools/preview.sh drawn, Home saver states, Settings and Speed looked at at 600 px.
+ANSWER: every finding of T2b is fixed (battery D7, D23, D8, D15; control-tab D10, D2, D15; settings-contradictions D8, D10, D11, D12, D16). NOT seen on a device: that the tablet really sleeps while the Screen tab rests. Not built: a better sign of use than touches (the picture keeps changing) for long films.
+NEXT: check the pipeline run of 0dc4121 and the release (GitHub MCP actions_list, list_releases); then HANDOFF START HERE names the release; then T3 (briefs/T3a.md, T3b.md) in a new step.
