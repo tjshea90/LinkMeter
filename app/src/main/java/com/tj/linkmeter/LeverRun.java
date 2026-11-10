@@ -8,19 +8,20 @@ import java.util.Locale;
 /**
  * Tablet side, with no Android in it, so it is tested on a computer against simulated phones (tools/test/LeverRunTest.java).
  *
- * Compares phone settings that the phone DOES obey (5G off = 4G only, and the 5G leg off while 5G stays allowed) against how the
- * phone is now, on the upload speed of its mobile data. Built for a bad place and a bad time of day, where an upload test gives
- * 0.1 to 1 Mbit/s and the network itself changes from minute to minute:
- *  - every setting is measured once in every ROUND, in a RANDOM order within the round (never the same setting first twice in
- *    a row), so a busy or quiet stretch of the network hits the settings by chance and not by position;
+ * Compares the two things this phone DOES obey: how it is now, and the other 5G state (5G off = 4G only, or 5G allowed), on the
+ * upload speed of its mobile data. (Versions up to v0.2.102 also compared "the 5G leg off"; this modem answered NOT_SUPPORTED to
+ * that, and band locks were never obeyed either, so a run now has exactly two settings.) Built for a bad place and a bad time of
+ * day, where an upload test gives 0.1 to 1 Mbit/s and the network itself changes from minute to minute:
+ *  - each setting is measured once in every ROUND, in a RANDOM order within the round (each round's order is a fair coin), so a busy
+ *    or quiet stretch of the network hits the settings by chance and not by position;
  *  - the verdict compares each setting with "as it is now" round by round. Because the order was random, "this setting makes no
  *    difference" means each round is a fair coin flip, so the chance of so many wins by luck is exact (a sign test): a CLEAR
  *    difference needs 1.3 times the median AND a luck chance of 5% or less (5 of 5 rounds, 6 of 6, 7 of 7, 8 of 9), a possible
  *    one 1.15 times and 20% or less (4 of 5). Three or four rounds can only suggest, never prove. Otherwise it says "no clear
  *    difference", with the spread of the baseline rounds as the noise;
  *  - a setting is only counted after the phone's carrier list shows it took effect (no 5G cell left when the setting says none),
- *    and "off" is tried again as "off now" once if the 5G cell stays;
- *  - however the run ends (done, stopped, a failure, a lost phone), 5G and the 5G leg are put back as they were, with retries.
+ *    and one that the phone does not obey twice is left out;
+ *  - however the run ends (done, stopped, a failure, a lost phone), 5G is put back as it was, with retries.
  */
 final class LeverRun {
     interface Listener {
@@ -31,27 +32,61 @@ final class LeverRun {
         void rows(List<Row> rows, int best, boolean running);
     }
 
+    /** The answer to one question to the phone: ok = it could be read, text = the phone's words (or why not), value = what was read. */
+    interface Done<T> {
+        void done(boolean ok, String text, T value);
+    }
+
+    /** What the phone's radio was using at one moment. */
+    static final class Observation {
+        final RadioState state;
+        final int rsrp;
+
+        Observation(RadioState state, int rsrp) {
+            this.state = state;
+            this.rsrp = rsrp;
+        }
+    }
+
+    /** The phone's speed test, as far as the run needs it. phase: 4 = done, 5 = error, others = still going or idle. */
+    static final class Upload {
+        final int phase;
+        final double up;
+        final double ping;
+        final double live;
+        final String error;
+        /** Why a test that finished has no upload number ("" = none). The phone leaves the number at 0 then, which is not a measurement. */
+        final String warn;
+
+        Upload(int phase, double up, double ping, double live, String error) {
+            this(phase, up, ping, live, error, "");
+        }
+
+        Upload(int phase, double up, double ping, double live, String error, String warn) {
+            this.phase = phase;
+            this.up = up;
+            this.ping = ping;
+            this.live = live;
+            this.error = error;
+            this.warn = warn == null ? "" : warn;
+        }
+    }
+
     /** How the run talks to the phone and the clock. The real one is LeverLink; the test has a simulated phone. */
     interface Link {
         /** Is 5G switched off in the phone's allowed network types? ok = the phone answered in a way that could be read. */
-        void fiveGOff(BandSweep.Done<Boolean> d);
+        void fiveGOff(Done<Boolean> d);
 
         /** Switches 5G off (true) or on (false). ok = the phone says it is now as asked. */
-        void switchFiveG(boolean off, BandSweep.Done<Boolean> d);
+        void switchFiveG(boolean off, Done<Boolean> d);
 
-        /** Is the 5G leg switched off? ok = the phone answered in a way that could be read; value TRUE = off. */
-        void legOff(BandSweep.Done<Boolean> d);
+        void observe(Done<Observation> d);
 
-        /** how = "on", "off" or "off-now". ok = the modem accepted it (the text says why if not; NrLeg.cannot(text) = it never can). */
-        void switchLeg(String how, BandSweep.Done<Boolean> d);
+        void startUpload(Done<Void> d);
 
-        void observe(BandSweep.Done<BandSweep.Observation> d);
+        void uploadStatus(Done<Upload> d);
 
-        void startUpload(BandSweep.Done<Void> d);
-
-        void uploadStatus(BandSweep.Done<BandSweep.Upload> d);
-
-        void stopUpload(BandSweep.Done<Void> d);
+        void stopUpload(Done<Void> d);
 
         void later(long ms, Runnable r);
 
@@ -63,56 +98,31 @@ final class LeverRun {
 
     // ------------------------------------------------------------ what is compared
 
-    /**
-     * One thing to compare. fiveG: TRUE = 5G allowed, FALSE = 5G off (4G only), null = as it was when the run started.
-     * leg: TRUE = the 5G leg may be added, FALSE = kept from being added, null = as it was (it only matters while 5G is allowed).
-     */
+    /** One thing to compare. fiveG: TRUE = 5G allowed, FALSE = 5G off (4G only), null = as it was when the run started. */
     static final class Setting {
         final String label;
         final Boolean fiveG;
-        final Boolean leg;
 
-        Setting(String label, Boolean fiveG, Boolean leg) {
+        Setting(String label, Boolean fiveG) {
             this.label = label;
             this.fiveG = fiveG;
-            this.leg = leg;
         }
     }
 
-    /** The settings the tab offers. "As it is now" is always first: it is what everything else is compared with. */
-    static List<Setting> settings(boolean fourGOnly, boolean legOff, boolean fiveGNormal) {
+    /**
+     * The settings the tab offers. "As it is now" is always first: it is what everything else is compared with. The tab always asks
+     * for both of the others; the one that is the same as how the phone is now is dropped when the run starts, and the table says so.
+     */
+    static List<Setting> settings(boolean fourGOnly, boolean fiveGAllowed) {
         List<Setting> l = new ArrayList<>();
-        l.add(new Setting("As it is now", null, null));
+        l.add(new Setting("As it is now", null));
         if (fourGOnly) {
-            l.add(new Setting("4G only (5G off)", Boolean.FALSE, null));
+            l.add(new Setting("4G only (5G off)", Boolean.FALSE));
         }
-        if (legOff) {
-            l.add(new Setting("5G allowed, 5G leg off", Boolean.TRUE, Boolean.FALSE));
-        }
-        if (fiveGNormal) {
-            l.add(new Setting("5G on, normal", Boolean.TRUE, Boolean.TRUE));
+        if (fiveGAllowed) {
+            l.add(new Setting("5G allowed", Boolean.TRUE));
         }
         return l;
-    }
-
-    /** What a setting means for the phone, once "as it was" is known. legOff null = does not matter (5G is off). */
-    static final class Target {
-        final boolean fiveGOff;
-        final Boolean legOff;
-
-        Target(boolean fiveGOff, Boolean legOff) {
-            this.fiveGOff = fiveGOff;
-            this.legOff = legOff;
-        }
-
-        boolean sameAs(Target o) {
-            return fiveGOff == o.fiveGOff && (legOff == null ? o.legOff == null : legOff.equals(o.legOff));
-        }
-
-        /** The phone should show no 5G cell. */
-        boolean expectNoNr() {
-            return fiveGOff || Boolean.TRUE.equals(legOff);
-        }
     }
 
     // ------------------------------------------------------------ results
@@ -120,15 +130,14 @@ final class LeverRun {
     /** What one setting found. */
     static final class Row {
         final Setting setting;
-        final Target target;
+        /** What the setting means for the phone, once "as it was" is known: 5G off (4G only) or not. */
+        final boolean fiveGOff;
         /** Upload in Mbit/s per round; NaN = not measured in that round. */
         final double[] byRound;
         /** Measurements that did not count: the phone stayed on 5G although the setting says none. */
         int ineffective;
         /** Measurements made although the carriers could not be listed. */
         int unverified;
-        /** The modem cannot do this setting at all (the 5G leg on a modem that cannot switch it), or does not obey it (notObeyed). */
-        boolean unavailable;
         /** The phone took the setting but kept 5G anyway, twice in a row: it is left out of the other rounds. */
         boolean notObeyed;
         /** What the phone said about 5G the last time a measurement was not counted (its list, its label, its state). */
@@ -137,9 +146,9 @@ final class LeverRun {
         int rsrp = Integer.MIN_VALUE;
         String note = "";
 
-        Row(Setting setting, Target target, int rounds) {
+        Row(Setting setting, boolean fiveGOff, int rounds) {
             this.setting = setting;
-            this.target = target;
+            this.fiveGOff = fiveGOff;
             this.byRound = new double[rounds];
             Arrays.fill(byRound, Double.NaN);
         }
@@ -238,7 +247,7 @@ final class LeverRun {
      */
     static Verdict verdict(Row base, Row r) {
         int[] p = pairs(base, r);
-        if (p[0] < 3 || r.unavailable) {
+        if (p[0] < 3 || r.notObeyed) {
             return Verdict.UNKNOWN;
         }
         double mb = base.median();
@@ -276,7 +285,7 @@ final class LeverRun {
         Row r = rows.get(i);
         StringBuilder sb = new StringBuilder(best ? "★ " : "  ").append(r.setting.label).append("\n    ");
         if (r.n() == 0) {
-            sb.append(r.notObeyed ? "left out: this phone does not obey it" : r.unavailable ? "not possible on this phone" : "no upload result");
+            sb.append(r.notObeyed ? "left out: this phone does not obey it" : "no upload result");
         } else {
             sb.append(String.format(Locale.US, "upload median %.2f Mbit/s", r.median()));
             sb.append(" (");
@@ -352,8 +361,6 @@ final class LeverRun {
             if (r.notObeyed) {
                 sb.append("\n\"").append(r.setting.label).append("\" was left out: the phone kept 5G although it was told not to, "
                         + "so there is no honest number for it (this phone does not obey that setting).");
-            } else if (r.unavailable) {
-                sb.append("\n\"").append(r.setting.label).append("\" is not possible on this phone's modem.");
             } else if (verdict(base, r) == Verdict.WORSE) {
                 sb.append("\n\"").append(r.setting.label).append("\" was WORSE than \"").append(base.setting.label).append("\".");
             }
@@ -370,6 +377,8 @@ final class LeverRun {
     private final Listener ui;
     private final List<Setting> wanted;
     private final int rounds;
+    /** The title of the tab that holds the Restore everything button, for the closing words (the tablet passes its Tab constant). */
+    private final String tabName;
     private final List<Row> rows = new ArrayList<>();
     /** {row, round} in the order they are measured. */
     private final List<int[]> schedule = new ArrayList<>();
@@ -378,38 +387,26 @@ final class LeverRun {
     private boolean cancelled;
     private boolean finishing;
     private boolean origFiveGOff;
-    private boolean origLegOff;
-    private boolean legReadable;
-    /**
-     * The phone's modem says it cannot switch the 5G leg. Then the leg has no setting at all: the state the phone reports for it
-     * ("off") is only the answer of a modem that has nothing to report, so it is not believed, and no setting is judged by it.
-     */
-    private boolean legUnsupported;
-    /** The believed leg state is known to match the phone: it was read, or the run has set it itself. */
-    private boolean legSynced;
     private boolean curFiveGOff;
-    private boolean curLegOff;
-    /** The 5G leg was switched at some point, so it must be looked at when the phone is put back. */
-    private boolean legTouched;
     private String endNote = "";
     private String planNote = "";
     private Row row;
     private int round;
-    private boolean escalated;
 
     private final java.util.Random rnd;
 
-    LeverRun(Link link, Listener ui, List<Setting> settings, int rounds) {
-        this(link, ui, settings, rounds, new java.util.Random());
+    LeverRun(Link link, Listener ui, List<Setting> settings, int rounds, String tabName) {
+        this(link, ui, settings, rounds, tabName, new java.util.Random());
     }
 
-    /** rnd: the source of the random order (the test passes a seeded one). */
-    LeverRun(Link link, Listener ui, List<Setting> settings, int rounds, java.util.Random rnd) {
+    /** rnd: the source of the random order (the test passes a seeded one; neighbouring small seeds need scrambling, see the test). */
+    LeverRun(Link link, Listener ui, List<Setting> settings, int rounds, String tabName, java.util.Random rnd) {
         this.rnd = rnd;
         this.link = link;
         this.ui = ui;
         this.wanted = settings;
         this.rounds = Math.max(1, Math.min(rounds, 9));
+        this.tabName = tabName;
     }
 
     boolean running() {
@@ -452,15 +449,8 @@ final class LeverRun {
         link.fiveGOff((ok, text, off) -> {
             origFiveGOff = ok && Boolean.TRUE.equals(off);
             curFiveGOff = origFiveGOff;
-            link.legOff((ok2, text2, off2) -> {
-                legUnsupported = NrLeg.cannot(text2);
-                legReadable = !legUnsupported && ok2 && off2 != null;
-                legSynced = legReadable;
-                origLegOff = legReadable && Boolean.TRUE.equals(off2);
-                curLegOff = origLegOff;
-                plan();
-                next();
-            });
+            plan();
+            next();
         });
     }
 
@@ -473,76 +463,33 @@ final class LeverRun {
 
     /** Works out what each setting means for this phone, drops repeats, and orders the measurements round by round. */
     private void plan() {
-        List<Target> seen = new ArrayList<>();
-        boolean asksForLeg = false;
+        List<Boolean> seen = new ArrayList<>();
         for (Setting s : wanted) {
             boolean fiveGOff = s.fiveG == null ? origFiveGOff : !s.fiveG;
-            asksForLeg |= s.leg != null;
-            if (legUnsupported && !fiveGOff && Boolean.FALSE.equals(s.leg)) {
-                // "5G leg off" on a modem that says it cannot switch the leg: there is nothing to measure, and it is said so
-                Row none = new Row(s, new Target(false, Boolean.TRUE), rounds);
-                none.unavailable = true;
-                none.note = "this phone's modem cannot switch the 5G leg";
-                rows.add(none);
-                continue;
-            }
-            // on a modem that cannot switch the leg the leg is no part of any setting (5G allowed is just 5G allowed)
-            Boolean legOff = fiveGOff || legUnsupported ? null
-                    : (s.leg == null ? Boolean.valueOf(origLegOff) : Boolean.valueOf(!s.leg));
-            Target t = new Target(fiveGOff, legOff);
-            boolean dup = false;
-            for (Target o : seen) {
-                dup |= o.sameAs(t);
-            }
-            if (dup) {
+            if (seen.contains(fiveGOff)) {
                 planNote = join(planNote, "\"" + s.label + "\" is the same as a setting above on this phone, so it was measured once.");
                 continue;
             }
-            seen.add(t);
-            rows.add(new Row(s, t, rounds));
-        }
-        if (legUnsupported && asksForLeg) {
-            planNote = join(planNote, "This phone's modem says it cannot switch the 5G leg, so the leg settings are left out and 5G "
-                    + "is measured as the phone has it.");
-        }
-        boolean usesLeg = false;
-        for (Row r : rows) {
-            usesLeg |= r.target.legOff != null;
-        }
-        if (!legReadable && !legUnsupported && usesLeg) {
-            planNote = join(planNote, "This phone does not report whether the 5G leg is on, so the run sets it itself and leaves it on "
-                    + "(the normal state) at the end.");
+            seen.add(fiveGOff);
+            rows.add(new Row(s, fiveGOff, rounds));
         }
         int n = rows.size();
-        int prevFirst = -1;
-        int prevLast = -1;
         for (int r = 0; r < rounds; r++) {
             int[] perm = new int[n];
             for (int i = 0; i < n; i++) {
                 perm[i] = i;
             }
+            // a fresh shuffle every round: with two settings that is a fair coin for which one comes first, which is exactly what
+            // the sign test in verdict() assumes
             for (int i = n - 1; i > 0; i--) {
                 int j = rnd.nextInt(i + 1);
                 int t = perm[i];
                 perm[i] = perm[j];
                 perm[j] = t;
             }
-            if (n >= 3 && r > 0 && (perm[0] == prevFirst || perm[0] == prevLast)) {
-                // not the setting that was first last time, and not the one that was just measured
-                for (int i = 1; i < n; i++) {
-                    if (perm[i] != prevFirst && perm[i] != prevLast) {
-                        int t = perm[0];
-                        perm[0] = perm[i];
-                        perm[i] = t;
-                        break;
-                    }
-                }
-            }
             for (int i = 0; i < n; i++) {
                 schedule.add(new int[] {perm[i], r});
             }
-            prevFirst = perm[0];
-            prevLast = perm[n - 1];
         }
     }
 
@@ -556,13 +503,12 @@ final class LeverRun {
                 finish();
                 return;
             }
-            if (!rows.get(schedule.get(pos)[0]).unavailable) {
+            if (!rows.get(schedule.get(pos)[0]).notObeyed) {
                 break;
             }
         }
         row = rows.get(schedule.get(pos)[0]);
         round = schedule.get(pos)[1];
-        escalated = false;
         publish();
         say("setting up");
         applyFiveG();
@@ -580,57 +526,23 @@ final class LeverRun {
     }
 
     private void applyFiveG() {
-        final Target t = row.target;
-        if (t.fiveGOff == curFiveGOff) {
-            applyLeg(false);
+        final boolean off = row.fiveGOff;
+        if (off == curFiveGOff) {
+            settle(1500);
             return;
         }
-        say(t.fiveGOff ? "switching 5G off" : "switching 5G on");
-        link.switchFiveG(t.fiveGOff, (ok, text, v) -> {
+        say(off ? "switching 5G off" : "switching 5G on");
+        link.switchFiveG(off, (ok, text, v) -> {
             if (cancelled) {
                 finish();
                 return;
             }
             if (!ok) {
-                skip("5G could not be switched " + (t.fiveGOff ? "off" : "on") + " (" + text + ")");
+                skip("5G could not be switched " + (off ? "off" : "on") + " (" + text + ")");
                 return;
             }
-            curFiveGOff = t.fiveGOff;
-            applyLeg(true);
-        });
-    }
-
-    private void applyLeg(final boolean switched5g) {
-        final Boolean want = row.target.legOff;
-        if (want == null || (want == curLegOff && legSynced)) {
-            settle(switched5g ? 10000 : 1500);
-            return;
-        }
-        say(want ? "switching the 5G leg off" : "switching the 5G leg on");
-        legTouched = true;
-        link.switchLeg(want ? "off" : "on", (ok, text, v) -> {
-            if (cancelled) {
-                finish();
-                return;
-            }
-            if (!ok) {
-                if (NrLeg.cannot(text)) {
-                    // found out only now (the phone's reading did not say): from here on the leg is no part of any setting, and what the
-                    // phone reported for it ("off") is not believed, so a note that was based on it is taken back
-                    legUnsupported = true;
-                    row.unavailable = true;
-                    row.note = join(row.note, "this phone's modem cannot switch the 5G leg");
-                    forgetKeptNrNotes();
-                    publish();
-                    next();
-                } else {
-                    skip("the 5G leg could not be switched (" + text + ")");
-                }
-                return;
-            }
-            curLegOff = want;
-            legSynced = true;
-            settle(switched5g ? 10000 : 6000);
+            curFiveGOff = off;
+            settle(10000);
         });
     }
 
@@ -656,11 +568,11 @@ final class LeverRun {
                 measure();
                 return;
             }
-            row.using = BandSweep.usingText(obs.state, row.target.fiveGOff);
+            row.using = obs.state.usingText(row.fiveGOff);
             row.rsrp = obs.rsrp;
             // A 5G carrier in the phone's list counts only if the phone's own 5G label and state do not contradict it: the list can
             // be out of date for a while after 5G was switched off (that made this run call a phone that had gone to 4G "still on 5G").
-            if (!expectsNoNr(row) || !obs.state.nrCarrierInUse(row.target.fiveGOff)) {
+            if (!row.fiveGOff || !obs.state.nrCarrierInUse(true)) {
                 measure();
                 return;
             }
@@ -671,33 +583,17 @@ final class LeverRun {
             }
             if (isBaseline(row)) {
                 // "As it is now" is what the phone does when it is left alone, and everything else is compared with it: it is measured
-                // whatever the phone shows (and never asked to drop 5G), and the table says so.
-                String said = row.target.fiveGOff ? KEPT_NR_NOTE_OFF : KEPT_NR_NOTE_LEG;
-                if (!row.note.contains(said)) {
-                    row.note = join(row.note, said);
+                // whatever the phone shows (and never thrown away), and the table says so.
+                if (!row.note.contains(KEPT_NR_NOTE)) {
+                    row.note = join(row.note, KEPT_NR_NOTE);
                 }
                 measure();
-                return;
-            }
-            if (Boolean.TRUE.equals(row.target.legOff) && !escalated) {
-                // "off" lets the modem drop the 5G cell when the connection ends; "off now" drops it at once
-                escalated = true;
-                say("the 5G cell is still there: asking the modem to drop it now");
-                link.switchLeg("off-now", (a, t, v) -> {
-                    if (cancelled) {
-                        finish();
-                        return;
-                    }
-                    final long t1 = link.now();
-                    link.later(6000, () -> verify(t1)); // up to 20 seconds in all after "off now", looking every 3 seconds
-                });
                 return;
             }
             row.ineffective++;
             row.evidence = obs.state.fiveGEvidence();
             if (row.n() == 0 && row.ineffective >= DROP_AFTER) {
                 // the phone took the setting but kept 5G twice in a row: it will not obey, and every further round would only cost minutes
-                row.unavailable = true;
                 row.notObeyed = true;
             }
             publish();
@@ -707,26 +603,10 @@ final class LeverRun {
 
     /** "As it is now" changes nothing, so it is never judged by what the phone shows. */
     private static boolean isBaseline(Row r) {
-        return r.setting.fiveG == null && r.setting.leg == null;
+        return r.setting.fiveG == null;
     }
 
-    static final String KEPT_NR_NOTE_OFF = "5G is switched off but the phone still shows a 5G cell: measured as it is";
-    static final String KEPT_NR_NOTE_LEG = "the phone's 5G leg is switched off but it still uses 5G: measured as it is";
-
-    /** Does this setting mean "the phone shows no 5G cell"? A leg setting means nothing on a modem that cannot switch the leg. */
-    private boolean expectsNoNr(Row r) {
-        return r.target.fiveGOff || (!legUnsupported && Boolean.TRUE.equals(r.target.legOff));
-    }
-
-    /** The modem turned out to have no 5G leg setting: a note that said the leg was off but still used is not true any more. */
-    private void forgetKeptNrNotes() {
-        for (Row r : rows) {
-            if (r.note.contains(KEPT_NR_NOTE_LEG)) {
-                String left = r.note.replace("; " + KEPT_NR_NOTE_LEG, "").replace(KEPT_NR_NOTE_LEG + "; ", "").replace(KEPT_NR_NOTE_LEG, "");
-                r.note = left.trim();
-            }
-        }
-    }
+    static final String KEPT_NR_NOTE = "5G is switched off but the phone still shows a 5G cell: measured as it is";
 
     /** The upload-only speed test on the phone's mobile data. */
     private void measure() {
@@ -814,47 +694,11 @@ final class LeverRun {
                     if (!a) {
                         endNote = join(endNote, "5G could not be switched " + (origFiveGOff ? "off" : "on") + " again (" + t + ")");
                     }
-                    restoreLeg(0);
+                    end();
                 });
             } else {
-                restoreLeg(0);
+                end();
             }
-        });
-    }
-
-    private void restoreLeg(final int attempt) {
-        if (!legTouched) {
-            end();
-            return;
-        }
-        if (!legReadable) {
-            setLegBack(curLegOff, attempt); // the phone cannot say; the run knows what it set last
-            return;
-        }
-        link.legOff((ok, text, off) -> {
-            if (!ok && attempt < 5) {
-                ui.progress("Waiting for the phone to answer, to put the 5G leg back as it was…");
-                link.later(4000, () -> restoreLeg(attempt + 1));
-                return;
-            }
-            setLegBack(ok && off != null ? Boolean.TRUE.equals(off) : curLegOff, attempt);
-        });
-    }
-
-    private void setLegBack(boolean now, final int attempt) {
-        if (now == origLegOff) {
-            end();
-            return;
-        }
-        link.switchLeg(origLegOff ? "off" : "on", (a, t, o) -> {
-            if (!a && attempt < 5) {
-                link.later(4000, () -> restoreLeg(attempt + 1));
-                return;
-            }
-            if (!a) {
-                endNote = join(endNote, "the 5G leg could not be switched " + (origLegOff ? "off" : "on") + " again (" + t + ")");
-            }
-            end();
         });
     }
 
@@ -864,7 +708,7 @@ final class LeverRun {
         publish();
         String head = cancelled ? "Stopped." : "Done.";
         if (!endNote.isEmpty()) {
-            ui.progress(head + " The phone may not be back as it was: " + endNote + ". Press Restore everything on the Bands tab.");
+            ui.progress(head + " The phone may not be back as it was: " + endNote + ". Press Restore everything on the " + tabName + " tab.");
         } else {
             ui.progress(head + " The phone is back as it was." + (cancelled ? "" : " Read the result below."));
         }

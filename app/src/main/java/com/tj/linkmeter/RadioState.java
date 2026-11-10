@@ -7,7 +7,8 @@ import java.util.regex.Pattern;
 
 /**
  * Phone side, but with no Android in it so it can be tested on a computer (tools/test/BandToolsTest.java): reads what
- * the phone's radio is really using out of `dumpsys telephony.registry`.
+ * the phone's radio is really using out of `dumpsys telephony.registry`, and puts it into words for the tablet ({@link #describe},
+ * {@link #usingText}).
  *
  * Why: the cell list in that dump holds the cell the phone is registered on (and a few it measured), so a scan of it shows
  * ONE band even when the phone is using several at once. With LTE carrier aggregation there are two or more LTE carriers, and
@@ -104,6 +105,79 @@ final class RadioState {
         return "the phone's carrier list: " + (names.length() == 0 ? "empty" : names.toString())
                 + "; its 5G label: " + (display.isEmpty() ? "not given" : display)
                 + "; its 5G state: " + (nrState.isEmpty() ? "not given" : nrState);
+    }
+
+    /** "B66 + B2 + n77 (5G UW)": the carriers in use, in words. */
+    String usingText() {
+        return usingText(false);
+    }
+
+    /**
+     * The carriers in use, in words. 5G carriers that the phone's own label and state say are not in use (an out-of-date list, see
+     * {@link #nrCarrierInUse}) are left out and named at the end, so the text does not claim 5G for a phone that is on 4G.
+     * fiveGOff: 5G was switched off by the caller and read back.
+     */
+    String usingText(boolean fiveGOff) {
+        boolean hasLte = false;
+        for (Carrier c : carriers) {
+            hasLte |= !c.nr();
+        }
+        boolean stale = hasLte && staleNr(fiveGOff);
+        StringBuilder sb = new StringBuilder();
+        StringBuilder old = new StringBuilder();
+        for (Carrier c : carriers) {
+            if (stale && c.nr()) {
+                old.append(old.length() > 0 ? " + " : "").append(c.bandName());
+                continue;
+            }
+            sb.append(sb.length() > 0 ? " + " : "").append(c.bandName());
+        }
+        if (sb.length() == 0) {
+            sb.append("carriers not listed");
+        }
+        String label = display.equals("NR_ADVANCED") ? "5G UW" : display.equals("NR_NSA") ? "5G"
+                : (display.equals("LTE_CA") || display.equals("LTE_ADVANCED_PRO")) ? "LTE+" : "";
+        String text = label.isEmpty() ? sb.toString() : sb + " (" + label + ")";
+        return old.length() == 0 ? text : text + " [the phone still lists " + old + " but says 5G is not in use: old entries]";
+    }
+
+    /** The text for "Now using": the phone's label, then every carrier, the primary one first. */
+    String describe() {
+        StringBuilder sb = new StringBuilder();
+        if (!display.isEmpty()) {
+            sb.append(displayName(display)).append('\n');
+        }
+        if (carriers.isEmpty()) {
+            sb.append("The phone does not list the carriers it is using.");
+            if (ca) {
+                sb.append(" It does say it combines carriers (carrier aggregation)");
+                if (!bandwidths.isEmpty()) {
+                    sb.append(": ").append(bandwidths.size()).append(" of ");
+                    for (int i = 0; i < bandwidths.size(); i++) {
+                        sb.append(i > 0 ? " + " : "").append(bandwidths.get(i) / 1000);
+                    }
+                    sb.append(" MHz");
+                }
+                sb.append('.');
+            }
+            return sb.toString().trim();
+        }
+        for (Carrier c : carriers) {
+            sb.append(c.primary ? "★ " : "  ").append(c.nr() ? "5G " : c.rat + " ");
+            sb.append(String.format(java.util.Locale.US, "%-4s", c.bandName()));
+            if (c.channel >= 0) {
+                sb.append("  ch ").append(c.channel);
+            }
+            if (c.bwKhz > 0) {
+                sb.append("  ").append(c.bwKhz / 1000).append(" MHz");
+            }
+            sb.append('\n');
+        }
+        if (staleNr(false)) {
+            sb.append("The 5G carriers above are probably an out-of-date list: the phone's own 5G label and state say 5G is not in use "
+                    + "(label ").append(display).append(", state ").append(nrState.isEmpty() ? "not given" : nrState).append(").");
+        }
+        return sb.toString().trim();
     }
 
     /** Separates the two parts of the survey's output: the cell list, then the lines this class reads. */
