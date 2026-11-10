@@ -92,6 +92,23 @@ public final class LinkStateTest {
         if (k != LinkState.Kind.READY) {
             check(!w.contains("answered over Bluetooth"), "nothing but Ready says the phone answered: " + w);
         }
+        if (k == LinkState.Kind.NOT_TESTED) {
+            // this state also follows a new secret and a phone that refused the tablet, after calls that HAD been answered
+            check(!w.contains("yet") && !w.contains("never") && w.contains("not known"), "'not tested' claims nothing about earlier calls: " + w);
+        }
+    }
+
+    /** What a reply over Bluetooth proves. */
+    static void proofs() {
+        for (int code = 0; code <= 599; code++) {
+            Boolean p = LinkState.proves(code);
+            check((p == Boolean.TRUE) == (code == 200), "only a 200 proves the link: " + code + " -> " + p);
+            check((p == Boolean.FALSE) == (code == 401), "only 'I do not know this tablet' (401) takes the proof away: " + code + " -> " + p);
+        }
+        check(LinkState.proves(409) == null && LinkState.proves(404) == null && LinkState.proves(500) == null,
+                "an error of the phone's own (a switch that did not move, an unknown request) says nothing about the link");
+        // the audit's example in another form: the link was Ready, then the phone forgot its tablets. The proof is gone:
+        check(LinkState.of(true, true, true, true, false, false, "on") == LinkState.Kind.NOT_TESTED, "after a refusal the link is 'not tested', not Ready");
     }
 
     static void scenarios() {
@@ -147,6 +164,7 @@ public final class LinkStateTest {
         scenarios();
         addresses();
         onHome();
+        proofs();
         System.out.println(checks + " checks, " + failed + " failed");
         if (failed > 0) {
             System.exit(1);

@@ -360,6 +360,7 @@ final class SettingsTab extends Tab {
                 .setPositiveButton("New secret", (d, w) -> {
                     Cfg.resetToken(act);
                     BtLink.closeSoon(); // its connection was made with the old secret
+                    paintLink(); // and so was its "Ready"
                     Toast.makeText(act, "Done. On the phone tap Pair tablet, then open " + HOME + ".", Toast.LENGTH_LONG).show();
                 })
                 .setNegativeButton("Cancel", null)

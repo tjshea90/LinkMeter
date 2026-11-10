@@ -155,7 +155,8 @@ Nothing here has run on the devices, so the tablet is written to claim only what
 - "READY" IN SETTINGS (`LinkState`, pure, fed by `BtLink.state`): the phone's address is stored AND a request over Bluetooth
   has been answered since that address was stored AND the latest call did not fail AND the phone's last status says `bt` =
   on. Anything less is named: Not set up, Not tested, Not reached, Phone not ready (with the phone's own reason), Off.
-  The tablet remembers for this: `btOkAt` (when a call was last answered; forgotten when the address changes),
+  The tablet remembers for this: `btOkAt` (when a call was last answered; forgotten when the address changes, when the
+  tablet makes a new secret, and when the phone answers a Bluetooth call with "not paired", 401: `LinkState.proves`),
   `btFailed` (the latest call did not get through) and `btPhone` (the phone's `bt` from its last status over the hotspot;
   a call that is answered over Bluetooth sets it to on).
   HOME'S OWN CARD about the link (while the tablet is on the hotspot: "Reach the phone when its hotspot is off" / "The

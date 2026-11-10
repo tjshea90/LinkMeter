@@ -246,6 +246,23 @@ public class PreviewTest {
         return null;
     }
 
+    /** The text view that shows exactly these words, or null. */
+    static android.widget.TextView findText(View v, String words) {
+        if (v instanceof android.widget.TextView && words.contentEquals(((android.widget.TextView) v).getText()) && v.isShown()) {
+            return (android.widget.TextView) v;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.widget.TextView t = findText(g.getChildAt(i), words);
+                if (t != null) {
+                    return t;
+                }
+            }
+        }
+        return null;
+    }
+
     /** Presses the button with this label, as a finger would (a button that is greyed out does nothing). */
     static void press(Activity a, String label) {
         Button b = findButton(a.getWindow().getDecorView(), label);
@@ -649,6 +666,26 @@ public class PreviewTest {
         a.openTab(Tab.SPEED);
         a.openTab(Tab.SETTINGS);
         shot(a, "state-settings-link-phone-off");
+    }
+
+    /** A picture and a check: "Pair again (new secret)" takes the link's "Ready" away at once. It was made with the old secret. */
+    @Test
+    public void settingsNewSecret() throws Exception {
+        pretendPhone("wifi", true, true);
+        linkProved();
+        MainActivity a = tablet();
+        a.openTab(Tab.SETTINGS);
+        settle();
+        if (findText(a.getWindow().getDecorView(), "Ready") == null) {
+            throw new AssertionError("the link is not shown as Ready to begin with: the check below would prove nothing");
+        }
+        press(a, "Pair again (new secret)");
+        ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle();
+        if (findText(a.getWindow().getDecorView(), "Ready") != null) {
+            throw new AssertionError("after a new secret the Bluetooth link still says Ready");
+        }
+        shot(a, "state-settings-link-after-new-secret");
     }
 
     @Test

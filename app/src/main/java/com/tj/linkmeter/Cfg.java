@@ -75,9 +75,13 @@ final class Cfg {
         return t;
     }
 
-    /** Tablet: make a fresh secret. The phone must pair with it again. */
+    /**
+     * Tablet: make a fresh secret. The phone must pair with it again. What a Bluetooth call proved with the old secret says
+     * nothing about the new one, so that goes too ({@link #forgetBtProof}).
+     */
     static void resetToken(Context c) {
         sp(c).edit().remove("token").apply();
+        forgetBtProof(c);
     }
 
     /** Phone: secrets of paired tablets. */
@@ -210,6 +214,17 @@ final class Cfg {
      */
     static long btOkAt(Context c) {
         return sp(c).getLong("btOkAt", 0L);
+    }
+
+    /**
+     * Tablet: what was learned by calling the phone over Bluetooth no longer holds (the phone answered that it does not know
+     * this tablet, or the tablet has a new secret). The link is "not tested" again until a call works.
+     */
+    static void forgetBtProof(Context c) {
+        SharedPreferences p = sp(c);
+        if (p.contains("btOkAt") || p.contains("btFailed")) { // (asked again and again by a status poll: written once)
+            p.edit().remove("btOkAt").remove("btFailed").apply();
+        }
     }
 
     /** Tablet: did the latest call over Bluetooth fail to get through? */

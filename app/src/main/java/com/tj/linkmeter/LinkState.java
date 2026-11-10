@@ -8,6 +8,9 @@ package com.tj.linkmeter;
  * "Ready" means all of: the phone's address is stored, a request over Bluetooth has been answered since that address was
  * stored, the latest try did not fail, and the phone's last status says its side is listening. Anything less is named for
  * what it is, with the button that is the way forward (Set up or Test).
+ *
+ * The proof does not outlive what it was made with: a new address, a new secret on the tablet, or a phone that answers "I do
+ * not know this tablet" ({@link #proves}) all put the link back to "not tested".
  */
 final class LinkState {
     private LinkState() {}
@@ -23,7 +26,7 @@ final class LinkState {
         PHONE_OLD,
         /** The phone's own status says its side is not listening (Bluetooth off, no permission, switched off, failed). */
         PHONE_NOT_LISTENING,
-        /** An address is stored, and no call to it has been answered yet. */
+        /** An address is stored, and it is not known whether a call to it works (never answered, or the proof is void). */
         NOT_TESTED,
         /** It has worked with this address, but the latest call did not get through. */
         NOT_REACHED,
@@ -83,6 +86,19 @@ final class LinkState {
         return k != Kind.READY && k != Kind.OFF_HERE && k != Kind.NO_BLUETOOTH && k != Kind.NOT_REACHED;
     }
 
+    /**
+     * What a reply that came over Bluetooth says about the link, from its HTTP code. TRUE: the link is proved (only a request
+     * the phone accepted as signed by its paired tablet is answered 200). FALSE: an earlier proof no longer holds (401: the
+     * phone does not know this tablet, so nothing can be switched over the link until the two are paired again). null: nothing
+     * either way (the phone answered some error of its own, such as a switch that did not move).
+     */
+    static Boolean proves(int code) {
+        if (code == 200) {
+            return Boolean.TRUE;
+        }
+        return code == 401 ? Boolean.FALSE : null;
+    }
+
     /** The word for the small label next to the card's heading. */
     static String chip(Kind k) {
         switch (k) {
@@ -126,7 +142,9 @@ final class LinkState {
                 return "The last Bluetooth call to the phone did not get through. Press Test: the phone must be in range, "
                         + "with its Bluetooth on.";
             default:
-                return "Not tested: the phone's Bluetooth address is stored, but no call to it has been answered yet. Press Test.";
+                // (true after a first try that failed, after a new secret, and after the phone refused this tablet alike)
+                return "Not tested: the phone's Bluetooth address is stored, but it is not known whether a call to it works. "
+                        + "Press Test.";
         }
     }
 

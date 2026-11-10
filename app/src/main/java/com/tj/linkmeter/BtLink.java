@@ -330,8 +330,13 @@ final class BtLink {
                     // do not hold the phone's radio in a connection nobody uses
                     idleClose = timer().schedule(BtLink::close, REUSE_MS + 5000, TimeUnit.MILLISECONDS);
                 }
-                if (r.code == 200) {
-                    worked(c); // only a request the phone accepted as signed by its paired tablet is answered 200
+                Boolean proof = LinkState.proves(r.code);
+                if (proof != null) {
+                    if (proof) {
+                        worked(c);
+                    } else {
+                        Cfg.forgetBtProof(c); // the phone no longer knows this tablet: "Ready" would be untrue
+                    }
                 }
                 return r;
             } catch (IOException | RuntimeException e) {
