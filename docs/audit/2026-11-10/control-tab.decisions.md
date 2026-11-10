@@ -1,0 +1,41 @@
+- Class name: keep `ControlTab` and change only title() to "Phone". Reason: `PhoneTab` is already the phone's own screen (PhoneTab.java:35), BandsTab.java:176 calls ControlTab.restoreDialog, and HomeTab.java:365 already opens "Phone".
+- Do not repeat Home's switches (Hotspot, Sleep/Wake screen, Standby) on the Phone tab; give it the ones that have no button anywhere: phone Wi-Fi (wifi_on|wifi_off), Restart (reboot), Power off, battery saver Automatic | Off. Recommended, because Home's hint already says "More switches are in the Phone tab" (HomeTab.java:154).
+- Battery saver: one stored switch. Recommended: Ui.Choice Automatic | Off sending eco_auto_on|eco_auto_off, remove the Turn on / Turn off buttons, drop Eco's in-memory `suppressed` on the phone (eco_on/eco_off kept as aliases for older tablets). This removes the bug at HANDOFF:27 and the false "off (automatic)" on Home.
+- Restore everything and the saver: recommended that restoreAll only restores the profile once and says it returns with the next tablet connection, instead of silently suppressing it. The saver never touches mobile data, so it has no place in a fix-internet button's lasting effects.
+- Force 4G / Allow 5G / Read mode: move to the Signal tab as one Choice next to the comparison. It works on this phone (HANDOFF:26, 30-31) but two tabs driving the same setting fight during a comparison run.
+- Airplane on: remove the button, keep the phone action. Standby replaces it without cutting calls and texts; add a banner "Airplane mode is on" with "Switch it off" (airplane_off) for the case the phone is reached while `air` is true.
+- Hotspot Wi-Fi band: recommended keep, collapsed under More, self-checking by read-back. Alternative under a strict reading of the user's request: remove it, since its first version failed on the phone (HANDOFF:180) and the rewrite was never confirmed (HANDOFF:182, 422). Needs the orchestrator's call.
+- Failures must travel as errors: recommended that Actions.perform throws on a not-OK outcome so the reply is 409 {"err"}; otherwise the result strip cannot colour failures.
+- Answer-first replies: recommended a tablet-side follow-up (poll /s for the expected state) rather than a new phone route; it works on both links and needs no protocol change.
+- BootSection: keep it as a card on the Phone tab, collapsed to headline + Start everything, details behind a quiet button, opened by itself when Shizuku is not running. Never seen on a device (HANDOFF:46-50), so it must stay, but it should not push everything else two screens down.
+- Sleep gate: decide whether the phone's "Let the tablet see and control this screen" should also block Sleep/Wake. Recommended: no (move the check below /screen/on and /screen/off), so Home, Standby and the Screen tab behave alike.
+- Restore everything stays without a confirmation (panic button, verified at HANDOFF:417); Restart, Power off, Restart modem, Restart hotspot and Wi-Fi on (when asked over the hotspot) ask first.
+- Version banner compares with `!=`, not `<`: under Robolectric the tablet is code 1, and a tablet older than the phone is also worth saying.
+- AdvancedPanel is the Screen tab's options overlay, not a place for Phone-tab leftovers; restyling it with Ui.Toggle/Ui.Choice is separate polish and not needed for step D.
+
+## files
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ControlTab.java - rebuild as the "Phone" tab: title, cards, result strip, kept result, follow-up after answer-first replies, shown guard, longer read limits
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BootSection.java - restyle as one card with collapsed details; remove the stacked refresh loop; tick only while active
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/HomeTab.java - confirm openTab("Phone") now lands; optionally share the answer-first follow-up
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SettingsTab.java - its "Phone tab" wording becomes true; check the button name it quotes
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BandsTab.java - receives Force 4G / Allow 5G / Read mode; keeps the ControlTab.restoreDialog call
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Actions.java - failures as errors; eco aliases; restoreAll without suppression; setup result; hotspot band read-back
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Eco.java - drop the in-memory suppression (step C)
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Api.java - only if the failure reply shape changes
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/RemoteRoutes.java - optional: hotspot_on when already on, restart_modem
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Screen.java - optional: Sleep/Wake above the screenControl gate
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ScreenTab.java - on-leave Sleep honours the full-off option; "Control >" wording at :1496
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SafetyReport.java - "Control tab" wording at :129; the 5G leg line at :110
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Boot.java - "Control tab" wording at :154
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BandSweep.java - "Check the Control tab" at :715
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/FilesTab.java - "Control > Update phone" at :594
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/MenuScan.java - "from the Control tab" at :308
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/RemoteSms.java - "Control > Update phone" at :27
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/PhoneTab.java - the phone's own screen names the tablet's Control tab at :85-88
+- /home/user/LinkMeter/tools/uipreview/app/src/test/java/com/tj/linkmeter/PreviewTest.java - status knobs, more pretend answers, click helpers, the Phone-tab states
+- /home/user/LinkMeter/tools/test/SafetyReportTest.java - only if the report wording it checks changes (no pinned "Control tab" found)
+- /home/user/LinkMeter/tools/test/LinkProtocolTest.java - only if RemoteRoutes.cutsLink changes (then also run tools/mutate_link.py)
+- /home/user/LinkMeter/docs/SAFETY.md - "Control tab" at lines 4, 54, 74, 126; rows for Wi-Fi, Restart, battery saver mode
+- /home/user/LinkMeter/docs/BOOT_GUIDE.md - "Control tab" at lines 28 and 40; the old Home button name
+- /home/user/LinkMeter/docs/UPLOAD_IDEAS.md - "Control > Force 4G" at line 63
+- /home/user/LinkMeter/HANDOFF.md - tick step D for this tab and record what was removed, moved and why

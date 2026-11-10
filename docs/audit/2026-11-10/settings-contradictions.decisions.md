@@ -1,0 +1,59 @@
+- Delete or only unhook the band-lock code? Recommend delete: BandSweep, SweepPlan, BandSweepTest, the lock half of SweepLink and BandCheck.verify, Cells.applyBands/keep/status/armRevert, the routes /band, /band/keep, /band/status, /bandinfo and ShellMain bands-set and info. First move BandSweep.Done, Observation, Upload and usingText into a small file of their own (LeverRun.java:37-54,659, LeverLink.java:17-63 and LabSection.java:159 use them). Keep bands-clear, Saved.lock and Saved.nrleg clearing in Actions.restoreRadio so an older install is still undone. Reason: about 1,000 lines and 35,900 checks for a feature two field runs disproved.
+- Comparison card: recommend no checkboxes, always LeverRun.settings(true, false, true). Duplicates merge with "As it is now", so the user gets exactly "5G allowed" against "4G only" however the phone starts. Leave the leg logic in LeverRun inert rather than rewrite 8,900 checks.
+- Dialing: recommend removing menu_dial, Menus.dial, MenuScan.SAFE_CODES and dialCommand altogether, and making tools/test/test_dial_paths.py stricter (no DIAL intent anywhere), with the safe-codes block of docs/SAFETY.md and MenuScanTest updated in the same commit, because the tripwire fails the build otherwise.
+- Sleep: recommend one behaviour, always fully off, and delete the Options switch sleepFullOff. It governs one of five sleep paths, and the Always-On Display costs battery. Offer Sleep / Wake on Home and in the Screen tab only.
+- The phone's "Let the tablet see and control this screen": recommend it does not gate Sleep / Wake. Today it blocks Home's button but not Control's Screen off or Standby. If the user's intent is "no screen control at all", gate screen_off and the screen half of standby as well; either way, one rule.
+- Battery saver: recommend one stored choice, Automatic or Off (Cfg.ecoAuto), set from the tablet with the existing eco_auto_on / eco_auto_off and shown identically on Home, the Phone tab and the phone's screen. Drop Turn on / Turn off and Eco.suppressed. The explanation should name what changes (15 s screen timeout, Always-On Display off, background scanning off). For step C: Eco.touch only runs for hotspot requests (Api.java:53-56), so in Standby, reached over Bluetooth, the saver restores itself after 10 minutes; decide whether Standby should hold it.
+- Hotspot band: recommend keeping it under More as Experimental rather than removing it, because the field status is unknown, not disproven. Only claim success after a read-back and after the tablet sees the new frequency on its own Wi-Fi. If time is short, remove the card and keep only the Saved.hb restore in Actions.restoreAll. "Restart hotspot" should exist only as the apply step of a band change.
+- "Airplane on": recommend moving it under More as a danger button or dropping it. It makes the phone unreachable over the hotspot and Bluetooth for up to 15 minutes, and Standby now covers "end the session" without that. Keep "Power off" as a danger button with its current honest text.
+- A "Restart phone" button (the reboot action exists, no screen sends it): recommend not showing it, or only under More with the consequence spelled out. After a restart Shizuku is gone and the service starts only after the first unlock (HANDOFF.md:28), so the tablet cannot bring the phone back.
+- Screen presets: recommend three presets computed from the tablet's real picture width (about 0.75x, 1x and 1.5x, capped at 720 px) in place of the fixed 432 / 540 / 720 / 1080, default 1x. Today's default sends about 1.5 to 2.6 times the pixels this tablet can show (computed, not measured). Also store pictures-per-second as a value, not an index, so the slider can be reordered without migrating a meaning.
+- "Phone address": recommend keeping it under More with validation and a line showing the address in use. It is only needed off the phone's hotspot, and a stray character disables discovery everywhere.
+- Tab names: recommend constants (for example Tab.PHONE, Tab.SIGNAL) used by title(), openTab() and every sentence that names a tab. The rename touches texts in 12 files, three docs and SafetyReportTest.
+- Home's Bluetooth promises ("one tap and no touch on the phone", "lasts for days"): recommend softening to "usually" and "uses much less battery" until a device confirms them.
+
+## files
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/HomeTab.java - banner by failure kind, openTab target, "Not now", stale Shizuku line, dialog wording, tab-name texts
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ControlTab.java - rebuild as "Phone": title, remove Screen off and saver Turn on/off, hotspot dialog, band under More, boot card collapsed
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BandsTab.java - rebuild as "Signal": remove grid, typed lock, Keep/Clear, status card, Read lock info, sweep, duplicate Scan
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/LabSection.java - remove 5G-leg card, leg checkboxes, dial buttons, duplicate Safety check; reword heading
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/MainActivity.java - tab list and titles used by openTab
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Tab.java - tab-name constants
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SettingsTab.java - "Phone tab" texts, phone-address validation and More group, link wording
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/PhoneTab.java - groups, Bluetooth switch for Cfg.btLink, confirmations, saver choice, hint texts
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Actions.java - drop menu_dial and nrleg switches, safety() leg fact, saver actions as the only route, MANUAL text
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Api.java - remove /band, /band/keep, /band/status, /bandinfo
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Cells.java - remove applyBands, keep, status, revert timer; keep survey and shellMain
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ShellMain.java - hotspotRestart waits for off, hotspotBand read-back, drop bands-set / info / nrdc off
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SafetyReport.java - leg and lock lines, tab names
+- /home/user/LinkMeter/tools/test/SafetyReportTest.java - pins "5G leg: on (normal)", "Band lock: none" (lines 43, 83, 114)
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BandSweep.java - move Done/Observation/Upload/usingText out, then delete
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SweepPlan.java - delete with the sweep
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SweepLink.java - drop setLock/lockSpec; keep observe, upload, 5G switch, stateOf
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BandCheck.java - drop verify; keep describe
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/LeverRun.java - new home of the moved types; "Bands tab" text at :867
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/LeverLink.java - follows the moved types
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Menus.java - remove dial; RadioInfo first
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/MenuScan.java - remove SAFE_CODES and dialCommand; reorder USUAL_SCREENS; "Control tab" text at :308
+- /home/user/LinkMeter/tools/test/test_dial_paths.py - stricter: no DIAL intent anywhere; safe-codes check removed
+- /home/user/LinkMeter/tools/test/MenuScanTest.java - dial tests removed
+- /home/user/LinkMeter/tools/test/BandSweepTest.java - deleted with BandSweep
+- /home/user/LinkMeter/tools/test/BandToolsTest.java - lock-verify checks removed
+- /home/user/LinkMeter/tools/test/LeverRunTest.java - compiles against the moved types
+- /home/user/LinkMeter/tools/test.sh - test registrations (lines 21-24, 37, 67-69)
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Screen.java - screenControl gate for /screen/on|off; bitrate floor
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ScreenTab.java - leave-sleep target, quality chip and Custom, "Control >" text at :1496
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ScreenPrefs.java - presets sized to the tablet, KBPS without 300, pictures-per-second stored as a value, sleepFullOff removed
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/AdvancedPanel.java - follows ScreenPrefs; "data" wording
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SpeedTab.java - poll through Call.reach; data-use and route wording
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SpeedTest.java - say when the route is Wi-Fi; unused start(Context)
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Eco.java - stored off instead of the in-memory flag; old "bt" read
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BtLink.java - separate "offer dismissed" from btUse
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Net.java - expose the address in use; unused how field
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/RemoteSms.java - "Control >" text at :27
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Boot.java - "Control tab >" text at :154
+- /home/user/LinkMeter/tools/uipreview/app/src/test/java/com/tj/linkmeter/PreviewTest.java - new tab names and states to draw
+- /home/user/LinkMeter/docs/SAFETY.md - safe-codes block, rows for removed features, tab names
+- /home/user/LinkMeter/docs/BOOT_GUIDE.md - tab names
+- /home/user/LinkMeter/docs/UPLOAD_IDEAS.md - leg and lock sections marked as disproven
+- /home/user/LinkMeter/HANDOFF.md - plan boxes E and F, which classes were deleted

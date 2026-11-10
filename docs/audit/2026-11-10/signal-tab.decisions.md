@@ -1,0 +1,53 @@
+- Service-menu finder ('Look for service menus', the list of up to 12 screens, action menu_find): the plan names neither keep nor remove. Recommend REMOVE from the GUI and delete its code (MenuScan.java:27-39, 66-73, 92-98, 149-327; Menus.find; MenuScanTest:64-88, 242-287, 295-344). Reason: no field report at all, two of its three outputs are dialer codes this phone cannot run, and it is the only route to an unknown technician screen. If it is kept, MenuScan.summary:311-325 and MenuScanTest:250, 276-278 must stop talking about codes to dial.
+- The 'Phone info screen' button: recommend menu_open with the fixed name com.android.phone/.settings.RadioInfo (fallback com.android.settings/.RadioInfo) instead of menu_usual. Reason: menu_usual tries MediaTek's engineering menu first and does not wake the screen (Menus.java:46-59); menu_open exists in every phone app since v0.2.79, checks the name and wakes the screen (Menus.java:29-43). If menu_usual is kept as the plan says, put RadioInfo first and add the wake.
+- What a new phone answers to an old tablet: recommend plain 404 for /band, /band/keep, /band/status and /bandinfo (no stand-in routes), 'unknown action' for menu_dial, and ONE fixed sentence for the four nrleg_* names that contains 'cannot switch the 5G leg'. Reason: the band answers are only shown as text and nothing can be set; without the nrleg sentence an old tablet's comparison loses its baseline in every run (measured 40 of 40).
+- NrLeg: recommend KEEP SLIM on the phone (State, parse, describeSet, a new tested rule 'the flag may be forgotten', the fixed sentence for old tablets) rather than delete it and put string checks into Actions. Reason: Actions cannot be tested offline, and the rule is the fix for the flag that never clears.
+- BandCheck: recommend DELETE and move describe() and usingText() into RadioState. Reason: verify, parse and best lose every caller; RadioState already owns the neighbouring words (fiveGEvidence, displayName). Renaming BandToolsTest to RadioStateTest is optional.
+- LeverRun after the leg: recommend exactly two settings per run (the phone as it is, and the other 5G state), no checkboxes in the tab, the first-in-round rule for three or more rows deleted (unreachable), 'unavailable' folded into 'notObeyed', Done/Observation/Upload nested in LeverRun, SweepLink and LeverLink merged. Reason: this is what already runs on the user's phone (its third row is skipped), and the statistics hold (measured: 3 false clear verdicts in 600 drifting runs, a real 1.8 times gain found 40 of 40).
+- Band-lock evidence has one gap the orchestrator should know before deleting: both field runs said NOT obeyed (HANDOFF:167-169, 96-97), but a lock after a CONFIRMED search was never run (HANDOFF:107, 34). Recommend removing anyway. Reason: the API is documented as a scan hint (HANDOFF:81), the plan and the user's request ask for it, and the tab itself already says 'This phone ignores band locks' (LabSection.java:85). Write the gap into HANDOFF so nobody rebuilds the feature to close it.
+- One-time clean-up of old flags at service start (Guard.resume): recommend YES, limited to bands-clear and 'leg on', only when a flag is set and Shizuku is ready. Reason: the new tab has no button that clears them, and until Restore everything is pressed the safety net would keep looking once a minute and the Safety check would keep listing them.
+- restoreRadio: recommend calling bands-clear every time as now (one helper start, insurance if the stored flag was lost) but printing the 'Band lock' line only when the flag was set. Reason: 'Band lock: cleared.' on every restore is confusing in a version that has no band locks.
+- Where the 4G/5G switch lives: recommend ONLY in the Signal tab's '4G or 5G' card; remove the 'Mobile network' row from the Control (future Phone) tab, ControlTab.java:67-71. Reason: one switch, one home. This touches the other analyst's tab.
+- Restore everything and Safety check: recommend quiet copies in Signal > Tools as well as in the Phone tab. Reason: the comparison's failure message sends the user to 'Restore everything' on this tab (LeverRun.java:867), and both answers concern the radio.
+- Reading the phone when the tab is shown: recommend one GET /cells and one net_get per show, skipped while a comparison runs and when the last scan is under a minute old. Reason: the card and the switch are then true without a tap; the cost is two shell commands on the phone per visit, no polling.
+- 'Search for a network again': recommend that the new tab asks radio_cycle_state until it says done and then scans, instead of telling the user to wait 30 seconds. Reason: it gives the tool a visible result (bands before and after) and keeps radio_cycle_state, cycleState and prepareDelayed (Actions.java:29, 40-44, 278-279) from becoming dead code once BandSweep is gone.
+- File names: recommend one new SignalTab.java that replaces BandsTab.java and LabSection.java. Reason: after the removal the kept parts are about 450 lines, and LabSection only existed because the tab was too big. tools/uipreview already asks for a tab titled 'Signal' (PreviewTest.java:150).
+
+## files
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BandsTab.java - delete; replaced by SignalTab
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/LabSection.java - delete; comparison, best spot, Safety check and Phone info move into SignalTab
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SignalTab.java - new: the four cards of section 5
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/MainActivity.java - line 227: construct SignalTab instead of BandsTab
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BandSweep.java - delete after Done, Observation, Upload and usingText have moved
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SweepPlan.java - delete
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BandCheck.java - delete; describe moves to RadioState
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/RadioState.java - gains usingText and describe; fix the test name in its comment
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/LeverRun.java - leg out, two settings, nested link types, 'Signal tab' in the closing message
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SweepLink.java - becomes the one adapter for LeverRun.Link (rename to LeverLink); drop setLock, lockSpec, research, researchState
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/LeverLink.java - old file goes (merged into the adapter)
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/NrLeg.java - slim, phone only: parse, State, describeSet, the forget-the-flag rule, the fixed sentence for old tablets
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/MenuScan.java - dial code list and dial command out; finder out if decided
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Menus.java - dial() out; usual(): wake and order, or unused; find() out if decided; comments
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Actions.java - menu_dial out, nrleg_* answer the fixed sentence, nrLeg() out, safety() without the leg and lock reads, restoreRadio leg rule and wording, setNr/setNrViaApi flag fix
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Api.java - routes /band, /band/keep, /band/status, /bandinfo out; bands() serves /cells only
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Cells.java - lock state, applyBands, status, keep, the two-minute undo out; class comment
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ShellMain.java - bands-set, info, nrdc-get and the leg-off arms out; header comment
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Saved.java - rememberLock and rememberNrLegChanged out; comments say the flags are from older versions
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SafetyReport.java - drop legOn, lock, lockKept and two fact lines; reword the two old-version lines
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Guard.java - optional one-time clean-up in resume(); comment
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/GuardPolicy.java - comment only
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ControlTab.java - line 60 text about band locks; lines 67-71 the 4G/5G row moves to Signal (other analyst's tab)
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/PhoneTab.java - lines 54-56: Restore text still names the band lock (other analyst's screen)
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/HomeTab.java - line 365: openTab("Phone") has no target yet (other analyst's tab)
+- /home/user/LinkMeter/tools/test/BandSweepTest.java - delete
+- /home/user/LinkMeter/tools/test/BandToolsTest.java - cut the lock, best and plan parts; new call sites for describe and usingText
+- /home/user/LinkMeter/tools/test/LeverRunTest.java - leg stories out, two settings, scrambled order seed, order check
+- /home/user/LinkMeter/tools/test/NrLegTest.java - slim: parse, the new rule, the old-tablet wording
+- /home/user/LinkMeter/tools/test/MenuScanTest.java - dial parts out; finder parts out if decided
+- /home/user/LinkMeter/tools/test/SafetyReportTest.java - facts and the combination loop follow SafetyReport
+- /home/user/LinkMeter/tools/test/test_dial_paths.py - stricter: no dial route in any file, am start only with -n, no safe-code list in the document
+- /home/user/LinkMeter/tools/test.sh - lines 19-32: compile lists and labels
+- /home/user/LinkMeter/tools/uipreview/app/src/test/java/com/tj/linkmeter/PreviewTest.java - line 150 drop 'Bands'; add answers for /sig and safety if the cards should be drawn filled
+- /home/user/LinkMeter/docs/SAFETY.md - lines 4, 27, 34-49, 56-60, 67-68, 103-104, 111, 116
+- /home/user/LinkMeter/docs/UPLOAD_IDEAS.md - lines 3, 13, 25-29, 51-53, 61-63
+- /home/user/LinkMeter/HANDOFF.md - plan boxes D and E, what was removed and why, the old-tablet answers, the lock-evidence gap

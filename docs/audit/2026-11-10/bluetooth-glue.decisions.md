@@ -1,0 +1,31 @@
+- Check Bluetooth live before the tablet switches the hotspot off or enters Standby? Recommend yes: one Bluetooth call (2-4 s) before sending, and the 'anyway' wording if it fails. It is the only way to honour 'need the phone as little as possible'; a stored address proves nothing.
+- What does 'Ready' mean in Settings? Recommend: an address is stored AND a Bluetooth call succeeded since it was stored AND the phone's last status says bt = on. Otherwise show 'Not tested' or 'Phone's Bluetooth is off', with Set up / Test as the action.
+- May the tablet switch its own Bluetooth on without a user action? Recommend no for status polls, yes for button presses, Set up, Test and Find. The poll then says 'Bluetooth is off on this tablet' with a button.
+- How often to ask a standby phone for status over Bluetooth? Recommend 15 s for the first minute after a user action, then 60 s, then stop after about 5 minutes with 'Ask again'. Each poll wakes the phone, and Standby exists to let it idle.
+- Should failed switch actions answer HTTP 409 instead of 200 with a failure sentence? Recommend yes for the act-then-answer path, so every caller's `ok` is true only when the switch moved. The answer-first path stays as it is.
+- Fix the dead 'Phone' tab link now or with step D? Recommend renaming ControlTab.title() to 'Phone' in the same checkpoint as the defect fixes: it is one line, step D wants it anyway, and three texts already use the name.
+- Keep Restart and Power off off the Home screen? Recommend yes: put them in the Phone tab only, each with a confirmation that says someone must unlock the phone and start Shizuku afterwards. No screen offers Restart today.
+- Address fallback when the phone will not tell its address: keep 'pair once in Android settings, then Find'? Recommend yes, with the tightened grep. A discovery-based fallback would need location on the tablet and a discoverable phone, which is too much for an unproven need.
+- Send the secret over Wi-Fi only to the gateway that last answered as the paired phone? Recommend yes as a small tablet-only change; signing Wi-Fi requests is the proper fix but needs both apps and a compatibility path.
+- Take a short wake lock at accept, and count wake-lock holders? Recommend both. They are a few lines in Awake and BtServer and remove the two sleep-related ways a wake-up from Standby can fail.
+- When the oldest connection must be closed, prefer one that has not proved itself? Recommend yes; it removes the cheap way for a stranger in range to push the tablet out.
+- Raise the Bluetooth read time for /act centrally in Call.reach (at least 60 s)? Recommend yes rather than editing each caller: over Bluetooth every link-cutting action is done before it is answered.
+
+## files
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/HomeTab.java — live Bluetooth check before hotspot off / Standby, use the phone's `bt` state, poll back-off over Bluetooth, single poll chain (hasCallbacks), tab name in openTab and texts, Wi-Fi meter subtitle, 'Not now' flag
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SettingsTab.java — 'Ready' only when proven, check ok2 in Set up, tab name in the 'too old' text, close the link off the UI thread
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BtLink.java — remember the last successful call, user-initiated flag for switching Bluetooth on, clearer timeout text for a POST on a fresh connection, setEnabled closes on a thread
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BtServer.java — poke/retry when perm, error or off; start and receiver work off the main thread; wake lock at accept; per-connection lock ownership; evict unproven first; reset the name cache in setup; tighter address grep
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Awake.java — count holders of the link wake lock
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Status.java — call BtServer.poke() when the status is asked
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Actions.java — failures of the switch actions as IOException on the act-then-answer path; later() catches RuntimeException; map 'state unreadable' wording
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ShellMain.java — after onTetheringStarted wait for state 13; treat state 12 as already starting; distinct answer when the state cannot be read after a stop
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Call.java — at least 60 s read time for /act over Bluetooth; pass the user-initiated flag; optionally limit the Wi-Fi route to the proven gateway
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Cfg.java — new stored values: last proven Bluetooth call, proven gateway, 'do not offer the link' flag
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ControlTab.java — title 'Phone' (fixes the dead button), hotspot-off confirmation wording
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/LinkServer.java — only if 'proven' is reported to the wrapper for eviction (a Watch callback); mutate_link.py patterns must be kept in step
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SenderService.java — start BtServer off the main thread
+- /home/user/LinkMeter/tools/test/LinkProtocolTest.java — a check for the new Watch callback, if added
+- /home/user/LinkMeter/tools/mutate_link.py — patterns for any changed LinkServer / Reach lines
+- /home/user/LinkMeter/docs/REMOTE_LINK.md — wake lock time (120 s), what /act carries over Bluetooth, the live check before hotspot off, the poll back-off
+- /home/user/LinkMeter/HANDOFF.md — record the fixes and the list of things only the devices can answer

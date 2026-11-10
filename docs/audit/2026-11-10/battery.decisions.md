@@ -1,0 +1,40 @@
+- Saver state model: use ONE stored switch (`Cfg.ecoAuto`: Automatic or Off) and delete `Eco.suppressed`. Make `eco_on` and `eco_off` aliases of `eco_auto_on` and `eco_auto_off` so an older tablet build still works. Reason: three variables (auto, suppressed, on) are the source of the known bug, the wrong Home label and the phone checkbox contradiction. A third state, on now but not automatic, has no use.
+- Reconcile in `Eco.touch` rather than only in the actions: auto and not on, apply; not auto and on, restore. Re-check under the lock. Reason: it closes the race, the Shizuku-was-down case and the phone checkbox in one place.
+- What Restore everything does to the switch: restore the values AND store Off, and say so in the report line ("Automatic is now off; switch it on again in the Phone tab"). Reason: otherwise the next poll re-applies the saver 5 s later and the Safety check says it is on right after a restore. The cost is new text in `SafetyReport`, its test, and `docs/SAFETY.md:72`.
+- Where the tablet control lives: one Battery card in the rebuilt Phone tab. It holds a `Ui.Toggle` "Save the phone's battery while the tablet is connected" with the list of what it changes as the hint, a `Ui.Fact` for the current state, and Standby and Sleep. Home keeps its read-only fact. Remove Turn on, Turn off and Screen off from the old layout.
+- Keep `screen_off_timeout` 15 s in the profile. Reason: it is the one entry certain to work, and its conflict with the Screen-tab session is already handled and tested in `ProfilePlan`.
+- Samsung Always-On Display: add `system aod_mode` now, written only when the phone returns 0 or 1 for it, and add both keys to Probe. Reason: no device is available to confirm, and the guard makes a wrong guess harmless.
+- Bluetooth requests do not count as the tablet being present for the saver (leave `Api.java:53` as is). Reason: Bluetooth-only means the hotspot is off, and the saver follows hotspot use.
+- Saver lifetime: recommended to keep it on while the hotspot is on and the tablet's last address answers a ping, checked once per 10 minutes. If time is short, leave it as is and state in the hint that it follows LinkMeter's own use. Reason: today the saver is off for most hotspot time.
+- Idle restore: switch to a non-wakeup `AlarmManager` alarm on elapsed real time. Do not restore inside `standby`. Reason: no wake cost, it fires when the phone is next used, and the saver's values help during Standby.
+- Before `standby` or `hotspot_off` sent over the hotspot: require the phone's `bt` to be `on` and one live Bluetooth `/s`. Offer "anyway" with the reason if it fails. Reason: being stranded is the one failure that defeats the whole remote-power request. It costs 2 to 5 s.
+- Home poll over Bluetooth while the hotspot is off: 60 s, plus on open, after a switch and on "Ask again". Change the Settings hint (`SettingsTab.java:271-272`) to match.
+- Screen tab: add an idle limit to its hold-awake (phone screen off or no touch for N minutes). Keep the existing option. Reason: it is the largest avoidable drain on both devices.
+- Extract the saver's decisions into a pure class (apply or not, restore or not, value validation, back-off) with an offline test in `tools/test.sh`. Reason: `Eco` has no test, and CLAUDE.md asks for the feature to be traced and tested.
+- Do not use Android's Data Saver, the system power-saving mode, or any Bluetooth-off step as part of the saver. Reason: on stock Android Data Saver blocks tethering (not verified on One UI); power saving has Samsung side effects that are not verified; Bluetooth is the way back.
+- Add the phone's present current to `/s` and make `apply()` report which keys it changed. Reason: this gives the first field evidence for the saver and for Standby; units differ between makers, so show the raw value in Probe.
+- The pairing secret sent to any Wi-Fi gateway: decide whether to fix it in this task (remember the gateway that answered as the phone) or record it in HANDOFF as open. It is outside step C, but Standby makes it more frequent.
+
+## files
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Eco.java: remove `suppressed`, reconcile in `touch`, validate originals, own lock for the timer, alarm-based idle restore, back-off, guarded `aod_mode`, respect the Screen session on restore, report what changed
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Actions.java: alias `eco_on`/`eco_off`, `restoreAll` stores Off, release the work wake lock after `perform`, Probe lines for the display keys
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Awake.java: `workDone()`, counted holders for the Bluetooth wake lock
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BtServer.java: use the counted wake lock
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Status.java: optional `cur` (battery current) in `/s`
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/RemoteProfile.java: do not loop a failing `end` while Shizuku is off
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/PhoneTab.java: the phone's checkbox through the same path as the actions; saver state and Standby in the regrouped screen
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ControlTab.java: becomes "Phone": Battery card with the stored switch, stale Hotspot-off text, buttons for restart and Wi-Fi, the delayed `onShow` leak
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BootSection.java: remove the old `refresh` before posting a new one in `onShow`
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/HomeTab.java: check the way back before Standby and Hotspot off, 60 s poll over Bluetooth with the hotspot off, back-off, saver label, the "Phone" tab target
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BtLink.java: no automatic Bluetooth-on for background polls
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ScreenTab.java: idle limit for hold-awake, slower state poll when the phone is off, generation guard on the state poll
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SettingsTab.java: the status-interval hint text if the Bluetooth interval changes
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SafetyReport.java: wording for the saver after a restore; rows for Standby, hotspot and Wi-Fi switches
+- /home/user/LinkMeter/tools/test/SafetyReportTest.java: follow the changed wording
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SaverPlan.java (new, optional): the saver's pure decisions
+- /home/user/LinkMeter/tools/test/SaverPlanTest.java (new, optional) and /home/user/LinkMeter/tools/test.sh: register the new test
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ShellMain.java (optional): read the hotspot's auto-off setting in `hotspot-info`
+- /home/user/LinkMeter/tools/uipreview/app/src/test/java/com/tj/linkmeter/PreviewTest.java: states for the Battery card (automatic, off, Standby)
+- /home/user/LinkMeter/docs/REMOTE_LINK.md: wake-lock time (line 42), the saver section (lines 86-87, 102-110)
+- /home/user/LinkMeter/docs/SAFETY.md: line 72 and new rows for Standby and the stored switch
+- /home/user/LinkMeter/HANDOFF.md: tick step C, record what was learned and what is still unverified on the device

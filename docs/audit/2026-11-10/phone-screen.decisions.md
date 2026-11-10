@@ -1,0 +1,35 @@
+- Where 'If something breaks' goes on the phone's screen. Recommend second, right under Status (not near the end as in the example order): rule 1 of the project is recoverability, and the phone is picked up mostly after a restart or when internet is broken, so Restore must be on the first screenful.
+- How 'Allow Bluetooth' gets the permission. Recommend: through Shizuku (`pm grant`) when it is ready, else Android's own prompt, and after a refusal open the app's info page. Same pattern as the texts permission (PhoneTab.java:174-196); Android stops showing the prompt after two refusals.
+- Do hotspot / Wi-Fi / Bluetooth-link states count as 'still changed by LinkMeter' in the Safety check? Recommend no: print them as information with the sentence that Restore everything leaves them alone. They are the user's own switches moved at the user's command; counting them (or the ordinary Bluetooth permission) would make the check say 'still changed' on every normal day and blunt the line that matters.
+- Build a remote 'undo' for the Bluetooth permission (pm revoke)? Recommend no: the phone-side switch already closes the door; document the manual way in SAFETY.md. Not verified: I believe Android ends an app's process when a runtime permission is revoked, which would lose the answer.
+- Should Sleep/Wake obey 'Let the tablet see and control this screen'? Recommend letting /screen/state, /screen/on and /screen/off through and keeping picture, touches and typing behind the switch. Today Standby and Screen off bypass it while Sleep/Wake is refused, which is a contradiction either way.
+- One 'Allow everything' button on the phone when Shizuku is ready (existing `setup` action + Bluetooth grant + texts grant if texts are on) versus one button per permission. Recommend the single primary button, with per-item buttons only for what is still missing when Shizuku is not ready: fewer taps, and granted items stop showing buttons.
+- Boot assist on the phone's screen. Recommend showing its state with a toggle that is enabled only when the one-time permission is held and autostart is on; leave the one-time setup and its undo on the tablet (they need Shizuku anyway). Keeps the phone card small and removes the autostart contradiction.
+- Results on the phone's screen: dialogs (today) or the design system's result strip. Recommend Ui.withResultBar for results and dialogs only for confirmations: the answer stays in sight, can be copied, and can be drawn by the preview.
+- How the preview fakes the phone's state. Recommend one package-visible static facts source in PhoneTab (the Call.reach pattern) rather than making several private statics settable, and sdk 35 for the phone drawings because that Robolectric image is already downloaded.
+- Phone role tabs. Recommend keeping exactly two (Phone, Files) and keeping the title 'Phone'; fix the ambiguity in the tablet's texts instead ('on the phone, open LinkMeter'), because renaming the phone's tab would touch more strings than it saves.
+- Show the phone's hotspot address on its Status card? Recommend yes if cheap (a small helper next to Boot.hotspotOn): the tablet's Settings tells the user to type the phone's address when Home cannot find it (SettingsTab.java:262-263) and nothing shows that address today. Optional.
+- Manifest. Recommend no permission change (BLUETOOTH_CONNECT alone is right for the listener) and keeping the specialUse service type; optionally update the subtype sentence to mention Bluetooth.
+
+## files
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/PhoneTab.java: rebuild in cards with Ui.Toggle/Fact/chip, attention card, Bluetooth switch + state + contextual button, confirmations, facts source for the preview, no file read in the tick
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/MainActivity.java: named request codes (texts, phone permission without service start, Bluetooth) and their result branches, requestBluetooth(), stop the service on role change, restyle the role chooser
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/BtServer.java: recheck() that only acts while the service wants the listener, close open connections when the switch goes off, setup() respects the switch, use or delete served/lastAt
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Eco.java: one setAuto used by the phone's toggle and the tablet's actions
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Actions.java: eco_auto_on/off through the shared function, safety() fills the new facts, optional Bluetooth grant in the 'Allow everything' path
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Screen.java: decide whether /screen/state|on|off pass the screen-control switch
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SafetyReport.java: informational hotspot / Wi-Fi / Bluetooth-link lines, tab name in the undo sentence
+- /home/user/LinkMeter/tools/test/SafetyReportTest.java: the switches are never a change, unknown is never 'off', wording, extended mask loop
+- /home/user/LinkMeter/docs/SAFETY.md: new rows, section 9, the self-granted permissions row, tab names, line 12 and line 69 wording
+- /home/user/LinkMeter/docs/REMOTE_LINK.md: lines 116-119 become true; note the phone-side controls
+- /home/user/LinkMeter/tools/uipreview/app/src/test/java/com/tj/linkmeter/PreviewTest.java: phone states at phone size on sdk 35, phone Files tab, chooser
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SmsAccess.java: line 44 quotes the phone's tab and button names
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/TextsTab.java: line 261 quotes the same names
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/ControlTab.java: lines 58 and 90 say 'LinkMeter > Phone' for the phone's own screen
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/LabSection.java: line 353 says 'LinkMeter > Phone'
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/SettingsTab.java: lines 204, 312, 327, 332 quote 'Pair tablet' and 'Forget all tablets'; handle the Bluetooth permission result for code 9
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/HomeTab.java: lines 237-250 quote 'Pair tablet'; line 365 depends on the Control tab's new title
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Boot.java: optional helper for the hotspot address next to hotspotOn
+- /home/user/LinkMeter/app/src/main/java/com/tj/linkmeter/Api.java: optional, put the action's name into lastNote so the phone's 'last request' line says what was asked
+- /home/user/LinkMeter/app/src/main/AndroidManifest.xml: optional, service subtype sentence mentions Bluetooth; no permission change needed
+- /home/user/LinkMeter/HANDOFF.md: tick step D's phone part and the B2 leftovers, one line on what was learned
