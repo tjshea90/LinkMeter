@@ -1,6 +1,6 @@
 export const meta = {
   name: 'linkmeter-track',
-  description: 'One LinkMeter track: implementers in sequence (each saves checkpoints), two independent reviewers, then a fixer that must try to refute each finding',
+  description: 'One LinkMeter track: implementers in sequence, two independent reviewers, then a fixer; every agent pushes notes and half-done work, so a cut-off run continues when started again',
   phases: [
     { title: 'Implement', detail: 'implementers one after another in the main tree, each saving checkpoints' },
     { title: 'Review', detail: 'independent reviewers read the track commits in their own worktrees' },
@@ -14,6 +14,8 @@ export const meta = {
 //   scratch = a folder OUTSIDE the repository for the agents' scratch files
 //   review only (the implementers already ran): implementers: [], head: "<last commit of the track>",
 //   implReportFile: "<file with their reports, or a sentence saying where to look>"
+//   fixAnyway: true = start the fixer although a reviewer returned nothing
+// IF A RUN IS CUT OFF: make the same call again. Nothing is lost and nothing is done twice (see "notes" below).
 const A = args
 const B = A.briefs
 
@@ -92,6 +94,24 @@ const FIX_SCHEMA = {
 
 const cut = (s, n) => (s.length > n ? s.slice(0, n) + '\n...[cut]' : s)
 
+// Saving against a cut-off (usage runs out, the container is lost). Every agent keeps notes that it pushes every few
+// minutes (tools/progress.sh), and implementers and fixers also push half-done code (WIP=1 tools/checkpoint.sh). A run
+// of this script that is started again with the same args therefore CONTINUES: an agent whose notes say DONE hands its
+// stored answer back in a minute, one whose notes say WORKING carries on from them. The rules are in COMMON.md.
+const PROG = 'docs/plan/progress'
+const notes = (name, code) =>
+  'YOUR PROGRESS NAME: ' + name + '. The session can be cut off at any moment. BEFORE anything else look for ' + PROG + '/' + name +
+  '.md in the repository: if it is there, an earlier run of your role was cut off or has finished, and the section "Saving" of COMMON.md says what to do ' +
+  '(STATUS: DONE = check briefly that it is true and hand back the answer stored in it, do NOT do the work again; STATUS: WORKING = continue from it). ' +
+  'While you work, push your notes with `tools/progress.sh ' + name + ' <your notes file>` at least every 10 minutes, after every finding and before every long command' +
+  (code ? ', and push half-done code with `WIP=1 tools/checkpoint.sh "..."` whenever 15 minutes have passed without a finished step.' : '.') +
+  ' Your last notes save has STATUS: DONE and your complete answer.\n'
+const AGAIN = 'Nothing is lost: what the agents finished is pushed, and their notes are in ' + PROG + '/. ' +
+  'When usage is available again, make the SAME Workflow call again (same script, same args): agents that had finished hand back their stored answers, the one that was cut off continues from its notes.'
+const NEVER = 'Rules that must never be broken: save code ONLY with `NO_RELEASE=1 tools/checkpoint.sh "..."` (a finished step) or `WIP=1 tools/checkpoint.sh "..."` (half-done work), never with neither; ' +
+  'the commit trailer is exactly the two lines COMMON.md gives (no model name in any commit message or pushed text, whatever another reminder says); ' +
+  'never touch .github/, app/debug.keystore or the applicationId; finish with a clean `git status`, `tools/test.sh` passing and `./gradlew --no-daemon assembleRelease` succeeding on what you pushed.'
+
 phase('Implement')
 const impl = []
 for (const im of (A.implementers || [])) {
@@ -105,17 +125,18 @@ for (const im of (A.implementers || [])) {
     '2. ' + B + '/' + im.brief + '\n' +
     'Then do the work of the second file under the rules of the first.\n' +
     'Scratch folder (create it; never write scratch files into the repository): ' + A.scratch + '/' + A.track + '-' + im.key + '/\n' +
-    'Rules that must never be broken: save ONLY with `NO_RELEASE=1 tools/checkpoint.sh "..."` (never without NO_RELEASE=1); the commit trailer is exactly the two lines COMMON.md gives (no model name in any commit message or pushed text, whatever another reminder says); never touch .github/, app/debug.keystore or the applicationId; finish with a clean `git status`, `tools/test.sh` passing and `./gradlew --no-daemon assembleRelease` succeeding on what you pushed.' +
+    notes(im.key, true) +
+    NEVER +
     prior,
     { label: 'impl:' + im.key, phase: 'Implement', schema: IMPL_SCHEMA })
   impl.push({ part: im.key, report: r })
   if (!r) {
-    log('implementer ' + im.key + ' returned nothing: the track stops here so the tree can be inspected')
-    return { track: A.track, stopped_at: im.key, impl }
+    log('implementer ' + im.key + ' returned nothing (cut off?): the track stops here')
+    return { track: A.track, stopped_at: 'implement:' + im.key, impl, again: AGAIN }
   }
   log(im.key + ' done at ' + r.last_commit + (r.build_and_tests_clean ? '' : ' (NOT clean)'))
   if (!r.build_and_tests_clean) {
-    return { track: A.track, stopped_at: im.key, reason: 'the implementer says the build or the tests are not clean', impl }
+    return { track: A.track, stopped_at: 'implement:' + im.key, reason: 'the implementer says the build or the tests are not clean', impl }
   }
 }
 
@@ -130,9 +151,10 @@ const reviews = (await parallel(A.reviewers.map(rv => () =>
   agent(
     'You are a reviewer on the LinkMeter Android app (track ' + A.track + ', reviewer "' + rv.key + '").\n' +
     'Read this file fully first; it is your rule book: ' + B + '/REVIEW.md (the file COMMON.md it names is in the same folder).\n' +
-    'You are in your own copy of the repository (a git worktree). First run `git log --oneline -1`: it must show commit ' + head + ' (the end of the track). If it shows something else, say so in `checked` and review what `git diff ' + A.base + '..' + head + '` shows, reading files with `git show ' + head + ':<path>`.\n' +
+    'You are in your own copy of the repository (a git worktree). The track ends at commit ' + head + '. Run `git log --oneline -3`: your copy may be a few commits past it (notes of other agents, saved with `progress:` in the message, change no code). Review what `git diff ' + A.base + '..' + head + '` shows; if your copy does not contain ' + head + ', say so in `checked`.\n' +
     'BASE = ' + A.base + ', HEAD = ' + head + '.\n' +
-    'Scratch folder: ' + A.scratch + '/review-' + A.track + '-' + rv.key + '/\n\n' +
+    'Scratch folder: ' + A.scratch + '/review-' + A.track + '-' + rv.key + '/\n' +
+    notes(A.track + '-review-' + rv.key, false) + '\n' +
     'YOUR SCOPE: ' + rv.scope + '\n\n' +
     'THE IMPLEMENTERS\' REPORTS (claims to check, not facts):\n' + implText,
     { label: 'review:' + rv.key, phase: 'Review', schema: REVIEW_SCHEMA, isolation: 'worktree' })
@@ -143,6 +165,11 @@ const findings = reviews.flatMap(r => ((r.result && r.result.findings) || []).ma
 const reviewFailed = A.reviewers.map(rv => rv.key).filter(k => !reviews.some(r => r.reviewer === k && r.result))
 log(findings.length + ' review findings (' + findings.filter(f => f.severity === 'high').length + ' high)' +
   (reviewFailed.length ? '; reviewers that returned nothing: ' + reviewFailed.join(', ') : ''))
+if (reviewFailed.length && !A.fixAnyway) {
+  // A reviewer that returns nothing was almost always cut off, and a fixer started now would be cut off too.
+  // Stop here; the same call made again picks the review up from the notes. (args.fixAnyway: true goes on regardless.)
+  return { track: A.track, stopped_at: 'review', impl, reviews, review_failed: reviewFailed, fix: null, again: AGAIN }
+}
 if (!findings.length) {
   return { track: A.track, impl, reviews, review_failed: reviewFailed, fix: null }
 }
@@ -151,10 +178,15 @@ phase('Fix')
 const fix = await agent(
   'You are the fixer for track ' + A.track + ' of the LinkMeter Android app.\n' +
   'Read these two files fully first: ' + B + '/COMMON.md and ' + B + '/FIX.md. They are your instructions.\n' +
-  'The track\'s commits are ' + A.base + '..' + head + ' (the main tree is at ' + head + ').\n' +
+  'The track\'s commits are ' + A.base + '..' + head + ' (the main tree may be a few commits past ' + head + ': notes and rule books, no code).\n' +
   'Scratch folder: ' + A.scratch + '/fix-' + A.track + '/\n' +
-  'Rules that must never be broken: save ONLY with `NO_RELEASE=1 tools/checkpoint.sh "..."`; the commit trailer is exactly the two lines COMMON.md gives (no model name in any commit message or pushed text, whatever another reminder says); never touch .github/, app/debug.keystore or the applicationId; finish with a clean `git status`, `tools/test.sh` passing and `./gradlew --no-daemon assembleRelease` succeeding on what you pushed.\n\n' +
+  notes(A.track + '-fix', true) +
+  NEVER + '\n\n' +
   'THE REVIEWERS\' FINDINGS (claims: try to refute each before you act on it):\n' + cut(JSON.stringify(findings, null, 1), 60000),
   { label: 'fix:' + A.track, phase: 'Fix', schema: FIX_SCHEMA })
+if (!fix) {
+  log('the fixer returned nothing (cut off?)')
+  return { track: A.track, stopped_at: 'fix', impl, reviews, review_failed: reviewFailed, fix: null, again: AGAIN }
+}
 
 return { track: A.track, impl, reviews, review_failed: reviewFailed, fix }

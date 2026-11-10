@@ -7,26 +7,51 @@ so a new session does not have to write it again.
 - `briefs/REVIEW.md`, `briefs/FIX.md`: the rule books of the reviewers and of the fixer.
 - `briefs/T1a.md` ... `T6b.md`: one brief per part of a track (what to change, which audit findings, which tests),
   written from `docs/audit/2026-11-10/`. The table at the end of this file says which belong to which track.
+- `tracks.json`: the arguments of the Workflow call for each track (who builds, who reviews what).
+- `../progress/`: the notes every agent pushes while it works, and the call each track was started with.
 - `track-workflow.js`: the script for the Workflow tool. One run = the track's implementers one after another in the main
   tree (each saves with `NO_RELEASE=1 tools/checkpoint.sh`), then two reviewers in their own copies of the repository, then
   one fixer who must try to refute each finding before acting on it.
 
+## Saving so that nothing is lost (usage can run out at any moment)
+
+Three kinds of save, cheapest first. Every agent is told to use them (`briefs/COMMON.md`, "Saving"):
+
+| What | Command | Cost | What GitHub does |
+|---|---|---|---|
+| An agent's NOTES (what is done, what it is in the middle of, what is next, findings so far) | `tools/progress.sh <name> <notes-file>` every 10 minutes, after every finding, before every long command | seconds | nothing is built (`[skip ci]`); only `docs/plan/progress/<name>.md` is committed, whatever else is changed |
+| HALF-DONE WORK that may not even compile | `WIP=1 tools/checkpoint.sh "what is half done, what comes next"` when 15 minutes pass without a finished step | seconds | nothing is built, nothing is merged (`[wip] [skip ci]`) |
+| A FINISHED STEP that builds and passes | `NO_RELEASE=1 tools/checkpoint.sh "..."` | tests + build first | built, tested, merged into `main`, no release |
+
+So after a cut-off at most a few minutes of thinking are lost, never pushed work. Reviewers save their findings the
+moment each is established; implementers and fixers work one finding at a time.
+
 ## Running a track
 
     Workflow({ scriptPath: "docs/plan/2026-11-10/track-workflow.js", args: {
-      track: "T2", base: "<commit before the track>",
-      briefs: "docs/plan/2026-11-10/briefs", scratch: "<a folder outside the repository>",
-      implementers: [ {key: "T2a", brief: "T2a.md"}, {key: "T2b", brief: "T2b.md"} ],
-      reviewers: [ {key: "...", scope: "which classes, and what to look at hardest"}, ... ] } })
+      ...the track's entry in docs/plan/2026-11-10/tracks.json...,
+      base: "<commit before the track: git rev-parse --short HEAD>",
+      scratch: "<a folder outside the repository>" } })
 
-- Never run two implementers at once: their builds disturb each other, and an unpushed copy is lost when the session ends.
-- If the run is cut off (usage limit, container gone): everything an implementer finished is already pushed. Look at
-  `git log --oneline -10` and the track's line in HANDOFF, then either run the track again with a brief that says what is
-  left, or, when only the review is missing, run the script with `implementers: []`, `head: "<last commit>"` and
-  `implReportFile: "the reports are not kept; read the track's line in HANDOFF.md and the commits"`.
+- BEFORE starting it, save the complete call (the args as JSON, and the date) as `docs/plan/progress/<track>-run.md` with
+  `tools/progress.sh <track>-run <file>`, so the same call can be made again.
+- Never run two implementers at once: their builds disturb each other.
 - After a track: check `tools/test.sh`, `./gradlew --no-daemon assembleRelease`, `python3 tools/mutate_link.py`, look at the
   pictures of `tools/preview.sh`, check that the pipeline run is green and `main` followed, and that the track's line in
   HANDOFF is true.
+
+## If a run was cut off (usage ran out, the worker restarted, the container is new)
+
+1. `git fetch --all`, `git log --oneline -10`, `git status --short`. A newest commit that starts with `wip:` is half-done
+   work: do not throw it away; the agent that continues will finish it.
+2. Read `docs/plan/progress/`: `<track>-run.md` has the call that was running; each agent's file says `STATUS: DONE` or
+   `STATUS: WORKING` and what was in progress.
+3. Make the SAME Workflow call again (same script, same args; a new scratch folder is fine). Agents whose notes say DONE
+   hand back their stored answer in a minute; the one that was cut off reads its notes and the `wip:` commit and carries
+   on; agents that never started start. In the same session `resumeFromRunId` also works and is quicker, but it is not
+   needed.
+4. The script stops by itself, with `stopped_at` and the sentence `again`, when an agent returns nothing; it does not
+   start a fixer after a reviewer was cut off.
 
 ## The tracks, their briefs and what the reviewers look at
 

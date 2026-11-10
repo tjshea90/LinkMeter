@@ -6,6 +6,16 @@ Rules for this project:
 - Save often: run `tools/checkpoint.sh "what changed"` after every meaningful step.
   Assume the session can be cut off at any moment.
 - Keep `HANDOFF.md` Status current before each checkpoint.
+- Three kinds of save, cheapest first; use them OFTEN, usage can run out in the middle of anything:
+  - `tools/progress.sh <name> <notes-file>`: an agent's notes only (what is done, what it is in the middle of, what is
+    next). Seconds; nothing is built; commits only `docs/plan/progress/<name>.md`. Every 10 minutes and before every long
+    command.
+  - `WIP=1 tools/checkpoint.sh "what is half done, what comes next"`: half-done work that may not even compile. Nothing
+    is built or merged. When 15 minutes pass without a finished step.
+  - `NO_RELEASE=1 tools/checkpoint.sh "..."`: a finished step (tests and build first).
+- When resuming: a newest commit that starts with `wip:` is half-done work to finish, not to throw away, and
+  `docs/plan/progress/` holds the notes of the agents that were running (`STATUS: WORKING` = cut off, continue from it).
+  How to start a track again: `docs/plan/2026-11-10/README.md`.
 - No third-party libraries. The tablet is a low-RAM Go device.
 - Releases are automatic (standing instruction from the user, 2026-11-08). Cloud sessions work only on their designated
   session branch (`ccr-*`) and never push to `main` themselves. GitHub builds and tests every push; a good build on a

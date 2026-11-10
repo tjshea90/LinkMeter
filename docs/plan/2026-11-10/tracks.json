@@ -1,0 +1,119 @@
+{
+ "_how": "Arguments for docs/plan/2026-11-10/track-workflow.js, one entry per track. Add two values when starting a track: base (the commit before the track: git rev-parse --short HEAD) and scratch (a folder outside the repository). Save the complete call as docs/plan/progress/<track>-run.md with tools/progress.sh before starting it, so the same call can be made again after a cut-off.",
+ "T2": {
+  "track": "T2",
+  "briefs": "docs/plan/2026-11-10/briefs",
+  "implementers": [
+   {
+    "key": "T2a",
+    "brief": "T2a.md"
+   },
+   {
+    "key": "T2b",
+    "brief": "T2b.md"
+   }
+  ],
+  "reviewers": [
+   {
+    "key": "saver",
+    "scope": "The PHONE side of track T2 (brief: T2a.md): Eco, the new pure SaverPlan and its test, RemoteProfile and ProfilePlan where they changed, the eco_* actions and restoreAll in Actions, Status (`cur`), SafetyReport wording, the saver checkbox in PhoneTab, the saver fact on HomeTab. Look hardest at: a state the phone can never leave (the 15 second screen timeout or another saver value left behind for good); a profile applied by the OLD app being restored by the new code; races between a request from the tablet, the idle alarm, the screen-on event and an action (can a 'turn off' still switch the saver on? can two applies run?); a stored or read value reaching the shell unvalidated; an alarm, receiver or thread that stays when the saver is off or the service stops; a lock held across a shell command on a request thread or the main thread; older tablet apps (eco_on, eco_off) and older phone apps (missing fields); whether the tests would notice each rule being broken."
+   },
+   {
+    "key": "tablet",
+    "scope": "The TABLET side of track T2 (brief: T2b.md): ScreenTab (the rule for holding the tablet awake and how often it asks, one chain of questions, one Sleep target), ScreenPrefs and AdvancedPanel (the custom quality numbers, the bitrate steps), BootSection and the two delayed calls in ControlTab, the phone address field in SettingsTab and Net, the Speed tab sentence, the new pure classes and their tests. Look hardest at: anything that still runs or asks while the tab is hidden; a wake lock or window flag that stays; the phone's Bluetooth being switched on by a poll; the user's custom numbers being lost; a half-typed address still switching the automatic search off; an older phone app; the preview pictures of the Screen, Settings and Speed tabs."
+   }
+  ]
+ },
+ "T3": {
+  "track": "T3",
+  "briefs": "docs/plan/2026-11-10/briefs",
+  "implementers": [
+   {
+    "key": "T3a",
+    "brief": "T3a.md"
+   },
+   {
+    "key": "T3b",
+    "brief": "T3b.md"
+   }
+  ],
+  "reviewers": [
+   {
+    "key": "logic",
+    "scope": "Track T3, the tablet's Phone tab (class ControlTab) and BootSection (briefs: T3a.md, T3b.md), as CODE: every request the tab sends and what it does with each answer (errors, `later`, an older phone app that lacks a field or answers 'unknown action'); the follow-up after an answer-first switch (does it stop? does it stop when the tab is hidden?); double taps (can anything that changes the phone be sent twice?); work on the main thread; anything running while the tab is hidden; the Bluetooth route (what works, what is refused, is the live check before a switch that cuts the hotspot really made?); BootSection behaving exactly as before the restyle (BootFlow and BootDriver untouched, BootFlowTest passing); the sentences in OTHER files and docs that named a 'Control tab'; the new pure classes and whether their tests would notice a broken rule."
+   },
+   {
+    "key": "screen",
+    "scope": "Track T3, the tablet's Phone tab and its 'After a phone restart' card, as the USER sees it: run tools/preview.sh and look at EVERY picture of the tab and of its confirmations at 600 px with font scale 1.2. Report: text cut off or overlapping, a row that does not fit, more than one primary button on a card, a wall of text, a state that reads as success when it is a failure, a sentence that claims more than the code checked (read the code behind each sentence), a confirmation that does not say plainly what cannot be undone from the tablet, jargon, anything the brief says is gone but is still there, anything needed after a phone restart that is hard to find. Compare with Home and Settings: is it one app?"
+   }
+  ]
+ },
+ "T4": {
+  "track": "T4",
+  "briefs": "docs/plan/2026-11-10/briefs",
+  "implementers": [
+   {
+    "key": "T4a",
+    "brief": "T4a.md"
+   },
+   {
+    "key": "T4b",
+    "brief": "T4b.md"
+   }
+  ],
+  "reviewers": [
+   {
+    "key": "phone",
+    "scope": "Track T4, the PHONE side (brief: T4a.md): the two stored-flag rules (the 5G-leg flag that could never clear, the network-types flag set by a press that changes nothing) and their tests; Actions.restoreRadio, Actions.safety, setNr; the one-time clean-up at service start (Guard.resume); the fixed sentence the four nrleg_* names answer (does an OLD tablet's comparison really keep its baseline? read the old LeverRun and LeverLink with `git show v0.2.102:<path>`); the removed routes and actions as an old tablet meets them (404, unknown action: nothing hangs, nothing stays changed); ShellMain (bands-clear and 'leg on' kept, nothing else of the lock or leg left reachable); the dial tripwire tools/test/test_dial_paths.py (is it really stricter? try to add a dial intent in a scratch copy and see it fail) and docs/SAFETY.md against the code; SafetyReport and its test."
+   },
+   {
+    "key": "runner",
+    "scope": "Track T4, the comparison runner and the tablet (brief: T4b.md): LeverRun without the leg and tools/test/LeverRunTest.java. Break each kept rule on purpose in a scratch copy and see whether the test fails: the baseline is never discarded and never asked to drop 5G; an out-of-date carrier list is not 5G; a setting not obeyed twice is dropped; 5G is put back however the run ends; a warning without a number is not zero; equal settings are merged; the statistics. Is each round's order a fair coin now, and does a test prove it? Then: nothing dangling after the deletions (BandSweep, SweepPlan, BandCheck, the old LeverLink; grep for their names in code, tests, tools/test.sh and docs); the cut-down BandsTab and LabSection still work for what was kept (look at the preview pictures: no empty heading, no dead button, no text naming something removed); the new tablet sends only names an old phone knows."
+   }
+  ]
+ },
+ "T5": {
+  "track": "T5",
+  "briefs": "docs/plan/2026-11-10/briefs",
+  "implementers": [
+   {
+    "key": "T5",
+    "brief": "T5.md"
+   }
+  ],
+  "reviewers": [
+   {
+    "key": "logic",
+    "scope": "Track T5, the new SignalTab (brief: T5.md), as CODE: every request and what is done with each answer; scanning by itself (when shown, not during a comparison, not within a minute of the last scan); the comparison across hiding and showing the tab and across a lost link (is the phone always put back?); the search-again follow-up (does it stop? what if the phone never says done?); double taps; work on the main thread; anything running while the tab is hidden other than a comparison; the Bluetooth route; an older phone app; nothing left that references BandsTab or LabSection; the new pure classes and whether their tests would notice a broken rule; LeverRunTest unchanged and passing."
+   },
+   {
+    "key": "screen",
+    "scope": "Track T5, the Signal tab as the USER sees it: run tools/preview.sh and look at EVERY picture of the tab and its confirmations at 600 px with font scale 1.2. Report: text cut off or overlapping, a row that does not fit, more than one primary button on a card, a wall of text, a state that reads as success when it is a failure, a sentence that claims more than the code checked or that the field evidence in HANDOFF contradicts (band locks, the 5G leg, dial codes must be gone from every sentence), jargon. Read docs/UPLOAD_IDEAS.md against HANDOFF's field evidence: does it still send the user to something that no longer exists? Compare with Home, Settings and the Phone tab: is it one app?"
+   }
+  ]
+ },
+ "T6": {
+  "track": "T6",
+  "briefs": "docs/plan/2026-11-10/briefs",
+  "implementers": [
+   {
+    "key": "T6a",
+    "brief": "T6a.md"
+   },
+   {
+    "key": "T6b",
+    "brief": "T6b.md"
+   }
+  ],
+  "reviewers": [
+   {
+    "key": "screen",
+    "scope": "Track T6, the phone's own screen (brief: T6a.md; class PhoneTab, the role chooser and the role switch in MainActivity): the code AND the pictures (tools/preview.sh; the phone's pictures must be at a phone's size). The attention card (does the first match really win, is 'Ready' only shown when the service runs, a tablet is paired and Shizuku is ready?); the Bluetooth switch (Cfg.setBtLink then BtServer.recheck, never blocking the main thread) and the permission paths on Android 16 (through Shizuku, or Android's own prompt) and on older Android; the battery switch through Eco.setAuto; confirmations for Stop, Forget all tablets and Switch role; the role switch stopping the service, the Bluetooth listener, Boot assist and the safety net; the permission button no longer starting the service; the 2 second refresh doing nothing slow; labels the tablet's texts quote word for word; every sentence (true? short? plain?)."
+   },
+   {
+    "key": "safety",
+    "scope": "Track T6, the Safety check and the documents (brief: T6b.md): SafetyReport and tools/test/SafetyReportTest.java. Break three rules on purpose in a scratch copy and see whether the test fails: a switch counted as a change; 'not known' printed as off; the 'leaves them alone' sentence dropped. Actions.safety filling the facts (the hotspot can be null). Then read docs/SAFETY.md row by row and docs/REMOTE_LINK.md statement by statement AGAINST THE CODE as it is now and report every statement that is not true, every change the app makes to the phone that has no row, and every row for something that no longer exists. tools/test/test_dial_paths.py still passing. HANDOFF decision (9) stated plainly as open."
+   }
+  ]
+ }
+}
