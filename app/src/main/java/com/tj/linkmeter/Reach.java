@@ -161,7 +161,9 @@ final class Reach {
             String before = wifiError.isEmpty() ? (wifi.known() ? "" : "The tablet is not on the phone's hotspot, and ")
                     : wifiError + (wifiError.endsWith(")") || wifiError.endsWith(".") ? " And " : ". And ");
             if (!bluetooth(res, method, target, readMs, pressed)) {
-                res.error = before + (res.btOff ? res.error + "." : "Bluetooth did not get through either: " + res.error);
+                // Only "was tried": whether the request got through is for Bluetooth's own reason to say. A call that was not
+                // answered did not, but a request that went out and got no answer in time may well have been carried out.
+                res.error = before + (res.btOff ? res.error + "." : "Bluetooth was tried: " + res.error);
                 res.error = Character.toUpperCase(res.error.charAt(0)) + res.error.substring(1);
             }
             return res;

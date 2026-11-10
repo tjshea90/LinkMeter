@@ -211,7 +211,7 @@ public final class ReachTest {
         w.btMode = Mode.NO_CONNECT;
         r = w.reach();
         x = r.call("GET", "/s", 3000);
-        check(x.resp == null && x.error.contains("Couldn't reach the phone") && x.error.contains("Bluetooth did not get through either"), "both named: " + x.error);
+        check(x.resp == null && x.error.contains("Couldn't reach the phone") && x.error.contains("And Bluetooth was tried: the phone did not answer the Bluetooth call"), "both named: " + x.error);
         before = w.log.size();
         x = r.call("GET", "/s", 3000);
         check(w.log.get(before).equals("wifi /s"), "the hotspot route is tried again at once when Bluetooth does not work either");
@@ -222,7 +222,7 @@ public final class ReachTest {
         w.btMode = Mode.NO_CONNECT;
         r = w.reach();
         x = r.call("GET", "/s", 3000);
-        check(x.error.startsWith("The tablet is not on the phone's hotspot, and Bluetooth did not get through either"), "said in one sentence: " + x.error);
+        check(x.error.equals("The tablet is not on the phone's hotspot, and Bluetooth was tried: the phone did not answer the Bluetooth call"), "said in one sentence: " + x.error);
 
         // a lost answer over Bluetooth is a failure too, and is not repeated
         w = new World();
@@ -231,6 +231,22 @@ public final class ReachTest {
         r = w.reach();
         x = r.call("POST", "/act?name=hotspot_on", 3000);
         check(x.resp == null && w.arrived == 1 && w.log.size() == 1, "one try over Bluetooth, no repeat");
+        // ... and it ARRIVED: the words in front of Bluetooth's own reason must not say that it did not get through
+        check(x.error.equals("The tablet is not on the phone's hotspot, and Bluetooth was tried: Read timed out"), "a lost answer over Bluetooth: only 'was tried', then the reason: " + x.error);
+        for (Mode wifiMode : new Mode[] {Mode.OK, Mode.NO_CONNECT}) {
+            for (boolean known : new boolean[] {false, true}) {
+                w = new World();
+                w.wifiKnown = known;
+                w.wifiMode = wifiMode;
+                w.btMode = Mode.LOST_ANSWER;
+                r = w.reach();
+                x = r.call("POST", "/act?name=hotspot_on", 3000);
+                if (x.btTried && x.resp == null) {
+                    check(w.arrived == 1 && !x.error.contains("did not get through") && x.error.endsWith("Bluetooth was tried: Read timed out"),
+                            "a request that arrived over Bluetooth is never said not to have got through there (" + wifiMode + ", " + known + "): " + x.error);
+                }
+            }
+        }
 
         // a hotspot route that connects ends the skipping at once, whatever happened before: here the hotspot fails, Bluetooth fails
         // too, the hotspot then works, the tablet is off Wi-Fi for a moment (Bluetooth carries that one), and is back on the hotspot
