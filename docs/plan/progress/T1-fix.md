@@ -42,15 +42,20 @@ HANDLED SO FAR:
     reviewer's "Over Bluetooth: " read badly after "..., and "). ReachTest 515853 checks (new: a lost answer over Bluetooth is never said not to
     have got through); mutate_link.py: 1 new "reach:" breakage, caught.
 
-IN PROGRESS NOW: F7 (verdict: real). NOT the reviewer's fix (401 -> failed() would show "Not reached ... did not get through" right above "The phone
- answered over Bluetooth but does not know this tablet": a false sentence). Instead, written but NOT yet committed:
- - LinkState.proves(code): 200 TRUE, 401 FALSE (proof void), else null. BtLink.callLocked: FALSE -> Cfg.forgetBtProof (removes btOkAt, btFailed) -> state NOT_TESTED.
- - Cfg.resetToken also forgets the proof; SettingsTab.confirmPair repaints the link card at once.
- - NOT_TESTED words: "... but it is not known whether a call to it works. Press Test." (true after a refusal and a new secret too).
- - LinkStateTest proofs() (5204 checks), 5 new "state:" breakages (23 of 23 caught), PreviewTest.settingsNewSecret + findText, docs/REMOTE_LINK.md.
- About to: run preview for settingsNewSecret (and against the old code in the scratch copy), then test, build, preview, checkpoint.
+ F7 FIXED in commit b323878 (verdict: real; NOT the reviewer's fix: 401 -> failed() would show "Not reached ... did not get through" right above
+    "The phone answered over Bluetooth but does not know this tablet"). LinkState.proves(code): 200 TRUE, 401 FALSE, else null. BtLink.callLocked:
+    FALSE -> Cfg.forgetBtProof (removes btOkAt, btFailed) -> NOT_TESTED. Cfg.resetToken forgets the proof too; SettingsTab.confirmPair repaints
+    the card. NOT_TESTED words: "... but it is not known whether a call to it works. Press Test." LinkStateTest 5204 checks; 5 new "state:"
+    breakages (23 of 23 caught); PreviewTest.settingsNewSecret (picture and check; fails without the forget in a scratch copy).
 
-NEXT: F5, F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
+IN PROGRESS NOW: F5 (verdict: real). NOT the reviewer's fix (pacing with PollPace): the Screen tab cannot show anything without the hotspot, so its own
+ question is now asked over the hotspot ONLY. Written but NOT yet committed:
+ - Reach.hotspotOnly(method, target, readMs) (never Bluetooth), Call.runOverHotspot, ScreenTab.statePoll uses it.
+ - ReachTest hotspotOnly() (615861 checks), 4 new "reach:" breakages (all caught), PreviewTest.screenTabLeavesBluetoothAlone + Pretend.btCalls,
+   docs/REMOTE_LINK.md point 5.
+ About to: run the preview check (and against the old code in the scratch copy), then test, build, preview, checkpoint.
+
+NEXT: F1, F2; one finding at a time, a NO_RELEASE checkpoint after each that builds and passes.
 
 LEARNED:
 - No notes of an earlier T1-fix run existed; the tree was clean at the start.
