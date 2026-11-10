@@ -426,6 +426,25 @@ public class PreviewTest {
         shot(a, "state-home-switch-phone-gone");
     }
 
+    /** The screen is left while Home is still looking for the result of a "Sent" switch, and opened again: what it says then. */
+    @Test
+    public void homeLeftDuringFollowUp() throws Exception {
+        Pretend p = new Pretend();
+        p.status = Pretend.status(true, true).replace("\"btmac\":\"" + MAC + "\",", ""); // the link was never set up
+        p.actReply = "{\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}";
+        p.install();
+        MainActivity a = tablet();
+        settle();
+        press(a, "Hotspot off");
+        settle();
+        ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle();
+        p.via = ""; // the hotspot is gone, and there is no other way to the phone
+        a.openTab(Tab.SETTINGS);
+        a.openTab(Tab.HOME);
+        shot(a, "state-home-left-during-follow-up");
+    }
+
     /**
      * Not a picture but a check: a press while a question is on its way must not start a second chain of questions (each
      * chain would ask at the full rate, and over Bluetooth every question wakes the phone).

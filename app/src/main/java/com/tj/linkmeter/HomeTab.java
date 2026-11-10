@@ -269,9 +269,10 @@ final class HomeTab extends Tab {
             worker = null;
         }
         if (follow != null) {
-            // nobody is looking any more: the phone is not asked on, and nothing is claimed about the switch
-            endFollow("Sent. LinkMeter stopped looking for the result when this screen was left. The lines above show how the "
-                    + "phone is now.", true);
+            // nobody is looking any more: the phone is not asked on, and nothing is claimed about the switch (nor about the
+            // lines above: they are the last answer, and after "Hotspot off" the phone may not be reachable for a new one)
+            endFollow("Sent. LinkMeter stopped looking for the result when this screen was left. The lines above show the "
+                    + "phone's latest answer, which may be from before the switch.", true);
         }
     }
 
