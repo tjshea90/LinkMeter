@@ -189,6 +189,7 @@ final class BtServer {
                 registerLocked();
                 listenLocked();
             }
+            secondTry();
         });
     }
 
@@ -210,6 +211,9 @@ final class BtServer {
                                 closeServerLocked();
                             }
                             listenLocked();
+                        }
+                        if (!gone) {
+                            secondTry();
                         }
                     });
                 }
@@ -263,6 +267,25 @@ final class BtServer {
         synchronized (LOCK) {
             listenLocked();
         }
+    }
+
+    /**
+     * After a try to listen that the phone made by itself (the service started, Bluetooth came back on, the setup): if it
+     * failed, one more try a moment later. Bluetooth that has only just come on can refuse the first try, and nothing else
+     * would mend it: {@link #poke} needs a status request from the tablet, and with the hotspot off that request can only
+     * come in through this very door. Waits on the caller's thread (the door's, or the setup's), never under LOCK.
+     */
+    private static void secondTry() {
+        if (!"error".equals(state)) {
+            return;
+        }
+        try {
+            Thread.sleep(1500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        listenNow();
     }
 
     /**
@@ -527,15 +550,7 @@ final class BtServer {
                     + "settings (on both: Settings > Bluetooth), then press \"Find the phone\" on the tablet.\n");
         }
         listenNow(); // on this thread, so the next line reports what is true now (does nothing unless the service is running)
-        if ("error".equals(state)) {
-            // Bluetooth that has only just come on can refuse the first try: one more, a moment later
-            try {
-                Thread.sleep(1500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            listenNow();
-        }
+        secondTry(); // (Bluetooth may have been switched on a few lines above)
         sb.append("Bluetooth link on the phone: ").append(stateText()).append('.');
         if (!"on".equals(state)) {
             throw new IOException(sb.toString());

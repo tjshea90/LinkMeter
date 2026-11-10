@@ -28,8 +28,12 @@ exist too, but they say plainly that someone has to touch the phone afterwards.
   devices were paired in the Bluetooth settings first; the link is still encrypted, and every request is signed (below).
   A receiver for `BluetoothAdapter.ACTION_STATE_CHANGED` starts listening again when Bluetooth is switched back on. If
   listening could not start (state `perm`, `error` or `off`), it is tried again by itself whenever the tablet asks for the
-  status, at most every 30 s (`BtServer.poke`), so a permission given later in Android's settings is noticed. Opening and
-  closing the listener happens on one background thread (`BtServer.start`, `stop`, `recheck` never block their caller).
+  status, at most every 30 s (`BtServer.poke`), so a permission given later in Android's settings is noticed. A status
+  request cannot arrive while the hotspot is off and the door is shut, so a try the phone makes by itself (the service
+  starts, Bluetooth comes back on, the setup) that ends in `error` is repeated ONCE, 1.5 s later (`BtServer.secondTry`).
+  NOT KNOWN: whether listening ever fails right after Bluetooth comes on on this phone, and whether one more try is enough.
+  Opening and closing the listener happens on one background thread (`BtServer.start`, `stop`, `recheck` never block their
+  caller).
   At most 2 connections are open; one more closes a connection that has not yet sent a properly signed request before one that
   has (`RemoteRoutes.givesWay`), so a stranger in range cannot push the tablet out.
   Needs the `BLUETOOTH_CONNECT` permission on Android 12+ (the phone is Android 16): given through Shizuku by `bt_setup`
