@@ -69,6 +69,7 @@ public class SenderService extends Service {
                 RemoteProfile.recover(getApplicationContext());
                 Guard.resume(getApplicationContext()); // anything LinkMeter changed and left: watch it again, finish a cut-off radio-off
                 BootAssist.start(getApplicationContext()); // after a restart: wireless debugging on and the Shizuku notification, if the user switched Boot assist on
+                BtServer.start(getApplicationContext()); // the Bluetooth door: the tablet can reach the phone while the hotspot is off
             }
         }
         // Sticky: if Android ever stops it, it comes back by itself.
@@ -206,6 +207,7 @@ public class SenderService extends Service {
         if (pool != null) {
             pool.shutdownNow();
         }
+        BtServer.stop();
         super.onDestroy();
     }
 

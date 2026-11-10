@@ -235,7 +235,29 @@ final class Screen {
         final boolean noDoze = !wantOn && "1".equals(r.q("nodoze"));
         PowerSequence.Result res;
         try {
-            res = PowerSequence.run(new PowerSequence.Phone() {
+            res = powerNow(c, wantOn, noDoze);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Http.err(out, 409, "The request was interrupted.");
+            return;
+        }
+        String state = ",\"on\":" + pm.isInteractive() + ",\"ds\":" + displayState(c)
+                + ",\"how\":" + org.json.JSONObject.quote(res.how);
+        if (res.reached) {
+            Http.json(out, 200, "{\"ok\":true,\"out\":\"" + (wantOn ? "Screen on." : "Screen off.") + "\"" + state + "}");
+        } else {
+            Http.json(out, 409, "{\"err\":" + org.json.JSONObject.quote("The phone did not "
+                    + (wantOn ? "wake up" : "stay asleep") + ": " + res.how) + state + "}");
+        }
+    }
+
+    /**
+     * The checked Sleep or Wake itself (see {@link #power}), for callers without a request: the Standby action and the Control
+     * tab's "Screen off". Needs Shizuku.
+     */
+    static PowerSequence.Result powerNow(final Context c, final boolean wantOn, final boolean noDoze) throws InterruptedException {
+        final PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+        return PowerSequence.run(new PowerSequence.Phone() {
                 @Override
                 public boolean awake() {
                     return pm.isInteractive();
@@ -272,19 +294,6 @@ final class Screen {
                     return SystemClock.elapsedRealtime();
                 }
             }, wantOn, noDoze);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            Http.err(out, 409, "The request was interrupted.");
-            return;
-        }
-        String state = ",\"on\":" + pm.isInteractive() + ",\"ds\":" + displayState(c)
-                + ",\"how\":" + org.json.JSONObject.quote(res.how);
-        if (res.reached) {
-            Http.json(out, 200, "{\"ok\":true,\"out\":\"" + (wantOn ? "Screen on." : "Screen off.") + "\"" + state + "}");
-        } else {
-            Http.json(out, 409, "{\"err\":" + org.json.JSONObject.quote("The phone did not "
-                    + (wantOn ? "wake up" : "stay asleep") + ": " + res.how) + state + "}");
-        }
     }
 
     private static void run(OutputStream out, String cmd, String okText) throws IOException {

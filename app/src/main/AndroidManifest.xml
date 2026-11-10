@@ -34,6 +34,16 @@
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- The Bluetooth link (docs/REMOTE_LINK.md): the tablet reaches the phone while the hotspot is off. Android 12 and newer (the
+         phone) ask the user for "Nearby devices"; Android 11 and older (the tablet) have the two old permissions instead. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
     </queries>

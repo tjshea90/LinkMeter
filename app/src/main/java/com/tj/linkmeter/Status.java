@@ -51,6 +51,21 @@ final class Status {
             o.put("vn", Updater.versionName(c));
             o.put("priv", Priv.state());
             o.put("eco", Eco.isOn(c));
+            o.put("ecoAuto", Cfg.ecoAuto(c));
+            // the switches the tablet can move (docs/REMOTE_LINK.md), read the cheap way
+            o.put("hs", Radios.hotspotOn(c));
+            o.put("wifi", Radios.wifiOn(c));
+            o.put("scr", Radios.screenOn(c));
+            o.put("air", Radios.airplane(c));
+            o.put("bt", BtServer.state());
+            String mac = Cfg.btMac(c);
+            if (!mac.isEmpty()) {
+                o.put("btmac", mac);
+            }
+            String btName = BtServer.name(c);
+            if (!btName.isEmpty()) {
+                o.put("btname", btName);
+            }
             cell(c, o);
         } catch (JSONException ignored) {
             // Nothing to do: the tablet just gets whatever was filled in so far.

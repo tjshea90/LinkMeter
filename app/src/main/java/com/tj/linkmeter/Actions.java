@@ -36,53 +36,25 @@ final class Actions {
     /** A deliberate radio-off is over in a few seconds; if it is still on after this long, the safety net switches the radio back on. */
     private static final long BLIP_GRACE_MS = 45L * 1000;
 
-    /** These cut the link to the tablet, so the phone answers first and acts a moment later. */
-    static boolean isDelayed(String name) {
-        return name.equals("airplane_on") || name.equals("hotspot_off") || name.equals("poweroff")
-                || name.equals("hotspot_restart") || name.equals("radio_cycle") || name.equals("boot_hotspot_on");
-    }
-
-    /** Called before the reply to a delayed action is sent, so that a question asked right after it gets the right answer. */
+    /** Called before the reply to an answer-first action is sent, so that a question asked right after it gets the right answer. */
     static void prepareDelayed(String name) {
         if (name.equals("radio_cycle")) {
             cycleState = "running";
         }
     }
 
-    private static String delayedCommand(Context c, String name) {
-        switch (name) {
-            case "hotspot_restart":
-                return Cells.mainCommand(c, "hotspot-restart");
-            case "boot_hotspot_on":
-                return Cells.mainCommand(c, "hotspot-start"); // "start the phone after a restart": the phone becomes the hotspot
-            case "radio_cycle":
-                // for the band lock: the modem applies a restriction when it SEARCHES, so make it search again
-                return Cells.mainCommand(c, "radio-cycle");
-            case "airplane_on":
-                return "cmd connectivity airplane-mode enable";
-            case "hotspot_off":
-                // Airplane mode switches the hotspot off; switching it back off restores mobile data.
-                return "cmd connectivity airplane-mode enable; sleep 3; "
-                        + "cmd connectivity airplane-mode disable";
-            default:
-                return "svc power shutdown || reboot -p";
-        }
-    }
-
-    static void later(final Context c, final String name) {
+    /**
+     * For an action that takes away the link it was asked over (see {@link RemoteRoutes#cutsLink}): the phone has already answered
+     * "Sent", and carries the action out a moment later. Nobody can be told how it went, except through what the action records
+     * (the radio restart's state, the hotspot's result) and the next status request.
+     */
+    static void later(final Context c, final String name, final boolean viaBluetooth) {
         final Context app = c.getApplicationContext();
+        Awake.work(app, 90_000L); // the phone may be asleep, and the link that kept it awake is about to go
         new Thread(() -> {
             try {
                 Thread.sleep(800);
-                markRadioRisk(app, name); // BEFORE the radio goes off: a cut-off must still be undone
-                Priv.Result r = Priv.run(delayedCommand(app, name), 60);
-                if (name.equals("boot_hotspot_on")) {
-                    Boot.hotspotResult = firstLine(r.out); // the tablet asks how it went once it is on the phone's hotspot
-                }
-                if (name.equals("radio_cycle")) {
-                    cycleState = r.out.contains("OK ") ? "done" : "failed: " + firstLine(r.out);
-                }
-                finishRadioRisk(app, name);
+                perform(app, name, viaBluetooth);
             } catch (IOException | InterruptedException e) {
                 // the tablet has already lost the link; nothing to report to (but a radio restart records how it went)
                 if (name.equals("radio_cycle")) {
@@ -92,15 +64,174 @@ final class Actions {
         }, "linkmeter-delayed").start();
     }
 
-    static String run(Context c, String name) throws IOException {
-        return run(c, name, "");
+    /**
+     * The actions that can take a link away: the work itself, and what happened in plain words. Called a moment after the answer
+     * when the action cuts the link it came over ({@link #later}), and at once when it does not (over Bluetooth), so that the
+     * tablet then gets the real result.
+     */
+    static String perform(Context app, String name, boolean viaBluetooth) throws IOException {
+        switch (name) {
+            case "hotspot_on":
+            case "boot_hotspot_on": {
+                String r = resultLine(Cells.shellMain(app, "hotspot-start").out);
+                Boot.hotspotResult = r; // "start the phone after a restart" asks how it went once the tablet is on the hotspot
+                return r.startsWith("OK") ? "The hotspot is on." : "The hotspot could not be switched on: " + afterWord(r);
+            }
+            case "hotspot_off":
+                return hotspotOff(app, viaBluetooth);
+            case "hotspot_restart": {
+                String r = resultLine(Cells.shellMain(app, "hotspot-restart").out);
+                return r.startsWith("OK") ? "The hotspot was restarted." : "The hotspot could not be restarted: " + afterWord(r);
+            }
+            case "radio_cycle": {
+                // for the phone's choice of cell: the modem searches from scratch when its radio comes back
+                markRadioRisk(app, name); // BEFORE the radio goes off: a cut-off must still be undone
+                String r;
+                try {
+                    r = resultLine(Cells.shellMain(app, "radio-cycle").out);
+                } catch (IOException e) {
+                    cycleState = "failed: " + e.getMessage();
+                    throw e;
+                }
+                cycleState = r.startsWith("OK") ? "done" : "failed: " + r;
+                finishRadioRisk(app, name);
+                return r.startsWith("OK") ? "The radio was switched off for a few seconds and on again." : "The radio restart failed: " + afterWord(r);
+            }
+            case "wifi_on":
+                return wifi(app, true);
+            case "wifi_off":
+                return wifi(app, false);
+            case "standby":
+                return standby(app, viaBluetooth);
+            case "airplane_on":
+                markRadioRisk(app, name);
+                return report(Priv.run("cmd connectivity airplane-mode enable", 30), "Airplane mode is on.");
+            case "reboot":
+                return report(Priv.run("svc power reboot || reboot", 60), "Restarting.");
+            case "poweroff":
+                return report(Priv.run("svc power shutdown || reboot -p", 60), "Shutting down.");
+            default:
+                throw new IOException("unknown action: " + name);
+        }
     }
 
-    /** Runs an action and returns text for the tablet to show. arg: the one extra value a few actions take (a screen name, a dial code). */
-    static String run(Context c, String name, String arg) throws IOException {
+    /**
+     * The helper's verdict in what the shell printed: the last line that starts with OK or ERR (other lines can be warnings of the
+     * phone's own tools), or the last line of all if there is none.
+     */
+    static String resultLine(String out) {
+        String last = "";
+        String[] lines = out.split("\n");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String l = lines[i].trim();
+            if (l.startsWith("OK") || l.startsWith("ERR")) {
+                return l;
+            }
+            if (last.isEmpty()) {
+                last = l;
+            }
+        }
+        return last;
+    }
+
+    /** "OK the hotspot is on" -> "the hotspot is on"; "ERR no answer" -> "no answer". */
+    private static String afterWord(String line) {
+        String t = line.trim();
+        if (t.startsWith("OK ") || t.startsWith("ERR ")) {
+            t = t.substring(t.indexOf(' ') + 1);
+        }
+        return t.isEmpty() ? "the phone gave no reason" : t;
+    }
+
+    /**
+     * Switches the hotspot off. The direct way first (the system's tethering service, checked). Only if that fails, and only when
+     * the request did not come over Bluetooth, the old way: airplane mode on for three seconds, which also switches the hotspot
+     * off but takes mobile data (and Bluetooth) away for a moment.
+     */
+    private static String hotspotOff(Context app, boolean viaBluetooth) throws IOException {
+        String direct = resultLine(Cells.shellMain(app, "hotspot-stop").out);
+        if (direct.startsWith("OK")) {
+            return "The hotspot is off.";
+        }
+        if (viaBluetooth) {
+            return "The hotspot could not be switched off the direct way (" + afterWord(direct) + "). The other way, airplane mode "
+                    + "for three seconds, is not used over Bluetooth because it would cut this link too.";
+        }
+        markRadioRisk(app, "hotspot_off");
+        Priv.run("cmd connectivity airplane-mode enable; sleep 3; cmd connectivity airplane-mode disable", 60);
+        finishRadioRisk(app, "hotspot_off");
+        return Radios.waitHotspot(app, false, 4000)
+                ? "The hotspot is off (the direct way failed, so airplane mode was switched on for three seconds: " + afterWord(direct) + ")."
+                : "The hotspot could not be switched off: " + afterWord(direct);
+    }
+
+    /** The phone's own Wi-Fi switch (not the hotspot). Checked by asking Android afterwards. */
+    private static String wifi(Context app, boolean on) throws IOException {
+        Priv.Result r = Priv.run("cmd wifi set-wifi-enabled " + (on ? "enabled" : "disabled") + " 2>&1 || svc wifi "
+                + (on ? "enable" : "disable") + " 2>&1", 20);
+        if (Radios.waitWifi(app, on, 6000)) {
+            return "The phone's Wi-Fi is " + (on ? "on." : "off.");
+        }
+        return "The phone's Wi-Fi did not switch " + (on ? "on" : "off") + (r.out.isEmpty() ? "." : ": " + firstLine(r.out));
+    }
+
+    /**
+     * Standby: the hotspot off and the screen off, so the phone idles (days, not hours) until the tablet wakes it over Bluetooth
+     * with "hotspot on". Mobile data, calls and texts stay as they are.
+     */
+    private static String standby(Context app, boolean viaBluetooth) throws IOException {
+        StringBuilder sb = new StringBuilder(hotspotOff(app, viaBluetooth));
+        sb.append(' ').append(screenOff(app));
+        if (viaBluetooth) {
+            sb.append(" To wake the phone: Hotspot on.");
+        }
+        return sb.toString();
+    }
+
+    /** The checked Sleep (the same steps as the Screen tab's Sleep button). */
+    private static String screenOff(Context app) throws IOException {
+        try {
+            PowerSequence.Result res = Screen.powerNow(app, false, true);
+            return res.reached ? "The screen is off." : "The screen did not stay off (" + res.how + ").";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "The screen was not switched off (interrupted).";
+        }
+    }
+
+    static String run(Context c, String name) throws IOException {
+        return run(c, name, "", false);
+    }
+
+    /**
+     * Runs an action and returns text for the tablet to show. arg: the one extra value a few actions take (a screen name).
+     * viaBluetooth: the request came over the Bluetooth link (a few actions must then not use airplane mode).
+     */
+    static String run(Context c, String name, String arg, boolean viaBluetooth) throws IOException {
         switch (name) {
             case "safety":
                 return safety(c);
+            // the actions that can cut a link, asked over a link they do not cut (see Api.act): done now, real result
+            case "hotspot_on":
+            case "boot_hotspot_on":
+            case "hotspot_off":
+            case "hotspot_restart":
+            case "radio_cycle":
+            case "wifi_on":
+            case "wifi_off":
+            case "standby":
+                return perform(c, name, viaBluetooth);
+            case "bt_setup":
+                return BtServer.setup(c);
+            case "eco_auto_on":
+                // the stored choice: the saver switches on by itself whenever the tablet connects (and now)
+                Cfg.setEcoAuto(c, true);
+                Eco.setSuppressed(false);
+                return Eco.apply(c) + " It switches on by itself when the tablet connects.";
+            case "eco_auto_off":
+                Cfg.setEcoAuto(c, false);
+                Eco.setSuppressed(true);
+                return Eco.restore(c) + " It stays off until you switch it on.";
             case "boot_wadb":
                 return Boot.enableWadb(c);
             case "boot_notify":
@@ -133,7 +264,7 @@ final class Actions {
                 Saved.clearBlip(c);
                 return report(Priv.run("cmd connectivity airplane-mode disable", 15), "Airplane mode is off.");
             case "screen_off":
-                return report(Priv.run("input keyevent 223", 10), "Screen is off.");
+                return screenOff(c); // checked: the old way pressed a key and said "off" whatever happened
             case "eco_on":
                 Eco.setSuppressed(false);
                 return Eco.apply(c);

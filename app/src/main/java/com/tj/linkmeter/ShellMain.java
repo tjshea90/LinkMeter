@@ -38,6 +38,11 @@ import java.util.function.Consumer;
  *   nrdc-get             is the 5G leg (NR dual connectivity) allowed? (see NrLeg for the answer's words)
  *   nrdc-set on|off|off-now   allow the 5G leg, or keep the phone from adding it (off-now drops it at once)
  *   sleep [nodoze]       put the device to sleep through the power service (nodoze: skip the Always-On Display)
+ *   hotspot-start        switch the Wi-Fi hotspot on (the system's tethering service, as the shell user)
+ *   hotspot-stop         switch it off, and say whether it really went off
+ *   hotspot-restart      off and on again, so a changed band takes effect
+ *   hotspot-info         its band, channel, security and state
+ *   hotspot-band 2|5|auto   save a band (restart the hotspot to use it)
  *
  * Output starts with OK or ERR. Hidden-API checks do not apply in this process,
  * which is why reflection works here.
@@ -446,8 +451,23 @@ public final class ShellMain {
                 return hotspotRestart(ctx);
             case "hotspot-start":
                 return hotspotStart(ctx);
+            case "hotspot-stop":
+                return hotspotStop(ctx);
             default:
                 return "ERR unknown command";
+        }
+    }
+
+    /**
+     * The hotspot's state as the Wi-Fi service reports it: 10 switching off, 11 off, 12 switching on, 13 on, 14 failed.
+     * -1 if this phone's Wi-Fi service does not say.
+     */
+    private static int apState() {
+        try {
+            Object st = wifiCall(wifiService(), "getWifiApEnabledState");
+            return st instanceof Integer ? (Integer) st : -1;
+        } catch (Throwable t) {
+            return -1;
         }
     }
 
@@ -457,6 +477,7 @@ public final class ShellMain {
         sb.append("band=").append(call(cfg, "getBand")).append(" (1 = 2.4 GHz, 2 = 5 GHz, 3 = either)\n");
         sb.append("channel=").append(call(cfg, "getChannel")).append('\n');
         sb.append("security=").append(call(cfg, "getSecurityType")).append('\n');
+        sb.append("state=").append(apState()).append(" (11 = off, 13 = on)\n");
         try {
             sb.append("bands=").append(java.util.Arrays.toString((int[]) call(cfg, "getBands"))).append('\n');
         } catch (Throwable ignored) {
@@ -526,7 +547,13 @@ public final class ShellMain {
      */
     private static String startWifiTethering(Object tm, String okText, String hint) throws Exception {
         final int wifi = 0; // TetheringManager.TETHERING_WIFI
+        if (apState() == 13) {
+            return okText; // already on: asking again could restart it and drop whoever is using it
+        }
+        // Two shapes of the same call exist: (type, executor, callback) on older Android and (request, executor, callback) on
+        // newer. The first is preferred; the request for the second is built with the system's own builder, plain and unchanged.
         Method start = null;
+        Object first = Integer.valueOf(wifi);
         for (Method m : tm.getClass().getMethods()) {
             Class<?>[] p = m.getParameterTypes();
             if (m.getName().equals("startTethering") && p.length == 3 && p[0] == int.class) {
@@ -535,7 +562,19 @@ public final class ShellMain {
             }
         }
         if (start == null) {
-            return "ERR this phone has no startTethering(int, Executor, callback)" + hint;
+            for (Method m : tm.getClass().getMethods()) {
+                Class<?>[] p = m.getParameterTypes();
+                if (m.getName().equals("startTethering") && p.length == 3 && p[0].getName().endsWith("TetheringRequest")) {
+                    Class<?> bc = Class.forName(p[0].getName() + "$Builder");
+                    Object b = bc.getConstructor(int.class).newInstance(wifi);
+                    first = bc.getMethod("build").invoke(b);
+                    start = m;
+                    break;
+                }
+            }
+        }
+        if (start == null) {
+            return "ERR this phone has no startTethering(type or request, executor, callback)" + hint;
         }
         final String ok = okText;
         final String retry = hint;
@@ -545,15 +584,26 @@ public final class ShellMain {
                 new Class<?>[] {start.getParameterTypes()[2]}, new java.lang.reflect.InvocationHandler() {
                     @Override
                     public Object invoke(Object proxy, Method m, Object[] args) {
-                        if (m.getName().equals("onTetheringStarted")) {
-                            outcome[0] = ok;
-                            latch.countDown();
-                        } else if (m.getName().equals("onTetheringFailed")) {
-                            outcome[0] = "ERR the hotspot failed to start (code "
-                                    + (args != null && args.length > 0 ? args[0] : "?") + ")" + retry;
-                            latch.countDown();
+                        switch (m.getName()) {
+                            case "onTetheringStarted":
+                                outcome[0] = ok;
+                                latch.countDown();
+                                return null;
+                            case "onTetheringFailed":
+                                outcome[0] = "ERR the hotspot failed to start (code "
+                                        + (args != null && args.length > 0 ? args[0] : "?") + ")" + retry;
+                                latch.countDown();
+                                return null;
+                            // a stand-in object must still answer the three questions every object can be asked
+                            case "hashCode":
+                                return Integer.valueOf(System.identityHashCode(proxy));
+                            case "equals":
+                                return Boolean.valueOf(args != null && args.length == 1 && proxy == args[0]);
+                            case "toString":
+                                return "LinkMeter hotspot callback";
+                            default:
+                                return null;
                         }
-                        return null;
                     }
                 });
         Executor direct = new Executor() {
@@ -562,11 +612,40 @@ public final class ShellMain {
                 r.run();
             }
         };
-        start.invoke(tm, wifi, direct, cb);
+        start.invoke(tm, first, direct, cb);
         if (!latch.await(20, TimeUnit.SECONDS)) {
-            return "ERR no answer when starting the hotspot; check the phone";
+            // some phones start the hotspot and never call back: believe the hotspot's own state
+            return apState() == 13 ? okText : "ERR no answer when starting the hotspot; check the phone";
         }
         return outcome[0];
+    }
+
+    /**
+     * Switches the Wi-Fi hotspot off the direct way (the system's tethering service) and then looks whether it really went off,
+     * so the answer is what happened and not what was asked.
+     */
+    private static String hotspotStop(Context ctx) throws Exception {
+        if (apState() == 11) {
+            return "OK the hotspot is off (it already was)";
+        }
+        String[] why = new String[1];
+        Object tm = tetheringManager(ctx, why);
+        if (tm == null) {
+            return "ERR " + why[0];
+        }
+        call(tm, "stopTethering", 0); // 0 = Wi-Fi
+        int st = -1;
+        for (int i = 0; i < 16; i++) {
+            Thread.sleep(500);
+            st = apState();
+            if (st == 11) {
+                return "OK the hotspot is off";
+            }
+        }
+        if (st < 0) {
+            return "OK the hotspot was asked to stop (this phone does not report its state here)";
+        }
+        return "ERR the hotspot did not switch off (state " + st + ")";
     }
 
     /** Stops the Wi-Fi hotspot and starts it again, so a changed band takes effect. */

@@ -20,7 +20,7 @@ final class Api {
     private static void note(Http.Req r, String result) {
         hits++;
         lastAt = System.currentTimeMillis();
-        lastNote = (r.peer != null ? r.peer.getHostAddress() : "?") + " " + r.path + ": " + result;
+        lastNote = (r.peer != null ? r.peer.getHostAddress() : Http.VIA_BT.equals(r.via) ? "Bluetooth" : "?") + " " + r.path + ": " + result;
     }
 
     static boolean authorized(Context c, String token) {
@@ -161,18 +161,20 @@ final class Api {
             Http.err(out, 400, "bad request");
             return;
         }
-        if (Actions.isDelayed(name)) {
+        boolean bluetooth = Http.VIA_BT.equals(r.via);
+        if (RemoteRoutes.cutsLink(name, bluetooth, Radios.hotspotOn(c))) {
+            // the answer could not be delivered afterwards: answer first, act a moment later
             if (!Priv.ready()) {
                 Http.err(out, 409, Priv.stateText(Priv.state()));
                 return;
             }
             Actions.prepareDelayed(name);
-            Http.json(out, 200, "{\"ok\":true,\"out\":\"Sent. The phone will do it in a moment.\"}");
-            Actions.later(c, name);
+            Http.json(out, 200, "{\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}");
+            Actions.later(c, name, bluetooth);
             return;
         }
         try {
-            String res = Actions.run(c, name, r.q("arg"));
+            String res = Actions.run(c, name, r.q("arg"), bluetooth);
             Http.json(out, 200, "{\"ok\":true,\"out\":" + JSONObject.quote(res) + "}");
         } catch (IOException e) {
             Http.err(out, 409, String.valueOf(e.getMessage()));

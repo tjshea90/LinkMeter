@@ -11,10 +11,11 @@ import java.io.IOException;
  * Phone only: the battery-saving profile for hotspot use.
  *
  * It only turns off things a hotspot does not need (background Wi-Fi and Bluetooth
- * scanning, Always-on display, Bluetooth if it was on), makes sure the hotspot's
- * hardware offload is enabled, and shortens the screen timeout. It never touches
- * mobile data, the radio, or the CPU speed, so the cell link and hotspot speed
- * are unaffected. Every value it changes is saved first and put back afterwards.
+ * scanning, the Always-on display), makes sure the hotspot's hardware offload is
+ * enabled, and shortens the screen timeout. It never touches mobile data, the radio,
+ * the CPU speed or Bluetooth itself (the tablet's remote link uses it), so the cell
+ * link and hotspot speed are unaffected. Every value it changes is saved first and
+ * put back afterwards.
  *
  * It starts by itself when the tablet connects (if Settings allows it) and ends
  * by itself 10 minutes after the tablet was last seen.
@@ -125,13 +126,12 @@ final class Eco {
             rd.append("echo K").append(i).append("=$(settings get ")
                     .append(PROFILE[i][0]).append(' ').append(PROFILE[i][1]).append("); ");
         }
-        rd.append("echo BT=$(settings get global bluetooth_on)");
+        rd.append("true");
         Priv.Result r = Priv.run(rd.toString(), 15);
         if (!r.ok()) {
             return "Couldn't read the phone's settings: " + r.out;
         }
         String[] orig = new String[PROFILE.length];
-        String bt = "0";
         for (String line : r.out.split("\n")) {
             String l = line.trim();
             int eq = l.indexOf('=');
@@ -140,9 +140,7 @@ final class Eco {
             }
             String k = l.substring(0, eq);
             String v = l.substring(eq + 1).trim();
-            if (k.equals("BT")) {
-                bt = v;
-            } else if (k.startsWith("K")) {
+            if (k.startsWith("K")) {
                 try {
                     orig[Integer.parseInt(k.substring(1))] = v;
                 } catch (NumberFormatException | ArrayIndexOutOfBoundsException ignored) {
@@ -161,7 +159,9 @@ final class Eco {
         for (int i = 0; i < PROFILE.length; i++) {
             e.putString("o" + i, (orig[i] == null || orig[i].isEmpty()) ? "null" : orig[i]);
         }
-        e.putString("bt", bt);
+        // Bluetooth is left alone since the remote link exists (it would cut the link, and an idle Bluetooth radio costs almost
+        // nothing). "0" = restore() has no Bluetooth to switch back on; a profile applied by an older version still has "1".
+        e.putString("bt", "0");
         e.putBoolean("on", true);
         e.commit();
 
@@ -174,9 +174,6 @@ final class Eco {
                 wr.append("settings put ").append(PROFILE[i][0]).append(' ')
                         .append(PROFILE[i][1]).append(' ').append(PROFILE[i][2]).append("; ");
             }
-        }
-        if ("1".equals(bt)) {
-            wr.append("svc bluetooth disable; ");
         }
         wr.append("true");
         Priv.Result w = Priv.run(wr.toString(), 20);

@@ -319,6 +319,22 @@ public final class LinkProtocolTest {
         }
     }
 
+    static void addresses() {
+        check(BtAddr.valid("5C:F3:70:8A:1B:2C"), "a real address is an address");
+        for (String bad : new String[] {null, "", "5c:f3:70:8a:1b:2c", "5C:F3:70:8A:1B", "5C:F3:70:8A:1B:2C:3D", "5C-F3-70-8A-1B-2C", "5CF3708A1B2C",
+            "00:00:00:00:00:00", "FF:FF:FF:FF:FF:FF", "02:00:00:00:00:00", "XX:XX:XX:XX:1B:2C", "5C:F3:70:8A:1B:2G", " 5C:F3:70:8A:1B:2C"}) {
+            check(!BtAddr.valid(bad), "not a usable address: " + bad);
+        }
+        check(BtAddr.find("5c:f3:70:8a:1b:2c\n").equals("5C:F3:70:8A:1B:2C"), "the setting's answer, in small letters");
+        check(BtAddr.find("null\n  address: 5C:F3:70:8A:1B:2C\n  name: Galaxy A15 5G\n").equals("5C:F3:70:8A:1B:2C"), "the setting says null, the dump has it");
+        check(BtAddr.find("null\n  address: XX:XX:XX:XX:1B:2C\n").isEmpty(), "a hidden address is not an address");
+        check(BtAddr.find("02:00:00:00:00:00\n  address: 5C:F3:70:8A:1B:2C").equals("5C:F3:70:8A:1B:2C"), "Android's placeholder is skipped, the real one is taken");
+        check(BtAddr.find("00:00:00:00:00:00").isEmpty() && BtAddr.find("").isEmpty() && BtAddr.find(null).isEmpty(), "nothing usable: empty");
+        check(BtAddr.find("Bluetooth Status\n  enabled: true\n  address: 5C:F3:70:8A:1B:2C:99\n").isEmpty(), "seven pairs are not an address (no part of it is taken)");
+        check(BtAddr.find("uuid 0000110a-0000-1000-8000-00805f9b34fb time 12:34:56").isEmpty(), "a time or a service number is not an address");
+        check(BtAddr.find("first AA:BB:CC:DD:EE:01 then AA:BB:CC:DD:EE:02").equals("AA:BB:CC:DD:EE:01"), "the first of two");
+    }
+
     // ------------------------------------------------------------------------------------------------ over a connection
 
     static void goodCalls() throws Exception {
@@ -655,6 +671,7 @@ public final class LinkProtocolTest {
     public static void main(String[] a) throws Exception {
         auth();
         routes();
+        addresses();
         goodCalls();
         wrongSecret();
         replayAndTamper();

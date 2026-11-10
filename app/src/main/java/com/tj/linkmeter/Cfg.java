@@ -178,6 +178,27 @@ final class Cfg {
         sp(c).edit().putBoolean("textsOn", on).apply();
     }
 
+    /** Phone: may the paired tablet reach this phone over Bluetooth (docs/REMOTE_LINK.md)? On by default. */
+    static boolean btLink(Context c) {
+        return sp(c).getBoolean("btLink", true);
+    }
+
+    static void setBtLink(Context c, boolean on) {
+        sp(c).edit().putBoolean("btLink", on).apply();
+    }
+
+    /**
+     * The PHONE's Bluetooth address, "" while unknown. On the phone: read once through Shizuku (an app may not read its own). On
+     * the tablet: learned from the phone's status over the hotspot, or found among the paired Bluetooth devices.
+     */
+    static String btMac(Context c) {
+        return sp(c).getString("btMac", "");
+    }
+
+    static void setBtMac(Context c, String mac) {
+        sp(c).edit().putString("btMac", mac).apply();
+    }
+
     /** Phone: switch on the battery-saving profile by itself when the tablet connects. */
     static boolean ecoAuto(Context c) {
         return sp(c).getBoolean("ecoAuto", true);

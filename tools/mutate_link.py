@@ -7,7 +7,7 @@ Every line must say "caught". Not part of tools/test.sh (it is a test of the tes
 import os, shutil, subprocess, sys, tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FM = ROOT + "/app/src/main/java/com/tj/linkmeter/"
-FILES = ["Json.java", "Http.java", "Client.java", "LinkAuth.java", "RemoteRoutes.java", "LinkServer.java", "LinkClient.java"]
+FILES = ["Json.java", "Http.java", "Client.java", "LinkAuth.java", "RemoteRoutes.java", "LinkServer.java", "LinkClient.java", "BtAddr.java"]
 TEST = ROOT + "/tools/test/LinkProtocolTest.java"
 M = [
  ("no rising-number rule", "LinkServer.java", "String secret = r.seq > lastSeq\n", "String secret = true\n"),
@@ -42,6 +42,9 @@ M = [
  ("power off acts first", "RemoteRoutes.java", "return true; // the phone, or every radio, goes away", "return !viaBluetooth;"),
  ("wifi_off ignores the hotspot", "RemoteRoutes.java", "return !viaBluetooth && !hotspotOn;", "return !viaBluetooth;"),
  ("standby forgotten", "RemoteRoutes.java", '            case "standby":\n', ""),
+ ("placeholder address accepted", "BtAddr.java", '&& !mac.equals("02:00:00:00:00:00")', ''),
+ ("part of a longer number taken as an address", "BtAddr.java", '(?![0-9A-Fa-f:])', ''),
+ ("hidden address accepted", "BtAddr.java", 'if (valid(mac)) {', 'if (true) {'),
  ("secret sent as a token", "LinkClient.java", 'h.append("X-Seq: ")', 'h.append("X-Token: ").append(secret).append("\\r\\n"); h.append("X-Seq: ")'),
  ("client takes any greeting", "LinkClient.java", "if (nonce == null) {", "if (false) {"),
  ("client numbers do not rise", "LinkClient.java", "long n = ++seq;", "long n = 1;"),

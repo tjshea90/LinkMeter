@@ -49,7 +49,7 @@ java -cp "$out" com.tj.linkmeter.BootFlowTest || fail=1
 echo "== Bluetooth link (LinkAuth, RemoteRoutes, LinkServer, LinkClient over a real connection: only requests signed by the paired tablet are served, once; no replay; the secret is never sent; only the small routes; garbage and silence end the connection)"
 javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/Json.java app/src/main/java/com/tj/linkmeter/Http.java app/src/main/java/com/tj/linkmeter/Client.java \
   app/src/main/java/com/tj/linkmeter/LinkAuth.java app/src/main/java/com/tj/linkmeter/RemoteRoutes.java app/src/main/java/com/tj/linkmeter/LinkServer.java \
-  app/src/main/java/com/tj/linkmeter/LinkClient.java tools/test/LinkProtocolTest.java || fail=1
+  app/src/main/java/com/tj/linkmeter/LinkClient.java app/src/main/java/com/tj/linkmeter/BtAddr.java tools/test/LinkProtocolTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.LinkProtocolTest || fail=1
 echo "== Safety net (GuardPolicy: when the phone undoes LinkMeter's changes by itself: never fights the user, always acts when data stays down)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/GuardPolicy.java tools/test/GuardPolicyTest.java || fail=1
