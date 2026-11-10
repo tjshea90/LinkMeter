@@ -24,7 +24,7 @@ final class RemoteSms {
     /** The phone's app is too old to know about texts. */
     static final class TooOld extends IOException {
         TooOld() {
-            super("The phone's LinkMeter app is too old for texts. On this tablet: Control > Update phone from this tablet.");
+            super("The phone's LinkMeter app is too old for texts. On this tablet: Phone tab > Update the phone.");
         }
     }
 

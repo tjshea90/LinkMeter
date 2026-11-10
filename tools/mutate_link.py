@@ -382,7 +382,7 @@ B = [
  ("phonetab: the current keeps its minus sign", "PhoneTabRules.java", "(-v) + \" mA.\"", "v + \" mA.\""),
  ("phonetab: a missing current is said as zero", "PhoneTabRules.java", "if (cur == null) {\n            return null;\n        }", "if (cur == null) {\n            return \"The phone's battery current is 0 mA.\";\n        }"),
  ("phonetab: a switch that is not known reads as off", "PhoneTabRules.java", "return on == null ? \"not known\" : on.booleanValue() ? \"on\" : \"off\";", "return on != null && on.booleanValue() ? \"on\" : \"off\";"),
- ("phonetab: the update is allowed over Bluetooth", "PhoneTabRules.java", "return overBluetooth ? \"needs the hotspot: the app is too big to send over Bluetooth\" : \"\";", "return \"\";"),
+ ("phonetab: the update is allowed over Bluetooth", "PhoneTabRules.java", "return overBluetooth ? \"The update needs the hotspot: the app is too big to send over Bluetooth.\" : \"\";", "return \"\";"),
  ("phonetab: the update is allowed with no phone", "PhoneTabRules.java", "if (!reachable) {\n            return \"The phone cannot be reached.\";\n        }", "if (false) {\n            return \"The phone cannot be reached.\";\n        }"),
  ("phonetab: any error means an older phone", "PhoneTabRules.java", "return answer != null && answer.contains(\"unknown action\");", "return answer != null;"),
  ("phonetab: a phone app that is not known has a version", "PhoneTabRules.java", "return code >= 0 ? (name", "return code >= -1 ? (name"),

@@ -129,14 +129,14 @@ final class SafetyReport {
                         : "The safety net is not running right now; it starts again with the phone service.\n");
             }
             if (otherChanged(f)) {
-                sb.append("Restore everything puts it back (this app, LinkMeter > Phone, or the Restore button in the notification).");
+                sb.append("Restore everything puts it back (the Phone tab on the tablet, LinkMeter open on the phone itself, or the Restore button in the notification).");
                 if (f.batterySaver) {
                     // Restore everything stores Off for the saver too (Eco.setAuto): left on Automatic, the tablet's next request would switch it on again
                     sb.append(" It also switches the battery saver's Automatic choice off. Switch it on again in the Phone tab.");
                 }
             }
             if (bootChanged(f)) {
-                sb.append(otherChanged(f) ? "\n" : "").append("The boot items stay until you undo them: on the tablet, Control tab > Undo the setup (Restore everything leaves them alone).");
+                sb.append(otherChanged(f) ? "\n" : "").append("The boot items stay until you undo them: on the tablet, Phone tab > Undo the setup (Restore everything leaves them alone).");
             }
         }
         return sb.toString().trim();

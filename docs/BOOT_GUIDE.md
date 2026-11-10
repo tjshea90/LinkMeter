@@ -25,7 +25,7 @@ question, type the pairing number, press Start inside Shizuku, open Shizuku with
 ## Setting it up (once)
 
 1. Update both devices to the newest release.
-2. Phone: nothing to do yet. Tablet: open LinkMeter > Control tab. The top card is "Start the phone after a restart".
+2. Phone: nothing to do yet. Tablet: open LinkMeter > Phone tab and scroll to the card "Start the phone after a restart".
 3. While everything works as usual (Shizuku running on the phone, tablet on the phone's hotspot) tap **One-time setup** > Do it.
    This gives LinkMeter on the phone the permission to switch wireless debugging on, and turns on "Boot assist". **Undo the setup**
    takes all of it back.
@@ -37,7 +37,7 @@ question, type the pairing number, press Start inside Shizuku, open Shizuku with
 
 1. Phone: restart it, **unlock it with your PIN** (Android does not run apps before the first unlock), and make sure its
    **Wi-Fi is on** (the phone's hotspot is off after a restart, as usual).
-2. Tablet: Control tab > **Start everything**. (On the Home tab the button "Phone not answering? Start it after a restart"
+2. Tablet: Phone tab > **Start everything**. (On the Home tab the button "Phone not answering? Start it after a restart"
    takes you there.) Allow the location question the first time: Android 10 wants it before an app may make a hotspot; LinkMeter
    does not read your location. If the tablet's Wi-Fi is off, the panel to switch it on opens first.
 3. **The very first time only:** the card shows the tablet hotspot's name (`DIRECT-LM-Tablet`) and its password. On the phone join

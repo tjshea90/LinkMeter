@@ -151,7 +151,7 @@ final class Boot {
      */
     static String enableWadb(Context c) {
         if (!canWriteSecure(c)) {
-            return "ERR LinkMeter may not change this setting yet: run the one-time setup first (Control tab > Start the phone > One-time setup).";
+            return "ERR LinkMeter may not change this setting yet: run the one-time setup first (Phone tab > Start the phone after a restart > One-time setup).";
         }
         try {
             ContentResolver cr = c.getContentResolver();

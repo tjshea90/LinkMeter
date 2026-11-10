@@ -305,7 +305,7 @@ final class MenuScan {
     /** The words the tablet shows about a reply. */
     static String summary(Reply r) {
         if (!r.valid) {
-            return "The phone did not answer in the expected form (an older phone app? update it from the Control tab).";
+            return "The phone did not answer in the expected form (an older phone app? update it from the Phone tab).";
         }
         StringBuilder sb = new StringBuilder();
         sb.append(r.packages.size()).append(r.packages.size() == 1 ? " app" : " apps").append(" that may hold a service menu");

@@ -1561,7 +1561,7 @@ final class ScreenTab extends Tab {
                         : phoneVersion.isEmpty() ? "has an older build" : "has " + phoneVersion;
                 String t = "LinkMeter " + mine + " on this tablet, the phone " + theirs + ".";
                 if (phoneVersion != null && !phoneVersion.equals(mine)) {
-                    t += " The builds differ: put the newest on the tablet, then Control > Update phone from this tablet.";
+                    t += " The builds differ: put the newest on the tablet, then " + PHONE + " tab > Update the phone.";
                 }
                 return t;
             }

@@ -1,7 +1,7 @@
 # LinkMeter safety: what it can change, how every change is undone, and which phone codes it can type
 
 Rule 1 of this project: **the phone must never break, brick, or lose its internet for good.** This file says how that is kept,
-and where it cannot be (section 7). The "Safety check" button (Control tab, Bands tab) shows at any moment what LinkMeter still has
+and where it cannot be (section 7). The "Safety check" button (Phone tab, Bands tab) shows at any moment what LinkMeter still has
 changed. First audit 2026-11-09 (v0.2.82); second check the same day, on phone codes (section 2); third, on "start the phone after a restart" (section 8). Use the newest release on the
 Releases page, never v0.2.79 to v0.2.82 (they can dial any code you give them), and put the SAME release on the phone and on the tablet.
 
@@ -51,7 +51,7 @@ commands, NVRAM): that is why every menu asks first and the warning says to chan
 **What cannot be closed:** the Screen tab is a remote control of the phone. A touch on the phone's on-screen keypad (or on its picture
 in the Screen tab) is the same as touching the phone yourself, and no app can tell a harmless tap from a harmful one. And the phone's
 own keyboard types whatever you type on it. The app also cannot protect a phone running an older LinkMeter: v0.2.79 to v0.2.82 accept
-any code, and anything before this release has no typing rule, so update the phone (Control > Update phone from this tablet).
+any code, and anything before this release has no typing rule, so update the phone (Phone tab > Update the phone).
 
 **How this is enforced:** the offline tests try the dial command on every one-character change of each listed code, on codes glued
 together, on all the famous erase codes and on 300,000 random strings; they try the typing rule on all 65,536 characters; and a
@@ -72,7 +72,7 @@ key list, or if this list stops matching the code.
 | Battery saver (background Wi-Fi and Bluetooth scanning off, the always-on display off, a 15 second screen timeout; on while the tablet uses the hotspot) | Android settings | yes | each changed value is saved first and put back: by the Off choice, by Restore everything (which also stores Off, so the saver stays off), by itself when the tablet has been gone for 10 min (it stays on while the hotspot is on and the tablet answers, or while the phone rests with its screen off), and when the phone's screen comes on and the tablet is gone |
 | Screen timeout and brightness during a remote screen session | Android settings | yes | each value is saved first and put back when the tablet leaves; also by itself a minute after it is gone |
 | Service menus opened from here | the phone's own menu | what you change in it | see section 7 |
-| "Start the phone after a restart": the one-time permission to change secure settings (`WRITE_SECURE_SETTINGS`) | Android's permissions | yes | Undo the setup (tablet, Control tab: `pm revoke`); see section 8 |
+| "Start the phone after a restart": the one-time permission to change secure settings (`WRITE_SECURE_SETTINGS`) | Android's permissions | yes | Undo the setup (tablet, Phone tab: `pm revoke`); see section 8 |
 | Wireless debugging switched on by LinkMeter after a restart | Android settings | no: Android switches it off by itself when the Wi-Fi goes | switch it off in Developer options; Undo the setup stops LinkMeter doing it |
 | Android's 7-day timeout for wireless-debugging pairings switched off (only if you ask) | Android settings | yes | Forget after 7 days, or Undo the setup (the old value is saved and put back) |
 | Boot assist switch | LinkMeter's own setting | yes | Undo the setup |
@@ -124,7 +124,7 @@ themselves. The Android code is compiled by GitHub for every push.
 
 What it does and why: see `docs/BOOT_FLOW.md`. What it can change, all of it listed in the Safety check while it is in place:
 
-- **A permission.** After you press One-time setup (Control tab on the tablet, Shizuku running), LinkMeter holds `WRITE_SECURE_SETTINGS`.
+- **A permission.** After you press One-time setup (Phone tab on the tablet, Shizuku running), LinkMeter holds `WRITE_SECURE_SETTINGS`.
   That permission lets an app change Android's secure settings, so it is a real grant. LinkMeter's code writes exactly three settings with it
   (`Boot.java`): `development_settings_enabled` and `adb_wifi_enabled` (to switch wireless debugging on) and, only if you press Keep the
   pairing, `adb_allowed_connection_time` (Android's 7-day timeout for adb authorizations). Undo the setup takes it back with `pm revoke`.

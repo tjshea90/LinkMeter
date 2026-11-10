@@ -712,7 +712,7 @@ final class BandSweep {
         publish();
         String head = cancelled ? "Stopped." : "Done.";
         if (!endNote.isEmpty()) {
-            ui.progress(head + " The phone may not be back as it was: " + endNote + ". Check the Control tab.");
+            ui.progress(head + " The phone may not be back as it was: " + endNote + ". Check the Phone tab: Restore everything puts it back.");
         } else {
             ui.progress(head + " The phone is back as it was." + (cancelled ? "" : " Pick the best below."));
         }

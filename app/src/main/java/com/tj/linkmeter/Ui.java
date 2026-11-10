@@ -329,7 +329,8 @@ final class Ui {
                 Context c = buttons[i].getContext();
                 boolean on = i == idx;
                 buttons[i].setBackground(buttonShape(c, on ? ACCENT : CARD_HI, 0));
-                buttons[i].setTextColor(on ? ON_ACCENT : FG);
+                buttons[i].setTextColor(on ? ColorStateList.valueOf(ON_ACCENT)
+                        : new ColorStateList(new int[][] {{-android.R.attr.state_enabled}, {}}, new int[] {DISABLED, FG}));
             }
         }
 

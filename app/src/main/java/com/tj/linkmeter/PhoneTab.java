@@ -85,8 +85,8 @@ final class PhoneTab extends Tab {
         col.addView(priv, Ui.lp(act, 2));
         col.addView(Ui.button(act, "Allow LinkMeter in Shizuku", v -> Priv.requestPermission(2)),
                 Ui.lp(act, 6));
-        col.addView(Ui.text(act, "Needed for the tablet's Control tab: airplane mode, hotspot off, "
-                + "power off, 4G toggle, battery saver. Start Shizuku first (it stops when the "
+        col.addView(Ui.text(act, "Needed for the controls on the tablet's Phone tab and Home: hotspot, standby, "
+                + "restart, power off, 4G toggle, battery saver. Start Shizuku first (it stops when the "
                 + "phone reboots). The tablet's Prepare phone button then sets up the rest.",
                 12, Ui.DIM, false), Ui.lp(act, 4));
 

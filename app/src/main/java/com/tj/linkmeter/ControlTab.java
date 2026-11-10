@@ -503,7 +503,7 @@ final class ControlTab extends Tab {
         tUpdateNote.setText(blocked.isEmpty()
                 ? "Install the new version on this tablet first (open the downloaded file). This sends the tablet's copy to the phone, "
                 + "which installs it and restarts the app by itself. Needs Shizuku on the phone."
-                : "Not now: " + blocked + ".");
+                : blocked);
     }
 
     /** Which buttons can be pressed: the phone's buttons only while the phone answers and nothing is out. */

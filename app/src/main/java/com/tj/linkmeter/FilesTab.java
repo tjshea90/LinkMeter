@@ -591,7 +591,7 @@ final class FilesTab extends Tab implements Transfers.Listener {
         } else if (!b.error.isEmpty()) {
             notice = b.error;
         } else if (side == FileBrowser.OTHER && b.oldPeer) {
-            notice = "The other device has an older LinkMeter. Update it (Control > Update phone from this tablet) for thumbnails, "
+            notice = "The other device has an older LinkMeter. Update it (" + PHONE + " tab > Update the phone) for thumbnails, "
                     + "rename and faster copying.";
         } else if (b.truncated) {
             notice = "This folder is very large: only the first " + DiskStore.MAX_LIST + " items are listed.";

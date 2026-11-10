@@ -457,7 +457,7 @@ public final class SmsProtocolTest {
             st = sms.state();
             check(!st.supported, "an old app: state says not supported instead of failing");
             check(throwsOf(RemoteSms.TooOld.class, () -> sms.threads(10)) && throwsOf(RemoteSms.TooOld.class, () -> sms.thread("5", 10)), "an old app: the rest say so");
-            check(new RemoteSms.TooOld().getMessage().contains("Update phone from this tablet"), "an old app: the message tells what to do");
+            check(new RemoteSms.TooOld().getMessage().contains("Phone tab > Update the phone"), "an old app: the message tells what to do, and names the tab that has the button");
             srv.legacy = false;
 
             // an unknown route and a missing argument

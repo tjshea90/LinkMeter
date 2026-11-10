@@ -57,6 +57,8 @@ public class PreviewTest {
         /** The tablet's own Bluetooth is switched off: a status read leaves it off. */
         boolean btOffHere;
         String status = status(true, true);
+        /** An older phone app: it does not know the actions that came later (the battery saver's one switch). */
+        boolean olderPhone;
         int statusCode = 200;
         String actReply = "{\"ok\":true,\"out\":\"Done.\"}";
         int actCode = 200;
@@ -119,7 +121,42 @@ public class PreviewTest {
                 r.body = "{\"err\":\"not paired\"}";
                 return r;
             }
-            if (target.startsWith("/act?name=hotspot") || target.startsWith("/act?name=standby")) {
+            if (olderPhone && target.startsWith("/act?name=eco_auto")) {
+                Client.Resp r = new Client.Resp();
+                r.code = 409;
+                r.body = "{\"err\":\"unknown action: " + target.substring("/act?name=".length()) + "\"}";
+                return r;
+            }
+            if (target.startsWith("/act?name=safety")) {
+                Client.Resp r = new Client.Resp();
+                r.code = 200;
+                r.body = "{\"ok\":true,\"out\":\"Safety check\\nMobile data: working\\nNetwork types: GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPAP|GSM|LTE_CA|NR\\n"
+                        + "5G leg: on (normal)\\nBand lock: none\\n\\nLinkMeter has nothing changed on this phone.\"}";
+                return r;
+            }
+            if (target.startsWith("/act?name=hotspot_info")) {
+                Client.Resp r = new Client.Resp();
+                r.code = 200;
+                r.body = "{\"ok\":true,\"out\":\"OK hotspot\\nband=1 channel=6 security=WPA2 state=on\"}";
+                return r;
+            }
+            if (target.equals("/probe")) {
+                Client.Resp r = new Client.Resp();
+                r.code = 200;
+                r.body = "$ getprop ro.product.model\nSM-S156V\n\n$ id\nuid=2000(shell) gid=2000(shell)\n\n$ settings get system aod_mode\nnull\n";
+                return r;
+            }
+            boolean cuts = target.startsWith("/act?name=reboot") || target.startsWith("/act?name=poweroff") || target.startsWith("/act?name=wifi_")
+                    || target.startsWith("/act?name=hotspot_restart") || target.startsWith("/act?name=hotspot_off") || target.startsWith("/act?name=standby");
+            if (cuts && via.equals("wifi") && actCode == 200) {
+                // an action that takes away the link it was asked over is answered first, and carried out a moment later
+                Client.Resp r = new Client.Resp();
+                r.code = 200;
+                r.body = "{\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}";
+                return r;
+            }
+            if (target.startsWith("/act?name=hotspot") || target.startsWith("/act?name=standby") || target.startsWith("/act?name=wifi_")
+                    || target.startsWith("/act?name=reboot") || target.startsWith("/act?name=poweroff")) {
                 Client.Resp r = new Client.Resp();
                 r.code = actCode;
                 r.body = actReply;
@@ -738,6 +775,228 @@ public class PreviewTest {
             throw new AssertionError("after a new secret the Bluetooth link still says Ready");
         }
         shot(a, "state-settings-link-after-new-secret");
+    }
+
+    // ---------------------------------------------------------------------------------------------- the Phone tab
+
+    /**
+     * The phone's status for the Phone tab: the version of this tablet's own app (under Robolectric it is not the 0.2.120 of the other
+     * screens' pretend phone, and a different version would put the update banner in every picture), with some fields changed.
+     * edits come in pairs: the text to find, and what replaces it.
+     */
+    static String phoneStatus(boolean hotspotOn, String... edits) {
+        return phoneStatusAs(hotspotOn, -1, null, edits);
+    }
+
+    /** The same, for a phone whose app has another version (vcOverride -1: the tablet's own). */
+    static String phoneStatusAs(boolean hotspotOn, long vcOverride, String vnOverride, String... edits) {
+        android.content.Context c = RuntimeEnvironment.getApplication();
+        String vn = "0.2.preview";
+        long vc = 1;
+        try {
+            android.content.pm.PackageInfo pi = c.getPackageManager().getPackageInfo(c.getPackageName(), 0);
+            vn = pi.versionName;
+            vc = pi.getLongVersionCode();
+        } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+            // the defaults above
+        }
+        if (vcOverride >= 0) {
+            vc = vcOverride;
+            vn = vnOverride;
+        }
+        String s = Pretend.status(hotspotOn, true).replace("\"vc\":120,\"vn\":\"0.2.120\"", "\"vc\":" + vc + ",\"vn\":\"" + vn + "\"");
+        for (int i = 0; i + 1 < edits.length; i += 2) {
+            if (!s.contains(edits[i])) {
+                throw new AssertionError("the pretend status has no " + edits[i]);
+            }
+            s = s.replace(edits[i], edits[i + 1]);
+        }
+        return s;
+    }
+
+    /** The positive button of the question that is open: "Do it". */
+    static void answerYes() {
+        AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
+        if (d == null || !d.isShowing()) {
+            throw new AssertionError("no question is open");
+        }
+        d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+    }
+
+    static void answerNo() {
+        AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
+        if (d != null && d.isShowing()) {
+            d.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+        }
+    }
+
+    static MainActivity phoneTab(Pretend p) throws Exception {
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        a.openTab(Tab.PHONE);
+        settle();
+        if (!a.shownTitle().equals(Tab.PHONE)) {
+            throw new AssertionError("the Phone tab did not open: " + a.shownTitle());
+        }
+        return a;
+    }
+
+    /** Reached over the hotspot, the saver on, the battery current known: the tab as it is on a good day. */
+    @Test
+    public void phoneTabOnTheHotspot() throws Exception {
+        Pretend p = new Pretend();
+        p.status = phoneStatus(true, "\"lvl\":2", "\"cur\":-312,\"lvl\":2");
+        MainActivity a = phoneTab(p);
+        shot(a, "state-phone-hotspot");
+    }
+
+    /** Over Bluetooth: the chip says so, Update is greyed with its reason. */
+    @Test
+    public void phoneTabOverBluetooth() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = phoneStatus(false, "\"eco\":true", "\"eco\":false");
+        MainActivity a = phoneTab(p);
+        shot(a, "state-phone-bluetooth");
+    }
+
+    @Test
+    public void phoneTabUnreachable() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "";
+        MainActivity a = phoneTab(p);
+        shot(a, "state-phone-unreachable");
+    }
+
+    /** Shizuku is not running: the banner says so and points to the steps further down. */
+    @Test
+    public void phoneTabNoShizuku() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = phoneStatus(false, "\"priv\":2", "\"priv\":0", "\"eco\":true", "\"eco\":false");
+        MainActivity a = phoneTab(p);
+        shot(a, "state-phone-noshizuku");
+    }
+
+    /** An older phone app: no battery switch, no Wi-Fi fact, a different version; pressing the battery switch gets its plain answer. */
+    @Test
+    public void phoneTabOlderApp() throws Exception {
+        Pretend p = new Pretend();
+        p.olderPhone = true;
+        p.status = phoneStatusAs(true, 100, "0.2.100", "\"ecoAuto\":true,", "", "\"wifi\":false,", "");
+        MainActivity a = phoneTab(p);
+        shot(a, "state-phone-older");
+        press(a, "Automatic");
+        settle();
+        shot(a, "state-phone-older-pressed");
+    }
+
+    @Test
+    public void phoneTabAirplane() throws Exception {
+        Pretend p = new Pretend();
+        p.status = phoneStatus(true, "\"air\":false", "\"air\":true");
+        MainActivity a = phoneTab(p);
+        shot(a, "state-phone-airplane");
+    }
+
+    /** The phone's app has a different version from the tablet's: the first banner after the ones above. */
+    @Test
+    public void phoneTabVersionDiffers() throws Exception {
+        Pretend p = new Pretend();
+        p.status = phoneStatusAs(true, 120, "0.2.120");
+        MainActivity a = phoneTab(p);
+        shot(a, "state-phone-version");
+    }
+
+    /** A switch the phone could not move: its words, in the warning colour, in the strip. */
+    @Test
+    public void phoneTabFailedSwitch() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = phoneStatus(false);
+        p.actCode = 409;
+        p.actReply = "{\"err\":\"The phone's Wi-Fi did not switch on.\"}";
+        MainActivity a = phoneTab(p);
+        press(a, "Wi-Fi on");
+        settle();
+        shot(a, "state-phone-failed");
+    }
+
+    /** More, opened: the hotspot band (read from the phone), Restart hotspot, Prepare and Probe. */
+    @Test
+    public void phoneTabMore() throws Exception {
+        Pretend p = new Pretend();
+        MainActivity a = phoneTab(p);
+        press(a, "More");
+        settle();
+        shot(a, "state-phone-more");
+    }
+
+    /** The safety check's answer in the strip, and Details open. */
+    @Test
+    public void phoneTabResult() throws Exception {
+        Pretend p = new Pretend();
+        MainActivity a = phoneTab(p);
+        press(a, "Safety check");
+        settle();
+        shot(a, "state-phone-result");
+        ((View) findText(a.getWindow().getDecorView(), "Details").getParent()).performClick(); // the strip is what listens, not its label
+        dialogShot("state-phone-result-details");
+        AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
+        d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+    }
+
+    /** Each question before a switch that cannot be undone from the tablet, and what Restart shows after it was confirmed. */
+    @Test
+    public void phoneTabQuestions() throws Exception {
+        Pretend p = new Pretend();
+        p.status = phoneStatus(true, "\"lvl\":2", "\"cur\":-312,\"lvl\":2");
+        MainActivity a = phoneTab(p);
+        press(a, "Restart");
+        dialogShot("state-phone-ask-restart");
+        answerNo();
+        press(a, "Power off");
+        dialogShot("state-phone-ask-poweroff");
+        answerNo();
+        press(a, "Wi-Fi on");
+        dialogShot("state-phone-ask-wifi-on");
+        answerNo();
+        press(a, "Restart");
+        answerYes();
+        settle();
+        shot(a, "state-phone-sent");
+    }
+
+    /** Switching the phone's Wi-Fi off asks only when the tablet is not on the phone's own hotspot (then it may be reaching it through that Wi-Fi). */
+    @Test
+    public void phoneTabWifiOffQuestion() throws Exception {
+        Pretend p = new Pretend();
+        p.status = phoneStatus(false, "\"wifi\":false", "\"wifi\":true");
+        MainActivity a = phoneTab(p);
+        press(a, "Wi-Fi off");
+        dialogShot("state-phone-ask-wifi-off");
+        answerNo();
+    }
+
+    /** Restart hotspot: the tablet calls the phone over Bluetooth first, and the question says what that showed. */
+    @Test
+    public void phoneTabRestartHotspot() throws Exception {
+        Pretend p = new Pretend();
+        p.bluetoothToo = true;
+        MainActivity a = phoneTab(p);
+        press(a, "More");
+        settle();
+        press(a, "Restart hotspot");
+        dialogShot("state-phone-ask-hotspot-restart");
+        answerNo();
+        Pretend q = new Pretend();
+        q.bluetoothToo = true;
+        q.btFails = true;
+        q.install();
+        press(a, "Restart hotspot");
+        dialogShot("state-phone-ask-hotspot-restart-anyway");
+        answerNo();
     }
 
     @Test

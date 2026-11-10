@@ -349,8 +349,8 @@ final class LabSection {
                 .setMessage("Service menus are made for the factory and for repair shops. Looking is safe. Only change band or network "
                         + "selection, and write down what it was before (usually \"all bands\" or \"auto\") so you can put it back. "
                         + "Never touch anything about IMEI, NVRAM, flashing, firmware, unlock, reset, or backup and restore. If mobile "
-                        + "data stops working afterwards: set the band back to all bands or auto, press Restore everything (Bands tab "
-                        + "or LinkMeter > Phone on the phone), or restart the phone.")
+                        + "data stops working afterwards: set the band back to all bands or auto, press Restore everything (Phone tab on the tablet "
+                        + "or LinkMeter open on the phone itself), or restart the phone.")
                 .setPositiveButton("Open it", (d, w) -> go.run())
                 .setNegativeButton("Cancel", null)
                 .show();

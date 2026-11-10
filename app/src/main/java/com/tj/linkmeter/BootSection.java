@@ -14,7 +14,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * Tablet only. The card at the top of the Control tab: "Start the phone after a restart" (see docs/BOOT_FLOW.md). One big button runs
+ * Tablet only. A card of the Phone tab: "Start the phone after a restart" (see docs/BOOT_FLOW.md). One big button runs
  * the whole order (the tablet makes its own hotspot, the phone joins it, wireless debugging goes on, Shizuku is started on the phone,
  * the phone becomes the hotspot and the tablet joins it); the rest are the single steps by hand, the tablet hotspot's name and
  * password, and the one-time setup on the phone. The work is done by {@link BootDriver}; this only shows it.

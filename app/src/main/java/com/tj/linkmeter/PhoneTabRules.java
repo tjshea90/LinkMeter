@@ -74,7 +74,7 @@ final class PhoneTabRules {
         if (!reachable) {
             return "The phone cannot be reached.";
         }
-        return overBluetooth ? "needs the hotspot: the app is too big to send over Bluetooth" : "";
+        return overBluetooth ? "The update needs the hotspot: the app is too big to send over Bluetooth." : "";
     }
 
     /** Is a phone app that answers "unknown action" an older one? (Its words for an action it does not have.) */

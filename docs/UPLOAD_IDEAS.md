@@ -60,7 +60,7 @@ almost 0 upload speeds during the day with a weak 5G UW signal."
 
 1. Update both apps (v0.2.75 or newer), Bands > "Find the best upload" with "search again after each lock". The summary line either says
    "even after searching again" (locks are dead, stop) or shows a lock that was obeyed.
-2. Same spot, at the bad time of day: 5G allowed vs Control > Force 4G, at least 3 upload-only runs each (one run is +/- 3 Mbit/s).
+2. Same spot, at the bad time of day: 5G allowed vs 4G only (Bands tab, Compare settings fairly), at least 3 upload-only runs each (one run is +/- 3 Mbit/s).
 3. A speed-test app on the phone itself with the hotspot off, then on. A big gap means a hotspot penalty.
 4. The same test at night. If night is fine, it is load or priority and no band choice fixes the daytime.
 5. Move the phone while watching the Home meters (window, higher up, case off). Note battery temperature (hot phone = suspect).

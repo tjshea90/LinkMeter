@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Phone only: what the tablet's Control tab can ask the phone to do. All of it goes through {@link Priv}. */
+/** Phone only: what the tablet's Phone tab and Home can ask the phone to do. All of it goes through {@link Priv}. */
 final class Actions {
     /** Bit for 5G (NR) in Android's allowed-network-types bitmask: 1 << (NETWORK_TYPE_NR - 1). */
     private static final long NR_BIT = 1L << 19;
