@@ -42,6 +42,8 @@ final class HomeTab extends Tab {
     private Button bannerOther;
     private Ui.Fact fHotspot;
     private Ui.Fact fScreen;
+    private Ui.Fact fAirplane;
+    private Ui.Fact fLocation;
     private Ui.Fact fSaver;
     private Button bHotspot;
     private Button bHotspotOff;
@@ -218,9 +220,13 @@ final class HomeTab extends Tab {
         LinearLayout sw = Ui.card(act, "Switches", null);
         fHotspot = new Ui.Fact(act, "Phone's hotspot");
         fScreen = new Ui.Fact(act, "Phone's screen");
+        fAirplane = new Ui.Fact(act, "Airplane mode");
+        fLocation = new Ui.Fact(act, "Location");
         fSaver = new Ui.Fact(act, "Battery saver");
         sw.addView(fHotspot.view, Ui.lp(act, 8));
         sw.addView(fScreen.view, Ui.lp(act, 6));
+        sw.addView(fAirplane.view, Ui.lp(act, 6));
+        sw.addView(fLocation.view, Ui.lp(act, 6));
         sw.addView(fSaver.view, Ui.lp(act, 6));
         bHotspot = Ui.button(act, "Hotspot", v -> hotspotPressed());
         bScreen = Ui.button(act, "Screen", v -> screenPressed());
@@ -243,7 +249,12 @@ final class HomeTab extends Tab {
         tAction.setTextColor(actionOk ? Ui.DIM : Ui.AMBER);
         tAction.setVisibility(actionMsg.isEmpty() ? View.GONE : View.VISIBLE);
         sw.addView(tAction, Ui.lp(act, 6));
-        sw.addView(Ui.hint(act, "Standby switches the phone's hotspot and screen off, so the phone uses much less battery. "
+        sw.addView(Ui.hint(act, Cfg.deepSleep(act)
+                ? "\"Hotspot off\" also switches the phone's location off, airplane mode on and its screen off, so the phone uses "
+                + "almost no battery (and gets no calls or texts meanwhile). \"Hotspot on\" wakes it over Bluetooth: airplane mode "
+                + "off, hotspot on; location and the screen are left alone. Standby only switches the hotspot and the screen off. "
+                + "More switches are in the " + PHONE + " tab."
+                : "Standby switches the phone's hotspot and screen off, so the phone uses much less battery. "
                 + "\"Hotspot on\" wakes it again over Bluetooth, if that link works. More switches are in the " + PHONE
                 + " tab."), Ui.lp(act, 6));
         col.addView(sw, Ui.lp(act, 10));
@@ -440,7 +451,7 @@ final class HomeTab extends Tab {
         // (before the card and the buttons are painted: when this look settles a switch, they are free again)
         if (follow != null && !s.justPaired && s.began >= followSince) {
             FollowUp.Outcome o = follow.look(Call.seen(s.phone));
-            if (o == null && SystemClock.elapsedRealtime() - followSince >= FollowUp.GIVE_UP_MS) {
+            if (o == null && SystemClock.elapsedRealtime() - followSince >= follow.giveUpMs()) {
                 o = follow.giveUp();
             }
             if (o != null) {
@@ -508,10 +519,16 @@ final class HomeTab extends Tab {
                 bannerOther.setVisibility(View.GONE);
             } else {
                 String need = needs(s.phone);
-                bannerTitle.setText(hs == null ? "The phone is reached over Bluetooth" : "The phone's hotspot is off");
+                boolean asleep = hs != null && Boolean.TRUE.equals(Call.flag(s.phone, "air"));
+                bannerTitle.setText(hs == null ? "The phone is reached over Bluetooth"
+                        : asleep ? "The phone's hotspot is off and airplane mode is on" : "The phone's hotspot is off");
                 bannerText.setText((hs == null
                         ? "The phone does not say whether its hotspot is on. Bluetooth carries the switches and the status but "
                         + "no internet, files or screen. Switching the hotspot on does no harm if it is on already."
+                        : asleep
+                        ? "The phone is reached over Bluetooth, which carries the switches and the status but no internet, files or "
+                        + "screen. \"Turn the hotspot on\" ends airplane mode first and then switches the hotspot on; location and "
+                        + "the screen are left alone."
                         : "The phone is reached over Bluetooth, which carries the switches and the status but no internet, "
                         + "files or screen.") + (need.isEmpty() ? "" : " " + need));
                 bannerMain.setText("Turn the hotspot on");
@@ -612,6 +629,8 @@ final class HomeTab extends Tab {
         if (p == null) {
             fHotspot.set("--", Ui.DIM);
             fScreen.set("--", Ui.DIM);
+            fAirplane.set("--", Ui.DIM);
+            fLocation.set("--", Ui.DIM);
             fSaver.set("--", Ui.DIM);
         } else {
             // (values from a phone that no longer answers are the last ones seen: shown, but not lit)
@@ -624,6 +643,14 @@ final class HomeTab extends Tab {
                 fScreen.set(scr ? "on" : "off", scr && reachable ? Ui.FG : Ui.DIM);
             } else {
                 fScreen.set("--", Ui.DIM);
+            }
+            Boolean air = Call.flag(p, "air");
+            fAirplane.set(air == null ? "--" : air ? "on" : "off", air != null && air && reachable ? Ui.FG : Ui.DIM);
+            Boolean loc = Call.flag(p, "loc");
+            if (loc != null) {
+                fLocation.set(loc ? "on" : "off", loc && reachable ? Ui.FG : Ui.DIM);
+            } else {
+                fLocation.set(p.has("deep") ? "not known" : "update the phone's app", p.has("deep") ? Ui.DIM : Ui.AMBER);
             }
             fSaver.set(SaverPlan.homeFact(p.optBoolean("eco", false), p.optBoolean("ecoAuto", true), p.optInt("priv", -1)),
                     reachable ? Ui.FG : Ui.DIM);
@@ -671,6 +698,8 @@ final class HomeTab extends Tab {
         }
         touched();
         busy = true;
+        // "Hotspot on" from airplane mode takes the phone longer (it ends airplane mode, waits for the radio, then starts the hotspot)
+        final boolean fromAirplane = lastPhone != null && lastPhone.optBoolean("air", false);
         // Does the tablet's own Wi-Fi go with this switch (TabletWifiRules)? Decided now, from what is true now; done only once the
         // phone's switch is settled. If the phone answered over the Wi-Fi at the last look, the network the tablet is on IS its hotspot.
         wifiWish = TabletWifiRules.atPress(Cfg.wifiFollow(act), action, TabletWifi.on(act));
@@ -681,7 +710,7 @@ final class HomeTab extends Tab {
             // "later": the phone answered BEFORE acting, because the action takes away the link it was asked over. That answer
             // only means "sent"; what became of the switch is read from the status.
             boolean sentOnly = ok && json != null && json.optBoolean("later", false);
-            FollowUp f = sentOnly ? FollowUp.of(action) : null;
+            FollowUp f = sentOnly ? FollowUp.of(action, fromAirplane) : null;
             Handler h = bg;
             if (f != null && polling && h != null) {
                 follow = f;
@@ -829,26 +858,53 @@ final class HomeTab extends Tab {
     }
 
     private void askOff(final boolean standby, boolean linkWorks, String why) {
+        // "Hotspot off" in its deep form (location off, airplane mode on, screen off) only when the user wants it, this phone's app
+        // knows it, and the Bluetooth link just answered: airplane mode takes Bluetooth away on this phone, so the phone only stays
+        // in it while Bluetooth can stay on, and the tablet only asks for it while it knows the way back works.
+        boolean phoneKnows = lastPhone != null && lastPhone.has("deep");
+        boolean wanted = Cfg.deepSleep(act);
+        final boolean deep = !standby && wanted && phoneKnows && linkWorks;
         String what = standby
                 ? "The phone's hotspot and its screen go off. The phone stays on and can still take calls and texts."
+                : deep
+                ? "The phone's hotspot goes off, then location goes off (if it is on), airplane mode goes on and the screen goes off, so "
+                + "the phone uses almost no battery. In airplane mode it gets no calls or texts."
                 : "The phone's hotspot goes off, and the tablet loses its internet.";
-        String back = linkWorks
+        String back = deep
+                ? "The phone answered over Bluetooth just now, and it only stays in airplane mode while Bluetooth can stay on, so "
+                + "\"Hotspot on\" from this tablet can wake it: it ends airplane mode and switches the hotspot on, and leaves location "
+                + "and the screen alone. That works as long as the phone stays in Bluetooth range."
+                : linkWorks
                 ? "The phone answered over Bluetooth just now, so " + (standby ? "it can be woken" : "the hotspot can be switched "
                 + "on again") + " from this tablet with \"Hotspot on\", as long as the phone stays in Bluetooth range."
                 : "After this the phone may have to be picked up to switch its hotspot on again, because Bluetooth is then the "
                 + "only way to it from this tablet.\n\n" + why;
+        String extra = "";
+        if (!standby && !deep && wanted) {
+            extra = !phoneKnows
+                    ? "\n\nThis phone's app is older, so it only switches the hotspot off. Update it (" + PHONE + " tab) to get location, "
+                    + "airplane mode and the screen with it."
+                    : !linkWorks
+                    ? "\n\nLocation, airplane mode and the screen are left alone this time: with no working Bluetooth link the tablet could "
+                    + "not wake the phone again."
+                    : "";
+        }
         String go = (standby ? "Standby" : "Turn it off") + (linkWorks ? "" : " anyway");
-        new AlertDialog.Builder(act)
+        AlertDialog.Builder b = new AlertDialog.Builder(act)
                 .setTitle(standby ? "Put the phone on standby?" : "Turn the hotspot off?")
-                .setMessage(what + "\n\n" + back)
+                .setMessage(what + "\n\n" + back + extra)
                 .setPositiveButton(go, (d, w) -> {
                     if (standby) {
                         send("standby", "Putting the phone on standby", 60000);
+                    } else if (deep) {
+                        send("hotspot_off_deep", "Putting the phone to sleep", 60000);
                     } else {
                         send("hotspot_off", "Switching the hotspot off", 45000);
                     }
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+                });
+        if (deep) {
+            b.setNeutralButton("Hotspot only", (d, w) -> send("hotspot_off", "Switching the hotspot off", 45000));
+        }
+        b.setNegativeButton("Cancel", null).show();
     }
 }

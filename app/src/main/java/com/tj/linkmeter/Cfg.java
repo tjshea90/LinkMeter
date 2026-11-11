@@ -165,6 +165,18 @@ final class Cfg {
         sp(c).edit().putBoolean("wifiFollow", on).apply();
     }
 
+    /**
+     * Tablet: "Hotspot off" also switches the phone's location off, airplane mode on and its screen off (the deep form), and only
+     * while the Bluetooth link just answered and the phone's app knows it. ON by default; off = the plain hotspot off as before.
+     */
+    static boolean deepSleep(Context c) {
+        return sp(c).getBoolean("deepSleep", true);
+    }
+
+    static void setDeepSleep(Context c, boolean on) {
+        sp(c).edit().putBoolean("deepSleep", on).apply();
+    }
+
     // ------------------------------------------------------------ phone options
 
     /** Phone: start the sender when the phone boots. */

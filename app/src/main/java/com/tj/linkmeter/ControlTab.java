@@ -77,6 +77,10 @@ final class ControlTab extends Tab {
     private Ui.Fact fWifi;
     private Button bWifiOn;
     private Button bWifiOff;
+    private Ui.Fact fAirplane;
+    private Ui.Fact fLocation;
+    private Button bLocOn;
+    private Button bLocOff;
     private Button bRestart;
     private Button bPoweroff;
     private Button bRestore;
@@ -160,7 +164,16 @@ final class ControlTab extends Tab {
         bWifiOn = Ui.button(act, "Wi-Fi on", v -> wifiPressed(true));
         bWifiOff = Ui.button(act, "Wi-Fi off", v -> wifiPressed(false));
         sw.addView(Ui.row(act, bWifiOn, bWifiOff), Ui.lp(act, 10));
-        sw.addView(Ui.hint(act, "Hotspot, screen and Standby are on " + HOME + "."), Ui.lp(act, 6));
+        fLocation = new Ui.Fact(act, "Phone's location");
+        sw.addView(fLocation.view, Ui.lp(act, 8));
+        bLocOn = Ui.button(act, "Location on", v -> send("location_on", "Switching the phone's location on", 30000));
+        bLocOff = Ui.button(act, "Location off", v -> send("location_off", "Switching the phone's location off", 30000));
+        sw.addView(Ui.row(act, bLocOn, bLocOff), Ui.lp(act, 10));
+        fAirplane = new Ui.Fact(act, "Phone's airplane mode");
+        sw.addView(fAirplane.view, Ui.lp(act, 6));
+        sw.addView(Ui.hint(act, "Hotspot, screen and Standby are on " + HOME + ". \"Hotspot off\" there also switches location off and "
+                + "airplane mode on; \"Hotspot on\" ends airplane mode and leaves location alone, so location goes back on here. "
+                + "Airplane mode alone has no button: the tablet could not wake the phone out of it."), Ui.lp(act, 6));
         col.addView(sw, Ui.lp(act, 10));
 
         LinearLayout pw = Ui.card(act, "Power", "For every day, Standby on " + HOME + " is better: the tablet can wake the phone "
@@ -492,6 +505,11 @@ final class ControlTab extends Tab {
     private void paintSwitches() {
         Boolean wifi = lastPhone == null ? null : Call.flag(lastPhone, "wifi");
         fWifi.set(PhoneTabRules.switchFact(wifi), reachable && wifi != null ? Ui.FG : Ui.DIM);
+        Boolean loc = lastPhone == null ? null : Call.flag(lastPhone, "loc");
+        fLocation.set(lastPhone != null && !lastPhone.has("deep") ? "update the phone's app" : PhoneTabRules.switchFact(loc),
+                reachable && loc != null ? Ui.FG : lastPhone != null && !lastPhone.has("deep") ? Ui.AMBER : Ui.DIM);
+        Boolean air = lastPhone == null ? null : Call.flag(lastPhone, "air");
+        fAirplane.set(PhoneTabRules.switchFact(air), reachable && air != null ? Ui.FG : Ui.DIM);
     }
 
     private void paintApp() {
@@ -517,6 +535,10 @@ final class ControlTab extends Tab {
         for (Button b : new Button[] {bWifiOn, bWifiOff, bRestart, bPoweroff, bRestore, bSafety, bRestartHotspot, bPrepare, bProbe}) {
             b.setEnabled(can);
         }
+        // the location buttons need a phone app that knows them (it says so with "deep" in its status)
+        boolean locationKnown = can && lastPhone != null && lastPhone.has("deep");
+        bLocOn.setEnabled(locationKnown);
+        bLocOff.setEnabled(locationKnown);
         saver.setEnabled(can);
         band.setEnabled(can);
         boolean canUpdate = can && PhoneTabRules.updateBlocked(reachable, overBluetooth()).isEmpty();
@@ -607,7 +629,7 @@ final class ControlTab extends Tab {
             }
             noted(s);
             FollowUp.Outcome o = follow.look(Call.seen(s.phone));
-            if (o == null && SystemClock.elapsedRealtime() - followSince >= FollowUp.GIVE_UP_MS) {
+            if (o == null && SystemClock.elapsedRealtime() - followSince >= follow.giveUpMs()) {
                 o = follow.giveUp();
             }
             if (o != null) {
