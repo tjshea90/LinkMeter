@@ -133,6 +133,10 @@ java -cp "$out" com.tj.linkmeter.SmsProtocolTest || fail=1
 echo "== Texts protocol 2 (waiting for news instead of asking every 3 s, paging back through a conversation, search, delete and mark read, over a real socket)"
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" tools/test/SmsV2Test.java || fail=1
 java -cp "$out" com.tj.linkmeter.SmsV2Test || fail=1
+echo "== Texts, the tablet's side (text-message counter, tapback texts, quick replies, pins/archive/delete/drafts, the saved copy, the conversation list, the rows of a conversation)"
+javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/BlobStore.java $FM/FileBlobStore.java $FM/TextsLocal.java $FM/TextsCache.java $FM/SmsLength.java $FM/SmsReactions.java \
+  $FM/SmartReply.java $FM/ThreadListRules.java $FM/ThreadRows.java tools/test/TextsLogicTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.TextsLogicTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

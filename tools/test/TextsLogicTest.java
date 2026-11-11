@@ -1,0 +1,741 @@
+package com.tj.linkmeter;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.TreeMap;
+
+/**
+ * Tests the pure parts of the new Texts screens: the text-message counter, the reaction texts, the quick replies, the tablet's own
+ * choices (pin, mute, archive, delete, drafts, what was read), the saved copy, the conversation list rules and the rows of a
+ * conversation (days, groups, the new-messages line, reactions folded in). Not part of the app.
+ */
+public final class TextsLogicTest {
+    static int checks;
+    static int fails;
+
+    static void eq(Object want, Object got, String what) {
+        checks++;
+        if (!String.valueOf(want).equals(String.valueOf(got))) {
+            fails++;
+            if (fails <= 40) {
+                System.out.println("FAIL " + what + ": wanted '" + want + "' but got '" + got + "'");
+            }
+        }
+    }
+
+    static void yes(boolean ok, String what) {
+        checks++;
+        if (!ok) {
+            fails++;
+            if (fails <= 40) {
+                System.out.println("FAIL " + what);
+            }
+        }
+    }
+
+    static final long DAY = 86_400_000L;
+    static final long D0 = (1_700_000_000_000L / DAY) * DAY; // a midnight, UTC
+    static final TextTime.Env ENV = new TextTime.Env(TimeZone.getTimeZone("UTC"), Locale.US, false);
+    static final long H = 3_600_000L;
+    static final long MIN = 60_000L;
+
+    static Sms.Msg msg(String id, boolean mine, String body, long time) {
+        Sms.Msg m = new Sms.Msg();
+        m.id = id;
+        m.key = "k";
+        m.address = mine ? "" : "+15550001";
+        m.mine = mine;
+        m.body = body;
+        m.time = time;
+        return m;
+    }
+
+    static Sms.Thread thread(String key, String name, String snip, long time, boolean unread, int count) {
+        Sms.Thread t = new Sms.Thread();
+        t.key = key;
+        t.name = name;
+        t.snippet = snip;
+        t.time = time;
+        t.unread = unread;
+        t.count = count;
+        t.addresses.add("+1" + key);
+        return t;
+    }
+
+    /** Blobs in memory. */
+    static final class Mem implements BlobStore {
+        final Map<String, byte[]> m = new TreeMap<>();
+        boolean failWrites;
+
+        @Override
+        public byte[] read(String name) {
+            byte[] b = m.get(name);
+            return b == null ? null : b.clone();
+        }
+
+        @Override
+        public void write(String name, byte[] data) throws IOException {
+            if (failWrites) {
+                throw new IOException("disk full");
+            }
+            m.put(name, data.clone());
+        }
+
+        @Override
+        public void delete(String name) {
+            m.remove(name);
+        }
+
+        @Override
+        public List<String> names() {
+            return new ArrayList<>(m.keySet());
+        }
+    }
+
+    // ------------------------------------------------------------------ how many text messages
+
+    static void lengths() {
+        SmsLength.Count c = SmsLength.of("");
+        eq("0/0/160", c.parts + "/" + c.units + "/" + c.left, "an empty text is no message");
+        c = SmsLength.of("Hello");
+        eq("1/5/155/false", c.parts + "/" + c.units + "/" + c.left + "/" + c.unicode, "a short GSM text");
+        eq("1/0", SmsLength.of(rep('a', 160)).parts + "/" + SmsLength.of(rep('a', 160)).left, "160 letters are one message with nothing left");
+        eq("2/145", SmsLength.of(rep('a', 161)).parts + "/" + SmsLength.of(rep('a', 161)).left, "161 letters are two messages (153 in each)");
+        eq("2/0", SmsLength.of(rep('a', 306)).parts + "/" + SmsLength.of(rep('a', 306)).left, "306 letters fill two");
+        eq(3, SmsLength.of(rep('a', 307)).parts, "307 letters are three");
+        eq("1/160", SmsLength.of(rep('{', 80)).parts + "/" + SmsLength.of(rep('{', 80)).units, "80 braces count twice each: 160 places");
+        eq(2, SmsLength.of(rep('{', 81)).parts, "81 braces are two messages");
+        eq("1/2", SmsLength.of("€").parts + "/" + SmsLength.of("€").units, "the euro sign is an extension character");
+        eq(false, SmsLength.of("café ñ ü à\n").unicode, "accents of the GSM set stay GSM");
+        eq(true, SmsLength.of("ç").unicode, "c with a cedilla (small) is not in the GSM set");
+        c = SmsLength.of("hi 😀");
+        eq("true/5/1/4", c.unicode + "/" + c.units + "/" + c.parts + "/" + c.chars, "an emoji makes it 16-bit: the pair counts two places and one character for the reader");
+        eq("1/0", SmsLength.of(rep('Ж', 70)).parts + "/" + SmsLength.of(rep('Ж', 70)).left, "70 Cyrillic letters are one message");
+        eq("2/63", SmsLength.of(rep('Ж', 71)).parts + "/" + SmsLength.of(rep('Ж', 71)).left, "71 are two (67 in each)");
+        eq(2, SmsLength.of(rep('Ж', 134)).parts, "134 fill two");
+        eq(3, SmsLength.of(rep('Ж', 135)).parts, "135 are three");
+        eq(0, SmsLength.of(null).parts, "no text");
+    }
+
+    static String rep(char c, int n) {
+        char[] a = new char[n];
+        Arrays.fill(a, c);
+        return new String(a);
+    }
+
+    // ------------------------------------------------------------------ reaction texts
+
+    static void reactions() {
+        SmsReactions.Reaction r = SmsReactions.parse("Loved “See you at 7”");
+        eq(SmsReactions.HEART + "|See you at 7|false|false", r.emoji + "|" + r.quote + "|" + r.media + "|" + r.remove, "Loved");
+        eq(SmsReactions.LIKE, SmsReactions.parse("Liked \"ok\"").emoji, "Liked, with plain quotes");
+        eq(SmsReactions.LAUGH, SmsReactions.parse("Laughed at “That is funny”").emoji, "Laughed at");
+        eq(SmsReactions.EMPHASIS, SmsReactions.parse("Emphasized “Hi there”").emoji, "Emphasized");
+        eq(SmsReactions.QUESTION, SmsReactions.parse("Questioned “Really now?”").emoji, "Questioned");
+        eq(SmsReactions.DISLIKE, SmsReactions.parse("Disliked “No way”").emoji, "Disliked");
+        r = SmsReactions.parse("Loved an image");
+        yes(r != null && r.media && r.quote.isEmpty(), "a reaction to a picture");
+        r = SmsReactions.parse("Removed a heart from “See you at 7”");
+        yes(r != null && r.remove && r.emoji.equals(SmsReactions.HEART) && r.quote.equals("See you at 7"), "a taken back heart");
+        r = SmsReactions.parse("Removed a like from a photo");
+        yes(r != null && r.remove && r.media, "a taken back like on a photo");
+        r = SmsReactions.parse("Reacted 😂 to “lol that”");
+        yes(r != null && r.emoji.equals("😂") && r.quote.equals("lol that"), "Google Messages style");
+        yes(SmsReactions.parse("Reacted well to “the news here”") == null, "'Reacted well' is a sentence, not a reaction");
+        yes(SmsReactions.parse("Loved the movie, see you") == null, "no quotation: an ordinary text");
+        yes(SmsReactions.parse("I Loved “this” so much") == null, "does not start with the verb");
+        yes(SmsReactions.parse("Liked it") == null, "too short");
+        yes(SmsReactions.parse("Loved “line\none”") == null, "one line only");
+        yes(SmsReactions.parse(null) == null && SmsReactions.parse("") == null, "nothing");
+        yes(SmsReactions.parse("Removed a hat from “See you at 7”") == null, "a thing that is no reaction");
+
+        // which message it is about
+        SmsReactions.Reaction cut = SmsReactions.parse("Loved “Hey are you coming to the…”");
+        yes(SmsReactions.about(cut, msg("a", true, "Hey are you coming to the party tonight?", 1)), "a cut quotation matches the start of the text");
+        yes(!SmsReactions.about(cut, msg("a", true, "Something else entirely", 1)), "and nothing else");
+        SmsReactions.Reaction ap = SmsReactions.parse("Liked “I’m here”");
+        yes(SmsReactions.about(ap, msg("a", true, "I'm here", 1)), "curly and straight apostrophes are the same");
+        yes(!SmsReactions.about(ap, msg("a", true, "I'm here now", 1)), "the whole text, not a part, when it was not cut");
+        Sms.Msg pic = msg("p", true, "", 1);
+        pic.mms = true;
+        SmsReactions.Reaction im = SmsReactions.parse("Loved an image");
+        yes(SmsReactions.about(im, pic) && !SmsReactions.about(im, msg("t", true, "words", 1)), "a picture is about a picture message");
+    }
+
+    // ------------------------------------------------------------------ quick replies
+
+    static List<Sms.Msg> last(boolean mine, String body, long age, long now) {
+        List<Sms.Msg> l = new ArrayList<>();
+        l.add(msg("x", mine, body, now - age));
+        return l;
+    }
+
+    static void smart() {
+        long now = D0 + 20 * H;
+        eq("[Yes, No, Maybe later]", SmartReply.suggest(last(false, "Are you coming tonight?", MIN, now), now), "a question for yes or no");
+        eq("[You're welcome!, No problem, 👍]", SmartReply.suggest(last(false, "Thanks a lot!", MIN, now), now), "thanks");
+        eq("[On my way, Running late, Almost there]", SmartReply.suggest(last(false, "Where are you?", MIN, now), now), "where are you");
+        eq("[Hi!, Hey, how are you?, What's up?]", SmartReply.suggest(last(false, "hey", MIN, now), now), "a greeting");
+        eq("Good morning!", SmartReply.suggest(last(false, "Good morning :)", MIN, now), now).get(0), "good morning");
+        eq("[I'll call you soon, Can't talk right now, Text me instead]", SmartReply.suggest(last(false, "Call me when you can", MIN, now), now), "call me gets only words");
+        eq("[Sounds good, Let me check, What time works for you?]", SmartReply.suggest(last(false, "What time should we meet?", MIN, now), now), "when / what time");
+        eq("[Yes, No, Let me check]", SmartReply.suggest(last(false, "Lunch at noon, works for you?", MIN, now), now), "any other question");
+        eq("[]", SmartReply.suggest(last(false, "The meeting moved to Friday", MIN, now), now), "no question, nothing to say quickly");
+        eq("[]", SmartReply.suggest(last(true, "Are you coming tonight?", MIN, now), now), "my own text last: nothing");
+        eq("[]", SmartReply.suggest(last(false, "Are you coming tonight?", 2 * DAY, now), now), "an old text: nothing");
+        eq("[]", SmartReply.suggest(last(false, "Loved “See you at 7”", MIN, now), now), "a reaction: nothing");
+        eq("[]", SmartReply.suggest(new ArrayList<Sms.Msg>(), now), "an empty conversation");
+        Random rnd = new Random(7);
+        String[] words = {"are", "you", "where", "thanks", "hi", "?", "call", "me", "ok", "when", "love", "what", "time", "the", "\n", "😀"};
+        for (int i = 0; i < 3000; i++) {
+            StringBuilder sb = new StringBuilder();
+            for (int j = 0, n = rnd.nextInt(8); j < n; j++) {
+                sb.append(words[rnd.nextInt(words.length)]).append(' ');
+            }
+            List<String> s = SmartReply.suggest(last(false, sb.toString(), MIN, now), now);
+            yes(s.size() == 0 || s.size() == 3, "zero or three suggestions: " + s);
+            for (String x : s) {
+                yes(!x.isEmpty(), "no empty suggestion");
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ the tablet's own choices
+
+    static void local() throws IOException {
+        Mem mem = new Mem();
+        TextsLocal l = new TextsLocal(mem);
+        l.setPinned("a", true, 5);
+        l.setMuted("b", true);
+        l.archive("c", 100);
+        l.clear("d", 200);
+        l.hide(Arrays.asList("s1", "m2", "o3"));
+        l.setDraft("e", "half a thought");
+        l.markSeen("f", 300, 7);
+        yes(l.isPinned("a") && !l.isPinned("b"), "pinned");
+        yes(l.isMuted("b") && !l.isMuted("a"), "muted");
+        yes(l.isArchived("c", 100) && l.isArchived("c", 50) && !l.isArchived("c", 101), "archived until a newer message");
+        yes(!l.isArchived("zzz", 1), "an unknown conversation is not archived");
+        yes(l.isCleared("d", 200) && !l.isCleared("d", 201), "deleted until a newer message");
+        eq(200, l.clearedAt("d"), "deleted up to");
+        yes(l.isHidden("s1") && l.isHidden("o3") && !l.isHidden("s9"), "hidden messages");
+        eq("half a thought", l.draft("e"), "draft");
+        eq("", l.draft("nobody"), "no draft");
+        eq("300/7", l.seenAt("f") + "/" + l.seenCount("f"), "seen");
+        yes(!l.dirty(), "everything but the draft was written at once");
+        l.flush();
+        yes(!l.dirty(), "flushed");
+
+        TextsLocal back = new TextsLocal(mem); // a restart
+        yes(back.isPinned("a") && back.isMuted("b") && back.isArchived("c", 50) && back.isCleared("d", 100) && back.isHidden("m2"), "everything comes back after a restart");
+        eq("half a thought", back.draft("e"), "the draft too (it was flushed)");
+        eq("300/7", back.seenAt("f") + "/" + back.seenCount("f"), "and what was read");
+
+        // a draft is written at the next flush, not at every key
+        byte[] before = mem.read(TextsLocal.BLOB);
+        l.setDraft("e", "half a thought, more");
+        yes(l.dirty() && Arrays.equals(before, mem.read(TextsLocal.BLOB)), "a draft change waits for the flush");
+        l.flush();
+        eq("half a thought, more", new TextsLocal(mem).draft("e"), "and is there after it");
+        l.setDraft("e", "   ");
+        eq("", l.draft("e"), "an empty draft is no draft");
+
+        // seen only moves forward
+        yes(!l.markSeen("f", 200, 3), "an older time does not move it");
+        yes(l.markSeen("f", 400, 9), "a newer time does");
+        eq("400/9", l.seenAt("f") + "/" + l.seenCount("f"), "now");
+        yes(l.markSeen("f", 400, 8) && l.seenCount("f") == 8, "the same time with another count: the count follows (messages were deleted)");
+
+        // deleting a conversation also lets go of its pin and draft; a later delete does not un-delete
+        l.setPinned("d", true, 1);
+        l.setDraft("d", "x");
+        l.clear("d", 250);
+        yes(!l.isPinned("d") && l.draft("d").isEmpty(), "deleting lets go of the pin and the draft");
+        l.clear("d", 100);
+        eq(250, l.clearedAt("d"), "an older delete does not bring messages back");
+        l.unarchive("c");
+        yes(!l.isArchived("c", 1), "unarchived");
+        l.forget("a");
+        yes(!l.isPinned("a"), "forgotten");
+
+        // a damaged or missing file
+        Mem bad = new Mem();
+        bad.m.put(TextsLocal.BLOB, "{ this is not json".getBytes(StandardCharsets.UTF_8));
+        yes(!new TextsLocal(bad).isPinned("a"), "a damaged file starts empty");
+        bad.m.put(TextsLocal.BLOB, "[1,2,3]".getBytes(StandardCharsets.UTF_8));
+        yes(!new TextsLocal(bad).isMuted("a"), "the wrong kind of JSON starts empty");
+
+        // a disk that is full: the choice is kept in memory, and written when it can be
+        Mem full = new Mem();
+        TextsLocal fl = new TextsLocal(full);
+        full.failWrites = true;
+        fl.setMuted("m", true);
+        yes(fl.isMuted("m") && fl.dirty(), "kept in memory, and still to be written");
+        full.failWrites = false;
+        fl.flush();
+        yes(!fl.dirty() && new TextsLocal(full).isMuted("m"), "written when the disk works again");
+
+        // the hidden set is bounded
+        TextsLocal big = new TextsLocal(new Mem());
+        List<String> ids = new ArrayList<>();
+        for (int i = 0; i < TextsLocal.MAX_HIDDEN + 50; i++) {
+            ids.add("s" + i);
+        }
+        big.hide(ids);
+        yes(!big.isHidden("s0") && big.isHidden("s" + (TextsLocal.MAX_HIDDEN + 49)), "the oldest hidden ids make room");
+
+        // forget everything
+        l.forgetAll();
+        yes(mem.read(TextsLocal.BLOB) == null && !l.isMuted("b") && l.seenAt("f") == 0, "forgotten everywhere, on disk too");
+
+        // a random story against a plain model
+        Random rnd = new Random(99);
+        for (int round = 0; round < 200; round++) {
+            Mem m = new Mem();
+            TextsLocal t = new TextsLocal(m);
+            Set<String> pinnedM = new HashSet<>();
+            Set<String> mutedM = new HashSet<>();
+            Map<String, Long> archM = new HashMap<>();
+            Map<String, Long> clearM = new HashMap<>();
+            Map<String, Long> seenM = new HashMap<>();
+            String[] keys = {"1", "2", "3", "4"};
+            for (int step = 0; step < 60; step++) {
+                String k = keys[rnd.nextInt(keys.length)];
+                long v = rnd.nextInt(1000);
+                switch (rnd.nextInt(7)) {
+                    case 0:
+                        t.setPinned(k, true, v);
+                        pinnedM.add(k);
+                        break;
+                    case 1:
+                        t.setPinned(k, false, v);
+                        pinnedM.remove(k);
+                        break;
+                    case 2:
+                        t.setMuted(k, rnd.nextBoolean());
+                        if (t.isMuted(k)) {
+                            mutedM.add(k);
+                        } else {
+                            mutedM.remove(k);
+                        }
+                        break;
+                    case 3:
+                        t.archive(k, v);
+                        archM.put(k, v);
+                        break;
+                    case 4:
+                        t.clear(k, v);
+                        clearM.put(k, Math.max(v, clearM.containsKey(k) ? clearM.get(k) : 0));
+                        archM.remove(k);
+                        pinnedM.remove(k);
+                        break;
+                    case 5:
+                        t.markSeen(k, v, 1);
+                        if (v > (seenM.containsKey(k) ? seenM.get(k) : 0)) {
+                            seenM.put(k, v);
+                        }
+                        break;
+                    default:
+                        t.unarchive(k);
+                        archM.remove(k);
+                        break;
+                }
+                if (rnd.nextInt(10) == 0) {
+                    t = new TextsLocal(m); // restart
+                }
+                for (String kk : keys) {
+                    long probe = rnd.nextInt(1000);
+                    yes(t.isPinned(kk) == pinnedM.contains(kk), "pinned matches the model");
+                    yes(t.isMuted(kk) == mutedM.contains(kk), "muted matches the model");
+                    yes(t.isArchived(kk, probe) == (archM.containsKey(kk) && probe <= archM.get(kk)), "archived matches the model");
+                    yes(t.isCleared(kk, probe) == (clearM.containsKey(kk) && probe <= clearM.get(kk)), "cleared matches the model");
+                    yes(t.seenAt(kk) == (seenM.containsKey(kk) ? seenM.get(kk) : 0), "seen matches the model");
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ the saved copy
+
+    static void cache() throws IOException {
+        Mem mem = new Mem();
+        final long[] now = {1000};
+        TextsCache c = new TextsCache(mem, () -> now[0], 3, 5);
+        yes(c.loadThreads() == null && c.loadConvo("k") == null, "nothing saved yet");
+        List<Sms.Thread> ts = new ArrayList<>();
+        ts.add(thread("5551", "Alex", "hello", 10, true, 4));
+        ts.add(thread("5552", "Sam", "yo", 5, false, 2));
+        c.saveThreads(ts);
+        TextsCache.Saved<List<Sms.Thread>> got = c.loadThreads();
+        eq("2|Alex|hello|true|4|1000", got.value.size() + "|" + got.value.get(0).name + "|" + got.value.get(0).snippet + "|" + got.value.get(0).unread + "|"
+                + got.value.get(0).count + "|" + got.at, "the list comes back as it was, with when it was saved");
+
+        Sms.Convo cv = new Sms.Convo();
+        cv.head.name = "Alex";
+        cv.head.addresses.add("+15551");
+        for (int i = 0; i < 8; i++) {
+            cv.msgs.add(msg("s" + i, i % 2 == 0, "m" + i, 100 + i));
+        }
+        now[0] = 2000;
+        c.saveConvo("5551", cv);
+        TextsCache.Saved<Sms.Convo> back = c.loadConvo("5551");
+        eq("5|s3|s7|true|Alex|2000", back.value.msgs.size() + "|" + back.value.msgs.get(0).id + "|" + back.value.msgs.get(4).id + "|" + back.value.more + "|"
+                + back.value.head.name + "|" + back.at, "the newest five messages are kept, and it says there are older ones");
+        yes(back.value.head.addresses.contains("+15551"), "and who it is with");
+        yes(c.loadConvo("nobody") == null, "another conversation is not there");
+        for (String n : mem.names()) {
+            yes(!n.contains("5551"), "no phone number in a blob name: " + n);
+        }
+        // bounds: three conversations at most, the oldest save goes
+        for (int i = 1; i <= 5; i++) {
+            now[0] = 3000 + i;
+            c.saveConvo("k" + i, cv);
+        }
+        eq(3, c.convos(), "at most three conversations are kept");
+        yes(c.loadConvo("k5") != null && c.loadConvo("k4") != null && c.loadConvo("k3") != null, "the newest three are there");
+        yes(c.loadConvo("k1") == null && c.loadConvo("k2") == null && c.loadConvo("5551") == null, "older ones went");
+        yes(c.loadThreads() != null, "the list is not counted among the conversations");
+        // a restart keeps the index, so the bound still holds
+        TextsCache again = new TextsCache(mem, () -> now[0], 3, 5);
+        now[0] = 9000;
+        again.saveConvo("k6", cv);
+        eq(3, again.convos(), "after a restart too");
+        yes(again.loadConvo("k3") == null && again.loadConvo("k6") != null, "the oldest went");
+        again.remove("k6");
+        yes(again.loadConvo("k6") == null, "removed");
+        // a blob that holds another conversation (a hash collision, or a swapped file) is not shown
+        mem.m.put(TextsCache.blobOf("k5"), mem.m.get(TextsCache.blobOf("k4")));
+        yes(again.loadConvo("k5") == null, "a blob for another key is not used");
+        mem.m.put(TextsCache.blobOf("k4"), "garbage".getBytes(StandardCharsets.UTF_8));
+        yes(again.loadConvo("k4") == null, "a damaged blob is not used");
+        // clear
+        again.clear();
+        yes(mem.names().isEmpty() || mem.names().equals(Arrays.asList("local.json")), "clear leaves no saved text: " + mem.names());
+        yes(again.loadThreads() == null && again.convos() == 0, "nothing is left");
+        // a disk that fails
+        mem.failWrites = true;
+        again.saveThreads(ts);
+        again.saveConvo("z", cv);
+        yes(again.loadThreads() == null, "a failed write is no crash and saves nothing");
+    }
+
+    // ------------------------------------------------------------------ the conversation list
+
+    static void listRules() throws IOException {
+        TextsLocal l = new TextsLocal(new Mem());
+        List<Sms.Thread> ts = new ArrayList<>();
+        ts.add(thread("1", "Alex", "dinner?", D0 + 5 * H, true, 6));
+        ts.add(thread("2", "Sam", "ok", D0 + 9 * H, false, 3));
+        ts.add(thread("3", "Mom", "call me", D0 + 7 * H, true, 9));
+        ts.add(thread("4", "", "your code is 123456", D0 + 1 * H, false, 1));
+        ts.add(thread("5", "Old pal", "bye", D0 - DAY, false, 20));
+        ts.get(0).addresses.set(0, "+15551234567");
+        List<ThreadListRules.Item> items = ThreadListRules.build(ts, l, "", false, false);
+        eq("2,3,1,4,5", keys(items), "newest first");
+        eq(2, ThreadListRules.unreadCount(items), "two unread");
+        l.setPinned("5", true, 1);
+        l.setPinned("4", true, 2);
+        eq("4,5,2,3,1", keys(ThreadListRules.build(ts, l, "", false, false)), "pinned ones first, then newest first");
+        l.setPinned("4", false, 0);
+        l.setPinned("5", false, 0);
+        // read on this tablet
+        l.markSeen("1", D0 + 5 * H, 6);
+        eq("3", keys(ThreadListRules.build(ts, l, "", true, false)), "unread only: the one opened here is no longer unread");
+        // a new message in it makes it unread again, with a count
+        ts.get(0).time = D0 + 10 * H;
+        ts.get(0).count = 9;
+        ts.get(0).snippet = "hello?";
+        items = ThreadListRules.build(ts, l, "", true, false);
+        eq("1,3", keys(items), "unread again");
+        eq(3, items.get(0).newCount, "three new messages since it was opened");
+        eq(0, items.get(1).newCount, "never opened here: a dot, no number");
+        // muted ones do not count
+        l.setMuted("1", true);
+        eq(1, ThreadListRules.unreadCount(ThreadListRules.build(ts, l, "", false, false)), "a muted conversation is not counted");
+        // archive and delete
+        l.archive("2", D0 + 9 * H);
+        l.clear("4", D0 + 1 * H);
+        eq("1,3,5", keys(ThreadListRules.build(ts, l, "", false, false)), "archived and deleted ones are not in the main list");
+        eq("2", keys(ThreadListRules.build(ts, l, "", false, true)), "the archived list has the archived one only");
+        eq(1, ThreadListRules.archivedCount(ts, l), "one archived");
+        ts.get(1).time = D0 + 11 * H; // a new message in the archived conversation
+        ts.get(3).time = D0 + 12 * H; // and in the deleted one
+        eq("4,2,1,3,5", keys(ThreadListRules.build(ts, l, "", false, false)), "both come back with a newer message");
+        eq(0, ThreadListRules.archivedCount(ts, l), "nothing is archived any more");
+        // search
+        eq("1", keys(ThreadListRules.build(ts, l, "hello", false, false)), "by the last text");
+        eq("3", keys(ThreadListRules.build(ts, l, "MOM", false, false)), "by name, any case");
+        eq("1", keys(ThreadListRules.build(ts, l, "5551234", false, false)), "by digits of the number (three or more)");
+        eq("", keys(ThreadListRules.build(ts, l, "55", false, false)), "two digits are not a search of numbers");
+        eq("4,2,1,3,5", keys(ThreadListRules.build(ts, l, "   ", false, false)), "blank: everything");
+        // previews and titles
+        eq("dinner? yes", ThreadListRules.preview(thread("9", "x", "dinner?\n  yes", 1, false, 1), false), "one line");
+        eq("New message", ThreadListRules.preview(thread("9", "x", "secret", 1, true, 1), true), "hidden, unread");
+        eq("Message", ThreadListRules.preview(thread("9", "x", "secret", 1, false, 1), true), "hidden, read");
+        Sms.Thread att = thread("9", "x", "", 1, false, 1);
+        att.attachment = true;
+        eq("Attachment", ThreadListRules.preview(att, false), "only a picture");
+        eq("No messages", ThreadListRules.preview(thread("9", "x", "", 1, false, 0), false), "empty");
+        eq("Alex", ThreadListRules.title(thread("1", "Alex", "", 1, false, 1)), "the name");
+        eq("(555) 000-1234", ThreadListRules.title(numberOnly()), "or the number, nicely written");
+    }
+
+    static Sms.Thread numberOnly() {
+        Sms.Thread t = thread("5550001234", "", "", 1, false, 1);
+        t.addresses.clear();
+        t.addresses.add("+15550001234");
+        return t;
+    }
+
+    static String keys(List<ThreadListRules.Item> items) {
+        StringBuilder sb = new StringBuilder();
+        for (ThreadListRules.Item i : items) {
+            sb.append(sb.length() > 0 ? "," : "").append(i.t.key);
+        }
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------------ the rows of a conversation
+
+    static List<String> flat(List<ThreadRows.Row> rows) {
+        List<String> out = new ArrayList<>();
+        for (ThreadRows.Row r : rows) {
+            if (r.kind == ThreadRows.DAY) {
+                out.add("D:" + r.label);
+            } else if (r.kind == ThreadRows.NEW_MESSAGES) {
+                out.add("N");
+            } else {
+                out.add(r.msg.id + (r.groupStart ? "[" : "") + (r.groupEnd ? "]" : "") + (r.lastOfMine ? "*" : "")
+                        + (r.reactions.isEmpty() ? "" : "{" + r.reactions.size() + "}"));
+            }
+        }
+        return out;
+    }
+
+    static void rows() throws IOException {
+        TextsLocal l = new TextsLocal(new Mem());
+        long now = D0 + DAY + 12 * H;
+        // groups and days
+        List<Sms.Msg> ms = new ArrayList<>();
+        ms.add(msg("m1", false, "a", D0 + 10 * H));
+        ms.add(msg("m2", false, "b", D0 + 10 * H + MIN));
+        ms.add(msg("m3", false, "c", D0 + 10 * H + 9 * MIN));
+        ms.add(msg("m4", true, "d", D0 + 10 * H + 9 * MIN + 30_000));
+        ms.add(msg("m5", true, "e", D0 + 10 * H + 10 * MIN));
+        ms.add(msg("m6", true, "f", D0 + DAY + 2 * H));
+        eq("[D:Yesterday, m1[, m2], m3[], m4[, m5], D:Today, m6[]*]", flat(ThreadRows.build(ms, l, "k", false, 0, now, ENV)), "days, groups and the last message I sent");
+        // a group chat: two other people in a row are two groups
+        List<Sms.Msg> g = new ArrayList<>();
+        Sms.Msg a = msg("g1", false, "hi", D0 + 10 * H);
+        a.address = "+1555A";
+        Sms.Msg b = msg("g2", false, "yo", D0 + 10 * H + 5_000);
+        b.address = "+1555B";
+        Sms.Msg a2 = msg("g3", false, "hey", D0 + 10 * H + 9_000);
+        a2.address = "+1555A";
+        g.add(a);
+        g.add(b);
+        g.add(a2);
+        eq("[D:Yesterday, g1[], g2[], g3[]]", flat(ThreadRows.build(g, l, "k", true, 0, now, ENV)), "in a group chat each person's run is a group");
+        eq("[D:Yesterday, g1[, g2, g3]]", flat(ThreadRows.build(g, l, "k", false, 0, now, ENV)), "in a chat with one person the address does not matter");
+        // the new-messages line
+        List<Sms.Msg> n = new ArrayList<>();
+        n.add(msg("n1", false, "a", D0 + 10 * H));
+        n.add(msg("n2", true, "b", D0 + 10 * H + MIN));
+        n.add(msg("n3", false, "c", D0 + 10 * H + 5 * MIN));
+        n.add(msg("n4", false, "d", D0 + 10 * H + 6 * MIN));
+        eq("[D:Yesterday, n1[], n2[]*, N, n3[, n4]]", flat(ThreadRows.build(n, l, "k", false, D0 + 10 * H + 2 * MIN, now, ENV)), "the line is above the first message that is new");
+        eq("[D:Yesterday, n1[], n2[]*, n3[, n4]]", flat(ThreadRows.build(n, l, "k", false, 0, now, ENV)), "never opened: no line");
+        eq("[D:Yesterday, n1[], n2[]*, n3[, n4]]", flat(ThreadRows.build(n, l, "k", false, D0 + 10 * H + 6 * MIN, now, ENV)), "everything seen: no line");
+        eq("[D:Yesterday, n1[], n2[]*, n3[, n4]]", flat(ThreadRows.build(n, l, "k", false, D0 + 10 * H - 1, now, ENV)), "everything is new: no line above the first message");
+        List<Sms.Msg> split = new ArrayList<>();
+        split.add(msg("p1", false, "a", D0 + 10 * H));
+        split.add(msg("p2", false, "b", D0 + 10 * H + MIN));
+        eq("[D:Yesterday, p1[], N, p2[]]", flat(ThreadRows.build(split, l, "k", false, D0 + 10 * H + 30_000, now, ENV)), "the line splits a run of messages from one person into two groups");
+        // deleted on this tablet
+        l.hide(Arrays.asList("m2"));
+        l.clear("k", D0 + 10 * H);
+        eq("[D:Yesterday, m3[], m4[, m5], D:Today, m6[]*]", flat(ThreadRows.build(ms, l, "k", false, 0, now, ENV)), "a hidden message and the cleared ones are gone");
+        // reactions
+        TextsLocal l2 = new TextsLocal(new Mem());
+        List<Sms.Msg> r = new ArrayList<>();
+        r.add(msg("r1", true, "See you at 7", D0 + 10 * H));
+        r.add(msg("r2", false, "Loved “See you at 7”", D0 + 10 * H + MIN));
+        r.add(msg("r3", true, "Hello there", D0 + 10 * H + 2 * MIN));
+        r.add(msg("r4", false, "Laughed at “Hello there”", D0 + 10 * H + 3 * MIN));
+        r.add(msg("r5", false, "Liked “Hello there”", D0 + 10 * H + 4 * MIN)); // replaces r4's reaction by the same person
+        r.add(msg("r6", true, "Loved “Never sent”", D0 + 10 * H + 5 * MIN)); // about nothing: stays a message
+        List<ThreadRows.Row> rr = ThreadRows.build(r, l2, "k", false, 0, now, ENV);
+        eq("[D:Yesterday, r1[{1}, r3{1}, r6]*]", flat(rr), "reactions are drawn on their message, not as messages; one per person");
+        eq(SmsReactions.LIKE, rr.get(2).reactions.get(0).emoji, "the later reaction of the same person replaced the earlier");
+        eq(SmsReactions.HEART, rr.get(1).reactions.get(0).emoji, "a heart");
+        r.add(msg("r7", false, "Removed a like from “Hello there”", D0 + 10 * H + 6 * MIN));
+        eq("[D:Yesterday, r1[{1}, r3, r6]*]", flat(ThreadRows.build(r, l2, "k", false, 0, now, ENV)), "taken back");
+        r.add(msg("r8", false, "Removed a heart from “See you at 7”", D0 + 10 * H + 7 * MIN));
+        eq("[D:Yesterday, r1[, r3, r6]*]", flat(ThreadRows.build(r, l2, "k", false, 0, now, ENV)), "both taken back");
+
+        randomRows();
+    }
+
+    static void randomRows() throws IOException {
+        Random rnd = new Random(2026);
+        long now = D0 + 3 * DAY + 5 * H;
+        String[] bodies = {"hi", "ok", "Loved “hi”", "Liked “ok”", "see you", "Removed a heart from “hi”", "", "ok"};
+        for (int round = 0; round < 1500; round++) {
+            TextsLocal l = new TextsLocal(new Mem());
+            int n = rnd.nextInt(25);
+            List<Sms.Msg> ms = new ArrayList<>();
+            long t = D0 + rnd.nextInt(5) * H;
+            boolean group = rnd.nextBoolean();
+            for (int i = 0; i < n; i++) {
+                t += rnd.nextInt(4) == 0 ? rnd.nextInt(30) * H : rnd.nextInt(8) * MIN;
+                Sms.Msg m = msg("x" + i, rnd.nextBoolean(), bodies[rnd.nextInt(bodies.length)], t);
+                if (!m.mine) {
+                    m.address = rnd.nextBoolean() ? "+1555A" : "+1555B";
+                }
+                if (rnd.nextInt(10) == 0) {
+                    l.hide(Arrays.asList(m.id));
+                }
+                ms.add(m);
+            }
+            long seen = rnd.nextBoolean() ? 0 : D0 + rnd.nextInt(60) * H;
+            List<ThreadRows.Row> rows = ThreadRows.build(ms, l, "k", group, seen, now, ENV);
+            int dividers = 0;
+            long prevDay = Long.MIN_VALUE;
+            String prevKind = "";
+            Sms.Msg prevMsg = null;
+            boolean prevEnd = true;
+            Set<String> shown = new HashSet<>();
+            int lastMine = 0;
+            for (int i = 0; i < rows.size(); i++) {
+                ThreadRows.Row r = rows.get(i);
+                if (r.kind == ThreadRows.NEW_MESSAGES) {
+                    dividers++;
+                    yes(i > 0 && i + 1 < rows.size() && rows.get(i + 1).kind == ThreadRows.MSG && !rows.get(i + 1).msg.mine && rows.get(i + 1).msg.time > seen, "the line stands above a new incoming message");
+                    continue;
+                }
+                if (r.kind == ThreadRows.DAY) {
+                    yes(i + 1 < rows.size() && (rows.get(i + 1).kind == ThreadRows.MSG
+                            || (rows.get(i + 1).kind == ThreadRows.NEW_MESSAGES && i + 2 < rows.size() && rows.get(i + 2).kind == ThreadRows.MSG)),
+                            "a heading is followed by a message (or by the new-messages line and then a message)");
+                    yes(!(i > 0 && rows.get(i - 1).kind == ThreadRows.DAY), "no two headings in a row");
+                    prevDay = Long.MIN_VALUE + 1;
+                    continue;
+                }
+                yes(shown.add(r.msg.id), "a message is shown once: " + r.msg.id);
+                yes(!l.isHidden(r.msg.id), "a hidden message is not shown");
+                if (r.lastOfMine) {
+                    lastMine++;
+                    yes(r.msg.mine, "only my own message can be the last I sent");
+                }
+                long day = TextTime.dayNumber(r.msg.time, ENV.zone);
+                int before = i - 1;
+                while (before >= 0 && rows.get(before).kind == ThreadRows.NEW_MESSAGES) {
+                    before--;
+                }
+                yes(prevMsg == null || TextTime.dayNumber(prevMsg.time, ENV.zone) == day || (before >= 0 && rows.get(before).kind == ThreadRows.DAY), "a new day has a heading");
+                yes(r.groupStart == (prevMsg == null || prevEnd), "a group starts exactly after a group ended: " + r.msg.id);
+                prevEnd = r.groupEnd;
+                prevMsg = r.msg;
+            }
+            yes(dividers <= 1, "at most one line");
+            yes(rows.isEmpty() || prevEnd, "the last message ends its group");
+            int messages = 0;
+            for (ThreadRows.Row r : rows) {
+                if (r.kind == ThreadRows.MSG) {
+                    messages++;
+                }
+            }
+            yes(lastMine == (anyMine(rows) ? 1 : 0), "exactly one last message of mine when I wrote any");
+            yes(messages <= n, "no message appears from nowhere");
+        }
+    }
+
+    static boolean anyMine(List<ThreadRows.Row> rows) {
+        for (ThreadRows.Row r : rows) {
+            if (r.kind == ThreadRows.MSG && r.msg.mine) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------------ the files
+
+    static void files() throws IOException {
+        File dir = Files.createTempDirectory("blobs").toFile();
+        try {
+            FileBlobStore s = new FileBlobStore(new File(dir, "inner"));
+            yes(s.read("nothing") == null, "a blob that is not there reads as null");
+            s.write("b.json", "one".getBytes(StandardCharsets.UTF_8));
+            s.write("a.json", "two".getBytes(StandardCharsets.UTF_8));
+            eq("one", new String(s.read("b.json"), StandardCharsets.UTF_8), "written and read back");
+            s.write("b.json", "three".getBytes(StandardCharsets.UTF_8));
+            eq("three", new String(s.read("b.json"), StandardCharsets.UTF_8), "overwritten");
+            eq("[a.json, b.json]", s.names(), "the names, sorted");
+            File leftover = new File(new File(dir, "inner"), "c.json.tmp");
+            Files.write(leftover.toPath(), new byte[] {1});
+            eq("[a.json, b.json]", s.names(), "a half-written file is not a blob");
+            s.delete("a.json");
+            s.delete("a.json");
+            eq("[b.json]", s.names(), "deleted, and deleting twice is no failure");
+            byte[] big = new byte[1_500_000];
+            new Random(5).nextBytes(big);
+            s.write("big", big);
+            yes(Arrays.equals(big, s.read("big")), "a big blob comes back whole");
+            s.write("e", new byte[0]);
+            eq(0, s.read("e").length, "an empty blob is not a missing one");
+            for (String bad : new String[] {"../x", ".hidden", "a/b", "", "x y", "q.tmp", rep('n', 101)}) {
+                boolean threw = false;
+                try {
+                    s.write(bad, new byte[] {1});
+                } catch (IOException e) {
+                    threw = true;
+                }
+                yes(threw, "not a name for a blob: '" + bad + "'");
+            }
+            eq("[b.json, big, e]", s.names(), "nothing was written under a bad name");
+            // the local state and the saved copy work on real files
+            TextsLocal l = new TextsLocal(s);
+            l.setPinned("k", true, 5);
+            yes(new TextsLocal(new FileBlobStore(new File(dir, "inner"))).isPinned("k"), "the choices survive a restart on real files");
+        } finally {
+            deleteTree(dir);
+        }
+    }
+
+    static void deleteTree(File f) {
+        File[] kids = f.listFiles();
+        if (kids != null) {
+            for (File k : kids) {
+                deleteTree(k);
+            }
+        }
+        f.delete();
+    }
+
+    public static void main(String[] args) throws Exception {
+        files();
+        lengths();
+        reactions();
+        smart();
+        local();
+        cache();
+        listRules();
+        rows();
+        System.out.println(checks + " checks, " + fails + " failed");
+        System.exit(fails == 0 ? 0 : 1);
+    }
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java; for "texts:", tools/test/TextsLogicTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror, ChangeGate, SmsApi (the version 2 routes) or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror, ChangeGate, SmsApi (the version 2 routes), SmsLength, SmsReactions, SmartReply, TextsLocal, TextsCache, ThreadListRules, ThreadRows, FileBlobStore or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -577,6 +577,40 @@ S2 = [
  ('sms2: the gate waits the whole time even when it changed', 'ChangeGate.java', 'while (version == seen) {', 'while (true) {'),
  ('sms2: removing record messages tells nobody', 'SmsOutbox.java', 'if (n > 0) {\n            save();\n            changed();\n        }\n        return n;\n    }\n\n    /** Deletes every message', 'if (n > 0) {\n            save();\n        }\n        return n;\n    }\n\n    /** Deletes every message'),
 ]
+TEXTS_FILES = ["SmsLength.java", "SmsReactions.java", "SmartReply.java", "TextsLocal.java", "TextsCache.java", "ThreadListRules.java", "ThreadRows.java",
+               "FileBlobStore.java"]
+TEXTS_TEST = ROOT + "/tools/test/TextsLogicTest.java"
+TEXTS_JAVAC = ["-sourcepath", ROOT + "/app/src/main/java"]
+TX = [
+ ('texts: a long GSM text is cut into too few parts', 'SmsLength.java', 'int parts = units <= 160 ? 1 : (units + 152) / 153;', 'int parts = units <= 160 ? 1 : units / 153;'),
+ ('texts: an extension character counts once', 'SmsLength.java', 'units += 2;', 'units += 1;'),
+ ('texts: a 16-bit text gets one more character in a single part', 'SmsLength.java', 'int parts = u <= 70 ? 1 : (u + 66) / 67;', 'int parts = u <= 71 ? 1 : (u + 66) / 67;'),
+ ('texts: a taken back heart is a taken back like', 'SmsReactions.java', '{"a heart", HEART}, {"a like", LIKE}', '{"a heart", LIKE}, {"a like", LIKE}'),
+ ('texts: any word is an emoji', 'SmsReactions.java', "if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || Character.isWhitespace(c)) {", 'if (false) {'),
+ ('texts: a reaction is about any text that contains the quotation', 'SmsReactions.java', 'return body.equals(q);', 'return body.contains(q);'),
+ ('texts: an old text gets quick replies', 'SmartReply.java', 'now - last.time > FRESH_MS', 'now - last.time > FRESH_MS * 100'),
+ ('texts: my own text gets quick replies', 'SmartReply.java', 'if (last.mine || last.body == null', 'if (last.body == null'),
+ ('texts: reading moves backwards', 'TextsLocal.java', 'if (time > old || (time == old && time > 0 && count != seenCount(key))) {', 'if (true) {'),
+ ('texts: an archived conversation comes back with the same message', 'TextsLocal.java', 'return a != null && threadTime <= a;', 'return a != null && threadTime < a;'),
+ ('texts: an older delete brings messages back', 'TextsLocal.java', 'cleared.put(key, old == null ? upTo : Math.max(old, upTo));', 'cleared.put(key, upTo);'),
+ ('texts: a draft is written at every key', 'TextsLocal.java', 'drafts.put(key, t);\n            dirty = true;', 'drafts.put(key, t);\n            save();'),
+ ('texts: hidden messages are not bounded', 'TextsLocal.java', 'while (hidden.size() > MAX_HIDDEN) {', 'while (hidden.size() > MAX_HIDDEN && hidden.size() < 0) {'),
+ ('texts: the saved copy grows without bound', 'TextsCache.java', 'if (convos.size() <= maxConvos) {', 'if (true) {'),
+ ('texts: a phone number in the name of a saved file', 'TextsCache.java', 'return sb.append(".json").toString();', 'return "c-" + key + ".json";'),
+ ('texts: a saved conversation of another key is shown', 'TextsCache.java', 'if (!key.equals(Json.str(m, "key", ""))) {', 'if (false) {'),
+ ('texts: a saved conversation keeps every message', 'TextsCache.java', 'c.msgs.subList(c.msgs.size() - maxMsgs, c.msgs.size())', 'c.msgs'),
+ ('texts: pinned conversations are not first', 'ThreadListRules.java', 'if (a.pinned != b.pinned) {', 'if (false) {'),
+ ('texts: a conversation read here stays unread', 'ThreadListRules.java', 'boolean unread = t.unread && t.time > local.seenAt(t.key);', 'boolean unread = t.unread;'),
+ ('texts: muted conversations are counted', 'ThreadListRules.java', 'if (i.unread && !i.muted) {', 'if (i.unread) {'),
+ ('texts: two digits search the numbers', 'ThreadListRules.java', 'if (qd.length() >= 3) {', 'if (qd.length() >= 1) {'),
+ ('texts: a deleted conversation stays in the list', 'ThreadListRules.java', 'if (local.isCleared(t.key, t.time)) {', 'if (false) {'),
+ ('texts: a group lasts half an hour', 'ThreadRows.java', 'static final long GROUP_MS = 3 * 60 * 1000L;', 'static final long GROUP_MS = 30 * 60 * 1000L;'),
+ ('texts: hidden messages are shown', 'ThreadRows.java', 'if (m.time <= clearedAt || local.isHidden(m.id)) {', 'if (false) {'),
+ ('texts: the last message I sent is not marked', 'ThreadRows.java', 'lastMine.lastOfMine = true;', ';'),
+ ('texts: the new-messages line does not end the group above it', 'ThreadRows.java', 'out.get(j).groupEnd = true;', ';'),
+ ('texts: no day headings', 'ThreadRows.java', 'if (newDay) {', 'if (false) {'),
+ ('texts: any name is a name for a saved file', 'FileBlobStore.java', 'if (!NAME.matcher(name).matches() || name.endsWith(".tmp") || name.startsWith(".")) {', 'if (false) {'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -591,7 +625,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (SIGNAL_FILES, SIGNAL_TEST, "com.tj.linkmeter.SignalRulesTest", SG), (SEARCH_FILES, SEARCH_TEST, "com.tj.linkmeter.SearchFollowTest", SR),
           (PHONESCREEN_FILES, PHONESCREEN_TEST, "com.tj.linkmeter.PhoneScreenRulesTest", PS),
           (TYPING_FILES, TYPING_TEST, "com.tj.linkmeter.TypingMirrorTest", TD),
-          (SMS2_FILES, SMS2_TEST, "com.tj.linkmeter.SmsV2Test", S2, SMS2_JAVAC)]
+          (SMS2_FILES, SMS2_TEST, "com.tj.linkmeter.SmsV2Test", S2, SMS2_JAVAC),
+          (TEXTS_FILES, TEXTS_TEST, "com.tj.linkmeter.TextsLogicTest", TX, TEXTS_JAVAC)]
 only = sys.argv[1:]
 caught = missed = 0
 for suite in SUITES:
