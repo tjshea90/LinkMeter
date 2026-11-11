@@ -10,9 +10,14 @@ import android.view.inputmethod.InputConnection;
 
 /**
  * An invisible view that receives what is typed on the tablet's keyboard (the on-screen one, or a
- * physical one) and hands it on as text and key presses, one by one as they happen, for the remote screen.
- * It keeps no text of its own, so there is nothing to select or edit here and the keyboard shows no
- * suggestions: what you type goes straight to the phone.
+ * physical one) and hands it on as text and key presses, as they happen, for the remote screen.
+ * It keeps no text of its own, so there is nothing to select or edit here: what you type goes straight to the phone.
+ *
+ * Two kinds of field, chosen by {@link #setSuggestions}. ON (the default): a normal text field, so the keyboard offers its suggestions
+ * and glide (swipe) typing, and the drafts it writes (a tapped word growing, a glided word, a correction) are followed by
+ * {@link TypingDraft}; the keyboard is asked not to learn from what is typed. OFF: a "visible password" field without suggestions, so
+ * the keyboard sends exactly the letters that are tapped (keyboards switch glide typing off in such a field, which is why it is not
+ * the default).
  */
 final class TypingView extends View {
     interface Listener {
@@ -22,6 +27,7 @@ final class TypingView extends View {
     }
 
     private Listener listener;
+    private boolean suggestions = true;
 
     TypingView(Context c) {
         super(c);
@@ -31,6 +37,11 @@ final class TypingView extends View {
 
     void setListener(Listener l) {
         listener = l;
+    }
+
+    /** Suggestions and glide typing (a normal text field), or exactly the letters that are tapped. Read when the keyboard next opens. */
+    void setSuggestions(boolean on) {
+        suggestions = on;
     }
 
     @Override
@@ -85,107 +96,111 @@ final class TypingView extends View {
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-        // Plain text without suggestions, so keys arrive as they are typed instead of as drafts to correct.
-        outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
-        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN | EditorInfo.IME_FLAG_NO_EXTRACT_UI
-                | EditorInfo.IME_ACTION_NONE;
+        if (suggestions) {
+            // A normal text field: neither a password field nor "no suggestions", because keyboards (Microsoft SwiftKey, Gboard) switch
+            // glide typing off for both. The keyboard is asked not to learn from it: what is typed here may be a password.
+            outAttrs.inputType = InputType.TYPE_CLASS_TEXT;
+            outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN | EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                    | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING | EditorInfo.IME_ACTION_NONE;
+        } else {
+            // Plain text without suggestions, so keys arrive as they are typed instead of as drafts to correct.
+            outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+            outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN | EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                    | EditorInfo.IME_ACTION_NONE;
+        }
+        // An empty field with the cursor at its start. EditorInfo's default is -1 ("unknown"), and a keyboard that is not told where
+        // the cursor is may switch its text features (suggestions, glide typing) off.
+        outAttrs.initialSelStart = 0;
+        outAttrs.initialSelEnd = 0;
         return new Conn(this);
     }
 
     private final class Conn extends BaseInputConnection {
-        /** What has been typed into the phone as a draft that the keyboard may still change. */
-        private String composing = "";
+        /** What the keyboard is writing, and what of it the phone has (see {@link TypingDraft}). */
+        private final TypingDraft draft = new TypingDraft(new TypingDraft.Sink() {
+            @Override
+            public void text(String s) {
+                Listener l = listener;
+                if (l != null) {
+                    l.text(s);
+                }
+            }
+
+            @Override
+            public void key(int keyCode) {
+                Listener l = listener;
+                if (l != null) {
+                    l.key(keyCode);
+                }
+            }
+        });
 
         Conn(View v) {
             super(v, false);
         }
 
-        /** Makes the phone's draft text equal to now: delete what no longer matches, type the rest. */
-        private void replaceComposing(String now) {
-            Listener l = listener;
-            if (l == null) {
-                return;
-            }
-            int common = 0;
-            int max = Math.min(composing.length(), now.length());
-            while (common < max && composing.charAt(common) == now.charAt(common)) {
-                common++;
-            }
-            for (int i = common; i < composing.length(); i++) {
-                l.key(KeyEvent.KEYCODE_DEL);
-            }
-            if (now.length() > common) {
-                l.text(now.substring(common));
-            }
-            composing = now;
-        }
-
         @Override
         public boolean setComposingText(CharSequence t, int newCursorPosition) {
-            replaceComposing(t.toString());
+            draft.setComposing(t.toString());
             return true;
         }
 
         @Override
         public boolean commitText(CharSequence t, int newCursorPosition) {
-            String s = t.toString();
-            int nl = s.indexOf('\n');
-            if (nl >= 0) { // an Enter typed as text
-                replaceComposing(s.substring(0, nl));
-                composing = "";
-                Listener l = listener;
-                if (l != null) {
-                    l.key(KeyEvent.KEYCODE_ENTER);
-                }
-                if (nl + 1 < s.length()) {
-                    replaceComposing(s.substring(nl + 1));
-                    composing = "";
-                }
-                return true;
-            }
-            replaceComposing(s);
-            composing = "";
+            draft.commit(t.toString());
             return true;
         }
 
         @Override
         public boolean finishComposingText() {
-            composing = "";
+            draft.finish();
             return true;
         }
 
         @Override
         public boolean deleteSurroundingText(int before, int after) {
-            Listener l = listener;
-            if (l == null) {
-                return true;
-            }
-            for (int i = 0; i < before; i++) {
-                l.key(KeyEvent.KEYCODE_DEL);
-            }
-            for (int i = 0; i < after; i++) {
-                l.key(KeyEvent.KEYCODE_FORWARD_DEL);
-            }
-            composing = composing.length() > before ? composing.substring(0, composing.length() - before) : "";
+            draft.delete(before, after);
+            return true;
+        }
+
+        @Override
+        public boolean deleteSurroundingTextInCodePoints(int before, int after) {
+            draft.delete(before, after); // (a character that is two chars long was never typed on the phone: this is the usual case)
             return true;
         }
 
         @Override
         public boolean sendKeyEvent(KeyEvent e) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                switch (e.getKeyCode()) {
+                    case KeyEvent.KEYCODE_DEL:
+                        draft.delete(1, 0); // the draft keeps pace with the phone
+                        return true;
+                    case KeyEvent.KEYCODE_FORWARD_DEL:
+                        draft.delete(0, 1);
+                        return true;
+                    case KeyEvent.KEYCODE_ENTER:
+                    case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                        draft.enter();
+                        return true;
+                    default:
+                        draft.finish(); // a key that is typed on its own ends the draft
+                        break;
+                }
+            }
             handle(e);
             return true;
         }
 
         @Override
         public boolean performEditorAction(int actionCode) {
-            Listener l = listener;
-            if (l != null) {
-                l.key(KeyEvent.KEYCODE_ENTER);
-            }
+            draft.enter();
             return true;
         }
 
+        // The keyboard is told that there is no text around the cursor. It then does not try to re-open an earlier word for
+        // correction, which the phone's text could not follow (the text is already on the phone, and only keys can change it).
         @Override
         public CharSequence getTextBeforeCursor(int n, int flags) {
             return "";

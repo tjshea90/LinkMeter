@@ -170,6 +170,18 @@ final class ScreenPrefs {
         return Cfg.getBool(c, "stats", true);
     }
 
+    /**
+     * The Type button's keyboard works as in any text field: suggestions and glide (swipe) typing are available, and the keyboard
+     * is asked not to learn from it. Off = exactly the letters that are tapped, one by one (for codes, addresses and passwords).
+     */
+    boolean keyboardSuggestions() {
+        return Cfg.getBool(c, "kbSuggest", true);
+    }
+
+    void setKeyboardSuggestions(boolean v) {
+        Cfg.setBool(c, "kbSuggest", v);
+    }
+
     void setShowStats(boolean v) {
         Cfg.setBool(c, "stats", v);
     }
@@ -242,6 +254,7 @@ final class ScreenPrefs {
         setDecoder("");
         setStillImage(true);
         setShowStats(true);
+        setKeyboardSuggestions(true);
         setKeepIndex(2);
         setDimIndex(0);
         setSleepOnLeave(true);

@@ -35,6 +35,9 @@ always.
 - **Signal tab:** what the phone is on now (**Scan**), **4G only** or **5G allowed**, and **Compare the two** (measures the upload
   speed of both in random order; about 5 minutes, uses mobile data; the phone is put back as it was). **Search for a network
   again** and **Phone info screen** are under Tools.
+- **Screen tab > Type:** opens the tablet's keyboard, and what you type goes to the phone as you type it. Glide (swipe) typing and
+  suggestions work (Options > Keyboard > "Suggestions and glide typing"); switch that off to send exactly the letters you tap, which is
+  better for codes, web addresses and passwords. The phone never types `*` or `#`.
 - **Speed, Screen, Files, Texts:** as before. Texts are off until you switch them on at the phone (card "Texts").
 
 ## 3. If something breaks
@@ -60,4 +63,5 @@ Tell me what happened, in your own words, for any of these:
 - The Screen tab left open while the phone sleeps (the tablet is meant to rest after a while, and wake when you touch it).
 - The phone's own screen: does the first card name the right thing? Do Stop, Forget all tablets and Switch role ask first?
 - The Signal tab: Scan, the comparison, Search for a network again, Phone info screen.
+- Glide typing in the Screen tab's Type keyboard (SwiftKey): does a glided word arrive on the phone?
 - The Safety check on the phone: does it read clearly?

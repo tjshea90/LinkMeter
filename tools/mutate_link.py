@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingDraftTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingDraft or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -541,6 +541,19 @@ PS = [
  ('phonescreen: a stale tab name comes back', 'PhoneScreenRules.java', 'static final String BREAKS_HINT = "Works on the phone alone: no tablet and no internet needed.";', 'static final String BREAKS_HINT = "Works on the phone alone. The tablet\'s Control tab does the same.";'),
  ('phonescreen: the hotspot of an older name stays in the restore hint', 'PhoneScreenRules.java', 'Restore puts the network types, the hotspot band and the battery saver back', 'Restore puts the network types, the band lock, the hotspot band and the battery saver back'),
 ]
+TYPING_FILES = ["TypingDraft.java"]
+TYPING_TEST = ROOT + "/tools/test/TypingDraftTest.java"
+TD = [
+ ('typing: a growing draft is deleted and typed again', 'TypingDraft.java', 'while (common < max && draft.charAt(common) == now.charAt(common)) {', 'while (common < max && draft.charAt(common) == now.charAt(common) && common < 0) {'),
+ ('typing: one Backspace too few', 'TypingDraft.java', 'for (int i = common; i < draft.length(); i++) {\n            sink.key(DEL);', 'for (int i = common + 1; i < draft.length(); i++) {\n            sink.key(DEL);'),
+ ('typing: the draft is not forgotten after a commit', 'TypingDraft.java', '        replace(s);\n        draft = "";\n    }\n\n    /** The keyboard keeps the draft', '        replace(s);\n    }\n\n    /** The keyboard keeps the draft'),
+ ('typing: finishing does not forget the draft', 'TypingDraft.java', 'void finish() {\n        draft = "";', 'void finish() {\n        ;'),
+ ('typing: a line break is typed as text', 'TypingDraft.java', 'replace(s.substring(0, nl));\n            draft = "";\n            sink.key(ENTER);', 'replace(s.substring(0, nl));\n            draft = "";\n            sink.text("\\n");'),
+ ('typing: an empty commit leaves the draft on the phone', 'TypingDraft.java', "        int nl = s.indexOf('\\n');", "        if (s.isEmpty()) {\n            return;\n        }\n        int nl = s.indexOf('\\n');"),
+ ('typing: deleting around the cursor leaves the draft long', 'TypingDraft.java', 'draft = draft.length() > before ? draft.substring(0, draft.length() - before) : "";', 'draft = draft;'),
+ ('typing: Enter does not finish the draft', 'TypingDraft.java', 'void enter() {\n        draft = "";\n        sink.key(ENTER);', 'void enter() {\n        sink.key(ENTER);'),
+ ('typing: the Delete key is sent as Backspace', 'TypingDraft.java', 'sink.key(FORWARD_DEL);', 'sink.key(DEL);'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -553,7 +566,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (LEG_FILES, LEG_TEST, "com.tj.linkmeter.NrLegTest", N), (TYPES_FILES, TYPES_TEST, "com.tj.linkmeter.TypesFlagTest", U),
           (LEVER_FILES, LEVER_TEST, "com.tj.linkmeter.LeverRunTest", LV),
           (SIGNAL_FILES, SIGNAL_TEST, "com.tj.linkmeter.SignalRulesTest", SG), (SEARCH_FILES, SEARCH_TEST, "com.tj.linkmeter.SearchFollowTest", SR),
-          (PHONESCREEN_FILES, PHONESCREEN_TEST, "com.tj.linkmeter.PhoneScreenRulesTest", PS)]
+          (PHONESCREEN_FILES, PHONESCREEN_TEST, "com.tj.linkmeter.PhoneScreenRulesTest", PS),
+          (TYPING_FILES, TYPING_TEST, "com.tj.linkmeter.TypingDraftTest", TD)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

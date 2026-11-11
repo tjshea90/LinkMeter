@@ -147,7 +147,7 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
   again when the window regains focus. Back leaves full screen.
 - Typing: Type hides the tab bar and header, swaps the right column for Done, Enter, Backspace, Tab and arrow keys, and opens
   the tablet's keyboard on an invisible `TypingView` that forwards characters (as `t` lines) and keys (`k` lines) as they are
-  typed, with suggestions switched off. `RemoteLayout` keeps the picture at the size it had and anchored at the top, so only
+  typed. Since 2026-11-11 the field is a normal text field by default, so glide typing and suggestions work (Options > Keyboard: "Suggestions and glide typing"; off = the old exact mode: a visible-password field without suggestions); the keyboard's drafts are followed by `TypingDraft`. `RemoteLayout` keeps the picture at the size it had and anchored at the top, so only
   the bottom of it, where the phone's own keyboard and navigation bar are, goes under the tablet's keyboard. Closing the
   keyboard with its own Back button ends typing mode by itself. A physical keyboard works too. Only characters the phone's
   keyboard map has a key for can be typed (Latin letters, digits, punctuation).
@@ -263,8 +263,11 @@ given a colour or alpha, the bug that dimmed the picture). Android code itself c
 - A hiccup every 3 minutes: the screenrecord restart. Expected; could be hidden by starting the next one early.
 - The phone is rotated while streaming: the stream keeps the size it started with, so the picture and the touch mapping go wrong
   until the tab is left and re-entered. Fix if it matters: restart the stream when the phone's size changes.
-- Typed text goes wrong with some keyboards (composing text): `TypingView` turns suggestions off and replaces drafts by deleting
-  and retyping; if a keyboard still misbehaves, look at which InputConnection call it uses.
+- Typed text goes wrong with some keyboards (composing text): `TypingDraft` follows the keyboard's draft and replaces it by deleting
+  only what changed and typing the rest (tested with 120,000 random keyboard steps); `TypingView` tells the keyboard there is no text
+  around the cursor, so it does not re-open earlier words. If a keyboard still misbehaves, look at which InputConnection call it uses,
+  or switch Options > Keyboard > "Suggestions and glide typing" off. GLIDE TYPING (SwiftKey, field report 2026-11-11): the old field
+  was declared a visible password with no suggestions, and keyboards switch glide off for both.
 - screenrecord refuses on this Samsung build (the status line will say what it printed): the last resort is the own-encoder engine.
 
 ## Releases and the automatic merge (`.github/workflows/build.yml`)

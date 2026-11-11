@@ -1630,6 +1630,65 @@ public class PreviewTest {
         shot(a, "phone-files");
     }
 
+    /**
+     * The remote keyboard's field (the Screen tab's Type button): a keyboard such as Microsoft SwiftKey switches glide typing off in a
+     * password field and in a field that asks for no suggestions, so the default field is neither; and what a glide writes (a draft
+     * that is then committed) reaches the listener as the word once and the space. Not a picture: the facts of the field.
+     */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void typingFieldAllowsGlide() throws Exception {
+        android.content.Context ctx = RuntimeEnvironment.getApplication();
+        final java.util.List<String> got = new java.util.ArrayList<>();
+        TypingView v = new TypingView(ctx);
+        v.setListener(new TypingView.Listener() {
+            @Override
+            public void text(String t) {
+                got.add("t:" + t);
+            }
+
+            @Override
+            public void key(int code) {
+                got.add("k:" + code);
+            }
+        });
+        // the default: suggestions and glide
+        android.view.inputmethod.EditorInfo on = new android.view.inputmethod.EditorInfo();
+        android.view.inputmethod.InputConnection ic = v.onCreateInputConnection(on);
+        int variation = on.inputType & android.text.InputType.TYPE_MASK_VARIATION;
+        check(on.inputType == android.text.InputType.TYPE_CLASS_TEXT, "a plain text field, got inputType " + on.inputType);
+        check(variation == 0, "no password or other variation");
+        check((on.inputType & android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) == 0, "suggestions are not switched off");
+        check((on.imeOptions & android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0, "the keyboard is asked not to learn");
+        check(on.initialSelStart == 0 && on.initialSelEnd == 0, "the cursor is reported (an empty field, cursor at 0)");
+        // what a glide writes: the word as a draft, then the word and a space committed
+        ic.beginBatchEdit();
+        ic.setComposingText("hello", 1);
+        ic.commitText("hello ", 1);
+        ic.endBatchEdit();
+        check(got.toString().equals("[t:hello, t: ]"), "a glided word reaches the phone once, then the space: " + got);
+        got.clear();
+        ic.setComposingText("teh", 1);
+        got.clear();
+        ic.commitText("the ", 1);
+        check(got.toString().equals("[k:67, k:67, t:he ]"), "a correction deletes only what differs: " + got);
+        got.clear();
+        ic.sendKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL));
+        check(got.toString().equals("[k:67]"), "Backspace is one Backspace: " + got);
+        // the exact mode, for codes and passwords
+        v.setSuggestions(false);
+        android.view.inputmethod.EditorInfo off = new android.view.inputmethod.EditorInfo();
+        v.onCreateInputConnection(off);
+        check((off.inputType & android.text.InputType.TYPE_MASK_VARIATION) == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                && (off.inputType & android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0, "exact mode: no suggestions, so the keyboard sends the letters as tapped");
+    }
+
+    private static void check(boolean ok, String what) {
+        if (!ok) {
+            throw new AssertionError(what);
+        }
+    }
+
     /** The first screen, before a role is chosen. */
     @Test
     @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")

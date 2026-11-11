@@ -479,9 +479,11 @@ final class ScreenTab extends Tab {
         if (hud != null) {
             hud.setText("");
         }
+        typingView.setSuggestions(prefs.keyboardSuggestions());
         typingView.requestFocus();
         final InputMethodManager imm = (InputMethodManager) act.getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) {
+            imm.restartInput(typingView); // the keyboard reads again what kind of field this is: a changed option takes effect now
             typingView.post(() -> imm.showSoftInput(typingView, 0));
         }
         updateBack();
