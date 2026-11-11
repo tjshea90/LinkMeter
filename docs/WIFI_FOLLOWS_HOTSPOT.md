@@ -42,6 +42,9 @@ could be opened (for example the app was not in front: Android 10 lets an app op
 - Carried out only when the phone's switch is **confirmed** (`settleWifi`): a final "ok" answer (over Bluetooth the phone acts before it
   answers), or a follow-up outcome with ok (the phone's status showed it, or it no longer answers after a hotspot-off). A switch the phone
   refused, a "Sent" nobody confirmed, a follow-up that gave up and a Home screen that was left confirm nothing: the Wi-Fi is left alone.
+  (The phone can also answer ok with a hedge, "The phone was asked to switch the hotspot off. It does not say whether it is off." That counts
+  as ok. It only arises over Bluetooth, where the tablet is not on the hotspot's own Wi-Fi: the usual Hotspot off while connected is answered
+  "Sent" and then checked against the phone's status. Over Bluetooth the Wi-Fi it would switch off was carrying no hotspot, so nothing is lost.)
 - **ON**: only when it is still off then (it may have come on by itself).
 - **OFF**: only when it is still on, **and** the tablet is on no Wi-Fi network, or still on the very network the phone answered over at the
   press (the hotspot, going away). A tablet that fell onto **another** network (the home router) keeps its Wi-Fi; the line says
