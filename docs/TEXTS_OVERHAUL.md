@@ -68,7 +68,7 @@ The Texts feature as first built is described in `docs/FILES_AND_TEXTS_PLAN.md` 
 - [x] 0 plan written (this file)
 - [x] P1 phone side and protocol v2 (ChangeGate, SmsApi v2, RemoteSms, SmsStore speed, delete/read attempts) + offline tests (`SmsV2Test`, 17 `sms2:` breakages)
 - [x] P2 tablet logic (TextsLocal, TextsCache, ThreadListRules, ThreadRows, ThreadMerge, SmsReactions, SmartReply, SmsLength, FileBlobStore) + offline tests (`TextsLogicTest`, 30 `texts:` breakages)
-- [x] P3 tablet GUI (`TextsTab`, `TextThread`, `TextsViews`, `IconButton`, new `Icons`; `tools/uipreview/.../TextsPreviewTest` draws 10 states with `PretendSms`: look at `tools/uipreview/out/texts-*.png`) released as v0.2.159
+- [x] P3 tablet GUI (`TextsTab`, `TextThread`, `TextsViews`, `IconButton`, new `Icons`; `tools/uipreview/.../TextsPreviewTest` draws 10 states with `PretendSms`: look at `tools/uipreview/out/texts-*.png`) released as v0.2.162
 - [ ] P4 security (saved copy encrypted, lock, secure window, hidden previews, clear)
 - [ ] docs, HANDOFF, release(s)
 - [ ] Field test by the user: speed, new replies appearing by themselves, delete/hide, search, lock
