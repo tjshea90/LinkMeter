@@ -37,3 +37,25 @@ lever 30/30, signal 20/20, search 9/9 caught); its closing save + release is the
 - `Eco.setAuto(Context, boolean)` is the one saver switch (throws IOException; run off the main thread).
 - Request codes today: REQ_PERMS=1 (starts the service in phone mode!), REQ_STORAGE=3, REQ_PICK=4, REQ_LOC=5; 7 (texts) and 9 (SettingsTab) are
   requested but not handled; PhoneTab used `Priv.requestPermission(2)`.
+
+
+## PROGRESS (updated 2026-11-11 ~00:50 UTC)
+DONE and saved (17cf11a = step 1, cc80095 = WIP of steps 2+3):
+- Step 1: `PhoneScreenFacts` + `PhoneScreenRules` (pure) + `tools/test/PhoneScreenRulesTest.java` (19,050 checks) registered in
+  `tools/test.sh`; 36 `phonescreen:` breakages in `tools/mutate_link.py`, all caught.
+- Step 2 (glue): `BtServer.grantPermission/switchOn/note`, `Boot.hotspotAddress`, `SmsAccess.missing`, `SenderService.onDestroy` ends Boot assist,
+  `MainActivity` (REQ_PHONE=6, REQ_TEXTS=7, REQ_NOTIFICATIONS=8, REQ_BLUETOOTH=9 (also SettingsTab); `chooseRole` stops the service when the
+  role changes and starts the tablet's file sharing if wanted; Guard is left running ON PURPOSE (it watches only while something is changed);
+  role chooser restyled; `sendToAppPage` opens the app's page after a refusal that Android will not ask again).
+- Step 3: `PhoneTab` rewritten (facts on a worker thread every 2 s, `PhoneTab.source` seam, `refreshNow()` for the preview, result bar, questions).
+- Step 4 (preview): phone states drawn at 384x832 dp sdk 35 (phone-*.png, chooser.png, dialogs) and LOOKED AT: fresh, ready, font 1.3,
+  bt-permission/off/disabled/error, after-restart, shizuku-not-allowed, texts-not-ready, allow-everything, missing-without-shizuku,
+  assist-needs-autostart, pairing-open, the questions, restore result, chooser. Fixes after looking: permission facts stay together and the
+  buttons come after them; the texts state line only appears when texts are ON and lack something; Boot assist can always be switched OFF.
+  The Files tab picture has to use sdk 29 (Robolectric's sdk 35 cannot answer isExternalStorageManager).
+STILL TO DO for T6a: (1) re-draw + look at the changed pictures (preview run in flight when this was written); (2) full `tools/test.sh`,
+  `python3 tools/mutate_link.py phonescreen:` once more, `./gradlew --no-daemon assembleRelease`; (3) a review pass of PhoneTab/MainActivity
+  (races, threads: see the checklist in this file's history); (4) HANDOFF: T6 line says part a is DONE and part b (SafetyReport facts +
+  docs/SAFETY.md + REMOTE_LINK check) is LEFT; do NOT tick T6; (5) save with `NO_RELEASE=1 tools/checkpoint.sh`; then start T6b.
+DEVIATION FROM THE BRIEF, ON PURPOSE: D7 says role switch stops "the safety net"; it does not: `Guard` watches only while something LinkMeter
+  changed is still in place and ends by itself; stopping it would leave a changed radio with nobody watching (rule 1: recoverability).
