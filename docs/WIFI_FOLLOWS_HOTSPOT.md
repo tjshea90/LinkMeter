@@ -73,7 +73,7 @@ hotspot once the phone has switched it on.
   leaves it alone (phone refused, setting off, already on, app out of sight); Hotspot off and Standby switch it off; another network, a
   screen that was left, a "Sent" answer after the screen was left and a follow-up that gave up leave it alone; the new card, the meter and
   the Settings switch. Pictures: `tools/uipreview/out/state-home-wifi-*.png`, `state-settings-wifi-follow.png`.
-- `python3 tools/mutate_wifi_glue.py`: 9 deliberate breakages of `HomeTab`, `TabletWifi` and `SettingsTab` (run with everything committed),
+- `python3 tools/mutate_wifi_glue.py`: 10 deliberate breakages of `HomeTab`, `TabletWifi` and `SettingsTab` (run with everything committed),
   each must make a named scenario above fail.
 
 ## Not built (ask the user first)

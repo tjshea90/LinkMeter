@@ -12,7 +12,7 @@ J = "app/src/main/java/com/tj/linkmeter/"
 T = "com.tj.linkmeter.WifiFollowPreviewTest."
 M = [
  ("the phone's final answer does not settle the Wi-Fi", J + "HomeTab.java",
-  "            settleWifi(ok && !sentOnly, text); // the answer is final", "            // (mutated away) the answer is final", "hotspotOnSwitchesTheWifiOn"),
+  "            settleWifi(ok && !sentOnly, text);\n", "            // (mutated away)\n", "hotspotOnSwitchesTheWifiOn"),
  ("the follow-up outcome ignores ok", J + "HomeTab.java",
   "settleWifi(o.ok, o.text);", "settleWifi(true, o.text);", "aGivenUpFollowUpLeavesTheWifiAlone"),
  ("a Sent answer counts as confirmed", J + "HomeTab.java",
@@ -27,7 +27,8 @@ M = [
  ("the Wi-Fi switch opens although the app is out of sight", J + "HomeTab.java",
   "TabletWifi.set(act, on, act::inFront, way -> {", "TabletWifi.set(act, on, () -> true, way -> {", "theWifiSwitchIsNotOpenedWhileTheAppIsOutOfSight"),
  ("the card's button is not held back by a switch on its way", J + "HomeTab.java",
-  "bannerMain.setEnabled(!busy && !wifiBusy);", "bannerMain.setEnabled(!wifiBusy);", "theCardsButtonWaitsForASwitchOnItsWay"),
+  "        if (bannerWifi) {\n            bannerMain.setEnabled(!busy && !wifiBusy);\n        }",
+  "        if (bannerWifi) {\n            bannerMain.setEnabled(!wifiBusy);\n        }", "theCardsButtonWaitsForASwitchOnItsWay"),
  ("an opened panel is called done", J + "TabletWifi.java",
   "done.done(TabletWifiRules.Way.ASKED);", "done.done(TabletWifiRules.Way.DONE);", "hotspotOnOpensAndroidsSwitchWhenAndroidRefuses"),
  ("the switch in Settings stores nothing", J + "SettingsTab.java",
