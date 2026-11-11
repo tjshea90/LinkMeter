@@ -3,7 +3,7 @@
 USER'S WORDS: "When I press turn Hotspot on from my tablet to turn the phone Hotspot on, automatically turn on my tablet wifi. When I
 turn the phone Hotspot off from the tablet, automatically turn off my tablet wifi"
 
-STATUS: WORKING (core DONE + checkpointed as c09cc50; card/meter + WifiFollowPreviewTest + mutations + docs written, see below)
+STATUS: DONE, closing save 4c4cce6 pushed 2026-11-11 18:31 UTC (plain checkpoint = release); CI run #168; see 'WI-FI RELEASE' in HANDOFF for the release number once recorded
 
 KEY FACT (read the code, not measured): the tablet is Android 10 and the app targets SDK 34. Since Android 10 an app that targets API 29+
 CANNOT switch Wi-Fi: WifiManager.setWifiEnabled() always returns false for it (WifiServiceImpl checks the caller's target SDK). The boot
@@ -34,19 +34,8 @@ DONE: [x] TabletWifiRules + TabletWifiRulesTest (2,595 checks) + tools/test.sh  
 [x] HomeTab hooks (wifiWish/settleWifi/addWifiWords/switchWifiOn) + card 'The hotspot is on, but the tablet's Wi-Fi is off' + meter 'Off'
 [x] 26 `wififollow:` breakages in tools/mutate_link.py (all caught)  [x] tools/uipreview/.../WifiFollowPreviewTest.java (17 scenarios, ALL PASS, pictures looked at)
 [x] docs: USER_GUIDE, SAFETY row, APP_REFERENCE  [x] local build + tools/test.sh passed once (before the card/test/doc changes)
-STATE AT 18:22 UTC (commit 15144dd, WIP): fixes from my own review are IN THE TREE but NOT YET REBUILT/RE-TESTED:
-  (1) HomeTab.send: `sentOnly` (a "later"/Sent answer is NOT a confirmed switch: settleWifi(ok && !sentOnly, ...)); (2) bannerWifi: the Home card's
-  "Switch Wi-Fi on" is greyed while a phone switch is on its way (paintSwitches) and switchWifiOn() refuses while busy; (3) Settings text no longer promises a
-  silent Shizuku route (the tablet has no button that asks Shizuku for LinkMeter's permission). Docs: docs/WIFI_FOLLOWS_HOTSPOT.md (the full story),
-  USER_GUIDE, SAFETY, APP_REFERENCE; HANDOFF has a compact bullet (+ question 1b for the user).
-  New: 3 more scenarios in WifiFollowPreviewTest (aSentAnswerAfterTheScreenWasLeftConfirmsNothing, theWifiSwitchIsNotOpenedWhileTheAppIsOutOfSight,
-  theCardsButtonWaitsForASwitchOnItsWay) and tools/mutate_wifi_glue.py (9 breakages of HomeTab/TabletWifi/SettingsTab, each must fail a NAMED scenario).
-RUNNING WHEN THIS NOTE WAS WRITTEN: the full tools/preview.sh run (log: scratchpad preview-full.log, last line 'preview-full exit=N'; it compiled the code BEFORE the fixes:
-  it only checks that the OLD preview tests still pass with the hook) and tools/test.sh (test-run2.log).
-TO DO, in this order: 1. check preview-full exit=0 (if an old test fails because its screen text now carries the Wi-Fi sentence, fix the TEST's expectation);
-  2. tools/preview.sh --tests com.tj.linkmeter.WifiFollowPreviewTest (21 scenarios, all must pass; look at the new pictures if any);
-  3. ./gradlew --no-daemon assembleRelease; tools/test.sh; python3 tools/mutate_link.py wififollow (26 caught);
-  4. python3 tools/mutate_wifi_glue.py (9 caught; needs a committed tree);
-  5. HANDOFF bullet is written; plain `tools/checkpoint.sh "<the user-readable sentence>"` (RELEASE), check run + release (GitHub MCP actions_list / list_releases),
-     add a `note:` commit via tools/save-only.sh with the release number ("WI-FI RELEASE vX"), give https://github.com/tjshea90/LinkMeter/releases;
-  6. tell the user: one tap on Android 10 (not zero), install the TABLET only (phone unchanged), the zero-tap helper app is an option, what to report back.
+FINAL STATE (2026-11-11 18:32 UTC): everything is DONE and verified on the shipped code: tools/test.sh, ./gradlew assembleRelease, 26 `wififollow:` breakages
+(tools/mutate_link.py wififollow) + 10 glue breakages (tools/mutate_wifi_glue.py; run it in a git worktree so the main tree is never left mutated) all caught,
+WifiFollowPreviewTest 21 scenarios + the whole tools/preview.sh run (114 tests) pass. Full story: docs/WIFI_FOLLOWS_HOTSPOT.md.
+LEFT FOR LATER (only with the user's word): the zero-tap helper app (target SDK 28), a Trouble card 'Switch Wi-Fi on' for a tablet with Wi-Fi AND Bluetooth link off.
+ASK THE USER: did the Wi-Fi panel open after Hotspot on / off, did one tap do it, is one tap fine?
