@@ -105,7 +105,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Answers status requests from the user's own tablet over the phone's hotspot" />
+                android:value="Answers status and switch requests from the user's own tablet over the phone's hotspot or over Bluetooth" />
         </service>
     </application>
 </manifest>

@@ -1,7 +1,12 @@
 # Looking at the app's screens without a device
 
-`tools/preview.sh` draws every tab of the tablet app and the phone's own screen to PNG files in `tools/uipreview/out/`
-(600 x 973 pixels at 170 dpi with font scale 1.2: the user's tablet). Open the PNGs to see what a change looks like.
+`tools/preview.sh` draws every tab of the tablet app and the phone's own screen to PNG files in `tools/uipreview/out/`.
+The tablet's tabs are 600 x 973 pixels at 170 dpi with font scale 1.2 (the user's tablet, Android 10). The phone's own screen
+(`phone-*.png`, `chooser.png`) is drawn at a PHONE's size, 384 x 832 dp (576 x 1248 pixels), on Android 15 (the newest Robolectric image
+that is available offline), at font scale 1.0 and once at 1.3; the phone's Shizuku, Bluetooth listener and hotspot cannot be faked, so
+`PhoneTab` reads them through `PhoneTab.source` and the test puts a `PhoneScreenFacts` in its place. (The phone's Files tab is drawn on
+Android 10 because Robolectric's Android 15 cannot answer the all-files question that tab asks.) Open the PNGs to see what a change
+looks like. `tools/preview.sh --tests "com.tj.linkmeter.PreviewTest.phone*"` draws only some of them (a full run takes about 5 minutes).
 
 How: this folder is a small separate Gradle project. It compiles the app's real sources (`app/src/main`) with
 [Robolectric](https://robolectric.org) in its "native graphics" mode, starts `MainActivity` inside a normal Java process,

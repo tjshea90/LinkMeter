@@ -1,6 +1,8 @@
 # LinkMeter
 
-Read `HANDOFF.md` first: it says what is done, what is not, and how to resume.
+Read `HANDOFF.md` first: it says what is done, what is not, and how to resume. It is kept SHORT on purpose (it is read at every
+start): `docs/HANDOFF_ARCHIVE.md` (old plan, full track texts, dated history) and `docs/APP_REFERENCE.md` (reference) are read only
+when HANDOFF.md or a task sends you there; `grep -n` them for a name instead of reading them whole.
 
 Rules for this project:
 - Save often: run `tools/checkpoint.sh "what changed"` after every meaningful step.
@@ -27,7 +29,7 @@ Rules for this project:
 - Releases are automatic (standing instruction from the user, 2026-11-08). Cloud sessions work only on their designated
   session branch (`ccr-*`) and never push to `main` themselves. GitHub builds and tests every push; a good build on a
   session branch is merged into `main` by the pipeline when that is safe, and published as a numbered release (v0.2.N) if
-  the app changed (`.github/workflows/build.yml`, explained in `HANDOFF.md`). The user never has to say "merge it".
+  the app changed (`.github/workflows/build.yml`, explained in `docs/APP_REFERENCE.md`, section "Releases and the automatic merge"). The user never has to say "merge it".
   - If your branch is named `claude/<name>` instead, a push starts NO run: the pipeline does not know that name yet. The
     fix is written but waits for the user's yes (`tools/pending/claude-branches.patch`, explained in `tools/pending/README.md`).
   - `NO_RELEASE=1 tools/checkpoint.sh "..."` for intermediate saves (merged into main, no release); plain

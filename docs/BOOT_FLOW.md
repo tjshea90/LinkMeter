@@ -15,7 +15,7 @@ with the tablet). "Automate as much as possible, so I press as few buttons as po
 | Pairing (the number on the screen) is typed into Shizuku's notification. It cannot be done by LinkMeter (the pairing protocol needs TLS key export that plain Java does not have). A pairing normally lasts, but Android forgets unused adb authorizations after 7 days; `adb_allowed_connection_time = 0` (the developer option "Disable adb authorization timeout") stops that. | yes |
 | The public local-only hotspot gives a RANDOM name and password. A Wi-Fi Direct group made by an Android 10+ app can have a FIXED name ("DIRECT-xy-...") and password (8 to 63 characters), and a phone can join it like an ordinary Wi-Fi network (the Briar project did this). A phone saves such a network and joins it by itself afterwards. | mostly (not tried on this tablet) |
 | A normal app cannot switch Wi-Fi on (targetSdk 29 or higher) and cannot open another app's screen from the background. It can post a notification whose tap opens the other app. | yes |
-| Shizuku started by wireless debugging reportedly dies on some phones when the phone leaves the Wi-Fi (HANDOFF line 405 says so for this phone), yet the user's own routine (stop the tablet hotspot, start the phone hotspot) works for them. | UNKNOWN: the last step of the flow checks it and says so |
+| Shizuku started by wireless debugging reportedly dies on some phones when the phone leaves the Wi-Fi (the section "Probe results" of `docs/APP_REFERENCE.md` says so for this phone), yet the user's own routine (stop the tablet hotspot, start the phone hotspot) works for them. | UNKNOWN: the last step of the flow checks it and says so |
 
 ## Each step of the user's list: who can do it
 
