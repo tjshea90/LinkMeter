@@ -50,6 +50,9 @@ public final class SmsV2Test {
     static final class Fake2 extends SmsProtocolTest.Fake {
         volatile Runnable listener;
         volatile boolean allowDelete;
+        volatile boolean allowContacts;
+        volatile int manyContacts;
+        final List<String> savedContacts = new CopyOnWriteArrayList<>();
         volatile boolean allowRead;
         final List<String> askedIds = new CopyOnWriteArrayList<>();
         final List<String> askedKeys = new CopyOnWriteArrayList<>();
@@ -58,6 +61,41 @@ public final class SmsV2Test {
         @Override
         public void setChangeListener(Runnable r) {
             listener = r;
+        }
+
+        @Override
+        public List<Sms.Person> contacts(String query, int limit) {
+            if (manyContacts == 0) {
+                return super.contacts(query, limit);
+            }
+            List<Sms.Person> out = new ArrayList<>();
+            for (int i = 0; i < manyContacts && out.size() < limit; i++) {
+                Sms.Person p = new Sms.Person();
+                p.name = "Person " + i;
+                p.number = "+1555000" + String.format("%04d", i);
+                out.add(p);
+            }
+            return out;
+        }
+
+        @Override
+        public boolean canWriteContacts() {
+            return allowContacts;
+        }
+
+        @Override
+        public Sms.ContactResult saveContact(String name, String number) {
+            Sms.ContactResult r = new Sms.ContactResult();
+            if (!allowContacts) {
+                r.needPermission = true;
+                r.why = "no permission";
+                return r;
+            }
+            savedContacts.add(name + "|" + number);
+            r.ok = true;
+            r.how = savedContacts.size() % 2 == 1 ? "created" : "renamed";
+            r.where = "the phone";
+            return r;
         }
 
         /** The phone's database changed: a new stamp and the wake-up call. */
@@ -268,7 +306,7 @@ public final class SmsV2Test {
         try (Srv srv = new Srv()) {
             RemoteSms sms = srv.sms();
             Sms.State st = sms.state();
-            eq(2, st.version, "the phone says it speaks protocol 2");
+            eq(3, st.version, "the phone says it speaks protocol 3");
             String s0 = sms.stamp();
             check(!s0.isEmpty(), "there is a stamp");
 
@@ -492,6 +530,59 @@ public final class SmsV2Test {
         }
     }
 
+    // ---------------------------------------------------------------- saving a contact on the phone
+
+    static void savingContacts() throws Exception {
+        try (Srv srv = new Srv()) {
+            RemoteSms sms = srv.sms();
+            check(!sms.state().contactsWrite, "the phone may not change contacts yet");
+            Sms.ContactResult r = sms.saveContact("Alex Rivera", "555-123-4567");
+            check(!r.ok && r.needPermission && r.why.length() > 0, "without the permission it says so, and that asking the phone to allow it may help");
+            eq("[]", srv.fake.savedContacts, "nothing reached the phone's contacts");
+
+            srv.fake.allowContacts = true;
+            check(sms.state().contactsWrite, "the state says it may change contacts now");
+            r = sms.saveContact("  Alex   Rivera ", "(555) 123-4567");
+            check(r.ok && r.how.equals("created") && r.where.equals("the phone") && !r.needPermission, "saved: " + r.how + " " + r.where);
+            eq("[Alex Rivera|+15551234567]", srv.fake.savedContacts, "the name is tidied and the number is in the form the network uses");
+            r = sms.saveContact("Alex R", "+1 555 123 4567");
+            check(r.ok && r.how.equals("renamed"), "the phone says it renamed the one that has the number");
+            eq(2, srv.fake.savedContacts.size(), "both reached the phone");
+
+            // what is wrong never reaches the phone's contacts
+            r = sms.saveContact("", "5551234567");
+            check(!r.ok && r.why.toLowerCase(Locale.ROOT).contains("name"), "no name: refused with a sentence about the name: " + r.why);
+            r = sms.saveContact("   ", "5551234567");
+            check(!r.ok, "a name of spaces is no name");
+            r = sms.saveContact("Somebody", "hello");
+            check(!r.ok && r.why.toLowerCase(Locale.ROOT).contains("phone number"), "not a number: refused with a sentence about the number: " + r.why);
+            StringBuilder longName = new StringBuilder();
+            for (int i = 0; i <= SmsApi.MAX_NAME; i++) {
+                longName.append('x');
+            }
+            r = sms.saveContact(longName.toString(), "5551234567");
+            check(!r.ok, "a name that is too long is refused");
+            eq(2, srv.fake.savedContacts.size(), "none of those reached the phone");
+
+            // the list of contacts can be long now
+            srv.fake.manyContacts = 300;
+            eq(300, sms.contacts("", 1000).size(), "a long list can be asked for");
+            eq(20, sms.contacts("").size(), "the suggestions still ask for 20");
+            eq(7, sms.contacts("", 7).size(), "and a number in between is kept");
+            srv.fake.manyContacts = 5000;
+            eq(SmsApi.MAX_CONTACTS, sms.contacts("", 100000).size(), "the phone never answers more than its limit");
+            srv.fake.manyContacts = 0;
+
+            // privacy and an old phone
+            srv.fake.on = false;
+            check(SmsProtocolTest.throwsOf(RemoteSms.Off.class, () -> sms.saveContact("Alex", "5551234567")), "off: saving a contact is refused");
+            srv.fake.on = true;
+            srv.legacy = true;
+            r = sms.saveContact("Alex", "5551234567");
+            check(!r.ok && r.why.contains("too old"), "an old phone: the tablet is told to update it: " + r.why);
+        }
+    }
+
     // ---------------------------------------------------------------- the record on its own
 
     static void outboxRemoval() throws Exception {
@@ -540,6 +631,17 @@ public final class SmsV2Test {
         eq(2, SmsJson.stateFrom(SmsJson.state(s)).version, "the version survives");
         Sms.State old = SmsJson.stateFrom(Json.obj("on", true));
         eq(1, old.version, "a state without a version is protocol 1");
+        check(!old.contactsWrite, "an old phone cannot change contacts");
+        s.contactsWrite = true;
+        check(SmsJson.stateFrom(SmsJson.state(s)).contactsWrite, "the permission to change contacts survives");
+        Sms.ContactResult cr = new Sms.ContactResult();
+        cr.ok = true;
+        cr.how = "created";
+        cr.where = "your Google account";
+        cr.why = "w";
+        cr.needPermission = true;
+        Sms.ContactResult crb = SmsJson.contactResultFrom(Json.parseObject(Json.write(SmsJson.contactResult(cr))));
+        eq("true|created|your Google account|w|true", crb.ok + "|" + crb.how + "|" + crb.where + "|" + crb.why + "|" + crb.needPermission, "a contact result");
         Sms.DeleteResult r = new Sms.DeleteResult();
         r.doneIds.add("s1");
         r.failedIds.add("m2");
@@ -562,6 +664,7 @@ public final class SmsV2Test {
         groupNames();
         searching();
         deleting();
+        savingContacts();
         outboxRemoval();
         jsonRoundTrips();
         System.out.println(checks + " checks, " + failed + " failed");

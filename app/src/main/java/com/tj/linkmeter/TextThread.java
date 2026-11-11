@@ -383,10 +383,8 @@ final class TextThread {
 
     private void apply(Sms.Convo c, TextsCache cache) {
         showStatus(null);
-        if (!c.head.name.isEmpty() && !c.head.name.equals(name)) {
-            name = c.head.name;
-            title.setText(name);
-            TextsViews.bindAvatar(avatar, name, key, false);
+        if (!c.head.name.isEmpty()) {
+            setDisplayName(tab.shownName(key, c.head.name)); // this tablet's own name for the person, if it has one
         }
         people.putAll(c.people);
         boolean gap = c.msgs.size() >= pageSize() && !msgs.isEmpty() && c.msgs.get(0).time > msgs.get(msgs.size() - 1).time;
@@ -527,12 +525,27 @@ final class TextThread {
 
     // ------------------------------------------------------------ the menu of the conversation
 
+    /** A new name for the person (a contact was saved or renamed, or the phone told it): the title and the picture show it. */
+    void setDisplayName(String shown) {
+        if (shown == null || shown.isEmpty() || shown.equals(name)) {
+            return;
+        }
+        name = shown;
+        title.setText(name);
+        TextsViews.bindAvatar(avatar, name, key, false);
+    }
+
     private void showMenu() {
         final TextsLocal local = tab.local();
         final Sms.Thread t = tab.threadOf(key);
         final long time = t == null ? System.currentTimeMillis() : t.time;
         List<String> labels = new ArrayList<>();
         List<Runnable> acts = new ArrayList<>();
+        if (addresses.size() == 1 && !PhoneNumbers.forSending(addresses.get(0)).isEmpty()) { // one person with a real number: a contact
+            final boolean named = tab.hasContactName(key, name);
+            labels.add(named ? "Rename contact" : "Add to contacts");
+            acts.add(() -> tab.editContact(key, addresses.get(0), name, named));
+        }
         labels.add(local.isPinned(key) ? "Unpin" : "Pin to the top");
         acts.add(() -> {
             local.setPinned(key, !local.isPinned(key), System.currentTimeMillis());

@@ -24,6 +24,7 @@
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
 
     <!-- "Start the phone after a restart". Tablet: make its own Wi-Fi Direct hotspot (Android 10 wants the location permission for it). -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />

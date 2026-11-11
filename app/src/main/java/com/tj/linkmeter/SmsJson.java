@@ -9,7 +9,7 @@ final class SmsJson {
     private SmsJson() {}
 
     static Map<String, Object> state(Sms.State s) {
-        return Json.obj("v", s.version, "on", s.on, "read", s.read, "send", s.send, "contacts", s.contacts, "note", s.note);
+        return Json.obj("v", s.version, "on", s.on, "read", s.read, "send", s.send, "contacts", s.contacts, "cw", s.contactsWrite, "note", s.note);
     }
 
     static Sms.State stateFrom(Map<String, Object> m) {
@@ -19,8 +19,23 @@ final class SmsJson {
         s.read = Json.bool(m, "read", false);
         s.send = Json.bool(m, "send", false);
         s.contacts = Json.bool(m, "contacts", false);
+        s.contactsWrite = Json.bool(m, "cw", false);
         s.note = Json.str(m, "note", "");
         return s;
+    }
+
+    static Map<String, Object> contactResult(Sms.ContactResult r) {
+        return Json.obj("ok", r.ok, "how", r.how, "where", r.where, "why", r.why, "need", r.needPermission);
+    }
+
+    static Sms.ContactResult contactResultFrom(Map<String, Object> m) {
+        Sms.ContactResult r = new Sms.ContactResult();
+        r.ok = Json.bool(m, "ok", false);
+        r.how = Json.str(m, "how", "");
+        r.where = Json.str(m, "where", "");
+        r.why = Json.str(m, "why", "");
+        r.needPermission = Json.bool(m, "need", false);
+        return r;
     }
 
     static Map<String, Object> thread(Sms.Thread t) {

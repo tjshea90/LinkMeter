@@ -219,10 +219,39 @@ final class RemoteSms {
     }
 
     List<Sms.Person> contacts(String query) throws IOException {
+        return contacts(query, 20);
+    }
+
+    /** Contacts by name or number, up to {@code limit} (a phone of protocol 3 may list up to 1000; an older one at most 20). */
+    List<Sms.Person> contacts(String query, int limit) throws IOException {
         List<Sms.Person> out = new ArrayList<>();
-        for (Map<String, Object> o : Json.objects(obj(read("/sms/contacts?q=" + enc(query), 20_000)), "people")) {
+        for (Map<String, Object> o : Json.objects(obj(read("/sms/contacts?q=" + enc(query) + "&limit=" + limit, 30_000)), "people")) {
             out.add(SmsJson.personFrom(o));
         }
         return out;
+    }
+
+    /**
+     * Asks the phone to save a contact (or to give the name to the contact that has the number). A phone that is too old to know
+     * this answers with ok = false and says so; it never throws for a refusal.
+     */
+    Sms.ContactResult saveContact(String name, String number) throws IOException {
+        byte[] bytes = Json.write(Json.obj("name", name, "number", number)).getBytes(StandardCharsets.UTF_8);
+        Client.Resp r = link.put("/sms/contact", new ByteArrayInputStream(bytes), bytes.length, null);
+        if (r.code == 404 && r.body.contains("unknown request")) {
+            Sms.ContactResult old = new Sms.ContactResult();
+            old.why = "The phone's LinkMeter app is too old to save contacts. Update it (install the newest release on the phone).";
+            return old;
+        }
+        if (r.code == 409) { // the phone says what was wrong with the name or the number
+            Sms.ContactResult bad = new Sms.ContactResult();
+            try {
+                bad.why = Json.str(Json.parseObject(r.body), "err", "The phone could not save it.");
+            } catch (IOException e) {
+                bad.why = "The phone could not save it.";
+            }
+            return bad;
+        }
+        return SmsJson.contactResultFrom(obj(r));
     }
 }

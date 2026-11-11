@@ -35,7 +35,16 @@ final class TextsLocal {
     private final Map<String, String> drafts = new HashMap<>();
     private final Map<String, Long> seenAt = new HashMap<>();
     private final Map<String, Integer> seenCount = new HashMap<>();
+    /** The names this tablet gives to people: number key -> name, the number as it was typed, and when the phone confirmed it (0 = this tablet only). */
+    private final Map<String, String> contactNames = new LinkedHashMap<>();
+    private final Map<String, String> contactNumbers = new HashMap<>();
+    private final Map<String, Long> contactSaved = new HashMap<>();
     private boolean dirty;
+
+    /** A name that was saved on the phone is shown for this long even if the phone's own list has not caught up (or says something older). */
+    static final long PHONE_LAG_MS = 10 * 60_000L;
+    static final int MAX_NAMES = 1000;
+    static final int MAX_NAME = 120;
 
     TextsLocal(BlobStore store) {
         this.store = store;
@@ -65,6 +74,21 @@ final class TextsLocal {
                 for (Map.Entry<?, ?> e : ((Map<?, ?>) d).entrySet()) {
                     if (e.getKey() instanceof String && e.getValue() instanceof String) {
                         drafts.put((String) e.getKey(), (String) e.getValue());
+                    }
+                }
+            }
+            Object nm = m.get("names");
+            if (nm instanceof Map) {
+                for (Map.Entry<?, ?> e : ((Map<?, ?>) nm).entrySet()) {
+                    if (e.getKey() instanceof String && e.getValue() instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> v = (Map<String, Object>) e.getValue();
+                        String name = Json.str(v, "n", "");
+                        if (!name.isEmpty()) {
+                            contactNames.put((String) e.getKey(), name);
+                            contactNumbers.put((String) e.getKey(), Json.str(v, "num", ""));
+                            contactSaved.put((String) e.getKey(), Json.num(v, "p", 0));
+                        }
                     }
                 }
             }
@@ -114,8 +138,15 @@ final class TextsLocal {
             Integer n = seenCount.get(e.getKey());
             seen.put(e.getKey(), Json.obj("t", e.getValue(), "n", n == null ? 0 : n));
         }
+        Map<String, Object> names = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : contactNames.entrySet()) {
+            Long p = contactSaved.get(e.getKey());
+            String num = contactNumbers.get(e.getKey());
+            names.put(e.getKey(), Json.obj("n", e.getValue(), "num", num == null ? "" : num, "p", p == null ? 0L : p));
+        }
         return Json.obj("pinned", new LinkedHashMap<>(pinned), "muted", new ArrayList<>(muted), "archived", new LinkedHashMap<>(archived),
-                "cleared", new LinkedHashMap<>(cleared), "hidden", new ArrayList<>(hidden), "drafts", new LinkedHashMap<>(drafts), "seen", seen);
+                "cleared", new LinkedHashMap<>(cleared), "hidden", new ArrayList<>(hidden), "drafts", new LinkedHashMap<>(drafts), "seen", seen,
+                "names", names);
     }
 
     private void save() {
@@ -299,6 +330,94 @@ final class TextsLocal {
         return false;
     }
 
+    // ---- the names this tablet gives to people (contacts)
+
+    /**
+     * This tablet's name for one person. {@code savedAt}: when the phone confirmed that it saved the same name in its contacts; 0 for a
+     * name that lives on this tablet only (the user chose that, or the phone could not save it). A group has no contact name, and a
+     * name must have letters in it and be at most {@value #MAX_NAME} long.
+     */
+    synchronized void setName(String key, String number, String name, long savedAt) {
+        String n = name == null ? "" : name.trim().replaceAll("\\s+", " ");
+        if (key == null || key.isEmpty() || key.indexOf(',') >= 0 || n.isEmpty() || n.length() > MAX_NAME) {
+            return;
+        }
+        contactNames.remove(key); // the newest stays at the end
+        contactNames.put(key, n);
+        contactNumbers.put(key, number == null ? "" : number);
+        contactSaved.put(key, savedAt);
+        while (contactNames.size() > MAX_NAMES) {
+            String oldest = contactNames.keySet().iterator().next();
+            contactNames.remove(oldest);
+            contactNumbers.remove(oldest);
+            contactSaved.remove(oldest);
+        }
+        save();
+    }
+
+    synchronized String nameOf(String key) {
+        String n = contactNames.get(key);
+        return n == null ? "" : n;
+    }
+
+    synchronized String numberOf(String key) {
+        String n = contactNumbers.get(key);
+        return n == null ? "" : n;
+    }
+
+    /** Is the name on this tablet only (the phone does not have it)? */
+    synchronized boolean nameIsLocal(String key) {
+        Long p = contactSaved.get(key);
+        return contactNames.containsKey(key) && (p == null || p == 0);
+    }
+
+    synchronized void forgetName(String key) {
+        if (contactNames.remove(key) != null) {
+            contactNumbers.remove(key);
+            contactSaved.remove(key);
+            save();
+        }
+    }
+
+    /** The keys of everybody this tablet has a name for, in the order they were named (the newest last). */
+    synchronized List<String> nameKeys() {
+        return new ArrayList<>(contactNames.keySet());
+    }
+
+    /**
+     * The name to show for a person, given what the phone says ({@code phoneName}: its contact name, or the number when it has none).
+     * A name that lives on this tablet only always wins (the user chose it). A name the phone confirmed wins while the phone has no
+     * name of its own, and for a few minutes after it was saved (the phone's list may lag); after that the phone's name is shown,
+     * so that a rename made on the phone itself is not hidden.
+     */
+    synchronized String display(String key, String phoneName, long now) {
+        String mine = contactNames.get(key);
+        String phone = phoneName == null ? "" : phoneName;
+        if (mine == null) {
+            return phone;
+        }
+        Long saved = contactSaved.get(key);
+        if (saved == null || saved == 0) {
+            return mine;
+        }
+        boolean phoneHasName = !phone.isEmpty() && !PhoneNumbers.looksLikeNumber(phone);
+        if (!phoneHasName || now - saved < PHONE_LAG_MS) {
+            return mine;
+        }
+        return phone;
+    }
+
+    /** The phone now shows the name that was saved on it: the entry is no longer needed. True when it was dropped. */
+    synchronized boolean settle(String key, String phoneName) {
+        Long saved = contactSaved.get(key);
+        String mine = contactNames.get(key);
+        if (mine == null || saved == null || saved == 0 || phoneName == null || !mine.equalsIgnoreCase(phoneName.trim())) {
+            return false;
+        }
+        forgetName(key);
+        return true;
+    }
+
     // ---- forgetting
 
     /** Everything about one conversation. */
@@ -313,8 +432,24 @@ final class TextsLocal {
         save();
     }
 
+    /** The tablet's choices (pins, mute, archive, deleted, drafts, what was read) but not the names it gave to people. */
+    synchronized void forgetChoices() {
+        pinned.clear();
+        muted.clear();
+        archived.clear();
+        cleared.clear();
+        hidden.clear();
+        drafts.clear();
+        seenAt.clear();
+        seenCount.clear();
+        save();
+    }
+
     /** Everything, on this tablet and on disk. */
     synchronized void forgetAll() {
+        contactNames.clear();
+        contactNumbers.clear();
+        contactSaved.clear();
         pinned.clear();
         muted.clear();
         archived.clear();

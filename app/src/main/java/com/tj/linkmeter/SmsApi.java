@@ -23,18 +23,25 @@ import java.util.regex.Pattern;
  * tablet's own record, checking numbers, staging files, recording what was sent) is plain Java and tested offline; what only Android
  * can do (read the messages database, send, look up contacts, scale a picture) is handed in as {@link Backend}.
  *
- * Routes: state, grant, stamp (can wait for news), threads, thread (pages back in time), search, attach, send, part, contacts, delete, read
+ * Routes: state, grant, stamp (can wait for news), threads, thread (pages back in time), search, attach, send, part, contacts, contact
+ * (save or rename a contact on the phone), delete, read
  * (see docs/FILES_AND_TEXTS_PLAN.md and docs/TEXTS_OVERHAUL.md). The caller has
  * already checked that the other device is paired. An older app answers 404 "unknown request" to all of them.
  */
 final class SmsApi {
-    /** 2 = /sms/stamp can wait for news, /sms/thread pages back in time, /sms/search, /sms/delete, /sms/read. */
-    static final int VERSION = 2;
+    /**
+     * 2 = /sms/stamp can wait for news, /sms/thread pages back in time, /sms/search, /sms/delete, /sms/read.
+     * 3 = /sms/contact saves or renames a contact on the phone, /sms/contacts can list many.
+     */
+    static final int VERSION = 3;
     /** The longest a /sms/stamp request may wait for news, in seconds. */
     static final int MAX_WAIT_S = 25;
     private static final Pattern PROVIDER_ID = Pattern.compile("[sm][0-9]{1,12}");
     private static final Pattern OUTBOX_ID = Pattern.compile("o[0-9]{1,12}");
     static final long MAX_BODY = 256 * 1024;
+    /** The most contacts one /sms/contacts request may list (the tablet's Contacts screen asks for many; the suggestions ask for 20). */
+    static final int MAX_CONTACTS = 1000;
+    static final int MAX_NAME = 120;
     static final int MAX_TEXT = 20_000;
     static final int MAX_RECIPIENTS = 20;
     static final int MAX_FILES = 10;
@@ -130,6 +137,23 @@ final class SmsApi {
 
         /** The backend calls this when the phone's messages or contacts changed (so that a waiting request answers at once). */
         default void setChangeListener(Runnable listener) {}
+
+        // ---- protocol 3.
+
+        /** May the app change the phone's contacts (the permission, which texts themselves do not need)? */
+        default boolean canWriteContacts() {
+            return false;
+        }
+
+        /**
+         * Saves a contact with this name and number on the phone, or gives the name to the contact that already has the number. Never
+         * throws: what went wrong is in the result.
+         */
+        default Sms.ContactResult saveContact(String name, String number) {
+            Sms.ContactResult r = new Sms.ContactResult();
+            r.why = "This phone does not let LinkMeter save contacts.";
+            return r;
+        }
     }
 
     private final Backend backend;
@@ -177,6 +201,7 @@ final class SmsApi {
         s.read = backend.canRead();
         s.send = backend.canSend();
         s.contacts = backend.canContacts();
+        s.contactsWrite = backend.canWriteContacts();
         s.note = backend.note();
         return s;
     }
@@ -221,6 +246,8 @@ final class SmsApi {
                     return part(q);
                 case "/sms/contacts":
                     return contacts(q);
+                case "/sms/contact":
+                    return contact(body, bodyLen);
                 default:
                     return FsApi.Reply.err(404, "unknown request");
             }
@@ -620,10 +647,25 @@ final class SmsApi {
     private FsApi.Reply contacts(Map<String, String> q) {
         List<Object> out = new ArrayList<>();
         if (backend.canContacts()) {
-            for (Sms.Person p : backend.contacts(p(q, "q", ""), clamp(num(q, "limit", 20), 1, 20))) {
+            for (Sms.Person p : backend.contacts(p(q, "q", ""), clamp(num(q, "limit", 20), 1, MAX_CONTACTS))) {
                 out.add(SmsJson.person(p));
             }
         }
         return FsApi.Reply.json(Json.obj("people", out));
+    }
+
+    /** Saves a contact on the phone (or gives its name to the contact that has the number). Only the paired tablet can ask. */
+    private FsApi.Reply contact(InputStream body, long len) throws IOException {
+        Map<String, Object> m = Json.parseObject(new String(readBody(body, len, MAX_BODY), StandardCharsets.UTF_8));
+        String name = Json.str(m, "name", "").trim().replaceAll("\\s+", " ");
+        String number = PhoneNumbers.forSending(Json.str(m, "number", ""));
+        if (name.isEmpty() || name.length() > MAX_NAME) {
+            return FsApi.Reply.err(409, "What is the contact's name? (1 to " + MAX_NAME + " letters.)");
+        }
+        if (number.isEmpty()) {
+            return FsApi.Reply.err(409, "That is not a phone number.");
+        }
+        Sms.ContactResult r = backend.saveContact(name, number);
+        return FsApi.Reply.json(SmsJson.contactResult(r));
     }
 }

@@ -15,6 +15,16 @@ final class SmsAccess {
 
     static final String[] PERMS = {Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS};
 
+    /**
+     * Saving and renaming a contact (from the tablet's Contacts screen) needs this as well. Texts do not, so it is NOT in
+     * {@link #PERMS}: a phone without it is not "missing" anything for texts, and the tablet says so when it is the one thing lacking.
+     */
+    static final String WRITE_CONTACTS = Manifest.permission.WRITE_CONTACTS;
+
+    /** What the phone's own question asks for: the texts permissions and the one for contacts (the same Android group: one question). */
+    static final String[] ASK = {Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS,
+            Manifest.permission.WRITE_CONTACTS};
+
     static boolean has(Context c, String perm) {
         return c.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED;
     }
@@ -70,6 +80,9 @@ final class SmsAccess {
                     sb.append(what(p)).append(": ").append(firstLine(r.out)).append('\n');
                 }
             }
+        }
+        if (has(c, Manifest.permission.READ_CONTACTS) && !has(c, WRITE_CONTACTS)) {
+            Priv.run("pm grant " + pkg + " " + WRITE_CONTACTS, 15); // so that the tablet can save a contact here; texts work without it
         }
         String left = note(c);
         return left.isEmpty() ? "Texts are allowed." : sb + left;

@@ -36,6 +36,22 @@ final class SmsBackend implements SmsApi.Backend {
     }
 
     @Override
+    public boolean canWriteContacts() {
+        return SmsAccess.has(ctx, SmsAccess.WRITE_CONTACTS);
+    }
+
+    @Override
+    public Sms.ContactResult saveContact(String name, String number) {
+        if (!canWriteContacts()) {
+            Sms.ContactResult r = new Sms.ContactResult();
+            r.needPermission = true;
+            r.why = "The phone has not allowed LinkMeter to change contacts yet.";
+            return r;
+        }
+        return store.saveContact(name, number);
+    }
+
+    @Override
     public String note() {
         return SmsAccess.note(ctx);
     }

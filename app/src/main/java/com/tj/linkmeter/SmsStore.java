@@ -1,12 +1,16 @@
 package com.tj.linkmeter;
 
+import android.content.ContentProviderOperation;
+import android.content.ContentProviderResult;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.OperationApplicationException;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.RemoteException;
 import android.os.SystemClock;
 import android.provider.ContactsContract;
 import java.io.ByteArrayOutputStream;
@@ -246,6 +250,131 @@ final class SmsStore {
                 }
             }
         }, 4000);
+    }
+
+    // ------------------------------------------------------------ saving a contact
+
+    private long contactIdFor(String number) {
+        try (Cursor c = cr.query(Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number)),
+                new String[] {ContactsContract.PhoneLookup._ID}, null, null, null)) {
+            if (c != null && c.moveToFirst() && !c.isNull(0)) {
+                return c.getLong(0);
+            }
+        } catch (RuntimeException e) {
+            // no such contact, or the lookup is not possible
+        }
+        return 0;
+    }
+
+    /** The first raw contact of a contact and its account type ("" for a contact that lives on the phone only); id 0 when there is none. */
+    private String[] firstRawContact(long contactId) {
+        try (Cursor c = cr.query(ContactsContract.RawContacts.CONTENT_URI, new String[] {ContactsContract.RawContacts._ID, ContactsContract.RawContacts.ACCOUNT_TYPE},
+                ContactsContract.RawContacts.CONTACT_ID + "=? AND " + ContactsContract.RawContacts.DELETED + "=0", new String[] {String.valueOf(contactId)},
+                ContactsContract.RawContacts._ID + " ASC")) {
+            if (c != null && c.moveToFirst()) {
+                return new String[] {String.valueOf(c.getLong(0)), c.isNull(1) ? "" : c.getString(1)};
+            }
+        } catch (RuntimeException e) {
+            // unreadable
+        }
+        return new String[] {"0", ""};
+    }
+
+    /**
+     * The account a new contact goes to, like the phone's own Contacts app would: the one that most of the contacts already live in,
+     * preferring a Google account (so that it syncs). {null, null} = a contact on the phone only.
+     */
+    private String[] defaultAccount() {
+        Map<String, Integer> counts = new HashMap<>();
+        try (Cursor c = cr.query(ContactsContract.RawContacts.CONTENT_URI, new String[] {ContactsContract.RawContacts.ACCOUNT_TYPE, ContactsContract.RawContacts.ACCOUNT_NAME},
+                ContactsContract.RawContacts.DELETED + "=0 AND " + ContactsContract.RawContacts.ACCOUNT_TYPE + " IS NOT NULL", null,
+                ContactsContract.RawContacts._ID + " DESC LIMIT 300")) {
+            while (c != null && c.moveToNext()) {
+                String type = c.isNull(0) ? "" : c.getString(0);
+                String name = c.isNull(1) ? "" : c.getString(1);
+                if (type.isEmpty() || name.isEmpty()) {
+                    continue;
+                }
+                String k = type + "\n" + name;
+                Integer n = counts.get(k);
+                counts.put(k, n == null ? 1 : n + 1);
+            }
+        } catch (RuntimeException e) {
+            // nothing to go by: a contact on the phone only
+        }
+        String best = null;
+        int bestN = 0;
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
+            int n = e.getValue() + (e.getKey().startsWith("com.google\n") ? 100000 : 0); // a Google account first
+            if (n > bestN) {
+                bestN = n;
+                best = e.getKey();
+            }
+        }
+        return best == null ? new String[] {null, null} : best.split("\n", 2);
+    }
+
+    private static String whereLabel(String accountType) {
+        if (accountType == null || accountType.isEmpty()) {
+            return "the phone";
+        }
+        return accountType.equals("com.google") ? "your Google account" : "an account on the phone";
+    }
+
+    /**
+     * Saves a contact, or gives the name to the contact that already has the number (the same as renaming it in the phone's Contacts
+     * app). The phone must have allowed LinkMeter to change contacts; without that the result says so. Never throws.
+     */
+    Sms.ContactResult saveContact(String name, String number) {
+        Sms.ContactResult r = new Sms.ContactResult();
+        try {
+            long contactId = contactIdFor(number);
+            String[] raw = contactId > 0 ? firstRawContact(contactId) : new String[] {"0", ""};
+            long rawId = Long.parseLong(raw[0]);
+            ArrayList<ContentProviderOperation> ops = new ArrayList<>();
+            if (rawId > 0) { // somebody has this number already: the name changes
+                ops.add(ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                        .withSelection(ContactsContract.Data.RAW_CONTACT_ID + "=? AND " + ContactsContract.Data.MIMETYPE + "=?",
+                                new String[] {String.valueOf(rawId), ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE})
+                        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name).build());
+                ContentProviderResult[] res = cr.applyBatch(ContactsContract.AUTHORITY, ops);
+                if (res.length == 0 || res[0].count == null || res[0].count == 0) { // no name row yet: add one
+                    ops.clear();
+                    ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                            .withValue(ContactsContract.Data.RAW_CONTACT_ID, rawId)
+                            .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+                            .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name).build());
+                    cr.applyBatch(ContactsContract.AUTHORITY, ops);
+                }
+                r.how = "renamed";
+                r.where = whereLabel(raw[1]);
+            } else { // a new contact, in the account the phone's contacts mostly live in
+                String[] account = defaultAccount();
+                ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+                        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, account[0])
+                        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, account[1]).build());
+                ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name).build());
+                ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
+                        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE).build());
+                cr.applyBatch(ContactsContract.AUTHORITY, ops);
+                r.how = "created";
+                r.where = whereLabel(account[0]);
+            }
+            r.ok = true;
+            contactsChanged(); // the next name lookup reads the contacts again, and the tablet is told
+        } catch (SecurityException e) {
+            r.needPermission = true;
+            r.why = "The phone has not allowed LinkMeter to change contacts yet.";
+        } catch (RemoteException | OperationApplicationException | RuntimeException e) {
+            r.why = "The phone's contacts refused it (" + e.getClass().getSimpleName() + ").";
+        }
+        return r;
     }
 
     /** The contacts changed because of something this phone did (a contact was saved): the next look is at once. */

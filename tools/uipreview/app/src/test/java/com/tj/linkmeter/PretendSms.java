@@ -112,6 +112,7 @@ final class PretendSms implements SmsApi.Backend {
         add("5550001111", "+15550001111", false, "Reminder: your appointment is on Thursday at 3:30 PM. Reply C to confirm.", 4 * DAY, false);
         add("5550001111", "+15550001111", true, "C", 4 * DAY - 10 * MIN, false);
         add("5551112222", "+15551112222", false, "Did you see the game last night?? Unreal ending", 9 * DAY, false);
+        add("5553334444", "+15553334444", false, "Hi, this is the plumber. I can come on Friday at 3.", 12 * DAY, false);
 
         people.add(person("Alex Rivera", "+15551234567"));
         people.add(person("Chris Wong", "+15558889999"));
@@ -213,9 +214,45 @@ final class PretendSms implements SmsApi.Backend {
         return "";
     }
 
+    /** May the app change the phone's contacts? The grant (Shizuku) gives that permission, like the real phone's. */
+    volatile boolean contactsWriteAllowed = true;
+    final List<String> contactCalls = new ArrayList<>();
+
+    @Override
+    public boolean canWriteContacts() {
+        return contactsWriteAllowed;
+    }
+
+    @Override
+    public Sms.ContactResult saveContact(String name, String number) {
+        Sms.ContactResult r = new Sms.ContactResult();
+        if (!contactsWriteAllowed) {
+            r.needPermission = true;
+            r.why = "The phone has not allowed LinkMeter to change contacts yet.";
+            return r;
+        }
+        String key = PhoneNumbers.key(number);
+        boolean exists = false;
+        for (Sms.Person p : people) {
+            if (PhoneNumbers.key(p.number).equals(key)) {
+                p.name = name;
+                exists = true;
+            }
+        }
+        if (!exists) {
+            people.add(person(name, number));
+        }
+        names.put(key, name);
+        contactCalls.add(name + "|" + number);
+        r.ok = true;
+        r.how = exists ? "renamed" : "created";
+        r.where = "your Google account";
+        return r;
+    }
+
     @Override
     public void grant() {
-        // nothing to grant
+        contactsWriteAllowed = true;
     }
 
     @Override

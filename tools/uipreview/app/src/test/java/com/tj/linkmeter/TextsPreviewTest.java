@@ -664,4 +664,218 @@ public class TextsPreviewTest {
         settle();
         check(findByDescription(decor(a), "Preview meeting-notes.txt") == null, "the cross removes it");
     }
+
+    // ------------------------------------------------------------ contacts: add, rename, the Contacts screen
+
+    static android.app.AlertDialog latestDialog() {
+        return ShadowAlertDialog.getLatestAlertDialog();
+    }
+
+    static EditText editIn(android.app.AlertDialog d, String hint) {
+        return (EditText) findEditRaw(d.getWindow().getDecorView(), hint);
+    }
+
+    static View findEditRaw(View v, String hint) {
+        if (v instanceof EditText && hint.contentEquals(String.valueOf(((EditText) v).getHint()))) {
+            return v;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View b = findEditRaw(g.getChildAt(i), hint);
+                if (b != null) {
+                    return b;
+                }
+            }
+        }
+        return null;
+    }
+
+    static void openMenuItem(MainActivity a, String icon, String label) throws Exception {
+        click(a, icon);
+        settle();
+        android.app.AlertDialog menu = latestDialog();
+        int n = menu.getListView().getCount();
+        for (int i = 0; i < n; i++) {
+            if (String.valueOf(menu.getListView().getAdapter().getItem(i)).contains(label)) {
+                menu.getListView().performItemClick(null, i, i);
+                settle();
+                return;
+            }
+        }
+        throw new AssertionError("no menu entry \"" + label + "\"");
+    }
+
+    @Test
+    public void renameAContactFromItsConversation() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0); // Alex Rivera
+        settle();
+        // the conversation's menu: it knows the person already, so it offers a rename
+        click(a, "More");
+        settle();
+        android.app.AlertDialog menu = latestDialog();
+        check(findTextRaw(menu.getWindow().getDecorView(), "Rename contact") != null, "the menu offers to rename the contact");
+        check(findTextRaw(menu.getWindow().getDecorView(), "Add to contacts") == null, "and not to add one that exists");
+        menu.dismiss();
+        openMenuItem(a, "More", "Rename contact");
+        android.app.AlertDialog d = latestDialog();
+        check(d != null && d.isShowing(), "the question for the name is open");
+        EditText nameBox = editIn(d, "Name");
+        check("Alex Rivera".contentEquals(nameBox.getText()), "it starts with the name the person has: " + nameBox.getText());
+        PreviewTest.save(d.getWindow().getDecorView(), "texts-contact-rename");
+        nameBox.setText("Alexander Rivera");
+        d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+        later(800);
+        check(findText(decor(a), "Alexander Rivera") != null, "the conversation shows the new name");
+        check(ph.contactCalls.size() == 1 && ph.contactCalls.get(0).startsWith("Alexander Rivera|+1555"), "the phone was asked to rename it: " + ph.contactCalls);
+        check(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().contains("Renamed on the phone too"), "it says it was renamed on the phone too: "
+                + org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+        shot(a, "texts-contact-renamed");
+        click(a, "Back");
+        settle();
+        check(findText(decor(a), "Alexander Rivera") != null && findText(decor(a), "Alex Rivera") == null, "the list shows it too");
+    }
+
+    @Test
+    public void addAnUnknownNumberAsAContact() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(findText(decor(a), "(555) 333-4444") != null, "the plumber is only a number");
+        ListView lv = findList(decor(a));
+        int at = -1;
+        for (int i = 0; i < lv.getAdapter().getCount(); i++) {
+            Object o = lv.getAdapter().getItem(i);
+            if (o instanceof ThreadListRules.Item && ((ThreadListRules.Item) o).t.key.equals("5553334444")) {
+                at = i;
+            }
+        }
+        check(at >= 0, "the plumber's conversation is in the list");
+        tapRow(a, at);
+        settle();
+        click(a, "More");
+        settle();
+        check(findTextRaw(latestDialog().getWindow().getDecorView(), "Add to contacts") != null, "a person without a name can be added");
+        latestDialog().dismiss();
+        openMenuItem(a, "More", "Add to contacts");
+        android.app.AlertDialog d = latestDialog();
+        check(d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled() == false, "Save waits for a name");
+        EditText nameBox = editIn(d, "Name");
+        nameBox.setText("Pat the Plumber");
+        check(d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled(), "and is ready once there is one");
+        PreviewTest.save(d.getWindow().getDecorView(), "texts-contact-add");
+        d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+        later(800);
+        check(findText(decor(a), "Pat the Plumber") != null, "the conversation has the name");
+        check(ph.contactCalls.size() == 1 && ph.contactCalls.get(0).startsWith("Pat the Plumber|+15553334444"), "the phone was asked to save it: " + ph.contactCalls);
+        check(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().startsWith("Saved on the phone too"), "it says it is on the phone too");
+    }
+
+    @Test
+    public void theNameStaysOnTheTabletWhenThePhoneCannotSave() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0);
+        settle();
+        // the switch to save on the phone is off: this tablet only
+        openMenuItem(a, "More", "Rename contact");
+        android.app.AlertDialog d = latestDialog();
+        EditText nameBox = editIn(d, "Name");
+        nameBox.setText("Al");
+        android.widget.Switch sw = (android.widget.Switch) findSwitch(d.getWindow().getDecorView());
+        check(sw != null && sw.isChecked(), "the switch 'Also save on the phone' is on");
+        sw.setChecked(false);
+        d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+        later(600);
+        check(ph.contactCalls.isEmpty(), "the phone was not asked");
+        check(findText(decor(a), "Al") != null, "the tablet shows the name");
+        check(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().contains("this tablet only"), "it says so: " + org.robolectric.shadows.ShadowToast.getTextOfLatestToast());
+        // later the phone is asked once more from the Contacts screen
+        openMenuItem(a, "More", "Rename contact"); // still in the conversation: its menu has a way back to the phone's name
+        check(findTextRaw(latestDialog().getWindow().getDecorView(), "Use the phone's name") != null, "the dialog offers the phone's name back");
+        latestDialog().dismiss();
+    }
+
+    static View findSwitch(View v) {
+        if (v instanceof android.widget.Switch) {
+            return v;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View b = findSwitch(g.getChildAt(i));
+                if (b != null) {
+                    return b;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Test
+    public void thePhoneIsAskedToAllowSavingContacts() throws Exception {
+        PretendSms ph = phone();
+        ph.contactsWriteAllowed = false; // the phone has not allowed LinkMeter to change contacts yet
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0);
+        settle();
+        openMenuItem(a, "More", "Rename contact");
+        android.app.AlertDialog d = latestDialog();
+        editIn(d, "Name").setText("Alex R.");
+        check(findTextRaw(d.getWindow().getDecorView(), "has not allowed LinkMeter") != null, "the dialog says the phone has not allowed it yet");
+        d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+        later(1200);
+        check(ph.contactsWriteAllowed, "the tablet asked the phone to allow it");
+        check(ph.contactCalls.size() == 1, "and then the save went through: " + ph.contactCalls);
+    }
+
+    @Test
+    public void contactsScreen() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        openMenuItem(a, "More", "Contacts");
+        later(800);
+        check(findText(decor(a), "Chris Wong") != null && findText(decor(a), "Taylor Brooks") != null, "the phone's contacts are listed");
+        check(findText(decor(a), "8 contacts") != null, "and counted: " + (findText(decor(a), "contacts") == null ? "" : findText(decor(a), "contacts").getText()));
+        shot(a, "texts-contacts");
+        // search
+        findEdit(decor(a), "Search contacts").setText("pri");
+        settle();
+        check(findText(decor(a), "Priya Nair") != null && findText(decor(a), "Chris Wong") == null, "the search narrows the list");
+        shot(a, "texts-contacts-search");
+        findEdit(decor(a), "Search contacts").setText("");
+        settle();
+        // a person: the menu
+        tapRow(a, 0);
+        settle();
+        android.app.AlertDialog menu = latestDialog();
+        check(findTextRaw(menu.getWindow().getDecorView(), "Send a text") != null && findTextRaw(menu.getWindow().getDecorView(), "Rename") != null, "a contact's menu");
+        menu.dismiss();
+        // a new contact, with the number typed
+        click(a, "New contact");
+        settle();
+        android.app.AlertDialog d = latestDialog();
+        check(!d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled(), "Save waits for a name and a number");
+        editIn(d, "Name").setText("Robin Hood");
+        check(!d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled(), "a name alone is not enough");
+        editIn(d, "Phone number").setText("555 777 1212");
+        check(d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled(), "a name and a number are");
+        PreviewTest.save(d.getWindow().getDecorView(), "texts-contact-new");
+        d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+        later(1000);
+        check(ph.contactCalls.size() == 1 && ph.contactCalls.get(0).equals("Robin Hood|+15557771212"), "the phone was asked to save it: " + ph.contactCalls);
+        check(findText(decor(a), "Robin Hood") != null, "it is in the list");
+        shot(a, "texts-contacts-added");
+    }
 }

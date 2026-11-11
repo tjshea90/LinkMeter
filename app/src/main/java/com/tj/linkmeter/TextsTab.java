@@ -87,6 +87,8 @@ final class TextsTab extends Tab {
 
     private Sms.State state;
     private boolean v2;
+    /** What the phone itself calls each person (before this tablet's own names are put over it), by number key. */
+    private final java.util.Map<String, String> phoneNames = new java.util.HashMap<>();
     private final List<Sms.Thread> threads = new ArrayList<>();
     private List<ThreadListRules.Item> items = new ArrayList<>();
     private final List<Object> rows = new ArrayList<>();
@@ -316,6 +318,7 @@ final class TextsTab extends Tab {
         openStorage();
         TextsCache.Saved<List<Sms.Thread>> saved = prefs.keepCopy() && cache != null ? cache.loadThreads() : null;
         if (saved != null) { // the saved copy at once; the phone is asked in the background
+            applyNames(saved.value);
             threads.clear();
             threads.addAll(saved.value);
             fromCopy = true;
@@ -667,6 +670,7 @@ final class TextsTab extends Tab {
                         return; // a newer answer was shown already
                     }
                     appliedListGen = gen;
+                    applyNames(fl);
                     threads.clear();
                     threads.addAll(fl);
                     fromCopy = false;
@@ -1587,6 +1591,8 @@ final class TextsTab extends Tab {
         acts.add(this::readAll);
         labels.add("Refresh now");
         acts.add(this::retryNow);
+        labels.add("Contacts");
+        acts.add(this::showContacts);
         labels.add("Connection details");
         acts.add(this::showConnectionDetails);
         labels.add("Texts settings");
@@ -1647,7 +1653,7 @@ final class TextsTab extends Tab {
                 .setTitle("Forget them?")
                 .setMessage("Pinned, muted and archived conversations, drafts, and the conversations you deleted on this tablet come back as the phone has them.")
                 .setPositiveButton("Forget", (d, w) -> {
-                    local.forgetAll();
+                    local.forgetChoices();
                     renderList();
                 }).setNegativeButton("Cancel", null))), Ui.lp(act, 8));
         col.addView(Ui.danger(act, "Erase everything saved here", v -> TextsViews.show(new AlertDialog.Builder(act)
@@ -1702,6 +1708,384 @@ final class TextsTab extends Tab {
         blobs = null;
         Toast.makeText(act, "Everything saved here was erased.", Toast.LENGTH_SHORT).show();
         restart();
+    }
+
+    // ------------------------------------------------------------ contacts: names this tablet gives, saved on the phone when it lets us
+
+    /** The phone's own name for each conversation is kept apart, so that this tablet's names can be put over it (and taken off again). */
+    private void applyNames(List<Sms.Thread> l) {
+        if (local == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        for (Sms.Thread t : l) {
+            if (t.key.indexOf(',') >= 0) {
+                continue; // a group has no contact name
+            }
+            phoneNames.put(t.key, t.name);
+            local.settle(t.key, t.name);
+            t.name = local.display(t.key, t.name, now);
+        }
+    }
+
+    /** The name to show for a person, from what the phone calls them ({@code phoneName}; "" when this does not know). */
+    String shownName(String key, String phoneName) {
+        if (local == null || key.indexOf(',') >= 0) {
+            return phoneName == null ? "" : phoneName;
+        }
+        String base = phoneName;
+        if (base == null || base.isEmpty()) {
+            base = phoneNames.get(key);
+        } else {
+            phoneNames.put(key, base);
+        }
+        return local.display(key, base == null ? "" : base, System.currentTimeMillis());
+    }
+
+    /** Does this person have a name (this tablet's, or the phone's contact name rather than their number)? */
+    boolean hasContactName(String key, String shown) {
+        return (local != null && !local.nameOf(key).isEmpty()) || (shown != null && !shown.isEmpty() && !PhoneNumbers.looksLikeNumber(shown));
+    }
+
+    /** The names changed (a contact was saved, renamed or given up): the list, the open conversation and the Contacts screen show them. */
+    private void refreshNames() {
+        if (local != null) {
+            long now = System.currentTimeMillis();
+            for (Sms.Thread t : threads) {
+                if (t.key.indexOf(',') < 0) {
+                    String base = phoneNames.get(t.key);
+                    t.name = local.display(t.key, base == null ? t.name : base, now);
+                }
+            }
+        }
+        renderList();
+        if (open != null) {
+            open.setDisplayName(shownName(openKey, ""));
+        }
+        if (contactsView != null) {
+            renderContacts();
+        }
+    }
+
+    private int contactPhoneMode() {
+        if (state == null || state.version < 3) {
+            return ContactDialog.PHONE_CANNOT;
+        }
+        return state.contactsWrite ? ContactDialog.PHONE_READY : ContactDialog.PHONE_NEEDS_PERMISSION;
+    }
+
+    private String contactPhoneNote() {
+        switch (contactPhoneMode()) {
+            case ContactDialog.PHONE_READY:
+                return "The contact is saved in the phone's contacts too, so it is there on the phone as well.";
+            case ContactDialog.PHONE_NEEDS_PERMISSION:
+                return "The phone has not allowed LinkMeter to change its contacts yet. LinkMeter will ask the phone to allow it (this needs Shizuku on the phone).";
+            default:
+                return state == null ? "The phone cannot be reached now, so this is saved on this tablet only."
+                        : "The phone's LinkMeter app is too old to save contacts: install the newest release on the phone. Until then this is saved on this tablet only.";
+        }
+    }
+
+    /** Asks for the name of a person who has a conversation: a new contact when they have none yet, a rename when they have. */
+    void editContact(final String key, final String number, final String shown, final boolean named) {
+        if (local == null) {
+            return;
+        }
+        final boolean mine = !local.nameOf(key).isEmpty();
+        ContactDialog.show(act, named ? "Rename contact" : "Add to contacts", named ? shown : "", number, false, contactPhoneMode(), contactPhoneNote(),
+                mine, (n, num, onPhone) -> saveContact(num, n, onPhone), () -> {
+                    local.forgetName(key);
+                    refreshNames();
+                    Toast.makeText(act, "Using the phone's name.", Toast.LENGTH_SHORT).show();
+                });
+    }
+
+    private void newContact() {
+        ContactDialog.show(act, "New contact", "", "", true, contactPhoneMode(), contactPhoneNote(), false, (n, num, onPhone) -> saveContact(num, n, onPhone), null);
+    }
+
+    /**
+     * Saves a contact: on this tablet at once (it shows everywhere straight away), then on the phone when asked to and the phone lets
+     * LinkMeter (if the phone only lacks the permission, it is asked to allow it and the save is tried once more). Says plainly where it ended up.
+     */
+    void saveContact(final String number, final String name, final boolean alsoPhone) {
+        final String sendNumber = PhoneNumbers.forSending(number);
+        if (local == null || sendNumber.isEmpty() || name.trim().isEmpty()) {
+            Toast.makeText(act, "Not saved: it needs a name and a phone number.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String key = PhoneNumbers.threadKey(java.util.Collections.singletonList(sendNumber));
+        local.setName(key, number, name, 0);
+        refreshNames();
+        if (!alsoPhone) {
+            Toast.makeText(act, "Saved on this tablet only.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        out.execute(() -> {
+            Sms.ContactResult r = null;
+            String err = null;
+            try {
+                r = remote().saveContact(name, sendNumber);
+                if (!r.ok && r.needPermission) {
+                    post(() -> Toast.makeText(act, "Asking the phone to allow it…", Toast.LENGTH_SHORT).show());
+                    remote().grant();
+                    r = remote().saveContact(name, sendNumber);
+                }
+            } catch (IOException e) {
+                err = explain(e);
+            }
+            final Sms.ContactResult fr = r;
+            final String fe = err;
+            post(() -> {
+                if (fr != null && fr.ok) {
+                    local.setName(key, number, name, System.currentTimeMillis());
+                    if (state != null) {
+                        state.contactsWrite = true;
+                    }
+                    refreshNames();
+                    Toast.makeText(act, (fr.how.equals("renamed") ? "Renamed" : "Saved") + " on the phone too" + (fr.where.isEmpty() ? "." : " (" + fr.where + ")."),
+                            Toast.LENGTH_LONG).show();
+                } else {
+                    String why = fr != null ? fr.why : fe;
+                    Toast.makeText(act, "Saved on this tablet only. " + (why == null ? "" : why), Toast.LENGTH_LONG).show();
+                }
+            });
+        });
+    }
+
+    // ---- the Contacts screen
+
+    private static final class ContactEntry {
+        final String key;
+        final String name;
+        final String number;
+        /** On the phone's list of contacts (not only a name this tablet gave). */
+        final boolean onPhone;
+        /** This tablet has its own name for them. */
+        final boolean tabletName;
+        /** The name lives on this tablet only. */
+        final boolean tabletOnly;
+
+        ContactEntry(String key, String name, String number, boolean onPhone, boolean tabletName, boolean tabletOnly) {
+            this.key = key;
+            this.name = name;
+            this.number = number;
+            this.onPhone = onPhone;
+            this.tabletName = tabletName;
+            this.tabletOnly = tabletOnly;
+        }
+    }
+
+    private ListView contactsView;
+    private BaseAdapter contactsAdapter;
+    private final List<ContactEntry> contactRows = new ArrayList<>();
+    private List<Sms.Person> phonePeople = new ArrayList<>();
+    private boolean contactsLoaded;
+    private String contactsProblem = "";
+    private String contactsQuery = "";
+    private TextView contactsStatus;
+
+    private void showContacts() {
+        if (open != null) {
+            open.pause();
+        }
+        open = null;
+        openKey = "";
+        contactsQuery = "";
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setBackgroundColor(Ui.BG);
+        int pad = Ui.dp(act, 14);
+        LinearLayout head = new LinearLayout(act);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setBackgroundColor(Ui.CARD);
+        head.setPadding(Ui.dp(act, 6), 0, Ui.dp(act, 6), 0);
+        head.addView(TextsViews.icon(act, Icons.Kind.BACK, "Back", v -> closeContacts()));
+        head.addView(Ui.text(act, "Contacts", 20, Ui.FG, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        head.addView(TextsViews.icon(act, Icons.Kind.PLUS, "New contact", v -> newContact()));
+        col.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(act, 60)));
+
+        EditText find = new EditText(act);
+        find.setHint("Search contacts");
+        find.setHintTextColor(Ui.DIM);
+        find.setTextColor(Ui.FG);
+        find.setTextSize(16);
+        find.setSingleLine(true);
+        find.setInputType(InputType.TYPE_CLASS_TEXT);
+        find.setBackground(TextsViews.shape(Ui.CARD_HI, Ui.dp(act, 12)));
+        find.setPadding(Ui.dp(act, 14), Ui.dp(act, 10), Ui.dp(act, 14), Ui.dp(act, 10));
+        find.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+                // nothing
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int c) {
+                // nothing
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                contactsQuery = s.toString().trim();
+                renderContacts();
+            }
+        });
+        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fp.setMargins(pad, Ui.dp(act, 10), pad, Ui.dp(act, 4));
+        col.addView(find, fp);
+        contactsStatus = Ui.text(act, "", 12, Ui.DIM, false);
+        contactsStatus.setPadding(pad, Ui.dp(act, 2), pad, Ui.dp(act, 4));
+        col.addView(contactsStatus);
+
+        contactsView = new ListView(act);
+        contactsView.setDivider(null);
+        contactsView.setBackgroundColor(Ui.BG);
+        contactsView.setPadding(pad, 0, pad, Ui.dp(act, 8));
+        contactsView.setClipToPadding(false);
+        contactsAdapter = new BaseAdapter() {
+            @Override
+            public int getCount() {
+                return contactRows.size();
+            }
+
+            @Override
+            public Object getItem(int i) {
+                return contactRows.get(i);
+            }
+
+            @Override
+            public long getItemId(int i) {
+                return i;
+            }
+
+            @Override
+            public View getView(int i, View convert, ViewGroup parent) {
+                final ContactEntry e = contactRows.get(i);
+                return personRow(e.name, PhoneNumbers.pretty(e.number) + (e.tabletOnly ? "  ·  on this tablet only" : ""), null);
+            }
+        };
+        contactsView.setAdapter(contactsAdapter);
+        contactsView.setOnItemClickListener((p, v, pos, id) -> {
+            if (pos >= 0 && pos < contactRows.size()) {
+                contactMenu(contactRows.get(pos));
+            }
+        });
+        col.addView(contactsView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        detail.removeAllViews();
+        detail.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        detailShown = true;
+        arrange();
+        renderContacts();
+        loadContacts();
+    }
+
+    private void closeContacts() {
+        contactsView = null;
+        contactsAdapter = null;
+        contactsStatus = null;
+        closeDetail();
+    }
+
+    private void loadContacts() {
+        final long my = session;
+        net.execute(() -> {
+            List<Sms.Person> found = null;
+            String err = "";
+            try {
+                found = remote().contacts("", 1000);
+            } catch (IOException e) {
+                err = explain(e);
+            }
+            final List<Sms.Person> ff = found;
+            final String fe = err;
+            post(() -> {
+                if (my != session || contactsView == null) {
+                    return;
+                }
+                if (ff != null) {
+                    phonePeople = ff;
+                    contactsLoaded = true;
+                    contactsProblem = "";
+                } else {
+                    contactsProblem = fe;
+                }
+                renderContacts();
+            });
+        });
+    }
+
+    /** The phone's contacts with this tablet's own names over them, and the names only this tablet has; by name, narrowed by the search. */
+    private void renderContacts() {
+        if (contactsView == null || local == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        java.util.Map<String, ContactEntry> byKey = new java.util.LinkedHashMap<>();
+        for (Sms.Person p : phonePeople) {
+            String key = PhoneNumbers.key(p.number);
+            if (key.isEmpty() || byKey.containsKey(key)) {
+                continue;
+            }
+            byKey.put(key, new ContactEntry(key, local.display(key, p.name, now), p.number, true, !local.nameOf(key).isEmpty(), local.nameIsLocal(key)));
+        }
+        for (String key : local.nameKeys()) {
+            if (!byKey.containsKey(key)) {
+                String number = local.numberOf(key).isEmpty() ? key : local.numberOf(key);
+                byKey.put(key, new ContactEntry(key, local.nameOf(key), number, false, true, local.nameIsLocal(key)));
+            }
+        }
+        String q = contactsQuery.toLowerCase(java.util.Locale.ROOT);
+        String qd = contactsQuery.replaceAll("[^0-9]", "");
+        contactRows.clear();
+        for (ContactEntry e : byKey.values()) {
+            if (q.isEmpty() || e.name.toLowerCase(java.util.Locale.ROOT).contains(q) || (qd.length() >= 3 && e.key.contains(qd))) {
+                contactRows.add(e);
+            }
+        }
+        java.util.Collections.sort(contactRows, (a, b) -> a.name.compareToIgnoreCase(b.name));
+        contactsAdapter.notifyDataSetChanged();
+        String status;
+        if (!contactsProblem.isEmpty()) {
+            status = (contactsLoaded || !contactRows.isEmpty() ? "Showing what was loaded before. " : "") + contactsProblem;
+        } else if (!contactsLoaded) {
+            status = "Loading the phone's contacts…";
+        } else {
+            status = contactRows.size() + (contactRows.size() == 1 ? " contact" : " contacts");
+        }
+        contactsStatus.setText(status);
+        contactsStatus.setTextColor(contactsProblem.isEmpty() ? Ui.DIM : Ui.AMBER);
+    }
+
+    private void contactMenu(final ContactEntry e) {
+        List<String> labels = new ArrayList<>();
+        List<Runnable> acts = new ArrayList<>();
+        labels.add("Send a text");
+        acts.add(() -> {
+            Sms.Person p = new Sms.Person();
+            p.name = e.name;
+            p.number = PhoneNumbers.forSending(e.number);
+            picked.clear();
+            picked.add(p);
+            contactsView = null;
+            startNew();
+        });
+        labels.add("Rename");
+        acts.add(() -> editContact(e.key, e.number, e.name, true));
+        if (e.tabletOnly) {
+            labels.add("Save on the phone too");
+            acts.add(() -> saveContact(e.number, e.name, true));
+        }
+        if (e.tabletName) {
+            labels.add(e.onPhone ? "Use the phone's name" : "Forget this contact");
+            acts.add(() -> {
+                local.forgetName(e.key);
+                refreshNames();
+            });
+        }
+        TextsViews.menu(act, e.name, labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
     }
 
     // ------------------------------------------------------------ the undo strip
@@ -1782,6 +2166,7 @@ final class TextsTab extends Tab {
     }
 
     private void closeDetail() {
+        contactsView = null; // the Contacts screen, if that is what was open, is gone
         hideKeyboard();
         if (open != null) {
             open.pause();

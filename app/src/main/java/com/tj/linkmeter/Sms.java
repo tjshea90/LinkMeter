@@ -103,7 +103,10 @@ final class Sms {
 
     /** What the phone says about the Texts feature. */
     static final class State {
-        /** The protocol the phone speaks: 1 = the first texts routes, 2 = waiting for news, older messages, search, delete, mark read. */
+        /**
+         * The protocol the phone speaks: 1 = the first texts routes, 2 = waiting for news, older messages, search, delete, mark read,
+         * 3 = saving and renaming contacts on the phone.
+         */
         int version = 1;
         /** False when the phone's app is too old to know the Texts routes at all. */
         boolean supported = true;
@@ -113,8 +116,23 @@ final class Sms {
         boolean read;
         boolean send;
         boolean contacts;
+        /** The phone's permission to change its contacts (not needed for texts: only for saving and renaming a contact there). */
+        boolean contactsWrite;
         /** A sentence about what is missing, "" when all is well. */
         String note = "";
+    }
+
+    /** What the phone did when asked to save a contact or to rename one. */
+    static final class ContactResult {
+        boolean ok;
+        /** "created" or "renamed" when it worked. */
+        String how = "";
+        /** Where it was saved when it worked ("your Google account", "the phone"), for a sentence on the tablet. */
+        String where = "";
+        /** Why it did not work, in a sentence for the user. */
+        String why = "";
+        /** It did not work only because the phone has not allowed LinkMeter to change contacts: asking the phone to allow it may fix that. */
+        boolean needPermission;
     }
 
     /** A contact: a name and one number. */

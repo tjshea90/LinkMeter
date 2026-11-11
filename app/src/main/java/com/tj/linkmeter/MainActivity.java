@@ -550,7 +550,7 @@ public class MainActivity extends Activity {
 
     /** Asks for the texts permissions through Android's own question. */
     void requestTextsPermissions() {
-        requestPermissions(SmsAccess.PERMS, REQ_TEXTS);
+        requestPermissions(SmsAccess.ASK, REQ_TEXTS);
     }
 
     /** Asks for the Bluetooth permission ("Nearby devices", Android 12 and later); the answer makes the phone's listener look again. */

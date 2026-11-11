@@ -1137,7 +1137,77 @@ public final class TextsLogicTest {
         }
     }
 
+    static void names() throws Exception {
+        Mem mem = new Mem();
+        TextsLocal l = new TextsLocal(mem);
+        long t0 = 1_000_000_000L;
+        // a name that lives on this tablet only
+        l.setName("5551234567", "(555) 123-4567", "  Alex   R  ", 0);
+        eq("Alex R", l.nameOf("5551234567"), "the name is tidied (spaces)");
+        eq("Alex R", l.display("5551234567", "(555) 123-4567", t0), "it replaces the number");
+        eq("Alex R", l.display("5551234567", "Alex Rivera", t0 + 99 * TextsLocal.PHONE_LAG_MS), "and always wins over the phone's name: the user chose it");
+        yes(l.nameIsLocal("5551234567"), "it is on this tablet only");
+        // a name the phone confirmed
+        l.setName("5559876543", "(555) 987-6543", "Mom", t0);
+        yes(!l.nameIsLocal("5559876543"), "the phone has this one");
+        eq("Mom", l.display("5559876543", "(555) 987-6543", t0 + 1000), "just saved: shown while the phone's list only has the number");
+        eq("Mom", l.display("5559876543", "Old name", t0 + 1000), "just saved: wins over an older name the phone still shows");
+        eq("Mommy", l.display("5559876543", "Mommy", t0 + TextsLocal.PHONE_LAG_MS + 1), "later: the phone's name wins (it may have been renamed there)");
+        eq("Mom", l.display("5559876543", "Mommy", t0 + TextsLocal.PHONE_LAG_MS - 1), "just before the limit: still ours");
+        eq("Mom", l.display("5559876543", "", t0 + 99 * TextsLocal.PHONE_LAG_MS), "later, but the phone has no name: ours");
+        eq("Mom", l.display("5559876543", "(555) 987-6543", t0 + 99 * TextsLocal.PHONE_LAG_MS), "later, and the phone only has the number: ours");
+        eq("Taylor", l.display("5550001111", "Taylor", t0), "nobody named: the phone's name");
+        eq("", l.display("5550001111", null, t0), "nothing at all: nothing");
+        // settling
+        yes(!l.settle("5559876543", "Old name"), "a different name on the phone does not settle it");
+        yes(l.settle("5559876543", " mom "), "the same name on the phone (case and spaces ignored) settles it");
+        eq("", l.nameOf("5559876543"), "and it is dropped");
+        yes(!l.settle("5551234567", "Alex R"), "a tablet-only name is never dropped this way");
+        // what is refused
+        l.setName("5551111111,5552222222", "x", "Group", 0);
+        eq("", l.nameOf("5551111111,5552222222"), "a group has no contact name");
+        l.setName("5550000000", "5550000000", "   ", 0);
+        eq("", l.nameOf("5550000000"), "an empty name is no name");
+        l.setName("", "5550000000", "Nobody", 0);
+        eq(1, l.nameKeys().size(), "no key, no name: only the first name is there");
+        StringBuilder longName = new StringBuilder();
+        for (int i = 0; i < TextsLocal.MAX_NAME + 1; i++) {
+            longName.append('a');
+        }
+        l.setName("5550000002", "n", longName.toString(), 0);
+        eq("", l.nameOf("5550000002"), "a name that is too long is refused");
+        // kept across a restart
+        l.flush();
+        TextsLocal again = new TextsLocal(mem);
+        eq("Alex R", again.nameOf("5551234567"), "the name survives a restart");
+        eq("(555) 123-4567", again.numberOf("5551234567"), "and the number as it was typed");
+        yes(again.nameIsLocal("5551234567"), "and that it is tablet-only");
+        // choosing again, forgetting
+        l.setName("5551234567", "(555) 123-4567", "Alexander", t0);
+        eq("Alexander", l.nameOf("5551234567"), "a new name replaces the old one");
+        yes(!l.nameIsLocal("5551234567"), "and now the phone has it");
+        l.forgetName("5551234567");
+        eq("Alex Rivera", l.display("5551234567", "Alex Rivera", t0), "forgotten: the phone's name again");
+        // the order: newest last; bounded
+        TextsLocal many = new TextsLocal(new Mem());
+        for (int i = 0; i < TextsLocal.MAX_NAMES + 5; i++) {
+            many.setName("k" + i, "n" + i, "Name " + i, 0);
+        }
+        eq(TextsLocal.MAX_NAMES, many.nameKeys().size(), "the names are bounded");
+        eq("", many.nameOf("k0"), "the oldest went");
+        eq("Name " + (TextsLocal.MAX_NAMES + 4), many.nameOf("k" + (TextsLocal.MAX_NAMES + 4)), "the newest stayed");
+        // forgetting the choices keeps the names; forgetting all does not
+        TextsLocal c = new TextsLocal(new Mem());
+        c.setName("5553334444", "n", "Kept", 0);
+        c.setPinned("5553334444", true, 5);
+        c.forgetChoices();
+        yes(!c.isPinned("5553334444") && c.nameOf("5553334444").equals("Kept"), "forgetting the choices keeps the names");
+        c.forgetAll();
+        eq("", c.nameOf("5553334444"), "forgetting everything forgets the names too");
+    }
+
     public static void main(String[] args) throws Exception {
+        names();
         emoji();
         contactBook();
         linkLog();
