@@ -64,6 +64,7 @@ Tell me what happened, in your own words, for any of these:
 - The Screen tab left open while the phone sleeps (the tablet is meant to rest after a while, and wake when you touch it).
 - The phone's own screen: does the first card name the right thing? Do Stop, Forget all tablets and Switch role ask first?
 - The Signal tab: Scan, the comparison, Search for a network again, Phone info screen.
-- Glide typing in the Screen tab's Type keyboard (SwiftKey): does a glided word arrive on the phone? If it does not: glide one word,
-  close the keyboard, open Options, and send me the line that starts with "Keyboard:" (Options > Copy this information).
+- Glide typing (SwiftKey): Screen tab > Options > Keyboard > "Test the keyboard". In box 1 (a plain text box) and in box 2 (the Type
+  button's field, with what it would send written underneath): does a glided word work? Tell me which of the two glides, and what the
+  last lines of the test say (version, keyboard, counts).
 - The Safety check on the phone: does it read clearly?

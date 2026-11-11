@@ -1616,6 +1616,11 @@ final class ScreenTab extends Tab {
             }
 
             @Override
+            public void testKeyboard() {
+                KeyboardTest.show(act, prefs);
+            }
+
+            @Override
             public String phoneText() {
                 return profileText.isEmpty() ? "Asking the phone…" : profileText;
             }

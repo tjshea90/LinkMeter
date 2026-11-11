@@ -38,6 +38,9 @@ final class AdvancedPanel {
 
         String diagnostics();
 
+        /** Opens the keyboard test (a plain text box next to the Type button's field). */
+        void testKeyboard();
+
         String phoneText();
 
         void copy(String text);
@@ -312,6 +315,7 @@ final class AdvancedPanel {
                 Ui.lp(c, 6));
         col.addView(note("Keyboards then show their incognito mode, and some switch glide typing off while it is on. If glide "
                 + "typing does not work, leave this off."), Ui.lp(c, 2));
+        col.addView(Ui.button(c, "Test the keyboard", v -> host.testKeyboard()), Ui.lp(c, 6));
 
         // ---------------------------------------------------------------- info
         col.addView(heading("Information"));
