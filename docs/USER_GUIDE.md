@@ -29,6 +29,16 @@ always.
 - **Home:** **Hotspot** (switch the phone's hotspot on or off), **Screen** (put the phone's screen to sleep or wake it) and
   **Standby** (hotspot off and screen off: the phone then idles for days; **Hotspot** wakes it again over Bluetooth). Each button
   that cuts the link asks first and says what it needs.
+- **The tablet's own Wi-Fi follows the hotspot** (Settings > This tablet > "Switch the tablet's Wi-Fi with the hotspot", on unless
+  you switch it off). After **Hotspot on** the tablet's Wi-Fi is switched on, so that it can join the hotspot; after **Hotspot off**
+  or **Standby** it is switched off, so that it does not keep searching. It happens only after the phone has said the switch worked,
+  and the Wi-Fi is left alone when the tablet is on another Wi-Fi network (the one at home). **Android does not let an app switch
+  Wi-Fi by itself** (since Android 10): LinkMeter tries every way it has and then opens Android's own Wi-Fi switch, and the one tap
+  on it is yours. The line under the buttons says which of the three happened ("The tablet's Wi-Fi is on" only after LinkMeter has
+  checked it; "Switch the tablet's Wi-Fi on in the panel that opened" when it asked you). (Only if Shizuku runs on the tablet itself and LinkMeter is
+  allowed in it, no tap is needed; LinkMeter has no button on the tablet to ask Shizuku for that, so count on one tap.) When the phone's hotspot is on and the tablet's Wi-Fi is off, Home shows a card with **Switch Wi-Fi on**. (Android's own
+  Wi-Fi preferences also have "Turn on Wi-Fi automatically", which may bring the Wi-Fi on near a saved hotspot without any tap; that is
+  Android's, not LinkMeter's, and not tried here.)
 - **Phone tab:** the battery saver (**Automatic** switches off background scanning and the always-on display and shortens the
   screen timeout while the tablet uses the hotspot, and puts everything back by itself), the phone's **Wi-Fi**, **Restart** and
   **Power off** (they ask first: after them someone has to touch the phone), and **If something breaks**.
@@ -81,6 +91,9 @@ phone's screen). Until Shizuku runs, the tablet can read the status but cannot s
 Tell me what happened, in your own words, for any of these:
 - Settings > Bluetooth link > Set up, then Test: did it say Ready?
 - Hotspot off, then Hotspot on from the tablet; Standby, then waking the phone.
+- The tablet's Wi-Fi with the hotspot: after Hotspot on, did the panel with the Wi-Fi switch open, and did one tap on it join the
+  hotspot? After Hotspot off, did the Wi-Fi go off (after your tap)? Was one tap fine for you, or would you rather have it with no tap
+  at all (that needs a second, tiny app on the tablet that Android still allows to switch Wi-Fi: tell me and I build it)?
 - The battery saver: Automatic, then Off, and the "Battery saver" line on Home.
 - The Screen tab left open while the phone sleeps (the tablet is meant to rest after a while, and wake when you touch it).
 - The phone's own screen: does the first card name the right thing? Do Stop, Forget all tablets and Switch role ask first?

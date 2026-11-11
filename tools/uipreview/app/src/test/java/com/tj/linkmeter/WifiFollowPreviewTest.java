@@ -496,4 +496,81 @@ public class WifiFollowPreviewTest {
         ((View) title.getParent().getParent()).performClick();
         check(Cfg.wifiFollow(app()), "and on again");
     }
+
+    // ------------------------------------------------------------------------------------------------ edges found by reading the code
+
+    /**
+     * "Sent" is not a result. Hotspot off over the hotspot is answered "Sent" (the phone acts afterwards); if the Home screen is
+     * already left when that answer arrives, nobody looks for the result, so the tablet's Wi-Fi must not be touched.
+     */
+    @Test
+    public void aSentAnswerAfterTheScreenWasLeftConfirmsNothing() throws Exception {
+        Pretend p = onTheHotspot();
+        wifiIs(true);
+        addWifiNetwork(100);
+        MainActivity a = tablet();
+        settle();
+        press(a, "Hotspot off");
+        settle();
+        AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
+        check(d != null && d.isShowing(), "the question is open");
+        d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        a.openTab(Tab.SPEED); // the screen is left at once: the phone's "Sent" arrives after that
+        settle();
+        p.via = "bt";
+        p.status = Pretend.status(false, true);
+        later(3100);
+        a.openTab(Tab.HOME);
+        later(3100);
+        check(wifiIsOn(), "only \"Sent\" arrived, nobody confirmed it: the Wi-Fi stays on");
+        check(nothingWasOpened(a), "no panel");
+        mustNotShow(a, "The tablet's Wi-Fi is off");
+    }
+
+    /** The app goes out of sight while the phone is working: Android 10 would not show a screen, so none is opened (and it says so). */
+    @Test
+    public void theWifiSwitchIsNotOpenedWhileTheAppIsOutOfSight() throws Exception {
+        TabletWifi.refusedForTest = true;
+        Pretend p = hotspotOffOverBluetooth();
+        p.btDelayMs = 1500;
+        wifiIs(false);
+        MainActivity a = tablet();
+        Thread.sleep(2000); // the first status comes over Bluetooth, which takes 1.5 s here
+        settle();
+        press(a, "Turn the hotspot on");
+        a.onPause(); // the user went to another app; the phone's answer arrives afterwards
+        Thread.sleep(2000);
+        settle();
+        check(!wifiIsOn(), "the app was refused: still off");
+        check(nothingWasOpened(a), "no screen opened by an app that is out of sight");
+        mustShow(a, "could not switch the tablet's Wi-Fi on");
+    }
+
+    /** The card's "Switch Wi-Fi on" waits while a switch of the phone is on its way (the panel would pause the app and end that call). */
+    @Test
+    public void theCardsButtonWaitsForASwitchOnItsWay() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(true, true);
+        p.btDelayMs = 2500;
+        p.install();
+        linkProved();
+        noNetworks();
+        wifiIs(false);
+        MainActivity a = tablet();
+        Thread.sleep(3000); // the first status comes over Bluetooth, which takes 2.5 s here
+        settle();
+        check(PreviewTest.findButton(a.getWindow().getDecorView(), "Switch Wi-Fi on").isEnabled(), "the card's button works when nothing is on its way");
+        press(a, "Standby");
+        Thread.sleep(3000); // the live test of the link before Standby
+        settle();
+        AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
+        check(d != null && d.isShowing(), "the question is open");
+        d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle(); // Standby is on its way now (2.5 s)
+        android.widget.Button b = PreviewTest.findButton(a.getWindow().getDecorView(), "Switch Wi-Fi on");
+        check(b != null && !b.isEnabled(), "the card's button is greyed out while Standby is on its way");
+        Thread.sleep(3000);
+        settle();
+    }
 }

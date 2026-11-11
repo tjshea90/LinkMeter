@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java; for "texts:", tools/test/TextsLogicTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java; for "texts:", tools/test/TextsLogicTest.java; for "wififollow:", tools/test/TabletWifiRulesTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror, ChangeGate, SmsApi (the version 2 routes), SmsLength, SmsReactions, SmartReply, TextsLocal, TextsCache, ThreadListRules, ThreadRows, FileBlobStore or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror, ChangeGate, SmsApi (the version 2 routes), SmsLength, SmsReactions, SmartReply, TextsLocal, TextsCache, ThreadListRules, ThreadRows, FileBlobStore, TabletWifiRules or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -670,6 +670,36 @@ TX = [
  ('texts: names are not tidied', 'TextsLocal.java', 'name.trim().replaceAll("\\\\s+", " ")', 'name.trim()'),
  ('texts: relock does not lock', 'TextsLock.java', 'synchronized void relock() {\n        unlockedAt = 0;', 'synchronized void relock() {\n        unlockedAt = unlockedAt;'),
 ]
+WIFI_FILES = ["TabletWifiRules.java"]
+WIFI_TEST = ROOT + "/tools/test/TabletWifiRulesTest.java"
+WF = [
+ ("wififollow: a Wi-Fi coming on is not on", "TabletWifiRules.java", "            case STATE_ENABLING:\n            case STATE_ENABLED:\n", "            case STATE_ENABLED:\n"),
+ ("wififollow: a Wi-Fi going off is not off", "TabletWifiRules.java", "            case STATE_DISABLING:\n            case STATE_DISABLED:\n", "            case STATE_DISABLED:\n"),
+ ("wififollow: a state nobody reports counts as off", "TabletWifiRules.java", "or anything a vendor adds\n                return null;", "or anything a vendor adds\n                return Boolean.FALSE;"),
+ ("wififollow: Hotspot on wants the Wi-Fi off", "TabletWifiRules.java", 'case "hotspot_on":\n                return Wish.ON;', 'case "hotspot_on":\n                return Wish.OFF;'),
+ ("wififollow: Standby leaves the Wi-Fi on", "TabletWifiRules.java", 'case "hotspot_off":\n            case "standby": // the hotspot goes off with the screen\n                return Wish.OFF;', 'case "hotspot_off":\n                return Wish.OFF;'),
+ ("wififollow: any other switch switches the Wi-Fi", "TabletWifiRules.java", "stays or comes back by itself\n                return Wish.NONE;", "stays or comes back by itself\n                return Wish.OFF;"),
+ ("wififollow: no action, an error", "TabletWifiRules.java", "        if (action == null) {\n            return Wish.NONE;\n        }\n", ""),
+ ("wififollow: the user's setting is ignored", "TabletWifiRules.java", "if (!enabled || wifiOn == null) {", "if (wifiOn == null) {"),
+ ("wififollow: a Wi-Fi state not known is acted on", "TabletWifiRules.java", "if (!enabled || wifiOn == null) {", "if (!enabled) {"),
+ ("wififollow: switched on when it is on already", "TabletWifiRules.java", "if (w == Wish.ON && !wifiOn) {", "if (w == Wish.ON) {"),
+ ("wififollow: switched off when it is off already", "TabletWifiRules.java", "if (w == Wish.OFF && wifiOn) {", "if (w == Wish.OFF) {"),
+ ("wififollow: a switch nobody confirmed moves the Wi-Fi", "TabletWifiRules.java", "if (!confirmed || wish == Wish.NONE || wifiOnNow == null) {", "if (wish == Wish.NONE || wifiOnNow == null) {"),
+ ("wififollow: a Wi-Fi not known at the end is acted on", "TabletWifiRules.java", "if (!confirmed || wish == Wish.NONE || wifiOnNow == null) {", "if (!confirmed || wish == Wish.NONE) {"),
+ ("wififollow: switched on again after it came on by itself", "TabletWifiRules.java", "return wifiOnNow ? Verdict.NOTHING : Verdict.SWITCH_ON; // it may have come on by itself meanwhile", "return Verdict.SWITCH_ON;"),
+ ("wififollow: switched off when it is off already (at the end)", "TabletWifiRules.java", "        if (!wifiOnNow) {\n            return Verdict.NOTHING; // it is already off\n        }\n", ""),
+ ("wififollow: another network is cut", "TabletWifiRules.java", "return noNetwork || hotspotsNetwork ? Verdict.SWITCH_OFF : Verdict.LEAVE_ON_OTHER_NETWORK;", "return Verdict.SWITCH_OFF;"),
+ ("wififollow: any network counts as the hotspot's", "TabletWifiRules.java", "boolean hotspotsNetwork = networkAtPress != NO_NETWORK && networkNow == networkAtPress;", "boolean hotspotsNetwork = networkAtPress != NO_NETWORK;"),
+ ("wififollow: no network is not a reason to switch off", "TabletWifiRules.java", "return noNetwork || hotspotsNetwork ?", "return hotspotsNetwork ?"),
+ ("wififollow: leaving the Wi-Fi on says it is off", "TabletWifiRules.java", 'return "The tablet\'s Wi-Fi was left on: the tablet is on another network.";', 'return "The tablet\'s Wi-Fi is off.";'),
+ ("wififollow: a panel that was opened is called done", "TabletWifiRules.java", "if (way == Way.DONE) {", "if (way == Way.DONE || way == Way.ASKED) {"),
+ ("wififollow: a failure is called done", "TabletWifiRules.java", 'return "LinkMeter could not switch the tablet\'s Wi-Fi " + state + ". Do it in Android\'s quick settings.";', 'return "The tablet\'s Wi-Fi is " + state + ".";'),
+ ("wififollow: on is said as off", "TabletWifiRules.java", 'String state = v == Verdict.SWITCH_ON ? "on" : "off";', 'String state = v == Verdict.SWITCH_ON ? "off" : "on";'),
+ ("wififollow: a failed Wi-Fi switch looks good", "TabletWifiRules.java", "return phoneOk && way != Way.FAILED;", "return phoneOk;"),
+ ("wififollow: a failed phone switch looks good", "TabletWifiRules.java", "return phoneOk && way != Way.FAILED;", "return way != Way.FAILED;"),
+ ("wififollow: the Wi-Fi sentence replaces the phone's", "TabletWifiRules.java", 'return phoneSaid + " " + wifiSaid;', "return wifiSaid;"),
+ ("wififollow: the Wi-Fi sentence sticks to the phone's", "TabletWifiRules.java", 'return phoneSaid + " " + wifiSaid;', "return phoneSaid + wifiSaid;"),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -685,7 +715,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (PHONESCREEN_FILES, PHONESCREEN_TEST, "com.tj.linkmeter.PhoneScreenRulesTest", PS),
           (TYPING_FILES, TYPING_TEST, "com.tj.linkmeter.TypingMirrorTest", TD),
           (SMS2_FILES, SMS2_TEST, "com.tj.linkmeter.SmsV2Test", S2, SMS2_JAVAC),
-          (TEXTS_FILES, TEXTS_TEST, "com.tj.linkmeter.TextsLogicTest", TX, TEXTS_JAVAC)]
+          (TEXTS_FILES, TEXTS_TEST, "com.tj.linkmeter.TextsLogicTest", TX, TEXTS_JAVAC),
+          (WIFI_FILES, WIFI_TEST, "com.tj.linkmeter.TabletWifiRulesTest", WF)]
 only = sys.argv[1:]
 caught = missed = 0
 for suite in SUITES:

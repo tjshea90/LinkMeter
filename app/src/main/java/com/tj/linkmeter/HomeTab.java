@@ -92,6 +92,11 @@ final class HomeTab extends Tab {
     private long wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
     /** The card's "Switch Wi-Fi on" is working on it (Shizuku can take a few seconds). */
     private boolean wifiBusy;
+    /**
+     * The card's main button is "Switch Wi-Fi on". It waits with the switches below: Android's Wi-Fi switch would pause the app,
+     * which closes the Bluetooth connection that a switch on its way is using.
+     */
+    private boolean bannerWifi;
 
     /** What one poll found. Built on the worker thread, shown on the UI thread. */
     private static final class Snap {
@@ -197,6 +202,7 @@ final class HomeTab extends Tab {
         banner.addView(Ui.row(act, bannerMain, bannerOther), Ui.lp(act, 8));
         banner.setVisibility(View.GONE);
         bannerSends = false; // a new, empty card
+        bannerWifi = false;
         col.addView(banner, Ui.lp(act, 10));
 
         mBat = new MeterView(act);
@@ -471,6 +477,7 @@ final class HomeTab extends Tab {
     /** The card under the title: only when it has something to say. */
     private void paintBanner(Snap s) {
         bannerSends = false;
+        bannerWifi = false;
         if (s.phone != null && Reach.BLUETOOTH.equals(s.via)) {
             Boolean hs = Call.flag(s.phone, "hs");
             banner.setVisibility(View.VISIBLE);
@@ -481,7 +488,8 @@ final class HomeTab extends Tab {
                         + "reached over Bluetooth, which carries the switches and the status but no internet, files or screen.");
                 bannerMain.setText("Switch Wi-Fi on");
                 bannerMain.setOnClickListener(v -> switchWifiOn());
-                bannerMain.setEnabled(!wifiBusy);
+                bannerWifi = true; // greyed and freed by paintSwitches, together with the other switches
+                bannerMain.setEnabled(!busy && !wifiBusy);
                 bannerOther.setVisibility(View.GONE);
             } else if (hs != null && hs) {
                 // On a Wi-Fi network (very likely the hotspot itself) it is only this question that did not get through there:
@@ -633,6 +641,9 @@ final class HomeTab extends Tab {
         if (bannerSends) {
             bannerMain.setEnabled(can);
         }
+        if (bannerWifi) {
+            bannerMain.setEnabled(!busy && !wifiBusy);
+        }
         bHotspot.setEnabled(can);
         bHotspotOff.setEnabled(can);
         bScreen.setEnabled(can);
@@ -669,7 +680,8 @@ final class HomeTab extends Tab {
         Call.run(act, "POST", "/act?name=" + action, readMs, (ok, text, json) -> {
             // "later": the phone answered BEFORE acting, because the action takes away the link it was asked over. That answer
             // only means "sent"; what became of the switch is read from the status.
-            FollowUp f = ok && json != null && json.optBoolean("later", false) ? FollowUp.of(action) : null;
+            boolean sentOnly = ok && json != null && json.optBoolean("later", false);
+            FollowUp f = sentOnly ? FollowUp.of(action) : null;
             Handler h = bg;
             if (f != null && polling && h != null) {
                 follow = f;
@@ -688,7 +700,9 @@ final class HomeTab extends Tab {
             // look again now and a little later: a hotspot takes a few seconds to come up or go down
             askNow();
             act.ui.postDelayed(this::askNow, 4000);
-            settleWifi(ok, text); // the answer is final: ok means the phone did it (over Bluetooth it answers after acting)
+            // a "Sent" is not a result (the screen may have been left before it could be followed): only a final answer that was
+            // ok says the phone did it (over Bluetooth the phone answers after acting)
+            settleWifi(ok && !sentOnly, text);
         });
     }
 
@@ -736,8 +750,8 @@ final class HomeTab extends Tab {
 
     /** The card's "Switch Wi-Fi on": the same switch as after "Hotspot on", for a hotspot that is on while the tablet's Wi-Fi is off. */
     private void switchWifiOn() {
-        if (wifiBusy) {
-            return;
+        if (busy || wifiBusy) {
+            return; // a switch of the phone is on its way (Android's Wi-Fi switch would pause the app and end that call), or this one is
         }
         touched();
         wifiBusy = true;
@@ -745,6 +759,7 @@ final class HomeTab extends Tab {
         setAction("Switching the tablet's Wi-Fi on…", true);
         TabletWifi.set(act, true, act::inFront, way -> {
             wifiBusy = false;
+            paintSwitches();
             setAction(TabletWifiRules.words(TabletWifiRules.Verdict.SWITCH_ON, way), TabletWifiRules.good(true, way));
             askNow();
             act.ui.postDelayed(this::askNow, 10000); // the tablet needs a few seconds to find the hotspot and join it
