@@ -115,6 +115,55 @@ final class TextsViews {
         android.widget.Toast.makeText(c, "Code copied", android.widget.Toast.LENGTH_SHORT).show();
     }
 
+    interface PickText {
+        void picked(String text);
+    }
+
+    /**
+     * The menu of a message: a row of emoji for a quick reply (when {@code emojis} is not null), then the actions as lines. One tap on
+     * an emoji or a line closes the menu and does it.
+     */
+    static void messageMenu(final Context c, String[] emojis, final PickText onEmoji, String[] labels, final Runnable[] actions) {
+        final AlertDialog[] box = new AlertDialog[1];
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(Ui.dp(c, 8), Ui.dp(c, 12), Ui.dp(c, 8), Ui.dp(c, 6));
+        if (emojis != null && emojis.length > 0) {
+            LinearLayout row = new LinearLayout(c);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER);
+            row.setBackground(shape(Ui.CARD_HI, Ui.dp(c, 30)));
+            row.setPadding(Ui.dp(c, 6), Ui.dp(c, 4), Ui.dp(c, 6), Ui.dp(c, 4));
+            for (final String e : emojis) {
+                TextView t = Ui.text(c, e, 28, Ui.FG, false);
+                t.setGravity(Gravity.CENTER);
+                t.setContentDescription("Reply " + e);
+                t.setOnClickListener(v -> {
+                    box[0].dismiss();
+                    onEmoji.picked(e);
+                });
+                row.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(c, 52), 1f));
+            }
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rp.bottomMargin = Ui.dp(c, 6);
+            col.addView(row, rp);
+        }
+        for (int i = 0; i < labels.length; i++) {
+            final Runnable a = i < actions.length ? actions[i] : null;
+            TextView t = Ui.text(c, labels[i], 16, Ui.FG, false);
+            t.setPadding(Ui.dp(c, 14), Ui.dp(c, 14), Ui.dp(c, 14), Ui.dp(c, 14));
+            t.setOnClickListener(v -> {
+                box[0].dismiss();
+                if (a != null) {
+                    a.run();
+                }
+            });
+            col.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        box[0] = new AlertDialog.Builder(c).setView(Ui.scroll(c, col)).create();
+        show(box[0]);
+    }
+
     /** A list of choices in a dialog; each label runs the action at the same place. */
     static void menu(Context c, String title, final String[] labels, final Runnable[] actions) {
         AlertDialog.Builder b = new AlertDialog.Builder(c);
@@ -129,35 +178,40 @@ final class TextsViews {
         show(b);
     }
 
-    private static final java.util.List<java.lang.ref.WeakReference<AlertDialog>> OPEN = new java.util.ArrayList<>();
+    private static final java.util.List<java.lang.ref.WeakReference<android.app.Dialog>> OPEN = new java.util.ArrayList<>();
 
     /**
-     * Every question and menu of the Texts screens is shown through here, so that all of them can be closed at once when the Texts
-     * lock engages (a question left open while the app was away must not stay on top of the lock screen).
+     * Every question, menu and preview of the Texts screens is shown through here, so that all of them can be closed at once when the
+     * Texts lock engages (a question left open while the app was away must not stay on top of the lock screen).
      */
     static AlertDialog show(AlertDialog.Builder b) {
-        AlertDialog d = b.show();
+        return show(b.create());
+    }
+
+    /** The same for a dialog that was made by hand. */
+    static <D extends android.app.Dialog> D show(D d) {
+        d.show();
         synchronized (OPEN) {
-            for (java.util.Iterator<java.lang.ref.WeakReference<AlertDialog>> it = OPEN.iterator(); it.hasNext(); ) {
-                AlertDialog o = it.next().get();
+            for (java.util.Iterator<java.lang.ref.WeakReference<android.app.Dialog>> it = OPEN.iterator(); it.hasNext(); ) {
+                android.app.Dialog o = it.next().get();
                 if (o == null || !o.isShowing()) {
                     it.remove();
                 }
             }
-            OPEN.add(new java.lang.ref.WeakReference<>(d));
+            OPEN.add(new java.lang.ref.WeakReference<android.app.Dialog>(d));
         }
         return d;
     }
 
-    /** Closes every question and menu that {@link #show} put up. */
+    /** Closes every dialog that {@link #show} put up. */
     static void closeAll() {
-        java.util.List<java.lang.ref.WeakReference<AlertDialog>> all;
+        java.util.List<java.lang.ref.WeakReference<android.app.Dialog>> all;
         synchronized (OPEN) {
             all = new java.util.ArrayList<>(OPEN);
             OPEN.clear();
         }
-        for (java.lang.ref.WeakReference<AlertDialog> r : all) {
-            AlertDialog d = r.get();
+        for (java.lang.ref.WeakReference<android.app.Dialog> r : all) {
+            android.app.Dialog d = r.get();
             if (d != null && d.isShowing()) {
                 d.dismiss();
             }

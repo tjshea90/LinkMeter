@@ -334,6 +334,11 @@ public class MainActivity extends Activity {
     }
 
     /** The title of the tab on show, or "". */
+    /** The tab that is in front. For the pictures made by tools/uipreview. */
+    Tab currentTab() {
+        return cur;
+    }
+
     String shownTitle() {
         return cur == null ? "" : cur.title();
     }

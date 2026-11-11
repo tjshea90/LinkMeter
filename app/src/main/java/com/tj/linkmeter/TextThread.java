@@ -697,30 +697,73 @@ final class TextThread {
     // ------------------------------------------------------------ writing
 
     private void attach() {
-        AttachDialog.choose(act, items -> {
-            pending.addAll(items);
-            showChips();
-            updateSend();
-        });
+        AttachDialog.choose(act, this::addAttachments);
     }
+
+    /** These files are what the message will carry (shown as large cards above the box, each of which opens full screen). */
+    void addAttachments(List<Attach.Item> items) {
+        pending.addAll(items);
+        showChips();
+        updateSend();
+    }
+
+    /** The size of a card in the strip above the box: large, so that the right photo can be told at a glance. */
+    private static final int CARD_DP = 150;
 
     private void showChips() {
         chipBox.removeAllViews();
         for (final Attach.Item it : pending) {
-            TextView chip = Ui.text(act, it.name + "  ×", 13, Ui.FG, false);
-            chip.setBackground(TextsViews.shape(Ui.CARD_HI, Ui.dp(act, 14)));
-            chip.setPadding(Ui.dp(act, 12), Ui.dp(act, 6), Ui.dp(act, 12), Ui.dp(act, 6));
-            chip.setSingleLine(true);
-            chip.setEllipsize(TextUtils.TruncateAt.MIDDLE);
-            chip.setMaxWidth(Ui.dp(act, 220));
-            chip.setOnClickListener(v -> {
+            final FileKind kind = FileKind.of(it.name, false);
+            FrameLayout card = new FrameLayout(act);
+            card.setBackground(TextsViews.shape(Ui.CARD_HI, Ui.dp(act, 14)));
+            card.setClipToOutline(true);
+            card.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, android.graphics.Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), Ui.dp(act, 14));
+                }
+            });
+            android.widget.ImageView pic = new android.widget.ImageView(act);
+            pic.setScaleType(kind.hasThumbnail() ? android.widget.ImageView.ScaleType.CENTER_CROP : android.widget.ImageView.ScaleType.CENTER_INSIDE);
+            pic.setImageDrawable(new FileIcon(kind, it.name));
+            pic.setPadding(kind.hasThumbnail() ? 0 : Ui.dp(act, 28), kind.hasThumbnail() ? 0 : Ui.dp(act, 20), kind.hasThumbnail() ? 0 : Ui.dp(act, 28),
+                    kind.hasThumbnail() ? 0 : Ui.dp(act, 40));
+            card.addView(pic, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            if (kind.hasThumbnail()) {
+                Thumbs.get(act).load(pic, AttachPreview.key(it) + "|" + CARD_DP, "", kind, Ui.dp(act, CARD_DP) * 2, AttachPreview.loader(act, it));
+            }
+            // the name and size along the bottom edge
+            TextView cap = Ui.text(act, it.name + (it.size >= 0 ? "\n" + FsFormat.size(it.size) : ""), 11, Color.WHITE, false);
+            cap.setSingleLine(false);
+            cap.setMaxLines(2);
+            cap.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+            cap.setBackgroundColor(0xB3000000);
+            cap.setPadding(Ui.dp(act, 8), Ui.dp(act, 4), Ui.dp(act, 8), Ui.dp(act, 4));
+            card.addView(cap, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+            // the round remove button, top right
+            TextView x = Ui.text(act, "×", 20, Color.WHITE, true);
+            x.setGravity(Gravity.CENTER);
+            x.setBackground(TextsViews.shape(0xCC000000, Ui.dp(act, 16)));
+            x.setContentDescription("Remove " + it.name);
+            x.setOnClickListener(v -> {
                 pending.remove(it);
                 showChips();
                 updateSend();
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.rightMargin = Ui.dp(act, 6);
-            chipBox.addView(chip, lp);
+            FrameLayout.LayoutParams xp = new FrameLayout.LayoutParams(Ui.dp(act, 32), Ui.dp(act, 32), Gravity.TOP | Gravity.END);
+            xp.topMargin = Ui.dp(act, 6);
+            xp.rightMargin = Ui.dp(act, 6);
+            card.addView(x, xp);
+            card.setContentDescription("Preview " + it.name);
+            card.setOnClickListener(v -> AttachPreview.show(act, it, () -> {
+                pending.remove(it);
+                showChips();
+                updateSend();
+            }));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(act, CARD_DP), Ui.dp(act, CARD_DP));
+            lp.rightMargin = Ui.dp(act, 8);
+            lp.bottomMargin = Ui.dp(act, 8);
+            chipBox.addView(card, lp);
         }
         chipScroll.setVisibility(pending.isEmpty() ? View.GONE : View.VISIBLE);
     }
@@ -763,6 +806,14 @@ final class TextThread {
             return;
         }
         final List<Attach.Item> items = new ArrayList<>(pending);
+        input.setText("");
+        pending.clear();
+        showChips();
+        sendMessage(text, items);
+    }
+
+    /** Puts a message in the conversation at once, as "Sending...", and sends it to the phone in the background. */
+    private void sendMessage(final String text, final List<Attach.Item> items) {
         sending = true;
         // the message is in the conversation at once, as "Sending..."
         final Sms.Msg temp = new Sms.Msg();
@@ -780,9 +831,6 @@ final class TextThread {
             temp.parts.add(p);
         }
         temps.add(temp);
-        input.setText("");
-        pending.clear();
-        showChips();
         updateSend();
         scrollNext = true;
         render(true);
@@ -948,8 +996,18 @@ final class TextThread {
         acts.add(() -> deleteMessages(java.util.Collections.singletonList(m)));
         labels.add("Details");
         acts.add(() -> showDetails(m));
-        TextsViews.menu(act, null, labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
+        // a message that was sent to me can be answered with one tap on an emoji
+        TextsViews.messageMenu(act, m.mine ? null : EmojiText.QUICK, this::quickReply, labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
         return true;
+    }
+
+    /** Sends one emoji as a text of its own (the box and what is attached stay as they are). */
+    private void quickReply(String emoji) {
+        if (sending) {
+            Toast.makeText(act, "Wait a moment: a message is still being sent.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        sendMessage(emoji, new ArrayList<Attach.Item>());
     }
 
     private final class RowAdapter extends BaseAdapter {
@@ -1099,7 +1157,9 @@ final class TextThread {
             final boolean isSel = selected.contains(m.id);
             GradientDrawable g = new GradientDrawable();
             g.setCornerRadii(radii(m.mine, r.groupStart, r.groupEnd));
-            g.setColor(m.mine ? (m.state == Sms.STATE_FAILED ? BUBBLE_FAILED : BUBBLE_ME) : Ui.CARD_HI);
+            // a text of only emoji is drawn big, without the bubble (a failed one keeps its colour: it needs to be seen)
+            final boolean big = EmojiText.only(m.body, 3) && m.parts.isEmpty() && !(m.mine && m.state == Sms.STATE_FAILED);
+            g.setColor(big && !isSel ? Color.TRANSPARENT : m.mine ? (m.state == Sms.STATE_FAILED ? BUBBLE_FAILED : BUBBLE_ME) : Ui.CARD_HI);
             if (isSel) {
                 g.setStroke(Ui.dp(act, 2), Ui.FG);
             }
@@ -1143,6 +1203,7 @@ final class TextThread {
             partsBox.setVisibility(m.parts.isEmpty() ? View.GONE : View.VISIBLE);
 
             body.setText(m.body);
+            body.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, big ? 40f : 15.5f);
             body.setTextColor(ink);
             body.setMaxWidth(maxText);
             body.setVisibility(m.body.isEmpty() ? View.GONE : View.VISIBLE);

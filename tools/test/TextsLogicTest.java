@@ -1111,7 +1111,34 @@ public final class TextsLogicTest {
         }
     }
 
+    static void emoji() {
+        eq(1, EmojiText.count("👍"), "one thumbs up");
+        eq(1, EmojiText.count("👍🏽"), "a thumbs up with a skin tone is one");
+        eq(1, EmojiText.count("❤️"), "a heart with its variation mark is one");
+        eq(1, EmojiText.count("❤"), "a bare heart is one");
+        eq(2, EmojiText.count("😂😂"), "two faces");
+        eq(3, EmojiText.count("😂 😂 😂"), "three faces with spaces");
+        eq(1, EmojiText.count("👨‍👩‍👧"), "a family joined with joiners is one picture");
+        eq(1, EmojiText.count("🇺🇸".substring(0, 2)) , "a flag half is still an emoji mark");
+        eq(0, EmojiText.count("ok 👍"), "a word and an emoji is not only emoji");
+        eq(0, EmojiText.count("👍!"), "a mark and an emoji is not only emoji");
+        eq(0, EmojiText.count("1"), "a digit is not an emoji");
+        eq(0, EmojiText.count("haha"), "a word is not");
+        eq(0, EmojiText.count(""), "nothing is nothing");
+        eq(0, EmojiText.count("   "), "spaces are nothing");
+        eq(0, EmojiText.count(null), "null is nothing");
+        eq(0, EmojiText.count("\uFE0F"), "a lone variation mark is not an emoji");
+        yes(EmojiText.only("😂", 3) && EmojiText.only("😂😂😂", 3), "up to three are big");
+        yes(!EmojiText.only("😂😂😂😂", 3), "four are small again");
+        yes(!EmojiText.only("hi", 3), "words are not");
+        eq(6, EmojiText.QUICK.length, "six quick replies");
+        for (String q : EmojiText.QUICK) {
+            eq(1, EmojiText.count(q), "each quick reply is exactly one emoji: " + q);
+        }
+    }
+
     public static void main(String[] args) throws Exception {
+        emoji();
         contactBook();
         linkLog();
         codes();

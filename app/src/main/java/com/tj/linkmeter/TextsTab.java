@@ -198,6 +198,11 @@ final class TextsTab extends Tab {
         return prefs;
     }
 
+    /** The conversation that is open (null when none is). For the pictures made by tools/uipreview. */
+    TextThread current() {
+        return open;
+    }
+
     boolean phoneIsV2() {
         return v2;
     }

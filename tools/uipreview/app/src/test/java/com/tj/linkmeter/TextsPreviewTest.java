@@ -505,4 +505,163 @@ public class TextsPreviewTest {
         TextView row = findText(decor(a), "Your verification code is 482913");
         check(row != null, "the old code text is in the list");
     }
+
+    // ------------------------------------------------------------ a quick emoji reply
+
+    static TextView findTextRaw(View v, String text) {
+        if (v instanceof TextView && String.valueOf(((TextView) v).getText()).contains(text)) {
+            return (TextView) v;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                TextView b = findTextRaw(g.getChildAt(i), text);
+                if (b != null) {
+                    return b;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Test
+    public void quickEmojiReply() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0); // Alex
+        settle();
+        findText(decor(a), "Let me know if 7").performLongClick();
+        settle();
+        AlertDialog menu = ShadowAlertDialog.getLatestAlertDialog();
+        check(menu != null && menu.isShowing(), "the menu of the message is open");
+        TextView laugh = findTextRaw(menu.getWindow().getDecorView(), "😂");
+        check(laugh != null, "a message sent to me offers a laughing face");
+        check(findTextRaw(menu.getWindow().getDecorView(), "👍") != null, "and a thumbs up");
+        check(findTextRaw(menu.getWindow().getDecorView(), "Copy text") != null, "and still the other things");
+        PreviewTest.save(menu.getWindow().getDecorView(), "texts-emoji-menu");
+        laugh.performClick();
+        later(500);
+        check(!menu.isShowing(), "the menu closed with the tap");
+        check(ph.outbox.size() == 1, "the phone has the reply in its record: " + ph.outbox.size());
+        check(findText(decor(a), "😂") != null, "the reply is in the conversation");
+        check(findEdit(decor(a), "Text message").getText().length() == 0, "the box was not touched");
+        shot(a, "texts-emoji-sent");
+        // my own message does not offer the row
+        findText(decor(a), "😂").performLongClick();
+        settle();
+        AlertDialog mine = ShadowAlertDialog.getLatestAlertDialog();
+        check(mine != null && mine.isShowing() && mine != menu, "the menu of my own message is open");
+        check(findTextRaw(mine.getWindow().getDecorView(), "👍") == null, "my own message offers no emoji row");
+        check(findTextRaw(mine.getWindow().getDecorView(), "Details") != null, "but the usual things");
+        mine.dismiss();
+    }
+
+    @Test
+    public void emojiReplyKeepsTheDraftAndTheAttachments() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0);
+        settle();
+        findEdit(decor(a), "Text message").setText("I am typing something long");
+        settle();
+        findText(decor(a), "Let me know if 7").performLongClick();
+        settle();
+        AlertDialog menu = ShadowAlertDialog.getLatestAlertDialog();
+        findTextRaw(menu.getWindow().getDecorView(), "👍").performClick();
+        later(500);
+        check(ph.outbox.size() == 1, "the thumbs up was sent");
+        check("I am typing something long".contentEquals(findEdit(decor(a), "Text message").getText()), "what was being typed is still there");
+    }
+
+    // ------------------------------------------------------------ attachments: large cards and a full screen preview
+
+    static View findByDescription(View v, String text) {
+        if (v.isShown() && text.contentEquals(String.valueOf(v.getContentDescription()))) {
+            return v;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View b = findByDescription(g.getChildAt(i), text);
+                if (b != null) {
+                    return b;
+                }
+            }
+        }
+        return null;
+    }
+
+    static Attach.Item item(String name, byte[] bytes, String suffix) throws Exception {
+        java.io.File f = java.io.File.createTempFile("attach", suffix);
+        f.deleteOnExit();
+        try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) {
+            o.write(bytes);
+        }
+        return new Attach.Item(name, f.length(), f.lastModified(), "", android.net.Uri.fromFile(f));
+    }
+
+    @Test
+    public void attachmentsAreLargeAndCanBeLookedAtBeforeSending() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0);
+        settle();
+        TextThread th = ((TextsTab) a.currentTab()).current();
+        check(th != null, "a conversation is open");
+        Attach.Item photo = item("beach-photo.jpg", PretendSms.gradientJpeg(), ".jpg");
+        Attach.Item notes = item("meeting-notes.txt", "Agenda\n1. Budget for the trip\n2. Who drives\n3. Dinner at 7".getBytes("UTF-8"), ".txt");
+        Attach.Item sheet = new Attach.Item("budget.xlsx", 48_000, 0, "", android.net.Uri.parse("content://nowhere/budget"));
+        th.addAttachments(java.util.Arrays.asList(photo, notes, sheet));
+        later(800);
+        shot(a, "texts-attach-strip");
+        View card = findByDescription(decor(a), "Preview beach-photo.jpg");
+        check(card != null, "the photo has a card");
+        check(card.getWidth() >= Ui.dp(a, 140) && card.getHeight() >= Ui.dp(a, 140),
+                "the card is large: " + card.getWidth() + " x " + card.getHeight());
+        check(findByDescription(decor(a), "Preview meeting-notes.txt") != null && findByDescription(decor(a), "Preview budget.xlsx") != null,
+                "the other two have cards too");
+
+        // the photo, full screen
+        card.performClick();
+        later(1000);
+        android.app.Dialog d = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        check(d != null && d.isShowing(), "the photo opens full screen");
+        PreviewTest.save(d.getWindow().getDecorView(), "texts-attach-preview-photo");
+        check(findTextRaw(d.getWindow().getDecorView(), "beach-photo.jpg") != null, "it says which file it is");
+        d.dismiss();
+        check(findByDescription(decor(a), "Preview beach-photo.jpg") != null, "closing the preview leaves it attached");
+
+        // the text, full screen
+        findByDescription(decor(a), "Preview meeting-notes.txt").performClick();
+        later(800);
+        d = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        check(findTextRaw(d.getWindow().getDecorView(), "Budget for the trip") != null, "the text file shows its start");
+        PreviewTest.save(d.getWindow().getDecorView(), "texts-attach-preview-text");
+        d.dismiss();
+
+        // a file that cannot be shown here: its details and a way to open it elsewhere
+        findByDescription(decor(a), "Preview budget.xlsx").performClick();
+        later(500);
+        d = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        check(findTextRaw(d.getWindow().getDecorView(), "cannot be shown here") != null, "an unknown kind says it cannot be shown");
+        check(findTextRaw(d.getWindow().getDecorView(), "Open in another app") != null, "and offers to open it elsewhere");
+        PreviewTest.save(d.getWindow().getDecorView(), "texts-attach-preview-other");
+        // Remove in the preview takes it off the message
+        TextView remove = findTextRaw(d.getWindow().getDecorView(), "Remove");
+        check(remove != null, "the preview has Remove");
+        remove.performClick();
+        settle();
+        check(findByDescription(decor(a), "Preview budget.xlsx") == null, "removed in the preview: gone from the strip");
+        check(findByDescription(decor(a), "Preview beach-photo.jpg") != null, "the others stay");
+        // the little cross on a card removes it too
+        findByDescription(decor(a), "Remove meeting-notes.txt").performClick();
+        settle();
+        check(findByDescription(decor(a), "Preview meeting-notes.txt") == null, "the cross removes it");
+    }
 }
