@@ -75,7 +75,7 @@ The Texts feature as first built is described in `docs/FILES_AND_TEXTS_PLAN.md` 
   a channel keyed with it protects nothing: anyone who can listen on the phone's hotspot learns the secret and can then open the same
   channel (and on a Wi-Fi network whoever can listen can also connect). It would only be security theatre. A real one needs keys that are
   never sent, for every request: a change of the whole link, not a part of Texts.
-- [ ] docs, HANDOFF, release(s)
+- [x] docs, HANDOFF, release(s): v0.2.162 (P1-P3) and v0.2.164 (P4 security, Copy code)
 - [ ] Field test by the user: speed, new replies appearing by themselves, delete/hide, search, lock
 
 ## Idea for later (NOT built; ask the user first): RCS chats through the phone's notifications

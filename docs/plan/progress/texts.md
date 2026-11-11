@@ -10,8 +10,8 @@ the phone's Backend interface gets only `default` methods (tools/test/SmsProtoco
 
 STATE (2026-11-11, session branch ccr-dbf3eb41-2sjhj8):
  DONE: P1 phone side + protocol v2, P2 tablet logic, P3 GUI (released v0.2.162), P4 security (sealed saved copy with a Keystore key, Texts lock,
- FLAG_SECURE, erase on pairing again) and Copy code for one-time codes: closing save 1719282, run #164, release v0.2.164 (check that it exists:
- https://github.com/tjshea90/LinkMeter/releases). Tests: tools/test.sh exit 0; TextsLogicTest 311,581 checks; the new breakages caught.
+ FLAG_SECURE, erase on pairing again) and Copy code for one-time codes: closing save 1719282, run #164, release v0.2.164 (verified: published, main = 1719282;
+ https://github.com/tjshea90/LinkMeter/releases/tag/v0.2.164). Tests: tools/test.sh exit 0; TextsLogicTest 311,581 checks; the new breakages caught.
  NOT BUILT ON PURPOSE: an encrypted channel for /sms/* (the pairing secret is sent in clear, so it would protect nothing; docs/SAFETY.md section 10).
  NEXT, ONLY WITH THE USER'S YES: (a) RCS chats through notifications (docs/TEXTS_OVERHAUL.md last section); (b) notifications of new texts on the
  tablet (a foreground service: battery cost); (c) LinkMeter-to-LinkMeter encrypted text (needs a second owner). Then fix what the user's devices show.
