@@ -103,6 +103,14 @@ final class Boot {
 
     /** Best guess whether the phone's own Wi-Fi hotspot is on: a hotspot interface with a private address. false if it cannot tell. */
     static boolean hotspotOn(Context c) {
+        return !hotspotAddress(c).isEmpty();
+    }
+
+    /**
+     * The phone's own address on its hotspot (the one a tablet types when it cannot find the phone), or "" when no hotspot interface
+     * with a private address is up, or when this phone does not say. Lists the network interfaces: not for the screen's thread.
+     */
+    static String hotspotAddress(Context c) {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 String n = ni.getName();
@@ -111,7 +119,7 @@ final class Boot {
                 if (hotspotName && ni.isUp()) {
                     for (java.net.InetAddress a : Collections.list(ni.getInetAddresses())) {
                         if (a instanceof Inet4Address && a.isSiteLocalAddress()) {
-                            return true;
+                            return a.getHostAddress();
                         }
                     }
                 }
@@ -119,7 +127,7 @@ final class Boot {
         } catch (Exception | LinkageError ignored) {
             // cannot tell
         }
-        return false;
+        return "";
     }
 
     /** What the tablet is told at GET /boot. */

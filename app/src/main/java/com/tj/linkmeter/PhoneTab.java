@@ -1,31 +1,166 @@
 package com.tj.linkmeter;
 
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.PowerManager;
+import android.os.SystemClock;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.io.IOException;
+import java.text.DateFormat;
+import java.util.Date;
 
-/** The phone's own screen: start or stop, pair a tablet, and the setup checks. */
+/**
+ * The phone's own screen, built from the same pieces as the tablet's tabs ({@link Ui}). It says what the phone is ready for, asks
+ * for the one thing that is missing first, and holds every switch that belongs to the phone: the Bluetooth link, the screen, the
+ * texts, the battery saver and the start after a restart. What each line says is decided by {@link PhoneScreenRules}; this class
+ * only reads the facts, paints them and carries out the buttons.
+ *
+ * Reading never happens on the screen's thread: the facts come from a thread of their own every two seconds while the screen is
+ * shown (the hotspot check lists the network interfaces), and the thread ends when the screen is left. The version line is read
+ * once, when the screen is shown.
+ */
 final class PhoneTab extends Tab {
-    private TextView state;
-    private TextView priv;
-    private TextView files;
-    private TextView seen;
-    private TextView version;
-    private TextView phonePerm;
-    private TextView textsInfo;
-    private Button toggle;
-    private CheckBox ecoBox;
-    private CompoundButton.OnCheckedChangeListener ecoListener;
+    /**
+     * Where the screen gets what it shows. The screen preview puts its own in place (Shizuku, the Bluetooth listener and the hotspot
+     * cannot be faked there).
+     */
+    interface Source {
+        PhoneScreenFacts read(MainActivity a);
+    }
 
-    private final Runnable tick = new Runnable() {
+    static Source source = PhoneTab::readFacts;
+
+    private static final long TICK_MS = 2000;
+
+    private LinearLayout col;
+    private Ui.ResultBar bar;
+    private TextView chip;
+    private TextView summary;
+
+    // the card that asks for attention
+    private LinearLayout attentionCard;
+    private TextView attentionHeading;
+    private TextView attentionText;
+    private Button attentionButton;
+    private PhoneScreenRules.Attention shownAttention = PhoneScreenRules.Attention.NONE;
+
+    // Status
+    private Ui.Fact fRunning;
+    private Ui.Fact fHotspot;
+    private Ui.Fact fBluetooth;
+    private Ui.Fact fShizukuTop;
+    private Ui.Fact fTablet;
+    private TextView tRequests;
+    private Button bStop;
+
+    // Tablet link
+    private Button bForget;
+    private TextView tPairing;
+    private Ui.Toggle tgBluetooth;
+    private TextView tBluetooth;
+    private Button bBluetooth;
+    private PhoneScreenRules.BtButton shownBtButton = PhoneScreenRules.BtButton.NONE;
+    private Ui.Toggle tgScreen;
+
+    // Shizuku and permissions
+    private TextView chipPermissions;
+    private Ui.Fact fShizuku;
+    private Button bShizuku;
+    private final Ui.Fact[] fItem = new Ui.Fact[PhoneScreenRules.Item.values().length];
+    private Button bAllowEverything;
+    private LinearLayout itemButtons;
+    private String shownItemButtons = "";
+
+    // Texts
+    private Ui.Toggle tgTexts;
+    private TextView tTexts;
+    private Button bTexts;
+
+    // Battery
+    private Ui.Toggle tgSaver;
+    private Ui.Fact fSaver;
+    private LinearLayout batteryLimit;
+
+    // After a restart
+    private Ui.Toggle tgAutoStart;
+    private Ui.Toggle tgAssist;
+    private TextView tAssist;
+
+    // App
+    private TextView tVersion;
+    private String versionLine = "";
+
+    /** What was shown last, so a rebuilt screen has something to show before the first reading arrives. */
+    private PhoneScreenFacts facts;
+    /** How many times the screen has been painted (the preview waits for it). */
+    volatile int paints;
+
+    // the last result, which a rebuilt screen shows again
+    private String resultWhat = "";
+    private String resultText = "";
+    private boolean resultOk = true;
+    private boolean resultWorking;
+
+    private volatile boolean shown;
+    private HandlerThread worker;
+    private volatile Handler bg;
+
+    private final CompoundButton.OnCheckedChangeListener bluetoothListener = (v, on) -> {
+        Cfg.setBtLink(act, on);
+        BtServer.recheck(); // never blocks: the listener opens or closes on its own thread
+        refresh();
+    };
+    private final CompoundButton.OnCheckedChangeListener screenListener = (v, on) -> Cfg.setScreenControl(act, on);
+    private final CompoundButton.OnCheckedChangeListener textsListener = (v, on) -> {
+        Cfg.setTextsOn(act, on);
+        if (on && !SmsAccess.missing(act).isEmpty()) {
+            allowTexts();
+        }
+        refresh();
+    };
+    private final CompoundButton.OnCheckedChangeListener saverListener = (v, on) -> setSaver(on);
+    private final CompoundButton.OnCheckedChangeListener autoStartListener = (v, on) -> {
+        Cfg.setAutoStart(act, on);
+        refresh(); // Boot assist depends on it
+    };
+    private final CompoundButton.OnCheckedChangeListener assistListener = (v, on) -> {
+        Boot.setAssist(act, on);
+        refresh();
+    };
+
+    private final Runnable poll = new Runnable() {
         @Override
         public void run() {
-            refresh();
-            act.ui.postDelayed(this, 2000);
+            Handler h = bg;
+            if (h == null) {
+                return;
+            }
+            PhoneScreenFacts f = null;
+            try {
+                f = source.read(act);
+            } catch (RuntimeException ignored) {
+                // a reading that failed must not end the screen's updates: the next one is tried in two seconds
+            }
+            if (f != null) {
+                final PhoneScreenFacts shownFacts = f;
+                act.ui.post(() -> {
+                    if (shown) {
+                        paint(shownFacts);
+                    }
+                });
+            }
+            h.removeCallbacks(this);
+            h.postDelayed(this, TICK_MS);
         }
     };
 
@@ -43,226 +178,648 @@ final class PhoneTab extends Tab {
         return Icons.Kind.PHONE;
     }
 
+    // ---------------------------------------------------------------------------------------------------- building
+
     @Override
     View build() {
-        LinearLayout col = Ui.column(act);
-        col.addView(Ui.text(act, "LinkMeter · phone", 24, Ui.FG, true));
+        bar = new Ui.ResultBar(act);
+        col = Ui.column(act);
 
-        // Works on the phone alone: no tablet and no internet needed.
-        col.addView(Ui.text(act, "If something breaks", 16, Ui.RED, true), Ui.lp(act, 12));
-        col.addView(Ui.button(act, "Restore everything (fix internet)", v -> restore()), Ui.lp(act, 4));
-        col.addView(Ui.button(act, "Restart modem", v -> restartModem()), Ui.lp(act, 4));
-        col.addView(Ui.button(act, "Open mobile network settings", v -> act.openNetworkSettings()),
-                Ui.lp(act, 4));
-        col.addView(Ui.text(act, "Restore puts back the network types, hotspot band, "
-                + "battery saver, airplane mode and mobile data. It also runs from the Restore "
-                + "button on LinkMeter's notification. Without Shizuku, follow these steps:\n"
-                + Actions.MANUAL, 12, Ui.DIM, false), Ui.lp(act, 4));
+        LinearLayout head = new LinearLayout(act);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(Ui.title(act, "LinkMeter"), Ui.weight());
+        chip = Ui.chip(act, "Looking…", Ui.GREY);
+        head.addView(chip);
+        col.addView(head);
+        summary = Ui.text(act, "", 13, Ui.DIM, false);
+        col.addView(summary, Ui.lp(act, 2));
 
-        state = Ui.text(act, "", 16, Ui.FG, false);
-        col.addView(state, Ui.lp(act, 12));
-        toggle = Ui.button(act, "", v -> act.toggleSender());
-        col.addView(toggle, Ui.lp(act, 8));
+        // only while something has to be done first
+        attentionCard = Ui.card(act);
+        attentionHeading = Ui.heading(act, "");
+        attentionCard.addView(attentionHeading);
+        attentionText = Ui.hint(act, "");
+        attentionCard.addView(attentionText, Ui.lp(act, 2));
+        attentionButton = Ui.primary(act, "", v -> attentionPressed());
+        attentionCard.addView(attentionButton, Ui.lp(act, 10));
+        attentionCard.setVisibility(View.GONE);
+        col.addView(attentionCard, Ui.lp(act, 10));
 
-        col.addView(Ui.button(act, "Pair tablet (open for 2 minutes)", v -> act.pairTablet()),
-                Ui.lp(act, 8));
-        col.addView(Ui.text(act, "Pair once. After that the tablet connects by itself, "
-                + "with no numbers to type.", 13, Ui.DIM, false), Ui.lp(act, 4));
-        seen = Ui.text(act, "", 12, Ui.DIM, false);
-        col.addView(seen, Ui.lp(act, 8));
-        col.addView(Ui.button(act, "Forget all tablets", v -> {
-            Cfg.clearTrusted(act);
-            Toast.makeText(act, "All tablets forgotten.", Toast.LENGTH_SHORT).show();
-        }), Ui.lp(act, 8));
+        buildStatus();
+        buildBreaks();
+        buildTabletLink();
+        buildPermissions();
+        buildTexts();
+        buildBattery();
+        buildRestart();
+        buildApp();
 
-        col.addView(Ui.text(act, "Phone permission (for the signal meter)", 16, Ui.FG, true), Ui.lp(act, 20));
-        phonePerm = Ui.text(act, "", 13, Ui.DIM, false);
-        col.addView(phonePerm, Ui.lp(act, 2));
-        col.addView(Ui.button(act, "Allow phone permission", v -> act.requestPhonePermission()), Ui.lp(act, 6));
-
-        col.addView(Ui.text(act, "Phone helper (Shizuku)", 16, Ui.FG, true), Ui.lp(act, 20));
-        priv = Ui.text(act, "", 13, Ui.DIM, false);
-        col.addView(priv, Ui.lp(act, 2));
-        col.addView(Ui.button(act, "Allow LinkMeter in Shizuku", v -> Priv.requestPermission(2)),
-                Ui.lp(act, 6));
-        col.addView(Ui.text(act, "Needed for the controls on the tablet's Phone tab and Home: hotspot, standby, "
-                + "restart, power off, 4G toggle, battery saver. Start Shizuku first (it stops when the "
-                + "phone reboots). The tablet's Prepare phone button then sets up the rest.",
-                12, Ui.DIM, false), Ui.lp(act, 4));
-
-        col.addView(Ui.text(act, "Files", 16, Ui.FG, true), Ui.lp(act, 20));
-        files = Ui.text(act, "", 13, Ui.DIM, false);
-        col.addView(files, Ui.lp(act, 2));
-        col.addView(Ui.button(act, "Allow all files access", v -> act.fixStorageAccess()),
-                Ui.lp(act, 6));
-
-        col.addView(Ui.text(act, "Texts", 16, Ui.FG, true), Ui.lp(act, 20));
-        CheckBox texts = new CheckBox(act);
-        texts.setText("Let the tablet use my texts");
-        texts.setTextColor(Ui.FG);
-        texts.setChecked(Cfg.textsOn(act));
-        texts.setOnCheckedChangeListener((view, checked) -> {
-            Cfg.setTextsOn(act, checked);
-            if (checked && !SmsAccess.note(act).isEmpty()) {
-                allowTexts();
-            }
-            refresh();
-        });
-        col.addView(texts, Ui.lp(act, 4));
-        textsInfo = Ui.text(act, "", 13, Ui.DIM, false);
-        col.addView(textsInfo, Ui.lp(act, 2));
-        col.addView(Ui.button(act, "Allow texts access", v -> allowTexts()), Ui.lp(act, 6));
-        col.addView(Ui.text(act, "Off until you switch it on. When on, only the tablet you paired can read your texts and send texts "
-                + "and pictures through this phone. Chats that use RCS (\"chat features\" in Google Messages) are kept inside that app "
-                + "and cannot be seen here; turn chat features off there to see those conversations as plain texts.", 12, Ui.DIM, false),
-                Ui.lp(act, 4));
-
-        CheckBox boot = new CheckBox(act);
-        boot.setText("Start automatically when the phone boots");
-        boot.setTextColor(Ui.FG);
-        boot.setChecked(Cfg.autoStart(act));
-        boot.setOnCheckedChangeListener((view, checked) -> Cfg.setAutoStart(act, checked));
-        col.addView(boot, Ui.lp(act, 16));
-
-        CheckBox screenCtl = new CheckBox(act);
-        screenCtl.setText("Let the tablet see and control this screen");
-        screenCtl.setTextColor(Ui.FG);
-        screenCtl.setChecked(Cfg.screenControl(act));
-        screenCtl.setOnCheckedChangeListener((view, checked) -> Cfg.setScreenControl(act, checked));
-        col.addView(screenCtl, Ui.lp(act, 4));
-
-        ecoBox = new CheckBox(act);
-        ecoBox.setText("Switch battery saver on by itself when the tablet connects");
-        ecoBox.setTextColor(Ui.FG);
-        ecoBox.setChecked(Cfg.ecoAuto(act));
-        // The same switch the tablet's buttons move (Eco.setAuto): it also puts the phone's settings back when Off is chosen.
-        // The choice is stored at once; the shell work is off the main thread. refresh() repaints the box from the stored value.
-        ecoListener = (view, checked) -> {
-            Cfg.setEcoAuto(act, checked);
-            final android.content.Context app = act.getApplicationContext();
-            new Thread(() -> {
-                String said;
-                try {
-                    said = Eco.setAuto(app, checked);
-                } catch (java.io.IOException e) {
-                    said = String.valueOf(e.getMessage());
-                } catch (RuntimeException e) {
-                    said = "The battery saver could not be changed.";
-                }
-                final String shown = said;
-                act.ui.post(() -> Toast.makeText(act, shown, Toast.LENGTH_LONG).show());
-            }, "linkmeter-eco-switch").start();
-        };
-        ecoBox.setOnCheckedChangeListener(ecoListener);
-        col.addView(ecoBox, Ui.lp(act, 4));
-
-        col.addView(Ui.button(act, "Battery settings for this app", v -> act.openBatterySettings()),
-                Ui.lp(act, 12));
-        col.addView(Ui.text(act, "Tip: set this app to Unrestricted battery use so Android never "
-                + "stops it while the screen is off.", 13, Ui.DIM, false), Ui.lp(act, 4));
-        version = Ui.text(act, "", 12, Ui.DIM, false);
-        col.addView(version, Ui.lp(act, 20));
-        col.addView(Ui.button(act, "Switch role", v -> act.chooseRole("")), Ui.lp(act, 12));
-        return Ui.scroll(act, col);
+        if (resultWorking) {
+            bar.working(resultWhat);
+        } else if (!resultText.isEmpty()) {
+            bar.working(resultWhat);
+            bar.show(resultText, resultOk);
+        }
+        shownItemButtons = "";
+        shownAttention = PhoneScreenRules.Attention.NONE;
+        if (facts != null) {
+            paint(facts);
+        }
+        return Ui.withResultBar(act, col, bar);
     }
+
+    private void buildStatus() {
+        LinearLayout card = Ui.card(act, "Status", null);
+        fRunning = new Ui.Fact(act, "LinkMeter on this phone");
+        fHotspot = new Ui.Fact(act, "Hotspot");
+        fBluetooth = new Ui.Fact(act, "Bluetooth link");
+        fShizukuTop = new Ui.Fact(act, "Shizuku");
+        fTablet = new Ui.Fact(act, "Tablet");
+        card.addView(fRunning.view, Ui.lp(act, 8));
+        card.addView(fHotspot.view, Ui.lp(act, 6));
+        card.addView(fBluetooth.view, Ui.lp(act, 6));
+        card.addView(fShizukuTop.view, Ui.lp(act, 6));
+        card.addView(fTablet.view, Ui.lp(act, 6));
+        tRequests = Ui.hint(act, "");
+        card.addView(tRequests, Ui.lp(act, 8));
+        bStop = Ui.quiet(act, "Stop", v -> ask(PhoneScreenRules.stopQuestion(current()), () -> {
+            act.toggleSender();
+            refresh();
+        }));
+        card.addView(bStop, Ui.lp(act, 8));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildBreaks() {
+        LinearLayout card = Ui.card(act, "If something breaks", PhoneScreenRules.BREAKS_HINT);
+        card.addView(Ui.primary(act, "Restore everything", v -> restore()), Ui.lp(act, 10));
+        card.addView(Ui.row(act, Ui.button(act, "Safety check", v -> safety()),
+                Ui.button(act, "Mobile network settings", v -> act.openNetworkSettings())), Ui.lp(act, 4));
+        card.addView(Ui.quiet(act, "Without Shizuku: what to do", v -> new AlertDialog.Builder(act).setTitle("Without Shizuku")
+                .setMessage(Actions.MANUAL).setPositiveButton("OK", null).show()), Ui.lp(act, 4));
+        card.addView(Ui.hint(act, PhoneScreenRules.RESTORE_HINT), Ui.lp(act, 6));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildTabletLink() {
+        LinearLayout card = Ui.card(act, "Tablet link", PhoneScreenRules.PAIR_HINT);
+        bForget = Ui.danger(act, PhoneScreenRules.FORGET_BUTTON, v -> ask(PhoneScreenRules.forgetQuestion(current()), () -> {
+            Cfg.clearTrusted(act);
+            say("Forgetting all tablets", "All tablets are forgotten. Pair a tablet again to use it.", true);
+            refresh();
+        }));
+        card.addView(Ui.row(act, Ui.button(act, PhoneScreenRules.PAIR_BUTTON, v -> {
+            act.pairTablet();
+            refresh();
+        }), bForget), Ui.lp(act, 10));
+        tPairing = Ui.body(act, "");
+        tPairing.setTextColor(Ui.AMBER);
+        tPairing.setVisibility(View.GONE);
+        card.addView(tPairing, Ui.lp(act, 6));
+        card.addView(Ui.divider(act));
+        tgBluetooth = new Ui.Toggle(act, PhoneScreenRules.BT_SWITCH, PhoneScreenRules.BT_EXPLAIN, Cfg.btLink(act), bluetoothListener);
+        card.addView(tgBluetooth.view, Ui.lp(act, 6));
+        tBluetooth = Ui.body(act, "");
+        card.addView(tBluetooth, Ui.lp(act, 4));
+        bBluetooth = Ui.button(act, "", v -> bluetoothButtonPressed());
+        bBluetooth.setVisibility(View.GONE);
+        card.addView(bBluetooth, Ui.lp(act, 6));
+        card.addView(Ui.divider(act));
+        tgScreen = new Ui.Toggle(act, PhoneScreenRules.SCREEN_SWITCH, PhoneScreenRules.SCREEN_EXPLAIN, Cfg.screenControl(act), screenListener);
+        card.addView(tgScreen.view, Ui.lp(act, 6));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildPermissions() {
+        LinearLayout card = Ui.card(act);
+        LinearLayout head = new LinearLayout(act);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(Ui.heading(act, "Shizuku and permissions"), Ui.weight());
+        chipPermissions = Ui.chip(act, "", Ui.GREY);
+        head.addView(chipPermissions);
+        card.addView(head);
+        fShizuku = new Ui.Fact(act, "Shizuku");
+        card.addView(fShizuku.view, Ui.lp(act, 8));
+        bShizuku = Ui.button(act, "", v -> shizukuPressed());
+        bShizuku.setVisibility(View.GONE);
+        card.addView(bShizuku, Ui.lp(act, 6));
+        for (PhoneScreenRules.Item i : PhoneScreenRules.Item.values()) {
+            fItem[i.ordinal()] = new Ui.Fact(act, PhoneScreenRules.itemName(i));
+            card.addView(fItem[i.ordinal()].view, Ui.lp(act, 6));
+        }
+        bAllowEverything = Ui.primary(act, "Allow everything", v -> allowEverything());
+        bAllowEverything.setVisibility(View.GONE);
+        card.addView(bAllowEverything, Ui.lp(act, 10));
+        itemButtons = new LinearLayout(act);
+        itemButtons.setOrientation(LinearLayout.VERTICAL);
+        card.addView(itemButtons, Ui.lp(act, 2));
+        card.addView(Ui.hint(act, PhoneScreenRules.PERMISSIONS_HINT), Ui.lp(act, 8));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildTexts() {
+        LinearLayout card = Ui.card(act, "Texts", null);
+        tgTexts = new Ui.Toggle(act, PhoneScreenRules.TEXTS_SWITCH, PhoneScreenRules.TEXTS_EXPLAIN, Cfg.textsOn(act), textsListener);
+        card.addView(tgTexts.view, Ui.lp(act, 6));
+        tTexts = Ui.body(act, "");
+        card.addView(tTexts, Ui.lp(act, 4));
+        bTexts = Ui.button(act, PhoneScreenRules.TEXTS_BUTTON, v -> allowTexts());
+        bTexts.setVisibility(View.GONE);
+        card.addView(bTexts, Ui.lp(act, 6));
+        card.addView(Ui.hint(act, PhoneScreenRules.TEXTS_RCS), Ui.lp(act, 6));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildBattery() {
+        LinearLayout card = Ui.card(act, "Battery", null);
+        tgSaver = new Ui.Toggle(act, PhoneScreenRules.SAVER_SWITCH, PhoneScreenRules.SAVER_EXPLAIN, Cfg.ecoAuto(act), saverListener);
+        card.addView(tgSaver.view, Ui.lp(act, 6));
+        fSaver = new Ui.Fact(act, "The saver right now");
+        card.addView(fSaver.view, Ui.lp(act, 6));
+        // only while Android limits LinkMeter in the background
+        batteryLimit = new LinearLayout(act);
+        batteryLimit.setOrientation(LinearLayout.VERTICAL);
+        batteryLimit.addView(Ui.divider(act));
+        TextView tip = Ui.body(act, "Android may stop LinkMeter in the background.");
+        tip.setTextColor(Ui.AMBER);
+        batteryLimit.addView(tip, Ui.lp(act, 6));
+        batteryLimit.addView(Ui.hint(act, PhoneScreenRules.BATTERY_TIP), Ui.lp(act, 2));
+        batteryLimit.addView(Ui.button(act, PhoneScreenRules.itemButtonLabel(PhoneScreenRules.Item.BATTERY),
+                v -> act.openBatterySettings()), Ui.lp(act, 8));
+        batteryLimit.setVisibility(View.GONE);
+        card.addView(batteryLimit, Ui.lp(act, 4));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildRestart() {
+        LinearLayout card = Ui.card(act, "After a restart", null);
+        tgAutoStart = new Ui.Toggle(act, PhoneScreenRules.AUTOSTART_SWITCH, PhoneScreenRules.AUTOSTART_EXPLAIN, Cfg.autoStart(act),
+                autoStartListener);
+        card.addView(tgAutoStart.view, Ui.lp(act, 6));
+        tgAssist = new Ui.Toggle(act, PhoneScreenRules.ASSIST_SWITCH, null, Boot.assist(act), assistListener);
+        card.addView(tgAssist.view, Ui.lp(act, 6));
+        tAssist = Ui.hint(act, "");
+        card.addView(tAssist, Ui.lp(act, 2));
+        card.addView(Ui.hint(act, PhoneScreenRules.RESTART_HINT), Ui.lp(act, 8));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildApp() {
+        LinearLayout card = Ui.card(act, "App", null);
+        tVersion = Ui.hint(act, versionLine);
+        card.addView(tVersion, Ui.lp(act, 6));
+        card.addView(Ui.row(act, Ui.quiet(act, "App info and permissions", v -> act.openAppInfo()),
+                Ui.quiet(act, "Switch role", v -> ask(PhoneScreenRules.roleQuestion(current()), () -> act.chooseRole("")))), Ui.lp(act, 10));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    // ----------------------------------------------------------------------------------------------- showing and hiding
 
     @Override
     void onShow() {
-        act.ui.removeCallbacks(tick);
-        tick.run();
+        shown = true;
+        readVersion(); // once, not at every tick: it reads the update log
+        if (worker == null) {
+            worker = new HandlerThread("linkmeter-phone-screen");
+            worker.start();
+            bg = new Handler(worker.getLooper());
+        }
+        refresh();
     }
 
     @Override
     void onHide() {
-        act.ui.removeCallbacks(tick);
+        shown = false;
+        Handler h = bg;
+        bg = null;
+        if (h != null) {
+            h.removeCallbacksAndMessages(null);
+        }
+        if (worker != null) {
+            worker.quitSafely();
+            worker = null;
+        }
     }
 
-    private void showResult(String title, String text) {
-        new android.app.AlertDialog.Builder(act).setTitle(title).setMessage(text)
-                .setPositiveButton("OK", null).show();
+    /** Reads the facts again soon (on their own thread) and paints them. Called after every button, and by MainActivity. */
+    void refresh() {
+        Handler h = bg;
+        if (h != null) {
+            h.removeCallbacks(poll);
+            h.post(poll);
+        }
+    }
+
+    /** Reads and paints now, on the calling thread (the screen's): for the screen preview. */
+    void refreshNow() {
+        paint(source.read(act));
+    }
+
+    private void readVersion() {
+        String last = Updater.lastResult(act);
+        versionLine = "App version " + Updater.versionName(act) + " (code " + Updater.versionCode(act) + ")"
+                + (last.isEmpty() ? "" : ". Last update from the tablet: " + last);
+        if (tVersion != null) {
+            tVersion.setText(versionLine);
+        }
+    }
+
+    private PhoneScreenFacts current() {
+        return facts != null ? facts : new PhoneScreenFacts();
+    }
+
+    // ------------------------------------------------------------------------------------------------------- painting
+
+    private static int factColor(PhoneScreenRules.Tone t) {
+        return t == PhoneScreenRules.Tone.GOOD ? Ui.GREEN : t == PhoneScreenRules.Tone.WARN ? Ui.AMBER : Ui.DIM;
+    }
+
+    private static int lineColor(PhoneScreenRules.Tone t) {
+        return t == PhoneScreenRules.Tone.GOOD ? Ui.FG : t == PhoneScreenRules.Tone.WARN ? Ui.AMBER : Ui.DIM;
+    }
+
+    private static void fact(Ui.Fact f, PhoneScreenRules.Line l) {
+        f.set(l.text, factColor(l.tone));
+    }
+
+    private static void visible(View v, boolean on) {
+        v.setVisibility(on ? View.VISIBLE : View.GONE);
+    }
+
+    /** A switch is moved only when it is not where the facts say, so a repaint cannot disturb a finger that is on it. */
+    private static void toggle(Ui.Toggle t, boolean on, CompoundButton.OnCheckedChangeListener l) {
+        if (t.sw.isChecked() != on) {
+            t.show(on, l);
+        }
+    }
+
+    private void paint(PhoneScreenFacts f) {
+        if (col == null || chip == null) {
+            return;
+        }
+        facts = f;
+        paints++;
+        PhoneScreenRules.Chip c = PhoneScreenRules.chip(f);
+        Ui.paintChip(chip, PhoneScreenRules.chipText(c), factColor(PhoneScreenRules.chipTone(c)));
+        summary.setText(PhoneScreenRules.summary(f));
+
+        PhoneScreenRules.Attention a = PhoneScreenRules.attention(f);
+        shownAttention = a;
+        visible(attentionCard, a != PhoneScreenRules.Attention.NONE);
+        if (a != PhoneScreenRules.Attention.NONE) {
+            attentionHeading.setText(PhoneScreenRules.attentionHeading(a));
+            attentionText.setText(PhoneScreenRules.attentionText(a));
+            attentionButton.setText(PhoneScreenRules.attentionButton(a));
+        }
+
+        // Status
+        PhoneScreenRules.BtLine bt = PhoneScreenRules.btLine(f);
+        fact(fRunning, PhoneScreenRules.runningFact(f));
+        fact(fHotspot, PhoneScreenRules.hotspotFact(f));
+        fact(fBluetooth, bt.value);
+        fact(fShizukuTop, PhoneScreenRules.shizukuFact(f));
+        fact(fTablet, PhoneScreenRules.tabletFact(f));
+        tRequests.setText(PhoneScreenRules.requestsLine(f));
+        visible(bStop, f.running);
+
+        // Tablet link
+        bForget.setEnabled(f.tablets > 0);
+        String pairing = PhoneScreenRules.pairingLine(f);
+        tPairing.setText(pairing);
+        visible(tPairing, !pairing.isEmpty());
+        toggle(tgBluetooth, f.btSwitch, bluetoothListener);
+        tBluetooth.setText(bt.sentence);
+        tBluetooth.setTextColor(lineColor(bt.value.tone));
+        shownBtButton = bt.button;
+        visible(bBluetooth, bt.button != PhoneScreenRules.BtButton.NONE);
+        bBluetooth.setText(PhoneScreenRules.btButtonLabel(bt.button));
+        toggle(tgScreen, f.screenControl, screenListener);
+
+        // Shizuku and permissions
+        PhoneScreenRules.Line pc = PhoneScreenRules.permissionsChip(f);
+        Ui.paintChip(chipPermissions, pc.text, factColor(pc.tone));
+        fact(fShizuku, PhoneScreenRules.shizukuFact(f));
+        String shizukuButton = PhoneScreenRules.shizukuButton(f);
+        visible(bShizuku, !shizukuButton.isEmpty());
+        bShizuku.setText(shizukuButton);
+        for (PhoneScreenRules.Item i : PhoneScreenRules.Item.values()) {
+            fact(fItem[i.ordinal()], PhoneScreenRules.itemValue(f, i));
+        }
+        visible(bAllowEverything, PhoneScreenRules.allowEverything(f));
+        paintItemButtons(f);
+
+        // Texts
+        toggle(tgTexts, f.textsOn, textsListener);
+        PhoneScreenRules.Line tl = PhoneScreenRules.textsLine(f);
+        tTexts.setText(tl.text);
+        tTexts.setTextColor(lineColor(tl.tone));
+        visible(bTexts, PhoneScreenRules.textsButton(f));
+
+        // Battery
+        toggle(tgSaver, f.saverAuto, saverListener);
+        fact(fSaver, PhoneScreenRules.saverFact(f));
+        visible(batteryLimit, PhoneScreenRules.batteryButton(f));
+
+        // After a restart
+        toggle(tgAutoStart, f.autoStart, autoStartListener);
+        PhoneScreenRules.Assist as = PhoneScreenRules.assist(f);
+        toggle(tgAssist, f.bootAssist, assistListener);
+        tgAssist.sw.setEnabled(as.enabled);
+        tgAssist.view.setEnabled(as.enabled);
+        tgAssist.view.setAlpha(as.enabled ? 1f : 0.5f);
+        tAssist.setText(as.hint);
+        tAssist.setTextColor(!as.enabled && f.bootAssist ? Ui.AMBER : Ui.DIM);
+    }
+
+    /** The buttons for single permissions are rebuilt only when the list changes, not at every tick. */
+    private void paintItemButtons(PhoneScreenFacts f) {
+        final java.util.List<PhoneScreenRules.Item> items = PhoneScreenRules.itemButtons(f);
+        String key = items.toString();
+        if (key.equals(shownItemButtons)) {
+            return;
+        }
+        shownItemButtons = key;
+        itemButtons.removeAllViews();
+        for (final PhoneScreenRules.Item i : items) {
+            itemButtons.addView(Ui.button(act, PhoneScreenRules.itemButtonLabel(i), v -> askItem(i)), Ui.lp(act, 6));
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------------ the buttons
+
+    /** A question before something that cuts the tablet off or cannot be undone: a stray tap, also one from the tablet's Screen tab, must not do it. */
+    private void ask(PhoneScreenRules.Question q, final Runnable yes) {
+        new AlertDialog.Builder(act).setTitle(q.title).setMessage(q.message)
+                .setPositiveButton(q.yes, (d, w) -> yes.run()).setNegativeButton(q.no, null).show();
+    }
+
+    private void attentionPressed() {
+        switch (shownAttention) {
+            case STOPPED:
+                act.toggleSender();
+                break;
+            case NO_TABLET:
+                act.pairTablet();
+                break;
+            case SHIZUKU_OFF:
+                act.openShizuku();
+                break;
+            case SHIZUKU_NOT_ALLOWED:
+                Priv.requestPermission(2);
+                break;
+            case BLUETOOTH_NOT_ALLOWED:
+                allowBluetooth();
+                break;
+            case BLUETOOTH_OFF:
+                switchBluetoothOn();
+                break;
+            default:
+                break;
+        }
+        refresh();
+    }
+
+    private void shizukuPressed() {
+        if (PhoneScreenFacts.Shizuku.OFF == current().shizuku) {
+            act.openShizuku();
+        } else {
+            Priv.requestPermission(2);
+        }
+    }
+
+    private void bluetoothButtonPressed() {
+        switch (shownBtButton) {
+            case ALLOW:
+                allowBluetooth();
+                break;
+            case SWITCH_ON:
+                switchBluetoothOn();
+                break;
+            case TRY_AGAIN:
+                say("Bluetooth link", "Trying again…", true);
+                BtServer.recheck();
+                break;
+            default:
+                break;
+        }
+        refresh();
+    }
+
+    private void askItem(PhoneScreenRules.Item i) {
+        switch (i) {
+            case PHONE_STATE:
+                act.requestPhonePermission();
+                break;
+            case NOTIFICATIONS:
+                act.requestNotificationPermission();
+                break;
+            case FILES:
+                act.fixStorageAccess();
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Shows what a button did, at the bottom of the screen. */
+    private void say(String what, String text, boolean ok) {
+        resultWhat = what;
+        resultText = text;
+        resultOk = ok;
+        resultWorking = false;
+        bar.working(what);
+        bar.show(text, ok);
+    }
+
+    private void working(String what) {
+        resultWhat = what;
+        resultText = "";
+        resultWorking = true;
+        bar.working(what);
+    }
+
+    /** The answer of a button that ran on its own thread. */
+    private void result(final String text, final boolean ok) {
+        act.ui.post(() -> {
+            resultText = text;
+            resultOk = ok;
+            resultWorking = false;
+            bar.show(text, ok);
+            refresh();
+        });
     }
 
     private void restore() {
-        Toast.makeText(act, "Restoring…", Toast.LENGTH_SHORT).show();
-        final android.content.Context app = act.getApplicationContext();
-        new Thread(() -> {
-            final String r = Actions.restoreAll(app);
-            act.ui.post(() -> showResult("Restore everything", r));
-        }, "linkmeter-restore").start();
+        final Context app = act.getApplicationContext();
+        final boolean ready = Priv.ready(); // without Shizuku the phone can only say what to do by hand
+        working("Restoring everything");
+        new Thread(() -> result(Actions.restoreAll(app), ready), "linkmeter-restore").start();
     }
 
-    /** Gets the texts permissions: through Shizuku if it is ready, otherwise through Android's own permission prompt. */
+    private void safety() {
+        final Context app = act.getApplicationContext();
+        working("Checking the phone");
+        new Thread(() -> {
+            try {
+                result(Actions.run(app, "safety"), true);
+            } catch (IOException e) {
+                result("Couldn't check the phone: " + e.getMessage(), false);
+            }
+        }, "linkmeter-safety").start();
+    }
+
+    /** Gets the texts permissions: through Shizuku if it is ready, otherwise through Android's own permission question. */
     private void allowTexts() {
         if (Priv.ready()) {
-            final android.content.Context app = act.getApplicationContext();
-            Toast.makeText(act, "Allowing texts access…", Toast.LENGTH_SHORT).show();
+            final Context app = act.getApplicationContext();
+            working("Allowing texts access");
             new Thread(() -> {
-                String r;
                 try {
-                    r = SmsAccess.grant(app);
-                } catch (java.io.IOException e) {
-                    r = "Couldn't allow texts access: " + e.getMessage();
+                    String r = SmsAccess.grant(app);
+                    result(r, SmsAccess.missing(app).isEmpty());
+                } catch (IOException e) {
+                    result("Couldn't allow texts access: " + e.getMessage(), false);
                 }
-                final String fr = r;
-                act.ui.post(() -> {
-                    showResult("Texts access", fr);
-                    refresh();
-                });
             }, "linkmeter-sms-grant").start();
         } else {
-            act.requestPermissions(SmsAccess.PERMS, 7);
+            act.requestTextsPermissions();
             Toast.makeText(act, "If Android says the setting is restricted, start Shizuku and tap this again, or allow restricted "
                     + "settings in this app's info page.", Toast.LENGTH_LONG).show();
         }
     }
 
-    private void restartModem() {
-        final android.content.Context app = act.getApplicationContext();
-        Toast.makeText(act, "Restarting the modem…", Toast.LENGTH_SHORT).show();
+    /** Through Shizuku when it is ready (it can give every permission at once), else one by one through Android's own questions. */
+    private void allowEverything() {
+        final Context app = act.getApplicationContext();
+        working("Allowing everything");
         new Thread(() -> {
-            String r;
+            StringBuilder sb = new StringBuilder();
+            boolean ok = true;
             try {
-                r = Actions.run(app, "restart_modem");
-            } catch (java.io.IOException e) {
-                r = "Couldn't restart the modem: " + e.getMessage();
+                sb.append(Actions.run(app, "setup"));
+            } catch (IOException e) {
+                sb.append(e.getMessage());
+                ok = false;
             }
-            final String fr = r;
-            act.ui.post(() -> showResult("Restart modem", fr));
-        }, "linkmeter-modem").start();
+            if (Cfg.btLink(app) && !BtServer.hasPermission(app)) {
+                try {
+                    sb.append('\n').append(BtServer.grantPermission(app) ? "LinkMeter may now use Bluetooth."
+                            : "The phone did not give the Bluetooth permission.");
+                    BtServer.recheck();
+                } catch (IOException e) {
+                    sb.append("\nBluetooth: ").append(e.getMessage());
+                    ok = false;
+                }
+            }
+            if (Cfg.textsOn(app) && !SmsAccess.missing(app).isEmpty()) {
+                try {
+                    sb.append('\n').append(SmsAccess.grant(app));
+                } catch (IOException e) {
+                    sb.append("\nTexts: ").append(e.getMessage());
+                    ok = false;
+                }
+            }
+            result(sb.toString(), ok);
+        }, "linkmeter-allow-everything").start();
     }
 
-    void refresh() {
-        if (state == null) {
+    private void allowBluetooth() {
+        if (!Priv.ready()) {
+            act.requestBluetoothPermission(); // Android's own question; the answer makes the listener look again
             return;
         }
-        boolean on = SenderService.active;
-        state.setText(on ? "Ready. The tablet can connect." : "Stopped.");
-        toggle.setText(on ? "Stop" : "Start");
-        priv.setText(Priv.stateText(Priv.state()));
-        if (Api.hits == 0) {
-            seen.setText("Nothing has reached the phone yet from the tablet.");
-        } else {
-            seen.setText("Requests received: " + Api.hits + ". Last: " + Api.lastNote + " at "
-                    + java.text.DateFormat.getTimeInstance().format(new java.util.Date(Api.lastAt)));
+        final Context app = act.getApplicationContext();
+        working("Allowing Bluetooth");
+        new Thread(() -> {
+            try {
+                boolean ok = BtServer.grantPermission(app);
+                BtServer.recheck();
+                result(ok ? "LinkMeter may now use Bluetooth. The link starts listening."
+                        : "The phone did not give the Bluetooth permission. Open the app's info page and allow Nearby devices.", ok);
+            } catch (IOException e) {
+                result("Couldn't allow Bluetooth: " + e.getMessage(), false);
+            }
+        }, "linkmeter-bt-allow").start();
+    }
+
+    private void switchBluetoothOn() {
+        if (!Priv.ready()) {
+            act.askBluetoothOn(); // Android's own question
+            return;
         }
-        phonePerm.setText(act.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
-                == android.content.pm.PackageManager.PERMISSION_GRANTED
-                ? "Allowed. The tablet can read the phone's signal."
-                : "Not allowed. The signal is read through Shizuku instead; allow it here for the "
-                        + "most reliable reading.");
-        String last = Updater.lastResult(act);
-        version.setText("App version " + Updater.versionName(act) + " (code " + Updater.versionCode(act)
-                + ")" + (last.isEmpty() ? "" : ". Last update from the tablet: " + last));
-        String missing = SmsAccess.note(act);
-        textsInfo.setText(!Cfg.textsOn(act) ? "Off. The tablet cannot see your texts."
-                : missing.isEmpty() ? "On. The paired tablet can read your texts and send texts and pictures through this phone."
-                : "On, but not ready. " + missing);
-        files.setText(Files.hasAccess(act) ? "All files access is allowed."
-                : "All files access is not allowed yet (needed for the Files tab).");
-        if (ecoBox != null && ecoBox.isChecked() != Cfg.ecoAuto(act)) {
-            ecoBox.setOnCheckedChangeListener(null); // painting from the stored choice must not store it again
-            ecoBox.setChecked(Cfg.ecoAuto(act));
-            ecoBox.setOnCheckedChangeListener(ecoListener);
+        final Context app = act.getApplicationContext();
+        working("Switching Bluetooth on");
+        new Thread(() -> {
+            try {
+                boolean ok = BtServer.switchOn(app);
+                BtServer.recheck();
+                result(ok ? "Bluetooth is on." : "Bluetooth could not be switched on. Switch it on in the quick settings.", ok);
+            } catch (IOException e) {
+                result("Couldn't switch Bluetooth on: " + e.getMessage(), false);
+            }
+        }, "linkmeter-bt-on").start();
+    }
+
+    /** The same switch the tablet's buttons move ({@link Eco#setAuto}): the choice is stored at once, the shell work is off the screen's thread. */
+    private void setSaver(final boolean on) {
+        Cfg.setEcoAuto(act, on);
+        final Context app = act.getApplicationContext();
+        working(on ? "Switching the battery saver to Automatic" : "Switching the battery saver off");
+        new Thread(() -> {
+            try {
+                result(Eco.setAuto(app, on), true);
+            } catch (IOException e) {
+                result(String.valueOf(e.getMessage()), false);
+            } catch (RuntimeException e) {
+                result("The battery saver could not be changed.", false);
+            }
+        }, "linkmeter-eco-switch").start();
+    }
+
+    // ------------------------------------------------------------------------------------------------------ the facts
+
+    /** Reads what the screen shows from the phone. Not for the screen's thread (the hotspot check lists the network interfaces). */
+    static PhoneScreenFacts readFacts(MainActivity a) {
+        PhoneScreenFacts f = new PhoneScreenFacts();
+        f.running = SenderService.active;
+        f.tablets = Cfg.trusted(a).size();
+        long left = SenderService.pairUntil - SystemClock.elapsedRealtime();
+        f.pairingLeftSec = left > 0 ? (int) ((left + 999) / 1000) : 0;
+        f.requests = Api.hits;
+        f.lastNote = Api.lastNote;
+        f.lastAtText = f.requests == 0 ? "" : DateFormat.getTimeInstance().format(new Date(Api.lastAt));
+
+        f.shizuku = PhoneScreenFacts.shizukuFrom(Priv.state());
+        f.phoneStateAllowed = a.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED;
+        f.notificationsAllowed = Build.VERSION.SDK_INT < 33
+                || a.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        f.filesAllowed = Files.hasAccess(a);
+        f.btPermission = BtServer.hasPermission(a);
+        PowerManager pm = (PowerManager) a.getSystemService(Context.POWER_SERVICE);
+        f.batteryUnrestricted = pm != null && pm.isIgnoringBatteryOptimizations(a.getPackageName());
+
+        f.btSwitch = Cfg.btLink(a);
+        f.bt = PhoneScreenFacts.btFrom(BtServer.state());
+        f.btNote = BtServer.note();
+        f.btAsked = BtServer.lastAskedText();
+        f.bluetoothHere = BtServer.adapter(a) != null;
+        if (f.bt == PhoneScreenFacts.Bt.PERM && f.btPermission) {
+            BtServer.recheck(); // the permission was given in Android's own settings: the listener has not noticed yet
         }
+
+        f.hotspot = Radios.hotspot(a);
+        f.hotspotAddress = Boolean.TRUE.equals(f.hotspot) ? Boot.hotspotAddress(a) : "";
+
+        f.textsOn = Cfg.textsOn(a);
+        f.textsMissing = SmsAccess.missing(a);
+        f.saverAuto = Cfg.ecoAuto(a);
+        f.saverOn = Eco.isOn(a);
+        f.screenControl = Cfg.screenControl(a);
+        f.autoStart = Cfg.autoStart(a);
+        f.bootAssist = Boot.assist(a);
+        f.bootPermission = Boot.canWriteSecure(a);
+        return f;
     }
 }

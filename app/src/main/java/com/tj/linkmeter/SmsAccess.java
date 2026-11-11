@@ -30,18 +30,25 @@ final class SmsAccess {
         }
     }
 
-    /** What is not allowed yet, in a sentence for the tablet and the phone's screen; "" when everything is allowed. */
-    static String note(Context c) {
+    /** What LinkMeter may not do yet for lack of a permission ("read texts, send texts"); "" when everything is allowed. */
+    static String missing(Context c) {
         StringBuilder missing = new StringBuilder();
         for (String p : PERMS) {
             if (!has(c, p)) {
                 missing.append(missing.length() > 0 ? ", " : "").append(what(p));
             }
         }
-        if (missing.length() == 0) {
+        return missing.toString();
+    }
+
+    /** What is not allowed yet, in a sentence for the tablet (it says where to fix it); "" when everything is allowed. */
+    static String note(Context c) {
+        String missing = missing(c);
+        if (missing.isEmpty()) {
             return "";
         }
-        return "The phone has not allowed LinkMeter to " + missing + " yet. On the phone, open LinkMeter's Phone tab and tap \"Allow texts access\".";
+        return "The phone has not allowed LinkMeter to " + missing + " yet. On the phone, open LinkMeter's Phone tab and tap \""
+                + PhoneScreenRules.TEXTS_BUTTON + "\".";
     }
 
     private static String firstLine(String s) {

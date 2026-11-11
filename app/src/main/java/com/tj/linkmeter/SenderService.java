@@ -209,6 +209,7 @@ public class SenderService extends Service {
             pool.shutdownNow();
         }
         BtServer.stop();
+        BootAssist.stop(); // it listens for Wi-Fi networks and for Shizuku: not once the service is stopped (the next start brings it back)
         Radios.unwatch(getApplicationContext());
         Eco.onServiceStop(getApplicationContext()); // no alarm and no screen receiver of the battery saver may outlive the service
         super.onDestroy();

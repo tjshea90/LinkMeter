@@ -32,6 +32,15 @@ public class MainActivity extends Activity {
     private static final int REQ_STORAGE = 3;
     private static final int REQ_PICK = 4;
     private static final int REQ_LOC = 5;
+    /*
+     * The phone's own screen asks for these with buttons of its own. None of them starts the service (REQ_PERMS does, as the
+     * answer to Start), and the answer repaints the screen.
+     */
+    private static final int REQ_PHONE = 6;
+    private static final int REQ_TEXTS = 7;
+    private static final int REQ_NOTIFICATIONS = 8;
+    /** Also asked by the tablet's Settings tab. */
+    static final int REQ_BLUETOOTH = 9;
 
     /** Shared with the tabs. */
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -241,20 +250,40 @@ public class MainActivity extends Activity {
         }
     }
 
+    /**
+     * Changes this device's role ("" = ask again). The phone service, with the Bluetooth listener and Boot assist that live in it, belongs
+     * to the phone role: it ends with the role, and only what the new role wants is started again (the tablet's file sharing). The
+     * safety net, {@link Guard}, is left alone on purpose: it watches only while something LinkMeter changed is still in place, and
+     * it ends by itself.
+     */
     void chooseRole(String role) {
+        String before = Cfg.mode(this);
         Cfg.setMode(this, role);
+        if (!before.equals(role)) {
+            if (SenderService.active) {
+                stopService();
+            }
+            if (Cfg.TABLET.equals(role) && Cfg.shareFiles(this)) {
+                startService();
+            }
+        }
         index = 0;
         render();
     }
 
     private View buildChooser() {
         LinearLayout col = Ui.column(this);
-        col.addView(Ui.text(this, "LinkMeter", 28, Ui.FG, true));
-        col.addView(Ui.text(this, "See and control the phone from the tablet while the phone is "
-                + "your hotspot. Install this app on both, then pick this device's role.",
-                15, Ui.DIM, false), Ui.lp(this, 8));
-        col.addView(Ui.button(this, "This is the PHONE", v -> chooseRole(Cfg.PHONE)), Ui.lp(this, 24));
-        col.addView(Ui.button(this, "This is the TABLET", v -> chooseRole(Cfg.TABLET)), Ui.lp(this, 8));
+        col.addView(Ui.title(this, "LinkMeter"));
+        col.addView(Ui.hint(this, "See and control the phone from the tablet while the phone is your hotspot. Install this app on "
+                + "both, then pick this device's role. You can change it later."), Ui.lp(this, 4));
+        LinearLayout phone = Ui.card(this, "The phone", "Shares its hotspot and does what the tablet asks. You pair the tablet with it "
+                + "once.");
+        phone.addView(Ui.primary(this, "This is the phone", v -> chooseRole(Cfg.PHONE)), Ui.lp(this, 10));
+        col.addView(phone, Ui.lp(this, 16));
+        LinearLayout tablet = Ui.card(this, "The tablet", "Shows the phone's signal, speed and screen, and switches the phone's hotspot, "
+                + "Wi-Fi and power from where you sit.");
+        tablet.addView(Ui.button(this, "This is the tablet", v -> chooseRole(Cfg.TABLET)), Ui.lp(this, 10));
+        col.addView(tablet, Ui.lp(this, 10));
         FrameLayout f = new FrameLayout(this);
         f.setBackgroundColor(Ui.BG);
         f.addView(Ui.scroll(this, col), new FrameLayout.LayoutParams(
@@ -389,6 +418,18 @@ public class MainActivity extends Activity {
             ui.postDelayed(this::refreshPhone, 400);
         } else if (req == REQ_STORAGE && tabs != null) {
             showTab(index, true);
+        } else if (req == REQ_PHONE || req == REQ_TEXTS || req == REQ_NOTIFICATIONS || req == REQ_BLUETOOTH) {
+            if (req == REQ_BLUETOOTH) {
+                if (Cfg.PHONE.equals(Cfg.mode(this))) {
+                    BtServer.recheck(); // the listener looks again, now that it may be allowed
+                }
+                sendToAppPage(Manifest.permission.BLUETOOTH_CONNECT, results, "Nearby devices");
+            } else if (req == REQ_PHONE) {
+                sendToAppPage(Manifest.permission.READ_PHONE_STATE, results, "Phone");
+            } else if (req == REQ_NOTIFICATIONS && Build.VERSION.SDK_INT >= 33) {
+                sendToAppPage(Manifest.permission.POST_NOTIFICATIONS, results, "Notifications");
+            }
+            refreshPhone();
         } else if (req == REQ_LOC && locationDone != null) {
             Runnable r = locationDone;
             locationDone = null;
@@ -443,9 +484,63 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Asks for the phone permission that lets the app read the cell signal. */
+    /** Asks for the phone permission that lets the app read the cell signal. Only the screen is repainted afterwards: the service is not started. */
     void requestPhonePermission() {
-        requestPermissions(new String[] {Manifest.permission.READ_PHONE_STATE}, REQ_PERMS);
+        requestPermissions(new String[] {Manifest.permission.READ_PHONE_STATE}, REQ_PHONE);
+    }
+
+    /** Asks for the notification permission (Android 13 and later: LinkMeter's notification is what keeps it running). */
+    void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
+        }
+    }
+
+    /** Asks for the texts permissions through Android's own question. */
+    void requestTextsPermissions() {
+        requestPermissions(SmsAccess.PERMS, REQ_TEXTS);
+    }
+
+    /** Asks for the Bluetooth permission ("Nearby devices", Android 12 and later); the answer makes the phone's listener look again. */
+    void requestBluetoothPermission() {
+        if (Build.VERSION.SDK_INT >= 31) {
+            requestPermissions(new String[] {Manifest.permission.BLUETOOTH_CONNECT}, REQ_BLUETOOTH);
+        }
+    }
+
+    /**
+     * After a refusal Android stops asking, and the button would do nothing. So when a permission was refused and Android will not
+     * ask again, the app's own page opens, with a word on what to allow there.
+     */
+    private void sendToAppPage(String permission, int[] results, String name) {
+        boolean answered = results.length > 0;
+        boolean granted = answered && results[0] == PackageManager.PERMISSION_GRANTED;
+        if (answered && !granted && !shouldShowRequestPermissionRationale(permission)) {
+            Toast.makeText(this, "Android will not ask again. Open Permissions here and allow " + name + ".", Toast.LENGTH_LONG).show();
+            openAppInfo();
+        }
+    }
+
+    /** Android's own question that switches Bluetooth on; the Bluetooth settings if this phone will not show it. */
+    void askBluetoothOn() {
+        try {
+            startActivity(new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE));
+        } catch (RuntimeException e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+            } catch (RuntimeException ignored) {
+                // nothing to open
+            }
+        }
+    }
+
+    /** Opens the Shizuku app (Android's developer options if it is not installed). */
+    void openShizuku() {
+        try {
+            startActivity(Boot.shizukuIntent(this));
+        } catch (RuntimeException e) {
+            Toast.makeText(this, "Could not open Shizuku. Open it from the app list.", Toast.LENGTH_LONG).show();
+        }
     }
 
     void startService() {
@@ -456,7 +551,7 @@ public class MainActivity extends Activity {
         stopService(new Intent(this, SenderService.class));
     }
 
-    private void refreshPhone() {
+    void refreshPhone() {
         if (cur instanceof PhoneTab) {
             ((PhoneTab) cur).refresh();
         }

@@ -493,7 +493,7 @@ public final class PhoneScreenRulesTest {
 
     private static void textsBatteryAndRestart() {
         for (boolean on : new boolean[] {true, false}) {
-            for (String missing : new String[] {"", "The phone has not allowed LinkMeter to read your texts yet."}) {
+            for (String missing : new String[] {"", "read texts, send texts"}) {
                 PhoneScreenFacts f = ready();
                 f.textsOn = on;
                 f.textsMissing = missing;
@@ -506,7 +506,7 @@ public final class PhoneScreenRulesTest {
                     eq("On. The paired tablet can read your texts and send texts and pictures through this phone.", l.text, "texts ready" + ctx);
                     eq(Tone.GOOD, l.tone, "texts ready is green" + ctx);
                 } else {
-                    eq("On, but not ready. " + missing, l.text, "texts not ready" + ctx);
+                    eq("On, but not ready. LinkMeter may not " + missing + " yet.", l.text, "texts not ready" + ctx);
                     eq(Tone.WARN, l.tone, "texts not ready is amber" + ctx);
                 }
                 eq(on && !missing.isEmpty(), PhoneScreenRules.textsButton(f), "the texts button only while on and lacking something" + ctx);

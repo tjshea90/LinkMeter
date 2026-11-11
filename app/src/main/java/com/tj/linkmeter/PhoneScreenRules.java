@@ -404,10 +404,10 @@ final class PhoneScreenRules {
         if (f.textsMissing.isEmpty()) {
             return new Line("On. The paired tablet can read your texts and send texts and pictures through this phone.", Tone.GOOD);
         }
-        return new Line("On, but not ready. " + f.textsMissing, Tone.WARN);
+        return new Line("On, but not ready. LinkMeter may not " + f.textsMissing + " yet.", Tone.WARN);
     }
 
-    /** The button for the texts permissions: only while the texts are on and still lack something. */
+    /** The button for the texts permissions: only while the texts are on and still lack something ({@code textsMissing}: "read texts, send texts"). */
     static boolean textsButton(PhoneScreenFacts f) {
         return f.textsOn && !f.textsMissing.isEmpty();
     }

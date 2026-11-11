@@ -135,6 +135,11 @@ final class BtServer {
         return at == 0 ? "" : "last asked over Bluetooth at " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(at));
     }
 
+    /** For the phone's own screen: why the listener could not start ("" = no reason known). */
+    static String note() {
+        return note;
+    }
+
     private static volatile String cachedName = "";
     private static volatile long nameAt;
 
@@ -509,7 +514,7 @@ final class BtServer {
         if (!Cfg.btLink(c)) {
             // the user's own switch on the phone says no: give no permission, switch nothing on
             throw new IOException("The Bluetooth link is switched off on the phone, so nothing was changed. To use it, open LinkMeter "
-                    + "on the phone and switch on \"Let the tablet reach this phone over Bluetooth\".");
+                    + "on the phone and switch on \"" + PhoneScreenRules.BT_SWITCH + "\".");
         }
         if (adapter(c) == null) {
             throw new IOException("This phone has no Bluetooth.");
@@ -520,22 +525,13 @@ final class BtServer {
         }
         StringBuilder sb = new StringBuilder();
         if (!hasPermission(c)) {
-            Priv.run("pm grant " + c.getPackageName() + " " + Manifest.permission.BLUETOOTH_CONNECT, 20);
-            nameAt = 0; // the phone's Bluetooth name could not be read without the permission: ask again, the tablet wants it next
+            grantPermission(c);
             sb.append(hasPermission(c) ? "LinkMeter may now use Bluetooth on the phone.\n"
                     : "The phone did not give the Bluetooth permission. On the phone: Settings > Apps > LinkMeter > Permissions > "
                     + "Nearby devices > Allow.\n");
         }
         if (!enabled(c)) {
-            Priv.run("svc bluetooth enable 2>&1 || cmd bluetooth_manager enable 2>&1", 20);
-            for (int i = 0; i < 20 && !enabled(c); i++) {
-                try {
-                    Thread.sleep(400);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
+            switchOn(c);
             sb.append(enabled(c) ? "Bluetooth was switched on.\n" : "Bluetooth could not be switched on: switch it on at the phone.\n");
         }
         // Never held in a shell variable: two plain commands, a few short lines each. Which of the lines is the phone's OWN
@@ -556,6 +552,39 @@ final class BtServer {
             throw new IOException(sb.toString());
         }
         return sb.toString();
+    }
+
+    /**
+     * Gives LinkMeter the Bluetooth permission ("Nearby devices") through Shizuku. True when it is held afterwards. Runs a shell
+     * command: not for the screen's thread. (The setup and the phone's own screen both use it.)
+     */
+    static boolean grantPermission(Context c) throws IOException {
+        if (hasPermission(c)) {
+            return true;
+        }
+        Priv.run("pm grant " + c.getPackageName() + " " + Manifest.permission.BLUETOOTH_CONNECT, 20);
+        nameAt = 0; // the phone's Bluetooth name could not be read without the permission: ask again, the tablet wants it next
+        return hasPermission(c);
+    }
+
+    /**
+     * Switches the phone's Bluetooth on through Shizuku and waits a few seconds for it. True when it is on afterwards. Runs a shell
+     * command: not for the screen's thread. (The setup and the phone's own screen both use it.)
+     */
+    static boolean switchOn(Context c) throws IOException {
+        if (enabled(c)) {
+            return true;
+        }
+        Priv.run("svc bluetooth enable 2>&1 || cmd bluetooth_manager enable 2>&1", 20);
+        for (int i = 0; i < 20 && !enabled(c); i++) {
+            try {
+                Thread.sleep(400);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return enabled(c);
     }
 
     @SuppressLint("MissingPermission")

@@ -1380,10 +1380,261 @@ public class PreviewTest {
         shot(a, "state-signal-safety-check");
     }
 
-    @Test
-    public void phone() throws Exception {
+    // ---------------------------------------------------------------------------- the phone's own screen
+    //
+    // Drawn at a phone's size (384 x 832 dp) on Android 15, the newest Robolectric image that is available offline (the Android 12 and
+    // later states of the Bluetooth permission exist only there). The phone's Shizuku, its Bluetooth listener and its hotspot cannot be
+    // faked, so the screen reads what it shows through PhoneTab.source and the test puts the facts in its place.
+
+    /** A phone where everything is fine and everything is allowed: the everyday state, which should look calm. */
+    static PhoneScreenFacts phoneReady() {
+        PhoneScreenFacts f = new PhoneScreenFacts();
+        f.running = true;
+        f.tablets = 1;
+        f.requests = 57;
+        f.lastNote = "192.168.43.2 /s: ok";
+        f.lastAtText = "14:02";
+        f.shizuku = PhoneScreenFacts.Shizuku.READY;
+        f.phoneStateAllowed = true;
+        f.notificationsAllowed = true;
+        f.filesAllowed = true;
+        f.btPermission = true;
+        f.batteryUnrestricted = true;
+        f.btSwitch = true;
+        f.bt = PhoneScreenFacts.Bt.ON;
+        f.btAsked = "last asked over Bluetooth at 13:58";
+        f.hotspot = Boolean.TRUE;
+        f.hotspotAddress = "192.168.43.1";
+        f.saverAuto = true;
+        f.saverOn = true;
+        f.screenControl = true;
+        f.autoStart = true;
+        f.bootAssist = true;
+        f.bootPermission = true;
+        return f;
+    }
+
+    /** A freshly installed phone: nothing started, nobody paired, Shizuku off, nothing allowed. */
+    static PhoneScreenFacts phoneFresh() {
+        PhoneScreenFacts f = new PhoneScreenFacts();
+        f.btSwitch = true;
+        f.saverAuto = true;
+        f.screenControl = true;
+        f.autoStart = true;
+        return f;
+    }
+
+    static MainActivity phoneScreen(PhoneScreenFacts f, float font) throws Exception {
+        final PhoneScreenFacts shownFacts = f;
+        PhoneTab.source = a -> shownFacts;
+        RuntimeEnvironment.setFontScale(font);
         Cfg.setMode(RuntimeEnvironment.getApplication(), Cfg.PHONE);
         MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
-        shot(a, "phone-phone");
+        if (!a.shownTitle().equals(Tab.PHONE)) {
+            throw new AssertionError("the phone's own screen did not open: " + a.shownTitle());
+        }
+        ((PhoneTab) current(a)).refreshNow();
+        return a;
+    }
+
+    /** The names the rules quote for the tablet's tabs are the tabs' own names. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneNamesAgree() {
+        if (!PhoneScreenRules.TABLET_PHONE_TAB.equals(Tab.PHONE) || !PhoneScreenRules.TABLET_SETTINGS_TAB.equals(Tab.SETTINGS)) {
+            throw new AssertionError("PhoneScreenRules names the tablet's tabs differently from Tab");
+        }
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneFreshInstall() throws Exception {
+        shot(phoneScreen(phoneFresh(), 1.0f), "phone-fresh");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneReadyAndCalm() throws Exception {
+        shot(phoneScreen(phoneReady(), 1.0f), "phone-ready");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneReadyBigFont() throws Exception {
+        shot(phoneScreen(phoneReady(), 1.3f), "phone-ready-font13");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneBluetoothNotAllowed() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.btPermission = false;
+        f.bt = PhoneScreenFacts.Bt.PERM;
+        f.btAsked = "";
+        shot(phoneScreen(f, 1.0f), "phone-bt-permission");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneBluetoothOff() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.bt = PhoneScreenFacts.Bt.OFF;
+        f.btAsked = "";
+        shot(phoneScreen(f, 1.0f), "phone-bt-off");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneBluetoothLinkSwitchedOff() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.btSwitch = false;
+        f.bt = PhoneScreenFacts.Bt.DISABLED;
+        f.btAsked = "";
+        shot(phoneScreen(f, 1.0f), "phone-bt-disabled");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneBluetoothError() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.bt = PhoneScreenFacts.Bt.ERROR;
+        f.btNote = "the listener keeps ending";
+        f.btAsked = "";
+        shot(phoneScreen(f, 1.0f), "phone-bt-error");
+    }
+
+    /** The phone was restarted: Shizuku is not running, the hotspot is off, Boot assist is on. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneAfterRestart() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.shizuku = PhoneScreenFacts.Shizuku.OFF;
+        f.hotspot = Boolean.FALSE;
+        f.hotspotAddress = "";
+        f.requests = 0;
+        f.btAsked = "";
+        shot(phoneScreen(f, 1.0f), "phone-after-restart");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneShizukuNotAllowed() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.shizuku = PhoneScreenFacts.Shizuku.NOT_ALLOWED;
+        shot(phoneScreen(f, 1.0f), "phone-shizuku-not-allowed");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneTextsNotReady() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.textsOn = true;
+        f.textsMissing = "read texts, send texts, see contact names";
+        shot(phoneScreen(f, 1.0f), "phone-texts-not-ready");
+    }
+
+    /** Shizuku is ready and some permissions are still missing: one button gives them all. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneAllowEverything() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.filesAllowed = false;
+        f.notificationsAllowed = false;
+        f.batteryUnrestricted = false;
+        shot(phoneScreen(f, 1.0f), "phone-allow-everything");
+    }
+
+    /** No Shizuku, and permissions missing: one button for each that can be asked here. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneMissingWithoutShizuku() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.shizuku = PhoneScreenFacts.Shizuku.OFF;
+        f.phoneStateAllowed = false;
+        f.filesAllowed = false;
+        f.notificationsAllowed = false;
+        shot(phoneScreen(f, 1.0f), "phone-missing-without-shizuku");
+    }
+
+    /** Boot assist is on, but the start after a restart is off: it cannot run, and the screen says so. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneBootAssistNeedsAutostart() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.autoStart = false;
+        f.bootAssist = true;
+        shot(phoneScreen(f, 1.0f), "phone-assist-needs-autostart");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phonePairingOpen() throws Exception {
+        PhoneScreenFacts f = phoneFresh();
+        f.running = true;
+        f.pairingLeftSec = 100;
+        shot(phoneScreen(f, 1.0f), "phone-pairing-open");
+    }
+
+    /** Each question that guards a button which cuts the tablet off. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneQuestions() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        MainActivity a = phoneScreen(f, 1.0f);
+        press(a, "Stop");
+        dialogShot("phone-ask-stop");
+        answerNo();
+        press(a, "Forget all tablets");
+        dialogShot("phone-ask-forget");
+        answerNo();
+        press(a, "Switch role");
+        dialogShot("phone-ask-role");
+        answerNo();
+        press(a, "Without Shizuku: what to do");
+        dialogShot("phone-without-shizuku");
+        answerYes();
+    }
+
+    /** The saver's changes are in force: Stop and Switch role say that they stay. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneQuestionsWithSaverOn() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.saverOn = true;
+        MainActivity a = phoneScreen(f, 1.0f);
+        press(a, "Stop");
+        dialogShot("phone-ask-stop-saver");
+        answerNo();
+    }
+
+    /** Restore everything without Shizuku: the answer is the list of what to do by hand, in the strip at the bottom. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneRestoreWithoutShizuku() throws Exception {
+        PhoneScreenFacts f = phoneReady();
+        f.shizuku = PhoneScreenFacts.Shizuku.OFF;
+        MainActivity a = phoneScreen(f, 1.0f);
+        press(a, "Restore everything");
+        settle();
+        shot(a, "phone-restore-result");
+    }
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneFilesTab() throws Exception {
+        MainActivity a = phoneScreen(phoneReady(), 1.0f);
+        a.openTab(Tab.FILES);
+        settle();
+        shot(a, "phone-files");
+    }
+
+    /** The first screen, before a role is chosen. */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void roleChooser() throws Exception {
+        RuntimeEnvironment.setFontScale(1.0f);
+        Cfg.setMode(RuntimeEnvironment.getApplication(), "");
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        shot(a, "chooser");
     }
 }

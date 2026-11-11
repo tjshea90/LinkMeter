@@ -153,7 +153,7 @@ final class SettingsTab extends Tab {
         if (BtServer.hasPermission(act)) {
             return true;
         }
-        act.requestPermissions(new String[] {Manifest.permission.BLUETOOTH_CONNECT}, 9);
+        act.requestPermissions(new String[] {Manifest.permission.BLUETOOTH_CONNECT}, MainActivity.REQ_BLUETOOTH);
         say("Allow \"Nearby devices\" for LinkMeter, then press the button again.");
         return false;
     }

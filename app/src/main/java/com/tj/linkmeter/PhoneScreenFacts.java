@@ -55,7 +55,7 @@ final class PhoneScreenFacts {
 
     // ---- texts
     boolean textsOn;
-    /** What the texts still lack (SmsAccess.note), "" = nothing. */
+    /** What LinkMeter may not do yet for lack of a texts permission ("read texts, send texts"; SmsAccess.missing), "" = nothing. */
     String textsMissing = "";
 
     // ---- battery saver, screen, the start after a restart
