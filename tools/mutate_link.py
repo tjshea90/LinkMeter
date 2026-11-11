@@ -579,7 +579,7 @@ S2 = [
  ('sms2: removing record messages tells nobody', 'SmsOutbox.java', 'if (n > 0) {\n            save();\n            changed();\n        }\n        return n;\n    }\n\n    /** Deletes every message', 'if (n > 0) {\n            save();\n        }\n        return n;\n    }\n\n    /** Deletes every message'),
 ]
 TEXTS_FILES = ["SmsLength.java", "SmsReactions.java", "SmartReply.java", "TextsLocal.java", "TextsCache.java", "ThreadListRules.java", "ThreadRows.java",
-               "FileBlobStore.java", "ThreadMerge.java", "Sealer.java", "AesGcmSealer.java", "SealedBlobStore.java", "TextsLock.java", "OtpCodes.java"]
+               "FileBlobStore.java", "ThreadMerge.java", "Sealer.java", "AesGcmSealer.java", "SealedBlobStore.java", "TextsLock.java", "OtpCodes.java", "ContactBook.java", "LinkLog.java", "TimedLink.java"]
 TEXTS_TEST = ROOT + "/tools/test/TextsLogicTest.java"
 TEXTS_JAVAC = ["-sourcepath", ROOT + "/app/src/main/java"]
 TX = [
@@ -637,6 +637,17 @@ TX = [
  ('texts: a read text offers its code in the list', 'OtpCodes.java', 'if (!unread || time <= 0', 'if (time <= 0'),
  ('texts: an old text offers its code in the list', 'OtpCodes.java', 'now - time > RECENT_MS', 'now - time > RECENT_MS * 1000'),
  ('texts: my own text offers a code', 'OtpCodes.java', 'if (mine || time <= 0', 'if (time <= 0'),
+ ('texts: a number is matched by all its digits', 'ContactBook.java', 'return d.length() > 10 ? d.substring(d.length() - 10) : d.toString();', 'return d.toString();'),
+ ('texts: a sender name is matched by its digits', 'ContactBook.java', 'return a.toLowerCase(Locale.US); // a sender name such as VERIZON', 'return d.toString();'),
+ ('texts: the last name for a number wins', 'ContactBook.java', 'if (k.isEmpty() || name == null || name.trim().isEmpty() || byKey.containsKey(k)) {', 'if (k.isEmpty() || name == null || name.trim().isEmpty()) {'),
+ ('texts: two digits are a number', 'ContactBook.java', 'if (d.length() < 3) {', 'if (d.length() < 1) {'),
+ ('texts: the log keeps the question part', 'LinkLog.java', 'return q < 0 ? target : target.substring(0, q);', 'return target;'),
+ ('texts: the log forgets nothing', 'LinkLog.java', 'count = Math.min(count + 1, ring.length);', 'count = count + 1;'),
+ ('texts: the log lists the oldest first', 'LinkLog.java', 'out.add(ring[(next - i + ring.length * 2) % ring.length]);', 'out.add(ring[(next + i - 1) % ring.length]);'),
+ ('texts: the slowest request is the fastest', 'LinkLog.java', 'if (slow == null || e.ms > slow.ms) {', 'if (slow == null || e.ms < slow.ms) {'),
+ ('texts: a request under a second is said in seconds', 'LinkLog.java', 'if (ms < 1000) {', 'if (ms < 100) {'),
+ ('texts: a waiting request that worked is written down', 'TimedLink.java', 'if (!waits || r.code >= 400) {', 'if (true) {'),
+ ('texts: a failed request is not written down', 'TimedLink.java', '            log.add(t0, method + " " + route, clock.getAsLong() - t0, LinkLog.outcome(e));\n            throw e;', '            throw e;'),
  ('texts: relock does not lock', 'TextsLock.java', 'synchronized void relock() {\n        unlockedAt = 0;', 'synchronized void relock() {\n        unlockedAt = unlockedAt;'),
 ]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),

@@ -49,12 +49,11 @@ final class SmsStore {
     private static final String[] PART_COLS = {"_id", "mid", "ct", "text", "name", "cl"};
 
     private final ContentResolver cr;
-    private final Map<String, String> names = new LinkedHashMap<String, String>() {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
-            return size() > 500;
-        }
-    };
+    /** Every contact number with its name, read with ONE query (null until first read). Replaced when the contacts really changed. */
+    private volatile ContactBook book;
+    private final Object bookLock = new Object();
+    private long bookFailedAt = -1_000_000;
+    private boolean bookRefreshPending;
     /** Goes up whenever a change is seen (or found by the safety look). */
     private final AtomicLong dirty = new AtomicLong(1);
     /** Guards the scan cache, the canonical addresses and {@link #idsByKey}. */
@@ -125,10 +124,7 @@ final class SmsStore {
                 ContentObserver people = new ContentObserver(handler) {
                     @Override
                     public void onChange(boolean selfChange) {
-                        synchronized (names) {
-                            names.clear();
-                        }
-                        messagesChanged();
+                        scheduleBookRefresh(); // not a rescan of the texts: the contacts change all the time (sync, "last contacted")
                     }
                 };
                 cr.registerContentObserver(ContactsContract.Contacts.CONTENT_URI, true, people);
@@ -178,25 +174,87 @@ final class SmsStore {
         if (address == null || address.isEmpty()) {
             return "";
         }
-        synchronized (names) {
-            String cached = names.get(address);
-            if (cached != null) {
-                return cached;
-            }
+        ContactBook b = book();
+        return b == null ? "" : b.nameFor(address);
+    }
+
+    /** All contact numbers with their names, read once and kept; null while the contacts cannot be read (tried again after a few seconds). */
+    private ContactBook book() {
+        ContactBook b = book;
+        if (b != null) {
+            return b;
         }
-        String name = "";
-        try (Cursor c = cr.query(Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address)),
-                new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME}, null, null, null)) {
-            if (c != null && c.moveToFirst() && !c.isNull(0)) {
-                name = c.getString(0);
+        synchronized (bookLock) {
+            if (book == null && SystemClock.elapsedRealtime() - bookFailedAt > 10_000) {
+                ContactBook fresh = readBook();
+                if (fresh == null) {
+                    bookFailedAt = SystemClock.elapsedRealtime();
+                } else {
+                    book = fresh;
+                }
+            }
+            return book;
+        }
+    }
+
+    private ContactBook readBook() {
+        ContactBook b = new ContactBook();
+        try (Cursor c = cr.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, new String[] {ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME}, null, null, null)) {
+            if (c == null) {
+                return null;
+            }
+            while (c.moveToNext()) {
+                String name = c.isNull(2) ? "" : c.getString(2);
+                b.add(c.isNull(0) ? "" : c.getString(0), name);
+                b.add(c.isNull(1) ? "" : c.getString(1), name);
             }
         } catch (RuntimeException e) {
-            // no permission to read contacts, or no such number: no name
+            return null; // no permission to read contacts: no names
         }
-        synchronized (names) {
-            names.put(address, name);
+        return b;
+    }
+
+    /** The contacts changed (or something touched them): look again soon, at most every few seconds, and say so only if a name or number differs. */
+    private void scheduleBookRefresh() {
+        Handler h = handler;
+        if (h == null) {
+            return;
         }
-        return name;
+        synchronized (bookLock) {
+            if (bookRefreshPending) {
+                return;
+            }
+            bookRefreshPending = true;
+        }
+        h.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                synchronized (bookLock) {
+                    bookRefreshPending = false;
+                }
+                ContactBook fresh = readBook();
+                boolean changed;
+                synchronized (bookLock) {
+                    changed = fresh != null && (book == null || !book.equals(fresh));
+                    if (fresh != null) {
+                        book = fresh;
+                    }
+                }
+                if (changed) {
+                    messagesChanged(); // the tablet hears that names changed
+                }
+            }
+        }, 4000);
+    }
+
+    /** The contacts changed because of something this phone did (a contact was saved): the next look is at once. */
+    void contactsChanged() {
+        synchronized (bookLock) {
+            book = null;
+            bookFailedAt = -1_000_000;
+        }
+        messagesChanged();
     }
 
     private String namesOf(List<String> addresses) {
@@ -425,14 +483,19 @@ final class SmsStore {
         return null;
     }
 
+    /**
+     * A cheap look at the newest conversations (one small query: no scan, no names, no lock), for a change the observer missed. It is
+     * only compared with the last look, so any difference means "something changed".
+     */
     private String scanStamp() {
         StringBuilder sb = new StringBuilder();
-        int n = 0;
-        for (Sms.Thread t : rawThreads(120, true)) { // the size of the list the tablet asks for, so that this look refreshes the shared scan
-            if (n++ >= 40) {
-                break; // but only the newest conversations decide whether something changed
+        try (Cursor c = query(THREADS, new String[] {"_id", "date", "message_count", "read"}, null, null, "date DESC", 30)) {
+            while (c != null && c.moveToNext()) {
+                sb.append(lng(c, "_id", 0)).append(':').append(lng(c, "date", 0)).append(':').append(lng(c, "message_count", 0)).append(':')
+                        .append(lng(c, "read", 1)).append(';');
             }
-            sb.append(t.providerId).append(':').append(t.time).append(':').append(t.count).append(':').append(t.unread ? 1 : 0).append(';');
+        } catch (RuntimeException e) {
+            // not readable now: the look says the same as before
         }
         return Integer.toHexString(sb.toString().hashCode());
     }

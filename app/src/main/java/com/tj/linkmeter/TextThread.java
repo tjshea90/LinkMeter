@@ -414,7 +414,7 @@ final class TextThread {
             save.more = more;
             final TextsCache fc = cache;
             final Sms.Convo fs = save;
-            tab.net().execute(() -> fc.saveConvo(key, fs));
+            tab.out().execute(() -> fc.saveConvo(key, fs));
         }
         render(firstLoad || scrollNext);
         firstLoad = false;
@@ -665,7 +665,7 @@ final class TextThread {
             return;
         }
         final long my = tab.session();
-        tab.net().execute(() -> {
+        tab.out().execute(() -> {
             Sms.DeleteResult r = null;
             if (tab.phoneIsV2()) {
                 try {

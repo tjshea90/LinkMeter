@@ -49,11 +49,21 @@ final class TextsTab extends Tab {
     private static final int WIDE_DP = 720;
     private static final int LIST_DP = 340;
 
-    private final ExecutorService net = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "linkmeter-texts");
-        t.setDaemon(true);
-        return t;
-    });
+    /** Reads from the phone (lists, conversations, searches): three at once, so that opening a conversation does not wait for a slow list. */
+    private final ExecutorService net = Executors.newFixedThreadPool(3, daemon("linkmeter-texts"));
+    /** Things that change something (mark read, delete, grant, saving the copy): one at a time, in the order they were asked. */
+    private final ExecutorService out = Executors.newSingleThreadExecutor(daemon("linkmeter-texts-out"));
+
+    private static java.util.concurrent.ThreadFactory daemon(final String name) {
+        return r -> {
+            Thread t = new Thread(r, name);
+            t.setDaemon(true);
+            return t;
+        };
+    }
+
+    /** What the tablet asked of the phone for Texts and how long it took (Texts menu > Connection details). */
+    static final LinkLog LOG = new LinkLog(40);
     private volatile long pollGen;
     private boolean shown;
     /** Changes whenever this tab is rebuilt or left, so that an answer that arrives late is ignored. */
@@ -168,6 +178,10 @@ final class TextsTab extends Tab {
         return net;
     }
 
+    ExecutorService out() {
+        return out;
+    }
+
     long session() {
         return session;
     }
@@ -190,17 +204,24 @@ final class TextsTab extends Tab {
 
     RemoteSms remote() throws IOException {
         if (testLink != null) {
-            return new RemoteSms(testLink);
+            return new RemoteSms(new TimedLink(testLink, LOG, System::currentTimeMillis));
         }
         String host = Net.peerHost(act);
         if (host.isEmpty()) {
             throw new IOException(FileBrowser.noPeer(act));
         }
-        return new RemoteSms(new PeerLink(host, Net.peerToken(act)));
+        // 8 s to make the connection: a phone that just woke up can need a few seconds (3 s showed "no answer" for a phone that was there)
+        return new RemoteSms(new TimedLink(new PeerLink(host, Net.peerToken(act), 8000), LOG, System::currentTimeMillis));
     }
+
+    /** The start of the sentence for a phone that is there but did not answer in time (it is not "can't reach"). */
+    static final String SLOW = "The phone is slow to answer";
 
     /** An error in words for the user: a connection that failed says why (the hotspot, Shizuku...). */
     static String explain(IOException e) {
+        if (e instanceof java.net.SocketTimeoutException) {
+            return SLOW + " (it did not reply in time). LinkMeter keeps trying; tap Try again to ask now.";
+        }
         if (e instanceof Client.ConnectFailed) {
             String w = Client.why((Client.ConnectFailed) e);
             return w.isEmpty() ? w : Character.toUpperCase(w.charAt(0)) + w.substring(1);
@@ -225,7 +246,7 @@ final class TextsTab extends Tab {
         if (!v2 || readRefused) {
             return;
         }
-        net.execute(() -> {
+        out.execute(() -> {
             try {
                 Sms.DeleteResult r = remote().markRead(java.util.Collections.singletonList(key));
                 if (r.doneKeys.isEmpty()) {
@@ -585,7 +606,7 @@ final class TextsTab extends Tab {
     private void grant() {
         showMessage("Texts", "Asking the phone to allow texts (it uses Shizuku)…", null, null, null, null);
         final long my = session;
-        net.execute(() -> {
+        out.execute(() -> {
             Sms.State st = null;
             String err = null;
             try {
@@ -611,8 +632,13 @@ final class TextsTab extends Tab {
 
     // ------------------------------------------------------------ keeping up with the phone
 
+    /** The newest list request, and the newest answer that was used: a slow older answer must not replace a newer one. */
+    private long listGen;
+    private long appliedListGen;
+
     private void loadThreads() {
         final long my = session;
+        final long gen = ++listGen;
         net.execute(() -> {
             List<Sms.Thread> l = null;
             IOException err = null;
@@ -632,6 +658,10 @@ final class TextsTab extends Tab {
                     return;
                 }
                 if (fl != null) {
+                    if (gen < appliedListGen) {
+                        return; // a newer answer was shown already
+                    }
+                    appliedListGen = gen;
                     threads.clear();
                     threads.addAll(fl);
                     fromCopy = false;
@@ -662,6 +692,7 @@ final class TextsTab extends Tab {
         Thread t = new Thread(() -> {
             String since = "";
             long backoff = 2000;
+            int failures = 0;
             while (gen == pollGen) {
                 try {
                     RemoteSms r = remote();
@@ -673,6 +704,7 @@ final class TextsTab extends Tab {
                     final boolean changed = !now.equals(since);
                     since = now;
                     backoff = 2000;
+                    failures = 0;
                     if (changed || !problem.isEmpty()) {
                         post(() -> {
                             if (gen == pollGen) {
@@ -693,12 +725,15 @@ final class TextsTab extends Tab {
                     });
                     return;
                 } catch (IOException e) {
+                    failures++;
                     final String why = explain(e);
-                    post(() -> {
-                        if (gen == pollGen) {
-                            setProblem(why);
-                        }
-                    });
+                    if (failures >= 2) { // one miss is a hiccup (a phone that was busy for a moment): ask again quietly first
+                        post(() -> {
+                            if (gen == pollGen) {
+                                setProblem(why);
+                            }
+                        });
+                    }
                     try {
                         Thread.sleep(backoff);
                     } catch (InterruptedException ie) {
@@ -981,7 +1016,8 @@ final class TextsTab extends Tab {
         String s;
         int color = Ui.DIM;
         if (!problem.isEmpty()) {
-            s = threads.isEmpty() ? "Can't reach the phone" : "Can't reach the phone · saved copy from " + ago(fromCopy ? copyAt : updatedAt, now);
+            String head = problem.startsWith(SLOW) ? "Phone is slow to answer" : "Can't reach the phone";
+            s = threads.isEmpty() ? head : head + " · saved copy from " + ago(fromCopy ? copyAt : updatedAt, now);
             color = Ui.AMBER;
         } else if (fromCopy) {
             s = "Updating…";
@@ -1364,7 +1400,7 @@ final class TextsTab extends Tab {
         if (!v2 || readRefused || keys.isEmpty()) {
             return;
         }
-        net.execute(() -> {
+        out.execute(() -> {
             try {
                 Sms.DeleteResult r = remote().markRead(keys);
                 if (r.doneKeys.isEmpty()) {
@@ -1421,7 +1457,7 @@ final class TextsTab extends Tab {
             return;
         }
         final long my = session;
-        net.execute(() -> {
+        out.execute(() -> {
             Sms.DeleteResult r = null;
             try {
                 r = remote().delete(new ArrayList<String>(), keys);
@@ -1546,6 +1582,8 @@ final class TextsTab extends Tab {
         acts.add(this::readAll);
         labels.add("Refresh now");
         acts.add(this::retryNow);
+        labels.add("Connection details");
+        acts.add(this::showConnectionDetails);
         labels.add("Texts settings");
         acts.add(this::showSettings);
         TextsViews.menu(act, null, labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
@@ -1613,6 +1651,26 @@ final class TextsTab extends Tab {
                         + "erased from this tablet. Nothing is deleted on the phone; the texts load again from it.")
                 .setPositiveButton("Erase", (d, w) -> eraseSaved()).setNegativeButton("Cancel", null))), Ui.lp(act, 8));
         TextsViews.show(new AlertDialog.Builder(act).setTitle("Texts settings").setView(Ui.scroll(act, col)).setPositiveButton("Done", null));
+    }
+
+    /** What the tablet asked of the phone and how long each request took: it tells "slow" from "cannot be reached". Never holds a text. */
+    private void showConnectionDetails() {
+        final String text = LOG.summary(System.currentTimeMillis());
+        TextView t = Ui.text(act, text, 12.5f, Ui.FG, false);
+        t.setTypeface(android.graphics.Typeface.MONOSPACE);
+        t.setTextIsSelectable(true);
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(Ui.dp(act, 20), Ui.dp(act, 8), Ui.dp(act, 20), Ui.dp(act, 8));
+        col.addView(t);
+        TextsViews.show(new AlertDialog.Builder(act).setTitle("Connection details").setView(Ui.scroll(act, col))
+                .setNeutralButton("Copy", (d, w) -> {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cm != null) {
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("LinkMeter connection details", text));
+                        Toast.makeText(act, "Copied", Toast.LENGTH_SHORT).show();
+                    }
+                }).setPositiveButton("Close", null));
     }
 
     /** The lock switch: it needs a screen lock to ask for, and it asks the next time Texts is opened after being away. */

@@ -983,7 +983,137 @@ public final class TextsLogicTest {
         eq("", OtpCodes.forBubble(body, false, now - OtpCodes.BUBBLE_MS - 1, now), "nor for one older than a day");
     }
 
+    // ------------------------------------------------------------------ the contact book and the request log
+
+    static void contactBook() {
+        ContactBook b = new ContactBook();
+        b.add("+1 (555) 123-4567", "Alex Rivera");
+        b.add("07911 123456", "Sam UK");
+        b.add("VERIZON", "Verizon Wireless");
+        b.add("611", "Customer care");
+        b.add("5551234567", "Someone else"); // the same number: the first name stays
+        b.add("", "No number");
+        b.add("555-0000", "");
+        b.add(null, "Nobody");
+        b.add("12", "Too short to be a number");
+        eq("Alex Rivera", b.nameFor("5551234567"), "a number written plainly finds the contact");
+        eq("Alex Rivera", b.nameFor("+15551234567"), "with the country code");
+        eq("Alex Rivera", b.nameFor("555-123-4567"), "with dashes");
+        eq("Alex Rivera", b.nameFor(" (555) 123 4567 "), "with spaces and brackets");
+        eq("Sam UK", b.nameFor("+44 7911 123456"), "a foreign number written with its country code is the one written with a 0");
+        eq("Verizon Wireless", b.nameFor("verizon"), "a sender name, in any case");
+        eq("Verizon Wireless", b.nameFor("VERIZON"), "a sender name in capitals");
+        eq("Customer care", b.nameFor("611"), "a short number");
+        eq("", b.nameFor("5551234568"), "another number has no name");
+        eq("", b.nameFor(null), "no address, no name");
+        eq("", b.nameFor(""), "an empty address has no name");
+        eq("", b.nameFor("12"), "two digits are not a number");
+        eq(4, b.size(), "four numbers are known");
+        ContactBook same = new ContactBook();
+        same.add("5551234567", "Alex Rivera");
+        same.add("7911123456", "Sam UK");
+        same.add("verizon", "Verizon Wireless");
+        same.add("611", "Customer care");
+        yes(b.equals(same) && b.hashCode() == same.hashCode(), "the same numbers and names are the same book, however they were written");
+        ContactBook renamed = new ContactBook();
+        renamed.add("5551234567", "Alex R.");
+        renamed.add("7911123456", "Sam UK");
+        renamed.add("verizon", "Verizon Wireless");
+        renamed.add("611", "Customer care");
+        yes(!b.equals(renamed), "a changed name makes another book");
+        yes(!b.equals(new ContactBook()), "an empty book is another book");
+        eq("5551234567", ContactBook.matchKey("+1 555 123 4567"), "match key: the last ten digits");
+        eq("verizon", ContactBook.matchKey(" Verizon "), "match key: a sender name in lower case");
+        eq("", ContactBook.matchKey("+"), "match key: no digits");
+    }
+
+    static void linkLog() throws Exception {
+        LinkLog l = new LinkLog(3);
+        eq("Nothing was asked of the phone yet.", l.summary(1000), "an empty log says so");
+        l.add(1000, "GET /sms/threads", 1800, "ok");
+        l.add(2000, "GET /sms/thread", 31000, "timed out waiting for the phone");
+        l.add(3000, "POST /sms/send", 250, "ok");
+        l.add(4000, "GET /sms/state", 90, "ok");
+        eq(3, l.newestFirst().size(), "the log keeps only its capacity");
+        eq("GET /sms/state", l.newestFirst().get(0).what, "newest first");
+        eq("GET /sms/thread", l.newestFirst().get(2).what, "the oldest kept is the third from the end (the first was dropped)");
+        String s = l.summary(5000);
+        yes(s.startsWith("3 requests, 1 did not work"), "the summary counts what did not work: " + s);
+        yes(s.contains("Slowest that worked: POST /sms/send · 250 ms · ok · 2 s ago"), "and names the slowest that worked: " + s);
+        yes(s.contains("GET /sms/thread · 31.0 s · timed out waiting for the phone · 3 s ago"), "and lists the requests: " + s);
+        l.clear();
+        eq(0, l.newestFirst().size(), "cleared");
+        eq("/sms/thread", LinkLog.route("/sms/thread?key=5551234567&limit=40"), "the question part (numbers, search words) is never kept");
+        eq("/sms/stamp", LinkLog.route("/sms/stamp"), "a route without a question stays");
+        eq("", LinkLog.route(null), "no route, no text");
+        eq("850 ms", LinkLog.seconds(850), "milliseconds");
+        eq("1.0 s", LinkLog.seconds(1000), "one second");
+        eq("31.4 s", LinkLog.seconds(31400), "seconds with a tenth");
+        eq("timed out waiting for the phone", LinkLog.outcome(new java.net.SocketTimeoutException("Read timed out")), "a read timeout");
+        eq("no connection in time", LinkLog.outcome(new Client.ConnectFailed(new java.net.SocketTimeoutException("connect timed out"))), "a connect timeout");
+        eq("no connection", LinkLog.outcome(new Client.ConnectFailed(new java.net.ConnectException("refused"))), "a refused connection");
+        eq("texts are off", LinkLog.outcome(new RemoteSms.Off()), "texts switched off");
+        eq("failed", LinkLog.outcome(new IOException("x")), "anything else");
+        yes(LinkLog.line(new LinkLog.Entry(0, "GET /x", 5, "ok"), 89_000).endsWith("89 s ago"), "89 seconds is still said in seconds");
+        yes(LinkLog.line(new LinkLog.Entry(0, "GET /x", 5, "ok"), 90_000).endsWith("1 min ago"), "90 seconds is a minute");
+        yes(LinkLog.line(new LinkLog.Entry(0, "GET /x", 5, "ok"), 600_000).endsWith("10 min ago"), "ten minutes in minutes");
+
+        // the wrapper: it times what the link did, never keeps the question part, and keeps quiet about a waiting request that worked
+        final long[] clock = {0};
+        RemoteStore.Link fake = new RemoteStore.Link() {
+            @Override
+            public Client.Resp call(String method, String target, int readMs) throws IOException {
+                clock[0] += 120;
+                if (target.contains("slow")) {
+                    throw new java.net.SocketTimeoutException("Read timed out");
+                }
+                Client.Resp r = new Client.Resp();
+                r.code = target.contains("bad") ? 500 : 200;
+                return r;
+            }
+
+            @Override
+            public Client.Stream get(String target, long offset) throws IOException {
+                throw new IOException("no streams here");
+            }
+
+            @Override
+            public Client.Resp put(String target, java.io.InputStream src, long len, Client.Progress p) throws IOException {
+                throw new IOException("no uploads here");
+            }
+        };
+        LinkLog log = new LinkLog(10);
+        TimedLink t = new TimedLink(fake, log, () -> clock[0]);
+        t.call("GET", "/sms/thread?key=SECRETNUMBER&limit=40", 1000);
+        eq("GET /sms/thread", log.newestFirst().get(0).what, "the wrapper keeps the route");
+        eq(120L, log.newestFirst().get(0).ms, "and what it cost");
+        eq("ok", log.newestFirst().get(0).result, "and that it worked");
+        yes(!log.summary(0).contains("SECRETNUMBER"), "never what was asked about");
+        t.call("GET", "/sms/stamp?since=w5&wait=20", 1000);
+        eq(1, log.newestFirst().size(), "a waiting request that worked is not written down (it is meant to be long)");
+        t.call("GET", "/sms/bad", 1000);
+        eq("answered 500", log.newestFirst().get(0).result, "an error answer is written down");
+        try {
+            t.call("GET", "/sms/slow?q=zzz", 1000);
+            yes(false, "the timeout reaches the caller");
+        } catch (java.net.SocketTimeoutException expected) {
+            eq("timed out waiting for the phone", log.newestFirst().get(0).result, "a timeout is written down and passed on");
+        }
+        try {
+            t.call("GET", "/sms/stamp?since=slow", 1000);
+        } catch (java.net.SocketTimeoutException expected) {
+            eq("GET /sms/stamp", log.newestFirst().get(0).what, "a waiting request that failed is written down");
+        }
+        try {
+            t.put("/sms/attach?name=photo.jpg", null, 0, null);
+        } catch (IOException expected) {
+            eq("PUT /sms/attach", log.newestFirst().get(0).what, "an upload that failed is written down without its name");
+        }
+    }
+
     public static void main(String[] args) throws Exception {
+        contactBook();
+        linkLog();
         codes();
         sealed();
         lock();

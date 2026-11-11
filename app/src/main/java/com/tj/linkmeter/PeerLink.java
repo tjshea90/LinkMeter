@@ -7,20 +7,27 @@ import java.io.InputStream;
 final class PeerLink implements RemoteStore.Link {
     private final String host;
     private final String token;
+    private final int connectMs;
 
     PeerLink(String host, String token) {
+        this(host, token, 3000);
+    }
+
+    /** {@code connectMs}: how long to wait for the connection itself (a phone that just woke up can need a few seconds). */
+    PeerLink(String host, String token, int connectMs) {
         this.host = host;
         this.token = token;
+        this.connectMs = connectMs;
     }
 
     @Override
     public Client.Resp call(String method, String target, int readMs) throws IOException {
-        return Client.call(host, method, target, token, 3000, readMs);
+        return Client.call(host, method, target, token, connectMs, readMs);
     }
 
     @Override
     public Client.Stream get(String target, long offset) throws IOException {
-        return Client.get(host, target, token, 3000, 30000, offset);
+        return Client.get(host, target, token, connectMs, 30000, offset);
     }
 
     @Override

@@ -28,10 +28,28 @@ final class RemoteSms {
         }
     }
 
+    /**
+     * How long the tablet waits for the phone's answer to a list or a conversation. A phone that is busy or just woke up can need a
+     * long time for its first answer; 30 seconds was too short and showed "read timed out" for something that worked.
+     */
+    static final int READ_MS = 45_000;
+
     private final RemoteStore.Link link;
 
     RemoteSms(RemoteStore.Link link) {
         this.link = link;
+    }
+
+    /**
+     * A request that only reads. When the phone does not answer in time it is asked once more: the first try has usually warmed what
+     * the phone needed (its list of contacts, its scan of the messages), so the second answer is quick.
+     */
+    private Client.Resp read(String target, int readMs) throws IOException {
+        try {
+            return link.call("GET", target, readMs);
+        } catch (java.net.SocketTimeoutException e) {
+            return link.call("GET", target, readMs);
+        }
     }
 
     private static String enc(String s) {
@@ -70,7 +88,7 @@ final class RemoteSms {
 
     /** The switch and the permissions. A phone app too old for texts gives supported = false instead of an error. */
     Sms.State state() throws IOException {
-        Client.Resp r = link.call("GET", "/sms/state", 15000);
+        Client.Resp r = read("/sms/state", 20_000);
         if (r.code == 404 && r.body.contains("unknown request")) {
             Sms.State s = new Sms.State();
             s.supported = false;
@@ -102,7 +120,7 @@ final class RemoteSms {
 
     List<Sms.Thread> threads(int limit) throws IOException {
         List<Sms.Thread> out = new ArrayList<>();
-        for (Map<String, Object> o : Json.objects(obj(link.call("GET", "/sms/threads?limit=" + limit, 30000)), "threads")) {
+        for (Map<String, Object> o : Json.objects(obj(read("/sms/threads?limit=" + limit, READ_MS)), "threads")) {
             out.add(SmsJson.threadFrom(o));
         }
         return out;
@@ -114,7 +132,7 @@ final class RemoteSms {
 
     /** The newest {@code limit} messages older than {@code before} (milliseconds; 0 = the newest of all). {@code more} tells if there are older ones. */
     Sms.Convo thread(String key, int limit, long before) throws IOException {
-        Map<String, Object> m = obj(link.call("GET", "/sms/thread?key=" + enc(key) + "&limit=" + limit + (before > 0 ? "&before=" + before : ""), 30000));
+        Map<String, Object> m = obj(read("/sms/thread?key=" + enc(key) + "&limit=" + limit + (before > 0 ? "&before=" + before : ""), READ_MS));
         Sms.Convo c = new Sms.Convo();
         c.more = Json.bool(m, "more", false);
         Object who = m.get("who");
@@ -182,7 +200,7 @@ final class RemoteSms {
     /** Messages whose text contains the query, newest first, each with the name of its conversation. */
     List<Sms.Hit> search(String query, int limit) throws IOException {
         List<Sms.Hit> out = new ArrayList<>();
-        for (Map<String, Object> o : Json.objects(obj(link.call("GET", "/sms/search?q=" + enc(query) + "&limit=" + limit, 30000)), "hits")) {
+        for (Map<String, Object> o : Json.objects(obj(read("/sms/search?q=" + enc(query) + "&limit=" + limit, 30_000)), "hits")) {
             out.add(SmsJson.hitFrom(o));
         }
         return out;
@@ -202,7 +220,7 @@ final class RemoteSms {
 
     List<Sms.Person> contacts(String query) throws IOException {
         List<Sms.Person> out = new ArrayList<>();
-        for (Map<String, Object> o : Json.objects(obj(link.call("GET", "/sms/contacts?q=" + enc(query), 15000)), "people")) {
+        for (Map<String, Object> o : Json.objects(obj(read("/sms/contacts?q=" + enc(query), 20_000)), "people")) {
             out.add(SmsJson.personFrom(o));
         }
         return out;
