@@ -41,6 +41,10 @@ public class PreviewTest {
             + "\"cells\":[{\"t\":\"LTE\",\"reg\":1,\"bands\":[66],\"earfcn\":66611,\"rsrp\":-104,\"rsrq\":-11,\"lvl\":2},"
             + "{\"t\":\"NR\",\"reg\":0,\"bands\":[77],\"rsrp\":-110}]}";
 
+    static final String CELLS_4G = "{\"carriers\":[{\"rat\":\"LTE\",\"band\":66,\"ch\":66611,\"bw\":15000,\"primary\":1}],\"display\":\"NONE\",\"ca\":false,"
+            + "\"nr\":\"NONE\",\"cells\":[{\"t\":\"LTE\",\"reg\":1,\"bands\":[66],\"earfcn\":66611,\"rsrp\":-108,\"rsrq\":-12,\"lvl\":2}]}";
+    static final String SIG = "{\"lteRsrp\":-104,\"lteRsrq\":-11,\"lteSinr\":120,\"lteCqi\":8,\"nrRsrp\":-110,\"nrSinr\":50,\"net\":\"5G (NSA)\"}";
+
     static final String MAC = "5C:F3:70:8A:1B:2C";
 
     /** The pretend phone behind {@link Call#reach}: what it answers, and over which route. Change the fields, then {@link #install}. */
@@ -64,6 +68,15 @@ public class PreviewTest {
         int statusCode = 200;
         String actReply = "{\"ok\":true,\"out\":\"Done.\"}";
         int actCode = 200;
+        /** The phone is set to 4G only: net_get, net_lte, net_5g and /cells follow it. */
+        boolean fourGOnly;
+        /** The phone takes this long to answer a scan (for the picture before the first answer). */
+        long cellsDelayMs;
+        /** What /sig answers (the best spot). */
+        String sigBody = SIG;
+        /** What radio_cycle_state answers, one per question; the last one stays. */
+        String[] cycleStates = {"running", "done"};
+        int cycleAsked;
         /** How often the status was asked for. */
         final java.util.concurrent.atomic.AtomicInteger statusAsked = new java.util.concurrent.atomic.AtomicInteger();
         /** How often the phone was called over Bluetooth, for anything (each such call wakes it). */
@@ -152,6 +165,43 @@ public class PreviewTest {
                 Client.Resp r = new Client.Resp();
                 r.code = 200;
                 r.body = "$ getprop ro.product.model\nSM-S156V\n\n$ id\nuid=2000(shell) gid=2000(shell)\n\n$ settings get system aod_mode\nnull\n";
+                return r;
+            }
+            if (target.equals("/cells") || target.startsWith("/act?name=net_") || target.equals("/sig")
+                    || target.startsWith("/act?name=menu_open") || target.startsWith("/act?name=radio_cycle")) {
+                Client.Resp r = new Client.Resp();
+                r.code = 200;
+                if (target.equals("/cells")) {
+                    if (cellsDelayMs > 0) {
+                        try {
+                            Thread.sleep(cellsDelayMs);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                    r.body = fourGOnly ? CELLS_4G : CELLS;
+                } else if (target.startsWith("/act?name=net_get")) {
+                    r.body = "{\"ok\":true,\"out\":\"Allowed network types: GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPAP|GSM|LTE_CA"
+                            + (fourGOnly ? " (5G is off)" : "|NR (5G is allowed)") + "\"}";
+                } else if (target.startsWith("/act?name=net_lte")) {
+                    fourGOnly = true;
+                    r.body = "{\"ok\":true,\"out\":\"Forced to 4G. The phone is now on GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPAP|GSM|LTE_CA.\"}";
+                } else if (target.startsWith("/act?name=net_5g")) {
+                    fourGOnly = false;
+                    r.body = "{\"ok\":true,\"out\":\"5G is allowed again (GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPAP|GSM|LTE_CA|NR).\"}";
+                } else if (target.equals("/sig")) {
+                    r.body = sigBody;
+                } else if (target.startsWith("/act?name=menu_open")) {
+                    r.body = "{\"ok\":true,\"out\":\"Opened com.android.phone/.settings.RadioInfo. Look at the phone's screen (the Screen tab shows it; "
+                            + "unlock the phone first if it is locked).\"}";
+                } else if (target.startsWith("/act?name=radio_cycle_state")) {
+                    String st = cycleStates[Math.min(cycleAsked++, cycleStates.length - 1)];
+                    r.body = "{\"ok\":true,\"out\":\"" + st + "\"}";
+                } else if (via.equals("wifi")) {
+                    r.body = "{\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}";
+                } else {
+                    r.body = "{\"ok\":true,\"out\":\"OK the radio was switched off for 4 seconds and on again\"}";
+                }
                 return r;
             }
             boolean cuts = target.startsWith("/act?name=reboot") || target.startsWith("/act?name=poweroff") || target.startsWith("/act?name=wifi_")
@@ -1083,6 +1133,251 @@ public class PreviewTest {
         press(a, "Restart hotspot");
         dialogShot("state-phone-ask-hotspot-restart-anyway");
         answerNo();
+    }
+
+    // ---------------------------------------------------------------------------------------------- the Signal tab
+
+    static MainActivity signalTab(Pretend p) throws Exception {
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        a.openTab(Tab.SIGNAL);
+        settle();
+        if (!a.shownTitle().equals(Tab.SIGNAL)) {
+            throw new AssertionError("the Signal tab did not open: " + a.shownTitle());
+        }
+        return a;
+    }
+
+    /** The tab that is on show (the activity keeps it private). */
+    static Tab current(MainActivity a) throws Exception {
+        java.lang.reflect.Field f = MainActivity.class.getDeclaredField("cur");
+        f.setAccessible(true);
+        return (Tab) f.get(a);
+    }
+
+    static Object field(Object o, String name) throws Exception {
+        java.lang.reflect.Field f = o.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(o);
+    }
+
+    static void setField(Object o, String name, Object v) throws Exception {
+        java.lang.reflect.Field f = o.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        f.set(o, v);
+    }
+
+    /** A phone that answers at once, so a comparison is over (or stalled in the middle) in a blink and the tab can be shown what it left. */
+    static final class QuickLink implements LeverRun.Link {
+        final double[] normal;
+        final double[] lte;
+        /** After this many speed tests the phone stops answering (the run is "in the middle"). */
+        final int stallAfter;
+        int ni;
+        int li;
+        int started;
+        boolean off;
+        long clock;
+
+        QuickLink(double[] normal, double[] lte, int stallAfter) {
+            this.normal = normal;
+            this.lte = lte;
+            this.stallAfter = stallAfter;
+        }
+
+        @Override
+        public void fiveGOff(LeverRun.Done<Boolean> d) {
+            d.done(true, "", off);
+        }
+
+        @Override
+        public void switchFiveG(boolean o, LeverRun.Done<Boolean> d) {
+            off = o;
+            d.done(true, "", o);
+        }
+
+        @Override
+        public void observe(LeverRun.Done<LeverRun.Observation> d) {
+            RadioState s = new RadioState();
+            s.carriers.add(new RadioState.Carrier("LTE", 66, 66611, 15000, true));
+            if (!off) {
+                s.carriers.add(new RadioState.Carrier("NR", 77, 650000, 60000, false));
+            }
+            s.display = off ? "NONE" : "NR_ADVANCED";
+            s.nrState = off ? "NONE" : "CONNECTED";
+            d.done(true, "", new LeverRun.Observation(s, -104));
+        }
+
+        @Override
+        public void startUpload(LeverRun.Done<Void> d) {
+            started++;
+            d.done(true, "", null);
+        }
+
+        @Override
+        public void uploadStatus(LeverRun.Done<LeverRun.Upload> d) {
+            double up = off ? lte[Math.min(li++, lte.length - 1)] : normal[Math.min(ni++, normal.length - 1)];
+            d.done(true, "", new LeverRun.Upload(4, up, 40, up, ""));
+        }
+
+        @Override
+        public void stopUpload(LeverRun.Done<Void> d) {
+            d.done(true, "", null);
+        }
+
+        @Override
+        public void later(long ms, Runnable r) {
+            if (started > stallAfter) {
+                return; // the phone has gone quiet: this run stays where it is
+            }
+            clock += ms;
+            r.run();
+        }
+
+        @Override
+        public long now() {
+            return clock;
+        }
+
+        @Override
+        public void awake(boolean on) {
+            // nothing to keep awake here
+        }
+    }
+
+    /** The tab is shown a comparison: the table and the progress line as the real run made them. */
+    static void showRun(MainActivity a, double[] normal, double[] lte, int rounds, int stallAfter, long seed) throws Exception {
+        final String[] progress = {""};
+        LeverRun run = new LeverRun(new QuickLink(normal, lte, stallAfter), new LeverRun.Listener() {
+            @Override
+            public void progress(String text) {
+                progress[0] = text;
+            }
+
+            @Override
+            public void rows(java.util.List<LeverRun.Row> rows, int best, boolean running) {
+                // the tab is given the table below
+            }
+        }, LeverRun.settings(true, true), rounds, Tab.SIGNAL, new java.util.Random(seed));
+        run.start();
+        Tab tab = current(a);
+        setField(tab, "run", run);
+        setField(tab, "progressMsg", progress[0]);
+        setField(tab, "keepNote", ""); // what starting a comparison does
+        java.lang.reflect.Method m = SignalTab.class.getDeclaredMethod("renderRows", java.util.List.class, int.class, boolean.class);
+        m.setAccessible(true);
+        m.invoke(tab, run.rows(), run.best(), run.running());
+        settle();
+    }
+
+    /** Before the first scan has been answered. */
+    @Test
+    public void signalNotScannedYet() throws Exception {
+        Pretend p = new Pretend();
+        p.cellsDelayMs = 1500; // the scan is still out when the picture is taken
+        p.install();
+        linkProved();
+        MainActivity a = tablet();
+        a.openTab(Tab.SIGNAL);
+        ShadowLooper.idleMainLooper(); // one layout, and no answer yet
+        save(a.getWindow().getDecorView(), "state-signal-not-scanned");
+        settle();
+        later(2000); // the answer comes in before the next test starts
+    }
+
+    /** After a scan on 5G UW, and on 4G only (the phone's label and cells follow the switch). */
+    @Test
+    public void signalOn4GOnly() throws Exception {
+        Pretend p = new Pretend();
+        p.fourGOnly = true;
+        MainActivity a = signalTab(p);
+        shot(a, "state-signal-4g-only");
+        // the switch back to 5G: the answer is in the strip, and the tab looks again a few seconds later
+        press(a, "5G allowed");
+        settle();
+        shot(a, "state-signal-switched-to-5g");
+        later(9000);
+        shot(a, "state-signal-looked-again");
+    }
+
+    /** The phone does not answer. */
+    @Test
+    public void signalUnreachable() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "";
+        MainActivity a = signalTab(p);
+        shot(a, "state-signal-unreachable");
+    }
+
+    /** Over Bluetooth: scanning works, the comparison says why it cannot start. */
+    @Test
+    public void signalOverBluetooth() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        MainActivity a = signalTab(p);
+        shot(a, "state-signal-bluetooth");
+        Button start = findButton(a.getWindow().getDecorView(), "Start");
+        if (start == null || start.isEnabled()) {
+            throw new AssertionError("the comparison can be started over Bluetooth");
+        }
+    }
+
+    /** A comparison in the middle, one that is over with a recommendation, and one with no difference. */
+    @Test
+    public void signalComparisons() throws Exception {
+        MainActivity a = signalTab(new Pretend());
+        showRun(a, new double[] {4.1, 3.2, 5.0, 3.6, 4.4}, new double[] {2.0, 1.4, 2.6, 1.9, 2.2}, 5, 3, 11);
+        shot(a, "state-signal-compare-middle");
+        // the phone is better off on 4G here: 4G only wins every round
+        showRun(a, new double[] {2.0, 1.4, 2.6, 1.9, 2.2}, new double[] {4.1, 3.2, 5.0, 3.6, 4.4}, 5, 1000, 12);
+        shot(a, "state-signal-compare-recommended");
+        press(a, "Keep: 4G only (5G off)");
+        settle();
+        shot(a, "state-signal-compare-kept");
+        // nothing clearly better
+        showRun(a, new double[] {3.1, 3.4, 2.9, 3.3, 3.0}, new double[] {3.0, 3.5, 3.0, 3.2, 3.1}, 5, 1000, 13);
+        shot(a, "state-signal-compare-no-difference");
+    }
+
+    /** The best spot, running: the score, the lines, a marked spot. The beep stays off (the pretend tablet has no speaker). */
+    @Test
+    public void signalBestSpot() throws Exception {
+        MainActivity a = signalTab(new Pretend());
+        Tab tab = current(a);
+        setField(tab, "beepOn", false);
+        ((Button) field(tab, "bHunt")).performClick();
+        for (int i = 0; i < 4; i++) {
+            later(1000);
+        }
+        ((android.widget.EditText) field(tab, "labelField")).setText("window");
+        press(a, "Mark");
+        settle();
+        shot(a, "state-signal-best-spot");
+    }
+
+    /** The tools: each asks first, and says what happened. */
+    @Test
+    public void signalTools() throws Exception {
+        Pretend p = new Pretend();
+        MainActivity a = signalTab(p);
+        press(a, "Search for a network again");
+        dialogShot("state-signal-ask-search");
+        answerYes();
+        settle();
+        shot(a, "state-signal-searching");
+        for (int i = 0; i < 4; i++) {
+            later(3000);
+        }
+        shot(a, "state-signal-searched");
+        press(a, "Phone info screen");
+        dialogShot("state-signal-ask-phone-info");
+        answerYes();
+        settle();
+        shot(a, "state-signal-phone-info-opened");
+        press(a, "Safety check");
+        settle();
+        shot(a, "state-signal-safety-check");
     }
 
     @Test

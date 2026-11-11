@@ -33,6 +33,8 @@ final class SignalTab extends Tab {
     private long lastScanAt = -1;
     private boolean noAnswer;
     private String noAnswerText = "";
+    /** Something changed the phone's radio since the last scan (a mode switch, a comparison, a restart of the radio): scan again next time. */
+    private boolean stale;
     private SignalRules.Mode mode = SignalRules.Mode.UNKNOWN;
 
     // ---- what the tab is doing
@@ -253,7 +255,7 @@ final class SignalTab extends Tab {
         shown = true;
         paintAll();
         boolean comparing = run != null && run.running();
-        if (SignalRules.scanOnShow(SystemClock.elapsedRealtime(), lastScanAt, comparing)) {
+        if (SignalRules.scanOnShow(SystemClock.elapsedRealtime(), stale ? -1 : lastScanAt, comparing)) {
             scan(false);
             readMode();
         }
@@ -316,7 +318,7 @@ final class SignalTab extends Tab {
             status.setTextColor(Ui.AMBER);
         } else {
             status.setText(lastState == null ? (scanning ? "Looking at what the phone is on…" : "Not scanned yet.")
-                    : "Scanned " + ago() + ".");
+                    : "Scanned " + ago() + (stale ? ", before the last change." : "."));
             status.setTextColor(Ui.DIM);
         }
         fNetwork.set(SignalRules.networkWords(lastState), lastState == null ? Ui.DIM : Ui.FG);
@@ -426,10 +428,16 @@ final class SignalTab extends Tab {
         }
         Call.run(act, "GET", "/cells", 35000, (ok, text, json) -> {
             scanning = false;
-            lastScanAt = SystemClock.elapsedRealtime();
+            if (ok) {
+                lastScanAt = SystemClock.elapsedRealtime(); // only an answer is a scan: a miss is tried again when the tab is shown
+                stale = false;
+            }
             if (!ok || json == null) {
                 noAnswer = true;
                 noAnswerText = text;
+                if (manual) {
+                    setResult("Scan", text, false);
+                }
             } else {
                 noAnswer = false;
                 noAnswerText = "";
@@ -440,9 +448,11 @@ final class SignalTab extends Tab {
                     setResult("Scan", lastCells, true);
                 }
             }
-            if (afterSearchScan && ok) {
+            if (afterSearchScan) {
                 afterSearchScan = false;
-                setResult("Search for a network again", SignalRules.searchWords(beforeSearch, lastState == null ? "" : lastState.usingText()), true);
+                setResult("Search for a network again", ok && lastState != null
+                        ? SignalRules.searchWords(beforeSearch, lastState.usingText())
+                        : "The restart is over, but the scan after it got no answer: " + text, ok && lastState != null);
             }
             if (shown) {
                 paintAll();
@@ -452,9 +462,7 @@ final class SignalTab extends Tab {
 
     private void readMode() {
         Call.run(act, "POST", "/act?name=net_get", 30000, (ok, text, json) -> {
-            if (ok) {
-                mode = SignalRules.modeOf(text);
-            }
+            mode = ok ? SignalRules.modeOf(text) : SignalRules.Mode.UNKNOWN; // a phone that does not answer is not known to be in any mode
             if (shown) {
                 paintMode();
             }
@@ -525,6 +533,7 @@ final class SignalTab extends Tab {
         paintButtons();
         Call.run(act, "POST", "/act?name=" + (fourGOnly ? "net_lte" : "net_5g"), 60000, (ok, text, json) -> {
             busy = false;
+            stale = true;
             SignalRules.Mode m = SignalRules.modeOf(text);
             if (ok && m != SignalRules.Mode.UNKNOWN) {
                 mode = m;
@@ -542,7 +551,7 @@ final class SignalTab extends Tab {
     // ------------------------------------------------------------------------------------------------ the comparison
 
     private void startCompare() {
-        if (run != null && run.running()) {
+        if (busy || (run != null && run.running())) {
             return;
         }
         String blocked = SignalRules.comparisonBlocked(!noAnswer, "bt".equals(Call.lastVia(act)));
@@ -580,6 +589,12 @@ final class SignalTab extends Tab {
     private void renderRows(List<LeverRun.Row> r, int b, boolean running) {
         boolean ended = compareGoing && !running;
         compareGoing = running;
+        if (running || r.isEmpty()) {
+            keepNote = ""; // a note about an earlier Keep does not belong to a run that is going on
+        }
+        if (ended) {
+            stale = true; // the run switched 5G and put it back: look again next time, even after a short visit elsewhere
+        }
         rows = new ArrayList<>(r);
         best = b;
         StringBuilder sb = new StringBuilder();
@@ -612,6 +627,7 @@ final class SignalTab extends Tab {
         paintButtons();
         Call.run(act, "POST", "/act?name=" + (chosen.fiveGOff ? "net_lte" : "net_5g"), 60000, (ok, text, json) -> {
             busy = false;
+            stale = true;
             SignalRules.Mode m = SignalRules.modeOf(text);
             if (ok && m != SignalRules.Mode.UNKNOWN) {
                 mode = m;
@@ -805,7 +821,15 @@ final class SignalTab extends Tab {
                 }
                 return;
             }
-            if (json != null && json.optBoolean("later", false) && shown) {
+            if (json != null && json.optBoolean("later", false)) {
+                if (!shown) {
+                    // answered first: the restart has only begun, and nobody is looking any more
+                    busy = false;
+                    stale = true;
+                    setResult("Search for a network again", "Sent. LinkMeter did not look at how the restart went because this tab was "
+                            + "left. Scan to see where the phone is now.", true);
+                    return;
+                }
                 follow = new SearchFollow();
                 followSince = SystemClock.elapsedRealtime();
                 final int gen = ++followGen;
@@ -815,6 +839,7 @@ final class SignalTab extends Tab {
                 return;
             }
             busy = false;
+            stale = true;
             afterSearchScan = true;
             setResult("Search for a network again", "Done. Looking at what the phone is on now…", true);
             scan(false);
@@ -842,6 +867,7 @@ final class SignalTab extends Tab {
             }
             follow = null;
             busy = false;
+            stale = true;
             if (o.ok) {
                 afterSearchScan = true;
                 setResult("Search for a network again", "Done. Looking at what the phone is on now…", true);
@@ -860,8 +886,8 @@ final class SignalTab extends Tab {
 
     private void askPhoneInfo() {
         confirm("Open the Phone info screen?", "This opens Android's own Phone info screen on the phone. It has real switches in it: do not "
-                + "touch the ones that turn the radio off or change the preferred network type. Looking is safe. Open the Screen tab to see "
-                + "it (unlock the phone first).", "Open it", () -> phoneInfo(0));
+                + "tap \"Disable Data Connection\" (in its menu), \"Mobile Radio Power\" or \"Set Preferred Network Type\". Looking is safe. "
+                + "Open the Screen tab to see it (unlock the phone first).", "Open it", () -> phoneInfo(0));
     }
 
     /**

@@ -1,7 +1,7 @@
 # LinkMeter safety: what it can change, how every change is undone, and what it can type (it dials nothing)
 
 Rule 1 of this project: **the phone must never break, brick, or lose its internet for good.** This file says how that is kept,
-and where it cannot be (section 7). The "Safety check" button (Phone tab, Bands tab) shows at any moment what LinkMeter still has
+and where it cannot be (section 7). The "Safety check" button (Phone tab, Signal tab) shows at any moment what LinkMeter still has
 changed. First audit 2026-11-09 (v0.2.82); second check the same day, on phone codes (section 2); third, on "start the phone after a restart" (section 8). Use the newest release on the
 Releases page, never v0.2.79 to v0.2.82 (they can dial any code you give them), and put the SAME release on the phone and on the tablet.
 

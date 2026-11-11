@@ -430,6 +430,10 @@ public final class LeverRunTest {
         s = LeverRun.summary(Arrays.asList(base, row(1.2, 1.2, 1.2, 1.2, 1.2)), 5);
         check(s.contains("only a possible difference"), "a maybe is called only possible: " + s);
         check(LeverRun.summary(new ArrayList<LeverRun.Row>(), 5).isEmpty(), "an empty table has no summary");
+        s = LeverRun.summary(Arrays.asList(base, row(2, 2, 2, 2, 2)), 5);
+        check(s.contains("in each of the 5 rounds") && !s.contains("so far"), "a finished run is not said to be still going: " + s);
+        s = LeverRun.summary(Arrays.asList(row(1, 1, 1, 1, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN), row(2, 2, 2, 2)), 9);
+        check(s.contains("4 of 9 rounds so far"), "a run that is not over says how far it is: " + s);
         check(LeverRun.summary(Arrays.asList(row(), row(1, 2, 3)), 5).contains("nothing can be compared"), "no baseline result yet");
 
         List<LeverRun.Setting> l = LeverRun.settings(true, true);

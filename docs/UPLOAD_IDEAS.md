@@ -13,7 +13,7 @@ almost 0 upload speeds during the day with a weak 5G UW signal."
 | `setSystemSelectionChannels` is a hint for which bands the modem's background SCAN acts on (made for CBRS), not a "stay on this band while connected" lock. "Acknowledged but not obeyed" is therefore normal. | fairly (wording is documented; this modem's behaviour is observed) | AOSP framework/HAL commit text and CTS (they test it with CBRS channels); HANDOFF's own field data (every lock NOT obeyed) |
 | Field result: every lock was NOT obeyed in both runs (v0.2.61: the phone stayed on B66 and B48 although B66 only was asked for; v0.2.63 with "search again" on). ONE GAP, on record so nobody rebuilds locks to close it: a lock after a CONFIRMED search (a radio restart known to have finished) was never run, because the restart cut the link. The locks were removed anyway: the call is only a hint for the scan. | yes for "not obeyed", gap as written | HANDOFF 2026-11-09 field blocks |
 | Verizon says uploads can run over 5G and LTE in weak signal. In NSA (EN-DC) the LTE leg gets uplink power priority, and a weak NR leg can lose power or fail. | plausible, NOT measured on this phone | Verizon network-performance page; patents and vendor white papers |
-| This phone (SM-S156V, MT6835 = Dimensity 6100+, sub-6 only) has no mmWave, so its "5G UW" can only be C-band n77. | inferred | third-party spec lists show n77 and no n260/n261; the Bands tab's carrier list shows the real NR band |
+| This phone (SM-S156V, MT6835 = Dimensity 6100+, sub-6 only) has no mmWave, so its "5G UW" can only be C-band n77. | inferred | third-party spec lists show n77 and no n260/n261; the Signal tab's carrier list shows the real NR band |
 | Total Wireless is a Verizon prepaid brand; several comparison sites say lower tiers are deprioritized behind Verizon postpaid in congestion; sources conflict on which tiers. "Slow only during the day" fits congestion/priority as well as it fits RF. | unverified for the user's plan | comparison sites; check the plan page |
 | The upload test is real: 2 streams, 64 KB send buffer (`SpeedTest.transfer`, `SmallBufferFactory`). One 8 s sample varies 2.6 to 7.5 Mbit/s (noise). | yes | code |
 | Samsung `*#2263#` is reportedly blocked on Verizon firmware ("RAT selection option restricted"). | forum reports only | forums |
@@ -61,7 +61,7 @@ almost 0 upload speeds during the day with a weak 5G UW signal."
 ## 10-minute tests for the user (no code needed)
 
 1. (Done: locks were not obeyed in two field runs, and the sweep is gone.)
-2. Same spot, at the bad time of day: 5G allowed vs 4G only (Bands tab, Compare 4G only and 5G fairly), at least 3 upload-only runs each (one run is +/- 3 Mbit/s).
+2. Same spot, at the bad time of day: 5G allowed vs 4G only (Signal tab, "Compare the two"), at least 3 upload-only runs each (one run is +/- 3 Mbit/s).
 3. A speed-test app on the phone itself with the hotspot off, then on. A big gap means a hotspot penalty.
 4. The same test at night. If night is fine, it is load or priority and no band choice fixes the daytime.
 5. Move the phone while watching the Home meters (window, higher up, case off). Note battery temperature (hot phone = suspect).

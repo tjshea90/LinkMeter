@@ -448,6 +448,7 @@ LV = [
  ("lever: a setting the phone does not obey gets a verdict", "LeverRun.java", "if (p[0] < 3 || r.notObeyed) {", "if (p[0] < 3) {"),
  ("lever: a tie counts as a win", "LeverRun.java", "if (r.byRound[i] > base.byRound[i]) {", "if (r.byRound[i] >= base.byRound[i]) {"),
  ("lever: the luck chance counts one win too few", "LeverRun.java", "            if (j >= k) {\n                sum += c;", "            if (j > k) {\n                sum += c;"),
+ ("lever: a finished run is said to be still going", "LeverRun.java", "sb.append(done >= rounds\n", "sb.append(false\n"),
  ("lever: the median of two takes the lower", "LeverRun.java", "(l.get(m - 1) + l.get(m)) / 2", "l.get(m - 1)"),
  ("lever: a row that is no better is recommended", "LeverRun.java", "if ((v == Verdict.CLEAR || v == Verdict.MAYBE) && (best < 0", "if ((v == Verdict.CLEAR || v == Verdict.MAYBE || v == Verdict.SAME) && (best < 0"),
  ("lever: the lowest of the better rows is recommended", "LeverRun.java", "rows.get(i).median() > rows.get(best).median()", "rows.get(i).median() < rows.get(best).median()"),

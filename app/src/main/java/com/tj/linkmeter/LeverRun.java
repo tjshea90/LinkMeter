@@ -335,8 +335,11 @@ final class LeverRun {
         for (Row r : rows) {
             done = Math.max(done, r.n());
         }
-        sb.append(String.format(Locale.US, "Each setting was measured once per round, %d of %d rounds so far, in a random order so a "
-                + "slow stretch of the network does not favour one of them.", done, rounds));
+        sb.append(done >= rounds
+                ? String.format(Locale.US, "Each setting was measured once in each of the %d rounds, in a random order so a slow stretch "
+                        + "of the network does not favour one of them.", rounds)
+                : String.format(Locale.US, "Each setting was measured once per round, %d of %d rounds so far, in a random order so a "
+                        + "slow stretch of the network does not favour one of them.", done, rounds));
         if (base.n() == 0) {
             return sb.append("\nThe phone's own setting has no result yet, so nothing can be compared.").toString();
         }
