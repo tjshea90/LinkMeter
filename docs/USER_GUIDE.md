@@ -46,7 +46,11 @@ always.
   send it; reactions from iPhones ("Loved ...") show on the message they are about. **Delete** removes it on the tablet and asks the phone
   to delete it too; most phones only let their own Messages app do that, then the texts stay on the phone and the strip says so (Undo
   brings them back here). On a wide tablet screen the list stays on the left. The menu (the three dots) has unread only, archived,
-  mark all read, refresh and Texts settings.
+  mark all read, refresh and Texts settings. A fresh verification code gets a **Copy code** button (in the list and under the text).
+  **Texts settings** (menu): keep the saved copy (it is encrypted, with a key that stays inside the tablet), hide the words in the
+  list, **lock Texts with the tablet's screen lock** (asks again after 2 minutes away; needs a PIN, pattern or password set in
+  Android), hide Texts from screenshots and the recent apps picture, erase everything saved here. Pairing again erases it too. Texts
+  themselves (SMS/MMS) cannot be end-to-end encrypted by any app, and chats that Google Messages sends as RCS are not shown.
 - **Speed, Screen, Files:** as before.
 
 ## 3. If something breaks
@@ -74,6 +78,8 @@ Tell me what happened, in your own words, for any of these:
 - The Signal tab: Scan, the comparison, Search for a network again, Phone info screen.
 - Texts (use the newest release on BOTH devices): does the list open at once? Does a new text show up by itself without opening it? Do
   Delete, Archive, Pin, Search and a picture message work? Does Delete say "Deleted on the phone" or "The phone kept it"?
+  With Texts settings > "Lock Texts with the screen lock" on: does it ask after 2 minutes away, and not before? Does a fresh code text
+  show Copy code, and does it copy only the digits?
 - Glide typing (SwiftKey): Screen tab > Options > Keyboard > "Test the keyboard". In box 1 (a plain text box) and in box 2 (the Type
   button's field, with what it would send written underneath): does a glided word work? Tell me which of the two glides, and what the
   last lines of the test say (version, keyboard, counts).

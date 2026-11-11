@@ -1029,6 +1029,7 @@ final class TextThread {
         final LinearLayout partsBox;
         final TextView body;
         final TextView reactions;
+        final TextView copyCode;
         final TextView meta;
 
         Bubble() {
@@ -1056,6 +1057,11 @@ final class TextThread {
             rp.leftMargin = Ui.dp(act, 10);
             rp.rightMargin = Ui.dp(act, 10);
             column.addView(reactions, rp);
+            copyCode = TextsViews.pill(act);
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cp.topMargin = Ui.dp(act, 4);
+            cp.leftMargin = Ui.dp(act, 4);
+            column.addView(copyCode, cp);
             meta = Ui.text(act, "", 11, Ui.DIM, false);
             meta.setPadding(Ui.dp(act, 6), Ui.dp(act, 3), Ui.dp(act, 6), 0);
             column.addView(meta, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1151,6 +1157,15 @@ final class TextThread {
             bubble.setOnLongClickListener(hold);
             body.setOnClickListener(tap);
             body.setOnLongClickListener(hold);
+
+            final String code = OtpCodes.forBubble(m.body, m.mine, m.time, System.currentTimeMillis());
+            if (code.isEmpty()) {
+                copyCode.setVisibility(View.GONE);
+            } else {
+                copyCode.setText("Copy code");
+                copyCode.setOnClickListener(v -> TextsViews.copyCode(act, code));
+                copyCode.setVisibility(View.VISIBLE);
+            }
 
             if (r.reactions.isEmpty()) {
                 reactions.setVisibility(View.GONE);

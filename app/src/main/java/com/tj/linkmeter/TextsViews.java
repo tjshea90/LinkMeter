@@ -86,6 +86,35 @@ final class TextsViews {
         return b;
     }
 
+    /** A small rounded button of words ("Copy code") for the list and the bubbles. */
+    static TextView pill(Context c) {
+        TextView t = Ui.text(c, "Copy code", 12.5f, Ui.ACCENT, true);
+        t.setGravity(Gravity.CENTER);
+        t.setBackground(shape(0x334C8DFF, Ui.dp(c, 14)));
+        t.setPadding(Ui.dp(c, 10), Ui.dp(c, 3), Ui.dp(c, 10), Ui.dp(c, 3));
+        t.setSingleLine(true);
+        t.setClickable(true);
+        t.setFocusable(false);
+        t.setContentDescription("Copy the code");
+        return t;
+    }
+
+    /** Puts a one-time code on the clipboard, marked sensitive where Android knows that mark (13 and later: it is hidden in the clipboard preview). */
+    static void copyCode(Context c, String code) {
+        android.content.ClipboardManager cm = (android.content.ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm == null || code.isEmpty()) {
+            return;
+        }
+        android.content.ClipData clip = android.content.ClipData.newPlainText("code", code);
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            android.os.PersistableBundle extras = new android.os.PersistableBundle();
+            extras.putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true);
+            clip.getDescription().setExtras(extras);
+        }
+        cm.setPrimaryClip(clip);
+        android.widget.Toast.makeText(c, "Code copied", android.widget.Toast.LENGTH_SHORT).show();
+    }
+
     /** A list of choices in a dialog; each label runs the action at the same place. */
     static void menu(Context c, String title, final String[] labels, final Runnable[] actions) {
         AlertDialog.Builder b = new AlertDialog.Builder(c);

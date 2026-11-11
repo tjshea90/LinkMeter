@@ -70,6 +70,18 @@ The Texts feature as first built is described in `docs/FILES_AND_TEXTS_PLAN.md` 
 - [x] P2 tablet logic (TextsLocal, TextsCache, ThreadListRules, ThreadRows, ThreadMerge, SmsReactions, SmartReply, SmsLength, FileBlobStore) + offline tests (`TextsLogicTest`, 30 `texts:` breakages)
 - [x] P3 tablet GUI (`TextsTab`, `TextThread`, `TextsViews`, `IconButton`, new `Icons`; `tools/uipreview/.../TextsPreviewTest` draws 10 states with `PretendSms`: look at `tools/uipreview/out/texts-*.png`) released as v0.2.162
 - [x] P4 S1 security on the tablet (saved copy and choices sealed with AES-GCM and a Keystore key, Texts lock with the screen lock, no screenshots / blank recent apps picture, hidden previews, erase everything saved, erase on pairing again): `Sealer`/`AesGcmSealer`/`SealedBlobStore`/`TextsLock` (pure, tested), `TextsVault` (Keystore), `TextsTab` lock screen and settings, `MainActivity.confirmDeviceCredential`/`applySecure`, `TextsViews.show` (closes dialogs when the lock engages); 15 breakages; pictures `texts-locked`, `texts-settings`
-- [ ] P4 S2 encrypted channel for `/sms/*` between the phone and the tablet (optional; see Design)
+- [x] Copy code for one-time codes (`OtpCodes`, button in the list row and under the text; 11 more breakages; pictures `texts-code-list`, `texts-code-thread`)
+- [-] P4 S2 encrypted channel for `/sms/*`: NOT BUILT, ON PURPOSE. The pairing secret is sent in clear in every request (HANDOFF decision 9), so
+  a channel keyed with it protects nothing: anyone who can listen on the phone's hotspot learns the secret and can then open the same
+  channel (and on a Wi-Fi network whoever can listen can also connect). It would only be security theatre. A real one needs keys that are
+  never sent, for every request: a change of the whole link, not a part of Texts.
 - [ ] docs, HANDOFF, release(s)
 - [ ] Field test by the user: speed, new replies appearing by themselves, delete/hide, search, lock
+
+## Idea for later (NOT built; ask the user first): RCS chats through the phone's notifications
+Google Messages keeps RCS chats in its own database, but every new message is a notification (a MessagingStyle with the sender and the
+text) that has a Reply action. A `NotificationListenerService` on the phone (the user grants "Notification access"; with Shizuku
+`cmd notification allow_listener` can do the granting) could log the messages it sees and send a reply through the notification's
+RemoteInput; the tablet would show those chats as their own list ("Chats"), honestly labelled: only messages that came after it was
+switched on, pictures mostly not, a reply only while that notification is still on the phone. Android 15 and later hide one-time codes
+in notifications from listeners. It reads message notifications of Google Messages (and Samsung Messages), so it needs the user's yes.

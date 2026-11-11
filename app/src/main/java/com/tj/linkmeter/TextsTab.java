@@ -1200,6 +1200,7 @@ final class TextsTab extends Tab {
         final TextView preview;
         final TextView time;
         final TextView badge;
+        final TextView copyCode;
         final IconButton pinned;
         final IconButton muted;
 
@@ -1246,6 +1247,10 @@ final class TextsTab extends Tab {
             preview.setSingleLine(true);
             preview.setEllipsize(TextUtils.TruncateAt.END);
             previewRow.addView(preview, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            copyCode = TextsViews.pill(c);
+            LinearLayout.LayoutParams cc = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cc.leftMargin = Ui.dp(c, 8);
+            previewRow.addView(copyCode, cc);
             badge = TextsViews.badge(c);
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(c, 20));
             bp.leftMargin = Ui.dp(c, 8);
@@ -1270,6 +1275,13 @@ final class TextsTab extends Tab {
             muted.setVisibility(it.muted ? View.VISIBLE : View.GONE);
             TextsViews.bindBadge(badge, it.unread && !it.muted ? it.newCount : -1);
             badge.setBackground(TextsViews.shape(Ui.ACCENT, Ui.dp(act, 10)));
+            final String code = OtpCodes.forList(t.snippet, it.unread, t.time, System.currentTimeMillis());
+            if (code.isEmpty()) {
+                copyCode.setVisibility(View.GONE);
+            } else {
+                copyCode.setVisibility(View.VISIBLE);
+                copyCode.setOnClickListener(v -> TextsViews.copyCode(act, code));
+            }
         }
 
         void bindHit(Sms.Hit hit) {
@@ -1283,6 +1295,7 @@ final class TextsTab extends Tab {
             time.setTextColor(Ui.DIM);
             pinned.setVisibility(View.GONE);
             muted.setVisibility(View.GONE);
+            copyCode.setVisibility(View.GONE);
             TextsViews.bindBadge(badge, -1);
         }
     }

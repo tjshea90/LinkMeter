@@ -579,7 +579,7 @@ S2 = [
  ('sms2: removing record messages tells nobody', 'SmsOutbox.java', 'if (n > 0) {\n            save();\n            changed();\n        }\n        return n;\n    }\n\n    /** Deletes every message', 'if (n > 0) {\n            save();\n        }\n        return n;\n    }\n\n    /** Deletes every message'),
 ]
 TEXTS_FILES = ["SmsLength.java", "SmsReactions.java", "SmartReply.java", "TextsLocal.java", "TextsCache.java", "ThreadListRules.java", "ThreadRows.java",
-               "FileBlobStore.java", "ThreadMerge.java", "Sealer.java", "AesGcmSealer.java", "SealedBlobStore.java", "TextsLock.java"]
+               "FileBlobStore.java", "ThreadMerge.java", "Sealer.java", "AesGcmSealer.java", "SealedBlobStore.java", "TextsLock.java", "OtpCodes.java"]
 TEXTS_TEST = ROOT + "/tools/test/TextsLogicTest.java"
 TEXTS_JAVAC = ["-sourcepath", ROOT + "/app/src/main/java"]
 TX = [
@@ -626,6 +626,17 @@ TX = [
  ('texts: the lock asks when it is switched off', 'TextsLock.java', 'if (!lockOn || !deviceSecure) {', 'if (!deviceSecure) {'),
  ('texts: an unlock is forgotten', 'TextsLock.java', 'unlockedAt = now;', 'unlockedAt = 0;'),
  ('texts: leaving twice moves the time', 'TextsLock.java', 'if (unlockedAt > 0 && leftAt == 0) {', 'if (unlockedAt > 0) {'),
+ ('texts: a number far from the words is a code', 'OtpCodes.java', 'return bestDistance <= NEAR ? best : "";', 'return bestDistance < Integer.MAX_VALUE ? best : "";'),
+ ('texts: a code in two groups is cut', 'OtpCodes.java', 'digits = digits + body.substring(j + 1, j + 4);', 'digits = digits;'),
+ ('texts: the first number wins, not the nearest', 'OtpCodes.java', 'if (d < bestDistance) {', 'if (best.isEmpty()) {'),
+ ('texts: a number in a word is a code', 'OtpCodes.java', 'if (Character.isLetter(before) || Character.isLetter(after)) {', 'if (false) {'),
+ ('texts: an amount is a code', 'OtpCodes.java', 'if ("$€£¥@/%".indexOf(before) >= 0 || after == \'%\') {', 'if (false) {'),
+ ('texts: a part of a phone number is a code', 'OtpCodes.java', 'if ("-.:/,+".indexOf(before) >= 0 && start >= 2 && digit(s.charAt(start - 2))) {', 'if (false) {'),
+ ('texts: a number with a plus is a code', 'OtpCodes.java', "return before != '+'; // +4155551234", 'return true;'),
+ ('texts: pin is found at the start of a word', 'OtpCodes.java', 'boolean right = e >= lower.length() || !Character.isLetterOrDigit(lower.charAt(e));', 'boolean right = true;'),
+ ('texts: a read text offers its code in the list', 'OtpCodes.java', 'if (!unread || time <= 0', 'if (time <= 0'),
+ ('texts: an old text offers its code in the list', 'OtpCodes.java', 'now - time > RECENT_MS', 'now - time > RECENT_MS * 1000'),
+ ('texts: my own text offers a code', 'OtpCodes.java', 'if (mine || time <= 0', 'if (time <= 0'),
  ('texts: relock does not lock', 'TextsLock.java', 'synchronized void relock() {\n        unlockedAt = 0;', 'synchronized void relock() {\n        unlockedAt = unlockedAt;'),
 ]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),

@@ -370,4 +370,9 @@ final class PretendSms implements SmsApi.Backend {
         b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, bo);
         return bo.toByteArray();
     }
+
+    /** A one-time code arrived two minutes ago from a short code (unread): the list and the conversation offer "Copy code". */
+    void codeArrives() {
+        add("22395", "22395", false, "G-583920 is your Google verification code.", 2 * MIN, true);
+    }
 }

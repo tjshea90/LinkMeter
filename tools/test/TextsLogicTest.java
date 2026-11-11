@@ -921,7 +921,70 @@ public final class TextsLogicTest {
         yes(k.needsUnlock(true, true, 200_300 + TextsLock.GRACE_MS + 5), "but a long one does");
     }
 
+    // ------------------------------------------------------------------ one-time codes
+
+    static void codes() {
+        String[][] yes = {
+            {"Your verification code is 482913. It expires in 10 minutes.", "482913"},
+            {"G-583920 is your Google verification code.", "583920"},
+            {"Use 123456 as your Uber code", "123456"},
+            {"Your Amazon OTP is 4821. Do not share it with anyone.", "4821"},
+            {"Code: 77 and then 908172", "908172"},
+            {"Your code is 123-456", "123456"},
+            {"Your code is 123 456 and it expires soon", "123456"},
+            {"<#> 9081 is your Facebook confirmation code", "9081"},
+            {"Your one-time password: 55120934", "55120934"},
+            {"Security code 8841", "8841"},
+            {"YOUR LOGIN PIN IS 6602.", "6602"},
+            {"Your PIN is 1357", "1357"},
+            {"Please confirm your sign in with 246810", "246810"},
+            {"Your Amazon OTP is 4821. Order 1234567 ships soon", "4821"},
+            {"Use the password 4711, valid for 5 min", "4711"},
+            {"Order 1234567 shipped. Use 4821 as your OTP", "4821"},
+        };
+        for (String[] c : yes) {
+            eq(c[1], OtpCodes.find(c[0]), "a code is found in: " + c[0]);
+        }
+        String[] none = {
+            "Your Verizon Wireless bill is ready. Pay at vzw.com/pay",
+            "Let me know if 7 still works for you?",
+            "Reminder: your appointment is on Thursday at 3:30 PM. Reply C to confirm.",
+            "Call me on 555-1234 about the code",
+            "Your verification code is +15551234567",
+            "The code is 1234567890123",
+            "Your code is $4821 this month",
+            "Your code is 4821% off",
+            "verification 12:30",
+            "We are pinned down at 4821 Main Street",
+            "My pin 3.1415 is not it",
+            "Lunch at 12? Order number 482913",
+            "482913",
+            "",
+            "your code is 12",
+            "the codes are here: 123",
+            "Use code SAVE20 for 20% off",
+            "Your code +4821",
+            "Your screen code is 1080p",
+            "Your verification code is ready but nothing follows this long sentence which goes on and on to be far from any number 482913",
+        };
+        for (String c : none) {
+            eq("", OtpCodes.find(c), "no code in: " + c);
+        }
+        yes(OtpCodes.find(null).isEmpty(), "no text, no code");
+        long now = 1_000_000_000L;
+        String body = "Your verification code is 482913.";
+        eq("482913", OtpCodes.forList(body, true, now - 5 * 60_000L, now), "an unread fresh text offers its code in the list");
+        eq("", OtpCodes.forList(body, false, now - 5 * 60_000L, now), "a text that was read does not");
+        eq("", OtpCodes.forList(body, true, now - OtpCodes.RECENT_MS - 1, now), "an old one does not");
+        eq("482913", OtpCodes.forList(body, true, now - OtpCodes.RECENT_MS, now), "exactly at the limit it still does");
+        eq("", OtpCodes.forList(body, true, now + 60_000L, now), "a text from the future (a clock that moved) does not");
+        eq("482913", OtpCodes.forBubble(body, false, now - 3 * 60 * 60_000L, now), "an incoming text of today offers its code in a conversation");
+        eq("", OtpCodes.forBubble(body, true, now - 60_000L, now), "never for a text I sent");
+        eq("", OtpCodes.forBubble(body, false, now - OtpCodes.BUBBLE_MS - 1, now), "nor for one older than a day");
+    }
+
     public static void main(String[] args) throws Exception {
+        codes();
         sealed();
         lock();
         merges();

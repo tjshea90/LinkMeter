@@ -191,7 +191,30 @@ answers nothing about texts, and the tablet wipes what it had saved. Only the pa
   for eight seconds. Nothing else in the messages database is ever written, and what the tablet itself sent (its own record on the
   phone) is the only thing deleted for good without the phone's say.
 - **The saved copy on the tablet** (so that the tab opens at once and still shows the texts when the phone is out of reach): the newest
-  conversations and up to 80 messages of up to 30 conversations, text only (no pictures), in the app's private folder. Settings in the
-  Texts tab: keep it or not, hide the words of texts in the list, clear it now. It is cleared when the phone says texts are off.
+  conversations and up to 80 messages of up to 30 conversations, text only (no pictures), in the app's private folder, together with the
+  tablet's own choices (pins, archive, drafts, hidden conversations). Every file is sealed: AES-256-GCM, with the file's name bound to it
+  (a file copied under another name does not open) and a key that the Android Keystore makes and keeps (LinkMeter cannot read the key
+  out; most tablets keep it in hardware). If the Keystore does not work on the tablet, nothing is written to the tablet at all. What
+  this protects: the files themselves (a copied backup or file extraction shows nothing readable). What it does not protect: a tablet
+  that is unlocked and open at the Texts tab (that is what the lock below is for). Settings in the Texts tab: keep it or not, hide the
+  words of texts in the list, lock, no screenshots, clear it now, erase everything saved here. It is cleared when the phone says texts
+  are off, and everything saved (the copy, the choices, the pictures opened from texts, the key) is erased when the tablet pairs again
+  ("Pair again (new secret)").
+- **The Texts lock** (off by default): when the tablet has a screen lock, Texts shows no text until the tablet's own screen-lock question
+  (PIN, pattern, password or fingerprint, whichever the tablet offers) is passed, and asks again when Texts is opened after being away
+  for more than two minutes. A question that is open on top of the texts is closed when the lock engages. A tablet without a screen lock
+  cannot use it (the switch says so). LinkMeter does not store or see the PIN: it only gets "passed" or "not passed" from Android.
+- **No screenshots** (off by default): while the Texts tab is in front, the window is marked secure (FLAG_SECURE): no screenshots, screen
+  recordings or casting of it, and a blank picture in the recent apps list (the mark is changed only when the tab in front changes, never
+  when the app pauses, because the recent apps picture is taken after the pause).
+- **Copy code.** A one-time code in an unread text of the last 30 minutes (list), or in an incoming text of the last day (conversation),
+  is offered as a button; a number counts only when words such as code, verification or OTP are next to it (never a phone number, a
+  time, an amount or a long number). The code goes on the clipboard, marked sensitive where Android knows that mark. LinkMeter never types
+  it into anything and never sends it anywhere.
+- **What is NOT encrypted, plainly.** An ordinary text (SMS or MMS) is not end-to-end encrypted by any app: the phone company can read it.
+  The link between the phone and the tablet is protected by the phone's own hotspot password and by the pairing secret, and that secret
+  is sent in clear in every request (decision 9 in `HANDOFF.md`, open on purpose): whoever is on the phone's hotspot and listens can
+  learn it and then ask the phone for texts like the tablet does. An encrypted channel keyed with that same secret would protect
+  nothing, so none was built; closing this gap for real means changing the whole link (keys that are never sent, for every request).
 - **Nothing here dials.** A phone number in a text is shown as text and is never made a link; only web addresses and e-mail addresses are.
 

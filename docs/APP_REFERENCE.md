@@ -461,6 +461,13 @@ Tablet: `TextsTab` (list, search, select, pin/archive/delete with Undo, menu, se
 `linkmeter-texts-poll`, the saved copy shown first), `TextThread` (bubbles in groups, reactions folded into their message, quick
 replies, drafts, optimistic send, load earlier on scroll, delete/forward/copy/details), `TextsViews`/`IconButton`/`Icons` (pieces).
 Pure and tested: `TextsLocal` (the tablet's choices), `TextsCache` (saved copy), `BlobStore`/`FileBlobStore`, `ThreadListRules`,
-`ThreadRows`, `ThreadMerge`, `SmsReactions`, `SmartReply`, `SmsLength`, `ChangeGate`. The pictures: `tools/preview.sh --tests
+`ThreadRows`, `ThreadMerge`, `SmsReactions`, `SmartReply`, `SmsLength`, `ChangeGate`, `OtpCodes` (the one-time code in a text),
+`Sealer`/`AesGcmSealer`/`SealedBlobStore` (AES-GCM files: envelope `0xA7 0x01 IV ciphertext tag`, the blob's name as AAD, plain JSON from
+before sealing is still read), `TextsLock` (when to ask for the screen lock: 2 minutes of grace). Security glue on the tablet:
+`TextsVault` (the Keystore key `linkmeter.texts.v1`, `wipe`, `deviceSecure`; `testKey` is the seam for the pictures),
+`MainActivity.confirmDeviceCredential` (KeyguardManager question, answered in `onActivityResult`, REQ_UNLOCK) and `applySecure` with
+`Tab.secure()` (FLAG_SECURE, changed only when the tab in front changes), `TextsViews.show`/`closeAll` (every Texts dialog goes through
+them so the lock can close them), `TextsViews.pill`/`copyCode` (the Copy code button). Why no encrypted channel for `/sms/*`: see
+`docs/SAFETY.md` section 10 ("What is NOT encrypted"). The pictures: `tools/preview.sh --tests
 "com.tj.linkmeter.TextsPreviewTest"` (`PretendSms` puts the real `SmsApi` behind a fake database; `TextsTab.testLink` is the seam).
 

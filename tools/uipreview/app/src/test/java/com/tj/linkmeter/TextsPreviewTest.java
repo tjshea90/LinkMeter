@@ -471,4 +471,38 @@ public class TextsPreviewTest {
         dialog("texts-settings");
         closeDialog();
     }
+
+    // ------------------------------------------------------------ one-time codes
+
+    @Test
+    public void copyCode() throws Exception {
+        PretendSms ph = phone();
+        ph.codeArrives();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        TextView pill = findText(decor(a), "Copy code");
+        check(pill != null, "the list offers Copy code for the fresh unread code");
+        shot(a, "texts-code-list");
+        pill.performClick();
+        android.content.ClipboardManager cm = (android.content.ClipboardManager) a.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+        check("583920".contentEquals(cm.getPrimaryClip().getItemAt(0).getText()), "the clipboard holds just the code");
+        // the conversation: the code text has the button too (and the old one of six days ago does not: it is too old)
+        tapRow(a, 0);
+        settle();
+        check(findText(decor(a), "G-583920") != null, "the conversation shows the text");
+        shot(a, "texts-code-thread");
+        check(findText(decor(a), "Copy code") != null, "the conversation offers Copy code under the new text");
+    }
+
+    @Test
+    public void noCopyCodeForOldOrReadTexts() throws Exception {
+        phone(); // the demo has a code text that is six days old and was read
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(findText(decor(a), "Copy code") == null, "an old read code offers nothing in the list");
+        TextView row = findText(decor(a), "Your verification code is 482913");
+        check(row != null, "the old code text is in the list");
+    }
 }
