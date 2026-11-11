@@ -5,7 +5,7 @@ turn the Hotspot off button. Turn the Hotspot off button should: 1) turn the hot
 4) turn off the screen and put the phone to sleep and save battery. Turn the Hotspot on button should: 1) turn off airplane mode 2) turn on the Hotspot
 3) do nothing to the location or screen. All of this is in addition to what the app already does for the tablet already" (= the tablet Wi-Fi follows, v0.2.168).
 
-STATUS: WORKING (design done, nothing coded yet when this note was written)
+STATUS: WORKING. Tasks 1-4 CODED and checkpointed (WIP commits up to 87b6dc8); task 5 (DeepSleepPreviewTest) written and being run; task 6 (docs, full verification, release) TO DO.
 
 FACTS FOUND IN THE CODE (not measured on the phone):
 - ANSWER TO "is it possible": airplane mode YES (Shizuku `cmd connectivity airplane-mode enable|disable`, already used: Actions `airplane_on` (+15 min auto-off) and
@@ -37,3 +37,14 @@ DESIGN (decided)
 TO DO (tasks 1-6 in the session task list): 1 DeepSleepRules+test; 2 phone glue; 3 FollowUp & co; 4 tablet UI; 5 Robolectric scenarios+pictures; 6 docs, verify, release.
 UNKNOWN UNTIL THE PHONE TRIES (say so to the user): whether Bluetooth stays on in airplane mode on this Samsung (that is what the fail-safe checks), whether a Bluetooth call
 wakes a phone in deep sleep, whether `cmd location set-location-enabled` exists on Android 16 (the fallback is `settings put secure location_mode`).
+
+PROGRESS (2026-11-11 evening): DONE and saved as WIP commits: DeepSleepRules + DeepSleepRulesTest (3,474 checks, 18 `deep:` breakages caught); phone glue (DeepSleep, PhoneLocation,
+Actions wiring: hotspot_off_deep, location_on/off, hotspot_on = DeepSleep.wake; RemoteRoutes.cutsLink 4-arg; Status loc/deep/dres; Radios.location) + 4 cutsLink breakages;
+FollowUp (deep + from airplane, Seen.location/note, giveUpMs(); FollowUpTest 1,054,825 checks; 12 `follow:` breakages); TabletWifiRules.wishOf(hotspot_off_deep); Cfg.deepSleep;
+HomeTab (askOff three buttons, facts Airplane mode + Location, banner for airplane, hint), SettingsTab switch, ControlTab Location on/off + airplane line;
+tools/uipreview/.../DeepSleepPreviewTest.java (14 scenarios; Pretend now records `targets`/`asked()`).
+STILL TO DO: run DeepSleepPreviewTest (log scratchpad preview-deep.log, last line 'preview-deep exit=N') and LOOK at the pictures (state-home-deep-question, -deep-sent, -deep-done,
+-deep-kept-awake, -deep-no-link, state-home-asleep, state-home-woken, state-settings-deep, state-phone-location); run the whole tools/preview.sh (old tests must pass: the Home
+Switches card has 2 more lines, hint text changed); tools/test.sh; ./gradlew assembleRelease; full mutate_link.py; mutate for glue (optional: tools/mutate_wifi_glue.py style
+for HomeTab deep: run in a git WORKTREE); docs: docs/DEEP_SLEEP.md (new), USER_GUIDE, SAFETY (airplane/location rows), REMOTE_LINK (answer first table), APP_REFERENCE, HANDOFF;
+then the plain `tools/checkpoint.sh "<user sentence>"` (release), check run + release, `note:` commit with the release number, tell the user.
