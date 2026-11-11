@@ -9,6 +9,8 @@ import java.io.IOException;
  * {@link DeepSleepRules}' (pure, tested); this class is what the phone does for each step, and every step is read back before it
  * says it is done. Needs Shizuku. Runs a moment after the tablet's request was answered ({@link Actions#later}): the tablet is told
  * "Sent" first, because the hotspot going off and airplane mode restarting Bluetooth would cut the link the answer travels over.
+ * {@link #sleep} and {@link #wake} never run at the same time: a "Hotspot on" that arrives while the phone is still going to sleep waits
+ * for it, so the last request wins and the two cannot interleave.
  */
 final class DeepSleep implements DeepSleepRules.Phone {
     /** How long Android may take to put a Bluetooth that airplane mode took away back, and for the phone to listen again. */
@@ -26,7 +28,7 @@ final class DeepSleep implements DeepSleepRules.Phone {
     }
 
     /** "Hotspot off", deep. Returns what was done, or throws {@link Actions.NotDone} (whole sentences) when a step did not do its job. */
-    static String sleep(Context app) throws Actions.NotDone {
+    static synchronized String sleep(Context app) throws Actions.NotDone {
         last = "";
         DeepSleepRules.Result r = DeepSleepRules.sleep(new DeepSleep(app));
         last = r.text;
@@ -41,7 +43,7 @@ final class DeepSleep implements DeepSleepRules.Phone {
     }
 
     /** "Hotspot on": airplane mode off first if it is on, then the hotspot. */
-    static String wake(Context app) throws Actions.NotDone {
+    static synchronized String wake(Context app) throws Actions.NotDone {
         last = "";
         SwitchWords.Said s = DeepSleepRules.wake(new DeepSleep(app));
         if (!Radios.airplane(app)) {
