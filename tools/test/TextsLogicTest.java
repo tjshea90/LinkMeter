@@ -726,7 +726,59 @@ public final class TextsLogicTest {
         f.delete();
     }
 
+    // ------------------------------------------------------------------ a page from the phone joins what is on screen
+
+    static String ids(List<Sms.Msg> l) {
+        StringBuilder sb = new StringBuilder();
+        for (Sms.Msg m : l) {
+            sb.append(sb.length() > 0 ? "," : "").append(m.id);
+        }
+        return sb.toString();
+    }
+
+    static List<Sms.Msg> seq(int from, int to) {
+        List<Sms.Msg> l = new ArrayList<>();
+        for (int i = from; i <= to; i++) {
+            l.add(msg("s" + i, i % 2 == 0, "m" + i, 1000 + i * 10L));
+        }
+        return l;
+    }
+
+    static void merges() throws IOException {
+        eq("s1,s2,s3,s4,s5,s6", ids(ThreadMerge.merge(seq(1, 4), seq(3, 6), true)), "a newer page: the new ones are added, the shared ones stay once");
+        eq("s1,s2,s3", ids(ThreadMerge.merge(seq(1, 5), seq(1, 3), true)), "a page that no longer has them: what the phone dropped goes from the screen");
+        eq("s1,s2,s3,s4,s5,s6", ids(ThreadMerge.merge(seq(4, 6), seq(1, 3), false)), "an older page goes before what is there");
+        eq("s1,s2,s3,s4,s5,s6", ids(ThreadMerge.merge(seq(1, 6), seq(2, 4), false)), "an older page that overlaps adds nothing twice");
+        eq("", ids(ThreadMerge.merge(seq(1, 3), new ArrayList<Sms.Msg>(), true)), "an empty newest page: the conversation is empty");
+        eq("s1,s2,s3", ids(ThreadMerge.merge(seq(1, 3), new ArrayList<Sms.Msg>(), false)), "an empty older page: nothing changes");
+        List<Sms.Msg> have = seq(1, 3);
+        Sms.Msg changed = msg("s3", true, "edited state", 1030);
+        changed.state = Sms.STATE_DELIVERED;
+        List<Sms.Msg> page = new ArrayList<>();
+        page.add(changed);
+        List<Sms.Msg> merged = ThreadMerge.merge(have, page, true);
+        eq("s1,s2,s3", ids(merged), "the same id keeps its place");
+        eq(Sms.STATE_DELIVERED, merged.get(2).state, "and takes the phone's newer state");
+        // the undo of a delete
+        TextsLocal l = new TextsLocal(new Mem());
+        l.setPinned("k", true, 1);
+        long before = l.clear("k", 500);
+        eq(0, before, "it was not deleted before");
+        yes(l.isCleared("k", 400), "deleted");
+        l.setCleared("k", before);
+        yes(!l.isCleared("k", 400), "undone");
+        l.clear("k", 300);
+        long again = l.clear("k", 500);
+        eq(300, again, "the time before is given back");
+        l.setCleared("k", again);
+        yes(l.isCleared("k", 300) && !l.isCleared("k", 400), "undone to the time before");
+        l.hide(Arrays.asList("s1", "s2"));
+        l.unhide(Arrays.asList("s1"));
+        yes(!l.isHidden("s1") && l.isHidden("s2"), "unhidden");
+    }
+
     public static void main(String[] args) throws Exception {
+        merges();
         files();
         lengths();
         reactions();

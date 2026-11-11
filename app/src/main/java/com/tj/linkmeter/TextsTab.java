@@ -2,9 +2,6 @@ package com.tj.linkmeter;
 
 import android.app.AlertDialog;
 import android.content.Context;
-import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -12,6 +9,7 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.BaseAdapter;
 import android.widget.Button;
@@ -21,51 +19,110 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Tablet only: the phone's texts. A list of conversations, a conversation with its bubbles and a box to write in (see
- * {@link TextThread}), and a new-message screen with contact search. Everything goes through {@link RemoteSms}; the phone keeps its
- * texts private unless its owner switched "Let the tablet use my texts" on, and this screen says so plainly when it is off.
+ * Tablet only: the phone's texts. A list of conversations (with search, selecting several, pin, archive, delete, unread filter), a
+ * conversation with its bubbles ({@link TextThread}), and a new-message screen with contact search. On a wide screen the list stays
+ * on the left and the conversation opens beside it. Everything goes through {@link RemoteSms}; the phone keeps its texts private
+ * unless its owner switched "Let the tablet use my texts" on, and this screen says so plainly when it is off.
+ *
+ * Fast and live: the tab opens at once with the tablet's saved copy ({@link TextsCache}) and asks the phone in the background; a
+ * phone that speaks protocol 2 is asked to say when something changes (a request that waits for news), an older one is asked every
+ * 3 seconds as before. What the tablet decides itself (pins, archive, delete, drafts, what was read) lives in {@link TextsLocal}.
  */
 final class TextsTab extends Tab {
-    private static final int[] AVATARS = {0xFF3F7CE0, 0xFF2E9E6B, 0xFFC2662D, 0xFF8E5BD6, 0xFFC24A7B, 0xFF2C93A8, 0xFF9A8A2A};
+    /** For the pictures made by tools/uipreview: a link that answers like a phone (null: the real link to the phone). */
+    static RemoteStore.Link testLink;
+
+    /** How long one request for news may wait at the phone. */
+    private static final int POLL_WAIT_S = 20;
+    private static final int WIDE_DP = 720;
+    private static final int LIST_DP = 340;
 
     private final ExecutorService net = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "linkmeter-texts");
         t.setDaemon(true);
         return t;
     });
-    private final AtomicBoolean polling = new AtomicBoolean();
-    private FrameLayout root;
+    private volatile long pollGen;
     private boolean shown;
     /** Changes whenever this tab is rebuilt or left, so that an answer that arrives late is ignored. */
     private long session;
-    private Sms.State state;
-    private final List<Sms.Thread> threads = new ArrayList<>();
-    private String stamp = "";
-    private SharedPreferences seen;
 
-    private View listScreen;
-    private ListView listView;
-    private ThreadAdapter adapter;
+    private TextsPrefs prefs;
+    private BlobStore blobs;
+    private TextsLocal local;
+    private TextsCache cache;
+
+    private Sms.State state;
+    private boolean v2;
+    private final List<Sms.Thread> threads = new ArrayList<>();
+    private List<ThreadListRules.Item> items = new ArrayList<>();
+    private final List<Object> rows = new ArrayList<>();
+    private final List<Sms.Hit> hits = new ArrayList<>();
+    /** What is shown is the saved copy, not what the phone said just now. */
+    private boolean fromCopy;
+    private long copyAt;
+    private long updatedAt;
+    private String problem = "";
+    private boolean readRefused;
+
+    private String query = "";
+    private boolean unreadOnly;
+    private boolean archivedView;
+    private boolean searching;
+    private boolean selecting;
+    private final Set<String> selected = new LinkedHashSet<>();
+    private long searchGen;
+    private Runnable searchTask;
+
+    // views
+    private FrameLayout root;
+    private FrameLayout detail;
+    private FrameLayout listPane;
+    private FrameLayout barHolder;
+    private LinearLayout normalBar;
+    private LinearLayout searchBar;
+    private LinearLayout selectBar;
+    private TextView titleView;
+    private TextView subtitleView;
+    private EditText searchInput;
+    private TextView selectCount;
     private TextView banner;
+    private Button bannerButton;
+    private ListView listView;
+    private RowAdapter adapter;
+    private LinearLayout emptyView;
+    private TextView emptyTitle;
+    private TextView emptyText;
+    private IconButton fab;
+    private LinearLayout undoBar;
+    private TextView undoText;
+    private Button undoButton;
+    private Runnable undoAction;
+    private Runnable hideUndo;
+    private boolean wide;
+    private boolean detailShown;
+    private boolean messageMode;
     private TextThread open;
-    private View newScreen;
+    private String openKey = "";
+    private boolean composing;
+    private String forwardText;
 
     // the new-message screen
     private final List<Sms.Person> picked = new ArrayList<>();
-    private final List<Sms.Person> suggestions = new ArrayList<>();
     private LinearLayout pickedBox;
     private LinearLayout suggestBox;
     private EditText toInput;
     private Button nextBtn;
-    private Runnable searchTask;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -73,10 +130,8 @@ final class TextsTab extends Tab {
             if (!shown) {
                 return;
             }
-            if (state != null && state.on && state.read) {
-                pollStamp();
-            }
-            act.ui.postDelayed(this, 3000);
+            renderSubtitle(); // "Updated 2 min ago" moves on by itself
+            act.ui.postDelayed(this, 30_000);
         }
     };
 
@@ -104,7 +159,26 @@ final class TextsTab extends Tab {
         return session;
     }
 
+    TextsLocal local() {
+        return local;
+    }
+
+    TextsCache cache() {
+        return prefs != null && prefs.keepCopy() ? cache : null;
+    }
+
+    TextsPrefs prefs() {
+        return prefs;
+    }
+
+    boolean phoneIsV2() {
+        return v2;
+    }
+
     RemoteSms remote() throws IOException {
+        if (testLink != null) {
+            return new RemoteSms(testLink);
+        }
         String host = Net.peerHost(act);
         if (host.isEmpty()) {
             throw new IOException(FileBrowser.noPeer(act));
@@ -112,22 +186,36 @@ final class TextsTab extends Tab {
         return new RemoteSms(new PeerLink(host, Net.peerToken(act)));
     }
 
-    /** The tablet remembers what it has shown (the phone's own "unread" can only be cleared in the phone's Messages app). */
-    void markSeen(String key, long time) {
-        if (seen != null && time > seen.getLong(key, 0)) {
-            seen.edit().putLong(key, time).apply();
-            if (adapter != null) {
-                adapter.notifyDataSetChanged();
-            }
+    TextTime.Env env() {
+        return TextTime.Env.device(android.text.format.DateFormat.is24HourFormat(act));
+    }
+
+    /** The conversation was shown up to {@code time} (it holds {@code count} messages): remembered here, and asked of the phone once. */
+    void markSeen(String key, long time, int count) {
+        if (local != null && local.markSeen(key, time, count)) {
+            renderList();
         }
     }
 
-    private boolean unread(Sms.Thread t) {
-        return t.unread && seen != null && t.time > seen.getLong(t.key, 0);
+    /** Opened a conversation that the phone calls unread: ask it to say read (it may refuse; then it is not asked again). */
+    void tellPhoneRead(final String key) {
+        if (!v2 || readRefused) {
+            return;
+        }
+        net.execute(() -> {
+            try {
+                Sms.DeleteResult r = remote().markRead(java.util.Collections.singletonList(key));
+                if (r.doneKeys.isEmpty()) {
+                    readRefused = true;
+                }
+            } catch (IOException ignored) {
+                // not now
+            }
+        });
     }
 
-    private TextTime.Env env() {
-        return TextTime.Env.device(android.text.format.DateFormat.is24HourFormat(act));
+    private void post(Runnable r) {
+        act.ui.post(r);
     }
 
     // ------------------------------------------------------------ the tab
@@ -136,13 +224,76 @@ final class TextsTab extends Tab {
     View build() {
         session++;
         open = null;
-        newScreen = null;
-        listScreen = null;
-        seen = act.getSharedPreferences("texts_seen", Context.MODE_PRIVATE);
+        openKey = "";
+        composing = false;
+        detailShown = false;
+        messageMode = false;
+        listPane = null;
+        searching = false;
+        selecting = false;
+        selected.clear();
+        query = "";
+        prefs = new TextsPrefs(act);
+        openStorage();
         root = new FrameLayout(act);
         root.setBackgroundColor(Ui.BG);
-        showMessage("Texts", "Checking the phone…", null, null, null, null);
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            boolean w = (r - l) >= Ui.dp(act, WIDE_DP);
+            if (w != wide && listPane != null && !messageMode) {
+                wide = w;
+                arrange();
+            }
+        });
+        wide = act.getResources().getConfiguration().screenWidthDp >= WIDE_DP;
+        undoBar = buildUndoBar();
+        TextsCache.Saved<List<Sms.Thread>> saved = prefs.keepCopy() && cache != null ? cache.loadThreads() : null;
+        if (saved != null) { // the saved copy at once; the phone is asked in the background
+            threads.clear();
+            threads.addAll(saved.value);
+            fromCopy = true;
+            copyAt = saved.at;
+            ensureListUi();
+            renderList();
+            arrange();
+        } else {
+            showMessage("Texts", "Checking the phone…", null, null, null, null);
+        }
         return root;
+    }
+
+    private void openStorage() {
+        if (local != null && cache != null) {
+            return;
+        }
+        try {
+            blobs = new FileBlobStore(new File(act.getFilesDir(), "texts"));
+        } catch (IOException e) {
+            blobs = new BlobStore() { // no folder to write in: the choices last until the app closes
+                private final java.util.Map<String, byte[]> m = new java.util.HashMap<>();
+
+                @Override
+                public byte[] read(String name) {
+                    return m.get(name);
+                }
+
+                @Override
+                public void write(String name, byte[] data) {
+                    m.put(name, data);
+                }
+
+                @Override
+                public void delete(String name) {
+                    m.remove(name);
+                }
+
+                @Override
+                public List<String> names() {
+                    return new ArrayList<>(m.keySet());
+                }
+            };
+        }
+        local = new TextsLocal(blobs);
+        cache = new TextsCache(blobs, System::currentTimeMillis, 30, 80);
     }
 
     @Override
@@ -150,17 +301,24 @@ final class TextsTab extends Tab {
         shown = true;
         loadState();
         act.ui.removeCallbacks(tick);
-        act.ui.postDelayed(tick, 3000);
+        act.ui.postDelayed(tick, 30_000);
     }
 
     @Override
     void onHide() {
         shown = false;
         session++;
+        pollGen++;
         act.ui.removeCallbacks(tick);
         act.backHandler = null;
         act.setTabBarVisible(true);
         hideKeyboard();
+        if (local != null) {
+            local.flush();
+        }
+        if (open != null) {
+            open.pause();
+        }
     }
 
     private void hideKeyboard() {
@@ -173,8 +331,10 @@ final class TextsTab extends Tab {
     // ------------------------------------------------------------ what the phone says it is ready for
 
     private void showMessage(String head, String text, String b1, Runnable r1, String b2, Runnable r2) {
-        open = null; // a message replaces whatever was on screen
-        newScreen = null;
+        messageMode = true;
+        open = null;
+        openKey = "";
+        pollGen++;
         act.backHandler = null;
         act.setTabBarVisible(true);
         LinearLayout col = new LinearLayout(act);
@@ -187,20 +347,15 @@ final class TextsTab extends Tab {
         t.setGravity(Gravity.CENTER);
         col.addView(t, Ui.lp(act, 12));
         if (b1 != null) {
-            col.addView(Ui.button(act, b1, v -> r1.run()), Ui.lp(act, 16));
+            col.addView(Ui.primary(act, b1, v -> r1.run()), Ui.lp(act, 16));
         }
         if (b2 != null) {
             col.addView(Ui.button(act, b2, v -> r2.run()), Ui.lp(act, 8));
         }
-        setScreen(Ui.scroll(act, col));
-    }
-
-    private void setScreen(View v) {
-        if (root == null) {
-            return;
+        if (root != null) {
+            root.removeAllViews();
+            root.addView(Ui.scroll(act, col), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
-        root.removeAllViews();
-        root.addView(v, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void loadState() {
@@ -215,7 +370,7 @@ final class TextsTab extends Tab {
             }
             final Sms.State fs = st;
             final String fe = err;
-            act.ui.post(() -> {
+            post(() -> {
                 if (my == session && shown) {
                     applyState(fs, fe);
                 }
@@ -226,19 +381,44 @@ final class TextsTab extends Tab {
     private void applyState(Sms.State st, String err) {
         state = st;
         if (st == null) {
+            if (!threads.isEmpty() && listPane != null) { // the saved copy stays readable
+                setProblem(err == null ? "The phone could not be reached." : err);
+                return;
+            }
             showMessage("Texts", err == null ? "The phone could not be reached." : err, "Try again", this::loadState, null, null);
         } else if (!st.supported) {
             showMessage("Update the phone", new RemoteSms.TooOld().getMessage(), "Check again", this::loadState, null, null);
         } else if (!st.on) {
+            wipeSavedCopy(); // the phone's owner switched texts off: nothing of them stays here
             showMessage("Texts are switched off", new RemoteSms.Off().getMessage()
                     + "\n\nYour texts stay private until you do. Only this paired tablet can ask for them.", "Check again", this::loadState, null, null);
         } else if (!st.read || !st.send) {
             showMessage("The phone needs permission", st.note.isEmpty() ? "The phone has not allowed LinkMeter to read and send texts yet." : st.note,
                     "Ask the phone to allow it", this::grant, "Check again", this::loadState);
-        } else if (open == null && newScreen == null) {
-            showList();
+        } else {
+            v2 = st.version >= 2;
+            problem = "";
+            ensureListUi();
+            if (messageMode) {
+                messageMode = false;
+                arrange();
+            }
             loadThreads();
+            startPolling();
         }
+    }
+
+    private void wipeSavedCopy() {
+        threads.clear();
+        items = new ArrayList<>();
+        fromCopy = false;
+        if (cache != null) {
+            cache.clear();
+        }
+        if (local != null) {
+            local.forgetAll();
+        }
+        listPane = null;
     }
 
     private void grant() {
@@ -254,7 +434,7 @@ final class TextsTab extends Tab {
             }
             final Sms.State fs = st;
             final String fe = err;
-            act.ui.post(() -> {
+            post(() -> {
                 if (my == session && shown) {
                     if (fs != null && (!fs.read || !fs.send)) {
                         showMessage("Still not allowed", (fs.note.isEmpty() ? "" : fs.note + "\n\n")
@@ -268,59 +448,7 @@ final class TextsTab extends Tab {
         });
     }
 
-    // ------------------------------------------------------------ the list of conversations
-
-    private void showList() {
-        act.backHandler = null;
-        act.setTabBarVisible(true);
-        open = null;
-        newScreen = null;
-        if (listScreen == null) {
-            LinearLayout col = new LinearLayout(act);
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.setBackgroundColor(Ui.BG);
-            int pad = Ui.dp(act, 12);
-
-            LinearLayout head = new LinearLayout(act);
-            head.setOrientation(LinearLayout.HORIZONTAL);
-            head.setGravity(Gravity.CENTER_VERTICAL);
-            head.setBackgroundColor(Ui.CARD);
-            head.setPadding(pad, Ui.dp(act, 8), pad, Ui.dp(act, 8));
-            head.addView(Ui.text(act, "Texts", 22, Ui.FG, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            head.addView(Ui.button(act, "New message", v -> showNew()), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT));
-            col.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-            banner = Ui.text(act, "", 13, Ui.AMBER, false);
-            banner.setPadding(pad, Ui.dp(act, 6), pad, Ui.dp(act, 6));
-            banner.setVisibility(View.GONE);
-            col.addView(banner, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-            listView = new ListView(act);
-            listView.setDivider(null);
-            listView.setDividerHeight(0);
-            adapter = new ThreadAdapter();
-            listView.setAdapter(adapter);
-            listView.setOnItemClickListener((p, v, i, id) -> {
-                Sms.Thread t = threads.get(i);
-                openThread(t.key, t.name, t.addresses);
-            });
-            col.addView(listView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-            TextView note = Ui.text(act, "Shows texts and picture messages. Chats that use RCS (chat features in Google Messages) are not shown.",
-                    11, Ui.DIM, false);
-            note.setPadding(pad, Ui.dp(act, 4), pad, Ui.dp(act, 6));
-            col.addView(note, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            listScreen = col;
-        }
-        setScreen(listScreen);
-    }
-
-    private void showBanner(String text) {
-        if (banner != null) {
-            banner.setText(text == null ? "" : text);
-            banner.setVisibility(text == null || text.isEmpty() ? View.GONE : View.VISIBLE);
-        }
-    }
+    // ------------------------------------------------------------ keeping up with the phone
 
     private void loadThreads() {
         final long my = session;
@@ -329,82 +457,530 @@ final class TextsTab extends Tab {
             IOException err = null;
             try {
                 l = remote().threads(100);
+                TextsCache c = cache();
+                if (c != null) {
+                    c.saveThreads(l);
+                }
             } catch (IOException e) {
                 err = e;
             }
             final List<Sms.Thread> fl = l;
             final IOException fe = err;
-            act.ui.post(() -> {
+            post(() -> {
                 if (my != session || !shown) {
                     return;
                 }
                 if (fl != null) {
                     threads.clear();
                     threads.addAll(fl);
-                    if (adapter != null) {
-                        adapter.notifyDataSetChanged();
-                    }
-                    showBanner(null);
+                    fromCopy = false;
+                    problem = "";
+                    updatedAt = System.currentTimeMillis();
+                    renderList();
                 } else if (fe instanceof RemoteSms.Off) {
                     loadState(); // switched off since: say so
-                } else {
-                    showBanner(fe == null ? null : fe.getMessage());
+                } else if (fe != null) {
+                    setProblem(fe.getMessage());
                 }
             });
         });
     }
 
-    private void pollStamp() {
-        if (!polling.compareAndSet(false, true)) {
-            return;
+    private void setProblem(String text) {
+        problem = text == null || text.isEmpty() ? "The phone could not be reached." : text;
+        renderSubtitle();
+        renderBanner();
+        if (open != null) {
+            open.showStatus(problem);
         }
-        final long my = session;
-        net.execute(() -> {
-            String st = null;
-            IOException err = null;
-            try {
-                st = remote().stamp();
-            } catch (IOException e) {
-                err = e;
-            }
-            final String fs = st;
-            final IOException fe = err;
-            act.ui.post(() -> {
-                polling.set(false);
-                if (my != session || !shown) {
+    }
+
+    /** Asks the phone to say when anything changes, for as long as this tab is on screen. */
+    private void startPolling() {
+        final long gen = ++pollGen;
+        Thread t = new Thread(() -> {
+            String since = "";
+            long backoff = 2000;
+            while (gen == pollGen) {
+                try {
+                    RemoteSms r = remote();
+                    String now = v2 && !since.isEmpty() ? r.stamp(since, POLL_WAIT_S) : r.stamp();
+                    if (gen != pollGen) {
+                        return;
+                    }
+                    final boolean first = since.isEmpty();
+                    final boolean changed = !now.equals(since);
+                    since = now;
+                    backoff = 2000;
+                    if (changed || !problem.isEmpty()) {
+                        post(() -> {
+                            if (gen == pollGen) {
+                                onNews(first, changed);
+                            }
+                        });
+                    }
+                    if (!v2) {
+                        Thread.sleep(3000); // an older phone cannot hold the request: ask every 3 seconds
+                    } else if (!changed) {
+                        Thread.sleep(150); // a phone that answers a waiting request at once must not be hammered
+                    }
+                } catch (RemoteSms.Off e) {
+                    post(() -> {
+                        if (gen == pollGen) {
+                            loadState();
+                        }
+                    });
+                    return;
+                } catch (IOException e) {
+                    final String why = e.getMessage();
+                    post(() -> {
+                        if (gen == pollGen) {
+                            setProblem(why);
+                        }
+                    });
+                    try {
+                        Thread.sleep(backoff);
+                    } catch (InterruptedException ie) {
+                        return;
+                    }
+                    backoff = Math.min(backoff * 2, 20_000);
+                } catch (InterruptedException e) {
                     return;
                 }
-                if (fs != null && !fs.equals(stamp)) {
-                    stamp = fs;
-                    loadThreads();
-                    if (open != null) {
-                        open.reload();
-                    }
-                } else if (fe instanceof RemoteSms.Off) {
-                    loadState();
-                } else if (fe != null) {
-                    showBanner(fe.getMessage());
-                    if (open != null) {
-                        open.showStatus(fe.getMessage());
-                    }
-                }
-            });
+            }
+        }, "linkmeter-texts-poll");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void onNews(boolean first, boolean changed) {
+        if (!problem.isEmpty()) {
+            problem = "";
+            renderSubtitle();
+            renderBanner();
+            if (open != null) {
+                open.showStatus(null);
+            }
+        }
+        if (!changed || first) {
+            return; // the first answer is the starting point: the list was asked for already
+        }
+        loadThreads();
+        if (open != null) {
+            open.reload();
+        }
+        if (searching && query.length() >= 2) {
+            searchPhone(query);
+        }
+    }
+
+    // ------------------------------------------------------------ the layout: list, conversation, undo
+
+    private void arrange() {
+        if (root == null) {
+            return;
+        }
+        if (listPane == null) {
+            return;
+        }
+        root.removeAllViews();
+        detach(listPane);
+        detach(detail);
+        detach(undoBar);
+        if (wide) {
+            LinearLayout row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.addView(listPane, new LinearLayout.LayoutParams(Ui.dp(act, LIST_DP), ViewGroup.LayoutParams.MATCH_PARENT));
+            View div = new View(act);
+            div.setBackgroundColor(Ui.LINE);
+            row.addView(div, new LinearLayout.LayoutParams(Ui.dp(act, 1), ViewGroup.LayoutParams.MATCH_PARENT));
+            row.addView(detail, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+            root.addView(row, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        } else {
+            root.addView(detailShown ? detail : listPane,
+                    new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        FrameLayout.LayoutParams up = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        up.bottomMargin = Ui.dp(act, 84);
+        root.addView(undoBar, up);
+        act.setTabBarVisible(!composing);
+        updateBackHandler();
+    }
+
+    private static void detach(View v) {
+        if (v != null && v.getParent() instanceof ViewGroup) {
+            ((ViewGroup) v.getParent()).removeView(v);
+        }
+    }
+
+    private void updateBackHandler() {
+        boolean needed = selecting || searching || detailShown || (wide && open != null);
+        act.backHandler = needed ? this::onBack : null;
+    }
+
+    private void onBack() {
+        if (selecting) {
+            endSelecting();
+        } else if (searching && !detailShown) {
+            closeSearch();
+        } else if (detailShown || open != null) {
+            closeDetail();
+        } else {
+            act.backHandler = null;
+            act.onBackPressed();
+        }
+    }
+
+    // ------------------------------------------------------------ the list
+
+    private void ensureListUi() {
+        if (listPane != null) {
+            return;
+        }
+        int pad = Ui.dp(act, 8);
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setBackgroundColor(Ui.BG);
+
+        barHolder = new FrameLayout(act);
+        barHolder.setBackgroundColor(Ui.CARD);
+        col.addView(barHolder, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(act, 60)));
+        buildBars();
+
+        banner = Ui.text(act, "", 13, Ui.AMBER, false);
+        banner.setBackgroundColor(Ui.CARD);
+        banner.setPadding(Ui.dp(act, 16), pad, Ui.dp(act, 16), pad);
+        banner.setVisibility(View.GONE);
+        LinearLayout bannerRow = new LinearLayout(act);
+        bannerRow.setOrientation(LinearLayout.HORIZONTAL);
+        bannerRow.setGravity(Gravity.CENTER_VERTICAL);
+        bannerRow.setBackgroundColor(Ui.CARD);
+        bannerRow.addView(banner, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        bannerButton = Ui.quiet(act, "Try again", v -> retryNow());
+        bannerButton.setVisibility(View.GONE);
+        bannerRow.addView(bannerButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        col.addView(bannerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        FrameLayout body = new FrameLayout(act);
+        listView = new ListView(act);
+        listView.setDivider(null);
+        listView.setDividerHeight(0);
+        listView.setSelector(android.R.color.transparent);
+        adapter = new RowAdapter();
+        listView.setAdapter(adapter);
+        listView.setOnItemClickListener((p, v, i, id) -> onRowClick(i));
+        listView.setOnItemLongClickListener((p, v, i, id) -> onRowLong(i));
+        body.addView(listView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        emptyView = new LinearLayout(act);
+        emptyView.setOrientation(LinearLayout.VERTICAL);
+        emptyView.setGravity(Gravity.CENTER);
+        emptyView.setPadding(Ui.dp(act, 32), 0, Ui.dp(act, 32), Ui.dp(act, 80));
+        IconButton big = new IconButton(act, Icons.Kind.CHAT, Ui.DIM, 0, "", null);
+        big.setScale(0.8f);
+        emptyView.addView(big, new LinearLayout.LayoutParams(Ui.dp(act, 72), Ui.dp(act, 72)));
+        emptyTitle = Ui.text(act, "No texts yet", 18, Ui.FG, true);
+        emptyTitle.setGravity(Gravity.CENTER);
+        emptyView.addView(emptyTitle, Ui.lp(act, 10));
+        emptyText = Ui.text(act, "", 14, Ui.DIM, false);
+        emptyText.setGravity(Gravity.CENTER);
+        emptyView.addView(emptyText, Ui.lp(act, 6));
+        emptyView.setVisibility(View.GONE);
+        body.addView(emptyView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        col.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        TextView note = Ui.text(act, "Shows texts and picture messages. Chats that use RCS (chat features in Google Messages) are not shown.",
+                11, Ui.DIM, false);
+        note.setPadding(Ui.dp(act, 16), Ui.dp(act, 4), Ui.dp(act, 16), Ui.dp(act, 6));
+        col.addView(note, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        listPane = new FrameLayout(act);
+        listPane.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        fab = new IconButton(act, Icons.Kind.PLUS, Ui.ON_ACCENT, Ui.ACCENT, "New message", v -> showNew());
+        fab.setScale(0.46f);
+        fab.setElevation(Ui.dp(act, 6));
+        FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(Ui.dp(act, 58), Ui.dp(act, 58), Gravity.BOTTOM | Gravity.END);
+        fp.rightMargin = Ui.dp(act, 18);
+        fp.bottomMargin = Ui.dp(act, 34);
+        listPane.addView(fab, fp);
+
+        detail = new FrameLayout(act);
+        detail.setBackgroundColor(Ui.BG);
+        showPlaceholder();
+        showBar(normalBar);
+    }
+
+    private void showPlaceholder() {
+        detail.removeAllViews();
+        LinearLayout ph = new LinearLayout(act);
+        ph.setOrientation(LinearLayout.VERTICAL);
+        ph.setGravity(Gravity.CENTER);
+        IconButton big = new IconButton(act, Icons.Kind.CHAT, Ui.LINE, 0, "", null);
+        big.setScale(0.8f);
+        ph.addView(big, new LinearLayout.LayoutParams(Ui.dp(act, 96), Ui.dp(act, 96)));
+        TextView t = Ui.text(act, "Pick a conversation", 16, Ui.DIM, false);
+        t.setGravity(Gravity.CENTER);
+        ph.addView(t, Ui.lp(act, 8));
+        detail.addView(ph, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void buildBars() {
+        int pad = Ui.dp(act, 14);
+        // ---- normal: title and subtitle, search, more
+        normalBar = new LinearLayout(act);
+        normalBar.setOrientation(LinearLayout.HORIZONTAL);
+        normalBar.setGravity(Gravity.CENTER_VERTICAL);
+        normalBar.setPadding(pad, 0, Ui.dp(act, 6), 0);
+        LinearLayout titles = new LinearLayout(act);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titleView = Ui.text(act, "Texts", 21, Ui.FG, true);
+        subtitleView = Ui.text(act, "", 12, Ui.DIM, false);
+        subtitleView.setSingleLine(true);
+        subtitleView.setEllipsize(TextUtils.TruncateAt.END);
+        titles.addView(titleView);
+        titles.addView(subtitleView);
+        normalBar.addView(titles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        normalBar.addView(TextsViews.icon(act, Icons.Kind.SEARCH, "Search", v -> openSearch()));
+        normalBar.addView(TextsViews.icon(act, Icons.Kind.MORE, "More", v -> showMenu()));
+
+        // ---- searching
+        searchBar = new LinearLayout(act);
+        searchBar.setOrientation(LinearLayout.HORIZONTAL);
+        searchBar.setGravity(Gravity.CENTER_VERTICAL);
+        searchBar.setPadding(Ui.dp(act, 6), 0, Ui.dp(act, 6), 0);
+        searchBar.addView(TextsViews.icon(act, Icons.Kind.BACK, "Close search", v -> closeSearch()));
+        searchInput = new EditText(act);
+        searchInput.setHint("Search names, numbers and texts");
+        searchInput.setHintTextColor(Ui.DIM);
+        searchInput.setTextColor(Ui.FG);
+        searchInput.setTextSize(16);
+        searchInput.setSingleLine(true);
+        searchInput.setBackground(null);
+        searchInput.setInputType(InputType.TYPE_CLASS_TEXT);
+        searchInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+                // nothing
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int c) {
+                // nothing
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                onQuery(s.toString());
+            }
         });
+        searchBar.addView(searchInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        searchBar.addView(TextsViews.icon(act, Icons.Kind.CLOSE, "Clear", v -> searchInput.setText("")));
+
+        // ---- selecting
+        selectBar = new LinearLayout(act);
+        selectBar.setOrientation(LinearLayout.HORIZONTAL);
+        selectBar.setGravity(Gravity.CENTER_VERTICAL);
+        selectBar.setPadding(Ui.dp(act, 6), 0, Ui.dp(act, 6), 0);
+        selectBar.addView(TextsViews.icon(act, Icons.Kind.CLOSE, "Stop selecting", v -> endSelecting()));
+        selectCount = Ui.text(act, "", 18, Ui.FG, true);
+        selectBar.addView(selectCount, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        selectBar.addView(TextsViews.icon(act, Icons.Kind.PIN, "Pin", v -> pinSelected()));
+        selectBar.addView(TextsViews.icon(act, Icons.Kind.CHECK, "Mark read", v -> readSelected()));
+        selectBar.addView(TextsViews.icon(act, Icons.Kind.ARCHIVE, "Archive", v -> archiveSelected()));
+        selectBar.addView(TextsViews.icon(act, Icons.Kind.TRASH, "Delete", v -> deleteSelected()));
     }
 
-    private int colorOf(String key) {
-        return AVATARS[(key.hashCode() & 0x7fffffff) % AVATARS.length];
+    private void showBar(View bar) {
+        barHolder.removeAllViews();
+        barHolder.addView(bar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        fab.setVisibility(bar == normalBar ? View.VISIBLE : View.GONE);
     }
 
-    private final class ThreadAdapter extends BaseAdapter {
+    private static String ago(long then, long now) {
+        long s = Math.max(0, (now - then) / 1000);
+        if (s < 15) {
+            return "just now";
+        }
+        if (s < 60) {
+            return s + " s ago";
+        }
+        if (s < 3600) {
+            return (s / 60) + " min ago";
+        }
+        return TextTime.clock(then, TextTime.Env.device(true));
+    }
+
+    private void renderSubtitle() {
+        if (subtitleView == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        String s;
+        int color = Ui.DIM;
+        if (!problem.isEmpty()) {
+            s = threads.isEmpty() ? "Can't reach the phone" : "Can't reach the phone · saved copy from " + ago(fromCopy ? copyAt : updatedAt, now);
+            color = Ui.AMBER;
+        } else if (fromCopy) {
+            s = "Updating…";
+        } else if (updatedAt > 0) {
+            s = (archivedView ? "Archived · " : unreadOnly ? "Unread · " : "") + "Updated " + ago(updatedAt, now);
+        } else {
+            s = "";
+        }
+        subtitleView.setText(s);
+        subtitleView.setTextColor(color);
+        subtitleView.setVisibility(s.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void renderBanner() {
+        if (banner == null) {
+            return;
+        }
+        boolean show = !problem.isEmpty();
+        banner.setText(show ? problem : "");
+        banner.setVisibility(show ? View.VISIBLE : View.GONE);
+        bannerButton.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    private void retryNow() {
+        loadState();
+    }
+
+    /** Works out what the list shows from the phone's conversations, the tablet's choices and the search, and draws it. */
+    private void renderList() {
+        if (listPane == null || adapter == null) {
+            return;
+        }
+        items = ThreadListRules.build(threads, local, searching ? query : "", unreadOnly, archivedView);
+        rows.clear();
+        rows.addAll(items);
+        if (searching && !hits.isEmpty()) {
+            rows.add("Texts");
+            rows.addAll(hits);
+        }
+        // a selection only holds conversations that are still there
+        Set<String> alive = new LinkedHashSet<>();
+        for (ThreadListRules.Item i : items) {
+            alive.add(i.t.key);
+        }
+        selected.retainAll(alive);
+        if (selecting && selected.isEmpty()) {
+            selecting = false;
+            showBar(searching ? searchBar : normalBar);
+        }
+        adapter.notifyDataSetChanged();
+        boolean empty = rows.isEmpty();
+        emptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (empty) {
+            if (searching && query.trim().length() > 0) {
+                emptyTitle.setText("Nothing found");
+                emptyText.setText("No conversation or text matches “" + query.trim() + "”.");
+            } else if (archivedView) {
+                emptyTitle.setText("Nothing archived");
+                emptyText.setText("Conversations you archive wait here. A new text brings one back to the list.");
+            } else if (unreadOnly) {
+                emptyTitle.setText("All read");
+                emptyText.setText("No conversation has news.");
+            } else if (fromCopy) {
+                emptyTitle.setText("Nothing saved yet");
+                emptyText.setText("The phone's texts appear here once it has answered.");
+            } else {
+                emptyTitle.setText("No texts yet");
+                emptyText.setText("Tap + to write one.");
+            }
+        }
+        if (selecting) {
+            selectCount.setText(selected.size() + " selected");
+        }
+        renderSubtitle();
+        renderBanner();
+    }
+
+    // ------------------------------------------------------------ the rows
+
+    Sms.Thread threadOf(String key) {
+        for (Sms.Thread t : threads) {
+            if (t.key.equals(key)) {
+                return t;
+            }
+        }
+        return null;
+    }
+
+    /** How many messages the phone says the conversation holds (0 when the list does not have it). */
+    int threadCount(String key) {
+        Sms.Thread t = threadOf(key);
+        return t == null ? 0 : t.count;
+    }
+
+    /** Does the phone call the conversation unread? */
+    boolean threadUnread(String key) {
+        Sms.Thread t = threadOf(key);
+        return t != null && t.unread;
+    }
+
+    /** The tablet's choices changed (a pin, a delete, a hidden message): draw the list again. */
+    void refreshList() {
+        renderList();
+    }
+
+    boolean isWide() {
+        return wide;
+    }
+
+    /** Starts a new message with this text in the box (a forwarded message). */
+    void forward(String text) {
+        forwardText = text;
+        showNew();
+    }
+
+    private void onRowClick(int i) {
+        if (i < 0 || i >= rows.size()) {
+            return;
+        }
+        Object o = rows.get(i);
+        if (o instanceof ThreadListRules.Item) {
+            Sms.Thread t = ((ThreadListRules.Item) o).t;
+            if (selecting) {
+                toggle(t.key);
+            } else {
+                openThread(t.key, ThreadListRules.title(t), t.addresses);
+            }
+        } else if (o instanceof Sms.Hit) {
+            Sms.Hit h = (Sms.Hit) o;
+            Sms.Thread t = threadOf(h.msg.key);
+            List<String> addrs = new ArrayList<>();
+            if (t != null) {
+                addrs.addAll(t.addresses);
+            } else if (!h.msg.address.isEmpty()) {
+                addrs.add(h.msg.address);
+            }
+            openThread(h.msg.key, h.name, addrs);
+        }
+    }
+
+    private boolean onRowLong(int i) {
+        if (i < 0 || i >= rows.size() || !(rows.get(i) instanceof ThreadListRules.Item)) {
+            return false;
+        }
+        if (!selecting) {
+            startSelecting();
+        }
+        toggle(((ThreadListRules.Item) rows.get(i)).t.key);
+        return true;
+    }
+
+    private final class RowAdapter extends BaseAdapter {
         @Override
         public int getCount() {
-            return threads.size();
+            return rows.size();
         }
 
         @Override
         public Object getItem(int i) {
-            return threads.get(i);
+            return rows.get(i);
         }
 
         @Override
@@ -413,114 +989,552 @@ final class TextsTab extends Tab {
         }
 
         @Override
+        public int getViewTypeCount() {
+            return 3;
+        }
+
+        @Override
+        public int getItemViewType(int i) {
+            Object o = rows.get(i);
+            return o instanceof ThreadListRules.Item ? 0 : o instanceof Sms.Hit ? 1 : 2;
+        }
+
+        @Override
         public View getView(int i, View convert, ViewGroup parent) {
-            Sms.Thread t = threads.get(i);
-            LinearLayout row;
-            TextView avatar;
-            TextView nameView;
-            TextView snippet;
-            TextView time;
-            if (convert == null) {
-                row = new LinearLayout(act);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(Ui.dp(act, 12), Ui.dp(act, 10), Ui.dp(act, 12), Ui.dp(act, 10));
-                avatar = Ui.text(act, "", 17, Color.WHITE, true);
-                avatar.setGravity(Gravity.CENTER);
-                row.addView(avatar, new LinearLayout.LayoutParams(Ui.dp(act, 46), Ui.dp(act, 46)));
-                LinearLayout mid = new LinearLayout(act);
-                mid.setOrientation(LinearLayout.VERTICAL);
-                LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-                mp.leftMargin = Ui.dp(act, 12);
-                mp.rightMargin = Ui.dp(act, 8);
-                nameView = Ui.text(act, "", 16, Ui.FG, true);
-                nameView.setSingleLine(true);
-                nameView.setEllipsize(TextUtils.TruncateAt.END);
-                snippet = Ui.text(act, "", 13, Ui.DIM, false);
-                snippet.setSingleLine(true);
-                snippet.setEllipsize(TextUtils.TruncateAt.END);
-                mid.addView(nameView);
-                mid.addView(snippet);
-                row.addView(mid, mp);
-                time = Ui.text(act, "", 12, Ui.DIM, false);
-                row.addView(time, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                row.setTag(new TextView[] {avatar, nameView, snippet, time});
-            } else {
-                row = (LinearLayout) convert;
+            Object o = rows.get(i);
+            if (o instanceof String) {
+                TextView h = convert instanceof TextView ? (TextView) convert : Ui.text(act, "", 12, Ui.ACCENT, true);
+                h.setPadding(Ui.dp(act, 16), Ui.dp(act, 14), Ui.dp(act, 16), Ui.dp(act, 6));
+                h.setText(((String) o).toUpperCase(java.util.Locale.ROOT));
+                return h;
             }
-            TextView[] v = (TextView[]) row.getTag();
-            avatar = v[0];
-            nameView = v[1];
-            snippet = v[2];
-            time = v[3];
-            GradientDrawable g = new GradientDrawable();
-            g.setShape(GradientDrawable.OVAL);
-            g.setColor(colorOf(t.key));
-            avatar.setBackground(g);
-            avatar.setText(PhoneNumbers.initials(t.name));
-            boolean un = unread(t);
-            nameView.setText(t.name);
-            snippet.setText(t.snippet.isEmpty() ? (t.attachment ? "Attachment" : "") : t.snippet);
-            snippet.setTextColor(un ? Ui.FG : Ui.DIM);
-            snippet.setTypeface(null, un ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-            time.setText(TextTime.stamp(t.time, System.currentTimeMillis(), env()));
-            time.setTextColor(un ? Ui.ACCENT : Ui.DIM);
+            Holder h;
+            View row;
+            if (convert == null) {
+                h = new Holder(act);
+                row = h.row;
+                row.setTag(h);
+            } else {
+                row = convert;
+                h = (Holder) row.getTag();
+            }
+            if (o instanceof ThreadListRules.Item) {
+                h.bind((ThreadListRules.Item) o);
+            } else {
+                h.bindHit((Sms.Hit) o);
+            }
             return row;
         }
     }
 
+    /** One line of the list, built once and filled again for each conversation. */
+    private final class Holder {
+        final LinearLayout row;
+        final TextView avatar;
+        final TextView name;
+        final TextView preview;
+        final TextView time;
+        final TextView badge;
+        final IconButton pinned;
+        final IconButton muted;
+
+        Holder(Context c) {
+            row = new LinearLayout(c);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(Ui.dp(c, 14), Ui.dp(c, 9), Ui.dp(c, 14), Ui.dp(c, 9));
+            avatar = TextsViews.avatar(c, 48);
+            row.addView(avatar, new LinearLayout.LayoutParams(Ui.dp(c, 48), Ui.dp(c, 48)));
+            LinearLayout mid = new LinearLayout(c);
+            mid.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            mp.leftMargin = Ui.dp(c, 14);
+            mp.rightMargin = Ui.dp(c, 8);
+            LinearLayout nameRow = new LinearLayout(c);
+            nameRow.setOrientation(LinearLayout.HORIZONTAL);
+            nameRow.setGravity(Gravity.CENTER_VERTICAL);
+            name = Ui.text(c, "", 16, Ui.FG, true);
+            name.setSingleLine(true);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            nameRow.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            pinned = new IconButton(c, Icons.Kind.PIN, Ui.DIM, 0, "Pinned", null);
+            pinned.setScale(0.9f);
+            nameRow.addView(pinned, new LinearLayout.LayoutParams(Ui.dp(c, 14), Ui.dp(c, 14)));
+            muted = new IconButton(c, Icons.Kind.MUTE, Ui.DIM, 0, "Muted", null);
+            muted.setScale(0.9f);
+            LinearLayout.LayoutParams mu = new LinearLayout.LayoutParams(Ui.dp(c, 14), Ui.dp(c, 14));
+            mu.leftMargin = Ui.dp(c, 4);
+            nameRow.addView(muted, mu);
+            mid.addView(nameRow);
+            preview = Ui.text(c, "", 14, Ui.DIM, false);
+            preview.setSingleLine(true);
+            preview.setEllipsize(TextUtils.TruncateAt.END);
+            mid.addView(preview);
+            row.addView(mid, mp);
+            LinearLayout right = new LinearLayout(c);
+            right.setOrientation(LinearLayout.VERTICAL);
+            right.setGravity(Gravity.END);
+            time = Ui.text(c, "", 12, Ui.DIM, false);
+            right.addView(time);
+            badge = TextsViews.badge(c);
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            bp.topMargin = Ui.dp(c, 6);
+            right.addView(badge, bp);
+            row.addView(right, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        void bind(ThreadListRules.Item it) {
+            Sms.Thread t = it.t;
+            boolean sel = selected.contains(t.key);
+            boolean current = wide && t.key.equals(openKey);
+            row.setBackgroundColor(sel ? Ui.CARD_HI : current ? Ui.CARD : 0);
+            TextsViews.bindAvatar(avatar, ThreadListRules.title(t), t.key, sel);
+            name.setText(ThreadListRules.title(t));
+            name.setTypeface(null, it.unread ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            preview.setText(ThreadListRules.preview(t, prefs.hidePreviews()));
+            preview.setTextColor(it.unread ? Ui.FG : Ui.DIM);
+            time.setText(TextTime.stamp(t.time, System.currentTimeMillis(), env()));
+            time.setTextColor(it.unread && !it.muted ? Ui.ACCENT : Ui.DIM);
+            pinned.setVisibility(it.pinned ? View.VISIBLE : View.GONE);
+            muted.setVisibility(it.muted ? View.VISIBLE : View.GONE);
+            TextsViews.bindBadge(badge, it.unread && !it.muted ? it.newCount : -1);
+            badge.setBackground(TextsViews.shape(Ui.ACCENT, Ui.dp(act, 10)));
+        }
+
+        void bindHit(Sms.Hit hit) {
+            row.setBackgroundColor(0);
+            TextsViews.bindAvatar(avatar, hit.name, hit.msg.key, false);
+            name.setText(hit.name);
+            name.setTypeface(null, android.graphics.Typeface.BOLD);
+            preview.setText((hit.msg.mine ? "You: " : "") + hit.msg.body.replaceAll("\\s+", " ").trim());
+            preview.setTextColor(Ui.DIM);
+            time.setText(TextTime.stamp(hit.msg.time, System.currentTimeMillis(), env()));
+            time.setTextColor(Ui.DIM);
+            pinned.setVisibility(View.GONE);
+            muted.setVisibility(View.GONE);
+            TextsViews.bindBadge(badge, -1);
+        }
+    }
+
+    // ------------------------------------------------------------ selecting several conversations
+
+    private void startSelecting() {
+        selecting = true;
+        selected.clear();
+        showBar(selectBar);
+        updateBackHandler();
+    }
+
+    private void endSelecting() {
+        selecting = false;
+        selected.clear();
+        showBar(searching ? searchBar : normalBar);
+        updateBackHandler();
+        renderList();
+    }
+
+    private void toggle(String key) {
+        if (!selected.remove(key)) {
+            selected.add(key);
+        }
+        if (selected.isEmpty()) {
+            endSelecting();
+        } else {
+            renderList();
+        }
+    }
+
+    private List<Sms.Thread> selectedThreads() {
+        List<Sms.Thread> out = new ArrayList<>();
+        for (String k : selected) {
+            Sms.Thread t = threadOf(k);
+            if (t != null) {
+                out.add(t);
+            }
+        }
+        return out;
+    }
+
+    private void pinSelected() {
+        boolean allPinned = true;
+        for (Sms.Thread t : selectedThreads()) {
+            allPinned &= local.isPinned(t.key);
+        }
+        long now = System.currentTimeMillis();
+        for (Sms.Thread t : selectedThreads()) {
+            local.setPinned(t.key, !allPinned, now);
+        }
+        endSelecting();
+    }
+
+    private void readSelected() {
+        List<String> keys = new ArrayList<>();
+        for (Sms.Thread t : selectedThreads()) {
+            local.markSeen(t.key, t.time, t.count);
+            keys.add(t.key);
+        }
+        askPhoneRead(keys);
+        endSelecting();
+    }
+
+    private void askPhoneRead(final List<String> keys) {
+        if (!v2 || readRefused || keys.isEmpty()) {
+            return;
+        }
+        net.execute(() -> {
+            try {
+                Sms.DeleteResult r = remote().markRead(keys);
+                if (r.doneKeys.isEmpty()) {
+                    readRefused = true;
+                }
+            } catch (IOException ignored) {
+                // marked read here anyway
+            }
+        });
+    }
+
+    private void archiveSelected() {
+        final List<Sms.Thread> list = selectedThreads();
+        for (Sms.Thread t : list) {
+            local.archive(t.key, t.time);
+        }
+        endSelecting();
+        showUndo(list.size() == 1 ? "Conversation archived" : list.size() + " conversations archived", () -> {
+            for (Sms.Thread t : list) {
+                local.unarchive(t.key);
+            }
+            renderList();
+        });
+    }
+
+    private void deleteSelected() {
+        final List<Sms.Thread> list = selectedThreads();
+        if (list.isEmpty()) {
+            return;
+        }
+        new AlertDialog.Builder(act)
+                .setTitle(list.size() == 1 ? "Delete this conversation?" : "Delete " + list.size() + " conversations?")
+                .setMessage("It is removed from this tablet. LinkMeter also asks the phone to delete it, but a phone usually lets only its "
+                        + "own Messages app do that; if it refuses, the texts stay on the phone and only disappear here.")
+                .setPositiveButton("Delete", (d, w) -> deleteConversations(list))
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    /** Hides the conversations here at once, then asks the phone to delete them and says what it did. */
+    void deleteConversations(final List<Sms.Thread> list) {
+        final List<String> keys = new ArrayList<>();
+        final List<Long> before = new ArrayList<>();
+        for (Sms.Thread t : list) {
+            keys.add(t.key);
+            before.add(local.clear(t.key, t.time));
+        }
+        if (open != null && keys.contains(openKey)) {
+            closeDetail();
+        }
+        endSelecting();
+        renderList();
+        if (!v2) {
+            showUndo("Removed from this tablet. This phone's app is too old to delete texts on the phone.", () -> undoClear(list, before));
+            return;
+        }
+        final long my = session;
+        net.execute(() -> {
+            Sms.DeleteResult r = null;
+            try {
+                r = remote().delete(new ArrayList<String>(), keys);
+            } catch (IOException ignored) {
+                // the phone could not be asked: removed here only
+            }
+            final Sms.DeleteResult fr = r;
+            post(() -> {
+                if (my != session) {
+                    return;
+                }
+                if (fr != null && fr.failedKeys.isEmpty()) {
+                    showUndo("Deleted on the phone and on this tablet", null);
+                } else {
+                    showUndo("Removed from this tablet. The phone kept " + (fr == null ? "them (it could not be asked)" : "them: " + fr.why), () -> undoClear(list, before));
+                }
+                loadThreads();
+            });
+        });
+    }
+
+    private void undoClear(List<Sms.Thread> list, List<Long> before) {
+        for (int i = 0; i < list.size(); i++) {
+            local.setCleared(list.get(i).key, before.get(i));
+        }
+        renderList();
+    }
+
+    // ------------------------------------------------------------ search
+
+    private void openSearch() {
+        searching = true;
+        hits.clear();
+        query = "";
+        showBar(searchBar);
+        searchInput.setText("");
+        searchInput.requestFocus();
+        InputMethodManager im = (InputMethodManager) act.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (im != null) {
+            im.showSoftInput(searchInput, 0);
+        }
+        updateBackHandler();
+        renderList();
+    }
+
+    private void closeSearch() {
+        searching = false;
+        query = "";
+        hits.clear();
+        searchGen++;
+        hideKeyboard();
+        showBar(selecting ? selectBar : normalBar);
+        updateBackHandler();
+        renderList();
+    }
+
+    private void onQuery(String q) {
+        if (!searching) {
+            return;
+        }
+        query = q.trim();
+        if (query.length() < 2) {
+            hits.clear();
+            searchGen++;
+        }
+        renderList();
+        if (searchTask != null) {
+            act.ui.removeCallbacks(searchTask);
+        }
+        if (query.length() >= 2 && v2) {
+            final String qq = query;
+            searchTask = () -> searchPhone(qq);
+            act.ui.postDelayed(searchTask, 350);
+        }
+    }
+
+    private void searchPhone(final String q) {
+        final long gen = ++searchGen;
+        final long my = session;
+        net.execute(() -> {
+            List<Sms.Hit> found = new ArrayList<>();
+            try {
+                found = remote().search(q, 30);
+            } catch (IOException ignored) {
+                // the conversations that match still show
+            }
+            final List<Sms.Hit> ff = found;
+            post(() -> {
+                if (my == session && gen == searchGen && searching && q.equals(query)) {
+                    hits.clear();
+                    hits.addAll(ff);
+                    renderList();
+                }
+            });
+        });
+    }
+
+    // ------------------------------------------------------------ the menu and the settings
+
+    private void showMenu() {
+        final List<String> labels = new ArrayList<>();
+        final List<Runnable> acts = new ArrayList<>();
+        labels.add("Select conversations");
+        acts.add(() -> {
+            startSelecting();
+            Toast.makeText(act, "Tap the conversations to select.", Toast.LENGTH_SHORT).show();
+        });
+        labels.add(unreadOnly ? "Show all conversations" : "Show unread only");
+        acts.add(() -> {
+            unreadOnly = !unreadOnly;
+            archivedView = false;
+            renderList();
+        });
+        int archived = ThreadListRules.archivedCount(threads, local);
+        labels.add(archivedView ? "Back to all conversations" : "Archived (" + archived + ")");
+        acts.add(() -> {
+            archivedView = !archivedView;
+            unreadOnly = false;
+            renderList();
+        });
+        labels.add("Mark all as read");
+        acts.add(this::readAll);
+        labels.add("Refresh now");
+        acts.add(this::retryNow);
+        labels.add("Texts settings");
+        acts.add(this::showSettings);
+        TextsViews.menu(act, null, labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
+    }
+
+    private void readAll() {
+        List<String> keys = new ArrayList<>();
+        for (ThreadListRules.Item i : items) {
+            if (i.unread) {
+                local.markSeen(i.t.key, i.t.time, i.t.count);
+                keys.add(i.t.key);
+            }
+        }
+        askPhoneRead(keys);
+        renderList();
+    }
+
+    private void showSettings() {
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(Ui.dp(act, 20), Ui.dp(act, 8), Ui.dp(act, 20), Ui.dp(act, 8));
+        col.addView(new Ui.Toggle(act, "Keep a saved copy on this tablet", "The tab opens at once and still shows your texts when the phone is out of reach. "
+                + "Switch off to keep nothing here.", prefs.keepCopy(), (b, on) -> {
+            prefs.setKeepCopy(on);
+            if (!on && cache != null) {
+                cache.clear();
+            }
+        }).view);
+        col.addView(new Ui.Toggle(act, "Hide message previews", "The list says “New message” instead of showing the words.", prefs.hidePreviews(),
+                (b, on) -> {
+                    prefs.setHidePreviews(on);
+                    renderList();
+                }).view, Ui.lp(act, 6));
+        col.addView(Ui.button(act, "Clear the saved copy now", v -> {
+            if (cache != null) {
+                cache.clear();
+            }
+            Toast.makeText(act, "The saved copy was cleared.", Toast.LENGTH_SHORT).show();
+        }), Ui.lp(act, 12));
+        col.addView(Ui.button(act, "Forget my pins, archive and drafts", v -> new AlertDialog.Builder(act)
+                .setTitle("Forget them?")
+                .setMessage("Pinned, muted and archived conversations, drafts, and the conversations you deleted on this tablet come back as the phone has them.")
+                .setPositiveButton("Forget", (d, w) -> {
+                    local.forgetAll();
+                    renderList();
+                }).setNegativeButton("Cancel", null).show()), Ui.lp(act, 8));
+        new AlertDialog.Builder(act).setTitle("Texts settings").setView(Ui.scroll(act, col)).setPositiveButton("Done", null).show();
+    }
+
+    // ------------------------------------------------------------ the undo strip
+
+    private LinearLayout buildUndoBar() {
+        LinearLayout bar = new LinearLayout(act);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackground(TextsViews.shape(0xF2323843, Ui.dp(act, 12)));
+        bar.setPadding(Ui.dp(act, 16), Ui.dp(act, 4), Ui.dp(act, 6), Ui.dp(act, 4));
+        bar.setElevation(Ui.dp(act, 8));
+        undoText = Ui.text(act, "", 14, Ui.FG, false);
+        undoText.setMaxWidth(Ui.dp(act, 420));
+        bar.addView(undoText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        undoButton = Ui.quiet(act, "Undo", v -> {
+            Runnable a = undoAction;
+            hideUndoNow();
+            if (a != null) {
+                a.run();
+            }
+        });
+        LinearLayout.LayoutParams ub = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ub.leftMargin = Ui.dp(act, 10);
+        bar.addView(undoButton, ub);
+        bar.setVisibility(View.GONE);
+        return bar;
+    }
+
+    /** A message at the bottom for a few seconds, with Undo when there is something to undo. */
+    void showUndo(String text, Runnable undo) {
+        if (undoBar == null) {
+            return;
+        }
+        undoText.setText(text);
+        undoAction = undo;
+        undoButton.setVisibility(undo == null ? View.GONE : View.VISIBLE);
+        undoBar.setVisibility(View.VISIBLE);
+        if (hideUndo != null) {
+            act.ui.removeCallbacks(hideUndo);
+        }
+        hideUndo = this::hideUndoNow;
+        act.ui.postDelayed(hideUndo, undo == null ? 4000 : 8000);
+    }
+
+    private void hideUndoNow() {
+        if (undoBar != null) {
+            undoBar.setVisibility(View.GONE);
+        }
+        undoAction = null;
+    }
+
     // ------------------------------------------------------------ one conversation
 
-    private void openThread(String key, String name, List<String> addresses) {
-        open = new TextThread(this, key, name, addresses);
-        newScreen = null;
-        act.backHandler = this::onBack;
-        setScreen(open.build());
-        open.reload();
-    }
-
-    void closeThread() {
-        hideKeyboard();
-        showList();
-        loadThreads();
-    }
-
-    private void onBack() {
-        if (newScreen != null || open != null) {
-            hideKeyboard();
-            showList();
-            loadThreads();
-        } else {
-            act.backHandler = null;
-            act.onBackPressed();
+    void openThread(String key, String name, List<String> addresses) {
+        if (composing) {
+            composing = false;
         }
+        if (open != null) {
+            open.pause();
+        }
+        open = new TextThread(this, key, name, addresses);
+        openKey = key;
+        detail.removeAllViews();
+        detail.addView(open.build(), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (forwardText != null) {
+            open.prefill(forwardText);
+            forwardText = null;
+        }
+        detailShown = true;
+        arrange();
+        open.reload();
+        renderList();
+    }
+
+    /** The conversation was closed (back, or deleted): the list again, or the empty pane beside it. */
+    void closeThread() {
+        closeDetail();
+    }
+
+    private void closeDetail() {
+        hideKeyboard();
+        if (open != null) {
+            open.pause();
+        }
+        open = null;
+        openKey = "";
+        composing = false;
+        detailShown = false;
+        showPlaceholder();
+        arrange();
+        renderList();
+    }
+
+    /** The compose box has the keyboard: the tab bar gets out of the way. */
+    void composeFocus(boolean on) {
+        composing = on;
+        act.setTabBarVisible(!on);
     }
 
     // ------------------------------------------------------------ a new message
 
     private void showNew() {
+        if (open != null) {
+            open.pause();
+        }
+        open = null;
+        openKey = "";
         picked.clear();
-        suggestions.clear();
-        act.backHandler = this::onBack;
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setBackgroundColor(Ui.BG);
-        int pad = Ui.dp(act, 12);
+        int pad = Ui.dp(act, 14);
 
         LinearLayout head = new LinearLayout(act);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setBackgroundColor(Ui.CARD);
-        head.setPadding(pad, Ui.dp(act, 8), pad, Ui.dp(act, 8));
-        head.addView(Ui.button(act, "Back", v -> onBack()), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
+        head.setPadding(Ui.dp(act, 6), 0, pad, 0);
+        head.addView(TextsViews.icon(act, Icons.Kind.BACK, "Back", v -> closeDetail()));
         TextView t = Ui.text(act, "New message", 20, Ui.FG, true);
-        t.setPadding(pad, 0, 0, 0);
         head.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        nextBtn = Ui.button(act, "Next", v -> startNew());
+        nextBtn = Ui.primary(act, "Next", v -> startNew());
         nextBtn.setEnabled(false);
         head.addView(nextBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        col.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        col.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(act, 60)));
 
         LinearLayout body = new LinearLayout(act);
         body.setOrientation(LinearLayout.VERTICAL);
@@ -535,7 +1549,7 @@ final class TextsTab extends Tab {
         toInput.setHintTextColor(Ui.DIM);
         toInput.setSingleLine(true);
         toInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        toInput.setOnFocusChangeListener((v, focus) -> act.setTabBarVisible(!focus));
+        toInput.setOnFocusChangeListener((v, focus) -> composeFocus(focus));
         toInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {
@@ -549,7 +1563,7 @@ final class TextsTab extends Tab {
 
             @Override
             public void afterTextChanged(Editable s) {
-                search(s.toString().trim());
+                searchPeople(s.toString().trim());
             }
         });
         body.addView(toInput, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -557,14 +1571,16 @@ final class TextsTab extends Tab {
         suggestBox.setOrientation(LinearLayout.VERTICAL);
         body.addView(suggestBox, Ui.lp(act, 4));
         col.addView(Ui.scroll(act, body), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        newScreen = col;
-        open = null;
-        setScreen(col);
+
+        detail.removeAllViews();
+        detail.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        detailShown = true;
+        arrange();
         showPicked();
-        search("");
+        searchPeople("");
     }
 
-    private void search(final String q) {
+    private void searchPeople(final String q) {
         if (searchTask != null) {
             act.ui.removeCallbacks(searchTask);
         }
@@ -577,30 +1593,37 @@ final class TextsTab extends Tab {
                 // no suggestions: the typed number can still be used
             }
             final List<Sms.Person> ff = found;
-            act.ui.post(() -> {
-                if (my == session && newScreen != null && toInput != null && toInput.getText().toString().trim().equals(q)) {
-                    suggestions.clear();
-                    suggestions.addAll(ff);
-                    showSuggestions(q);
+            post(() -> {
+                if (my == session && toInput != null && toInput.getText().toString().trim().equals(q)) {
+                    showSuggestions(q, ff);
                 }
             });
         });
         act.ui.postDelayed(searchTask, q.isEmpty() ? 0 : 250);
     }
 
-    private View personRow(String name, String number, View.OnClickListener l) {
+    private View personRow(final String name, final String number, View.OnClickListener l) {
         LinearLayout row = new LinearLayout(act);
-        row.setOrientation(LinearLayout.VERTICAL);
-        row.setPadding(Ui.dp(act, 4), Ui.dp(act, 10), Ui.dp(act, 4), Ui.dp(act, 10));
-        row.addView(Ui.text(act, name, 16, Ui.FG, true));
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(Ui.dp(act, 2), Ui.dp(act, 8), Ui.dp(act, 2), Ui.dp(act, 8));
+        TextView av = TextsViews.avatar(act, 40);
+        TextsViews.bindAvatar(av, name, number.isEmpty() ? name : PhoneNumbers.key(number), false);
+        row.addView(av, new LinearLayout.LayoutParams(Ui.dp(act, 40), Ui.dp(act, 40)));
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(Ui.text(act, name, 16, Ui.FG, true));
         if (!number.isEmpty()) {
-            row.addView(Ui.text(act, number, 13, Ui.DIM, false));
+            col.addView(Ui.text(act, number, 13, Ui.DIM, false));
         }
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cp.leftMargin = Ui.dp(act, 12);
+        row.addView(col, cp);
         row.setOnClickListener(l);
         return row;
     }
 
-    private void showSuggestions(String q) {
+    private void showSuggestions(String q, List<Sms.Person> people) {
         suggestBox.removeAllViews();
         if (PhoneNumbers.looksLikeNumber(q) && !PhoneNumbers.forSending(q).isEmpty()) {
             final String number = q;
@@ -611,7 +1634,7 @@ final class TextsTab extends Tab {
                 addPicked(p);
             }));
         }
-        for (final Sms.Person p : suggestions) {
+        for (final Sms.Person p : people) {
             suggestBox.addView(personRow(p.name.isEmpty() ? p.number : p.name, p.name.isEmpty() ? "" : p.number, v -> addPicked(p)));
         }
         if (suggestBox.getChildCount() == 0 && !q.isEmpty()) {
@@ -640,10 +1663,10 @@ final class TextsTab extends Tab {
             row.setGravity(Gravity.CENTER_VERTICAL);
             TextView name = Ui.text(act, (p.name.isEmpty() ? p.number : p.name + "  " + p.number), 15, Ui.FG, true);
             row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            row.addView(Ui.button(act, "Remove", v -> {
+            row.addView(TextsViews.icon(act, Icons.Kind.CLOSE, "Remove", v -> {
                 picked.remove(p);
                 showPicked();
-            }), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }));
             pickedBox.addView(row);
         }
         nextBtn.setEnabled(!picked.isEmpty());
@@ -667,7 +1690,7 @@ final class TextsTab extends Tab {
         }
         for (Sms.Thread t : threads) {
             if (t.key.equals(key)) { // they already have a conversation: open it
-                openThread(t.key, t.name, t.addresses);
+                openThread(t.key, ThreadListRules.title(t), t.addresses);
                 return;
             }
         }

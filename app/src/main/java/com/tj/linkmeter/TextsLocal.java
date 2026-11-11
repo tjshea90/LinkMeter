@@ -184,14 +184,39 @@ final class TextsLocal {
         return a != null && threadTime <= a;
     }
 
-    /** "Deletes" the conversation on the tablet: its messages up to {@code upTo} are hidden, and it is gone until a newer one arrives. */
-    synchronized void clear(String key, long upTo) {
+    /**
+     * "Deletes" the conversation on the tablet: its messages up to {@code upTo} are hidden, and it is gone until a newer one arrives.
+     * Returns what it was before (0 = not deleted), for {@link #setCleared}, which undoes it.
+     */
+    synchronized long clear(String key, long upTo) {
         Long old = cleared.get(key);
         cleared.put(key, old == null ? upTo : Math.max(old, upTo));
         archived.remove(key);
         pinned.remove(key);
         drafts.remove(key);
         save();
+        return old == null ? 0 : old;
+    }
+
+    /** Sets the deleted-up-to time directly (0 = not deleted): the undo of {@link #clear}. */
+    synchronized void setCleared(String key, long upTo) {
+        if (upTo <= 0) {
+            cleared.remove(key);
+        } else {
+            cleared.put(key, upTo);
+        }
+        save();
+    }
+
+    /** Takes messages out of hiding (the undo of {@link #hide}). */
+    synchronized void unhide(Collection<String> ids) {
+        boolean changed = false;
+        for (String id : ids) {
+            changed |= hidden.remove(id);
+        }
+        if (changed) {
+            save();
+        }
     }
 
     synchronized long clearedAt(String key) {

@@ -135,7 +135,7 @@ javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" tools/test/SmsV2Test.java 
 java -cp "$out" com.tj.linkmeter.SmsV2Test || fail=1
 echo "== Texts, the tablet's side (text-message counter, tapback texts, quick replies, pins/archive/delete/drafts, the saved copy, the conversation list, the rows of a conversation)"
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/BlobStore.java $FM/FileBlobStore.java $FM/TextsLocal.java $FM/TextsCache.java $FM/SmsLength.java $FM/SmsReactions.java \
-  $FM/SmartReply.java $FM/ThreadListRules.java $FM/ThreadRows.java tools/test/TextsLogicTest.java || fail=1
+  $FM/SmartReply.java $FM/ThreadListRules.java $FM/ThreadRows.java $FM/ThreadMerge.java tools/test/TextsLogicTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.TextsLogicTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1

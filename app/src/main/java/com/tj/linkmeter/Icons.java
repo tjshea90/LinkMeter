@@ -14,7 +14,9 @@ final class Icons {
         // the bottom bar's tabs
         HOUSE, GAUGE, BARS, PHONE, SCREEN, FOLDER, CHAT, GEAR,
         // the two ways to the phone
-        BLUETOOTH, HOTSPOT
+        BLUETOOTH, HOTSPOT,
+        // the Texts screens
+        PLUS, SEARCH, TRASH, PIN, ARCHIVE, SEND, MORE, CHECK, MUTE
     }
 
     /** The drawing operations the icons need. Angles are degrees, clockwise from 3 o'clock. */
@@ -240,6 +242,50 @@ final class Icons {
                 p.dot(cx, cy + 0.5f * r, 0.16f * r);
                 p.arc(cx - 0.45f * r, cy + 0.05f * r, cx + 0.45f * r, cy + 0.95f * r, 215f, 110f);
                 p.arc(cx - 0.9f * r, cy - 0.4f * r, cx + 0.9f * r, cy + 1.4f * r, 222f, 96f);
+                break;
+            case PLUS:
+                p.line(cx - 0.7f * r, cy, cx + 0.7f * r, cy);
+                p.line(cx, cy - 0.7f * r, cx, cy + 0.7f * r);
+                break;
+            case SEARCH:
+                p.circle(cx - 0.14f * r, cy - 0.14f * r, 0.56f * r);
+                p.line(cx + 0.28f * r, cy + 0.28f * r, cx + 0.86f * r, cy + 0.86f * r);
+                break;
+            case TRASH:
+                p.line(cx - 0.8f * r, cy - 0.5f * r, cx + 0.8f * r, cy - 0.5f * r);
+                p.poly(pts(cx, cy, r, -0.28f, -0.5f, -0.28f, -0.82f, 0.28f, -0.82f, 0.28f, -0.5f), false, false);
+                p.poly(pts(cx, cy, r, -0.58f, -0.5f, -0.46f, 0.86f, 0.46f, 0.86f, 0.58f, -0.5f), false, false);
+                p.line(cx - 0.18f * r, cy - 0.2f * r, cx - 0.18f * r, cy + 0.6f * r);
+                p.line(cx + 0.18f * r, cy - 0.2f * r, cx + 0.18f * r, cy + 0.6f * r);
+                break;
+            case PIN:
+                p.poly(pts(cx, cy, r, -0.34f, -0.86f, 0.34f, -0.86f, 0.26f, -0.1f, 0.58f, 0.2f, -0.58f, 0.2f, -0.26f, -0.1f), true, false);
+                p.line(cx, cy + 0.2f * r, cx, cy + 0.92f * r);
+                break;
+            case ARCHIVE:
+                p.rrect(cx - 0.88f * r, cy - 0.78f * r, cx + 0.88f * r, cy - 0.3f * r, 0.08f * r);
+                p.poly(pts(cx, cy, r, -0.72f, -0.3f, -0.72f, 0.82f, 0.72f, 0.82f, 0.72f, -0.3f), false, false);
+                p.line(cx - 0.26f * r, cy + 0.08f * r, cx + 0.26f * r, cy + 0.08f * r);
+                break;
+            case SEND:
+                p.poly(pts(cx, cy, r, -0.9f, -0.72f, 0.92f, 0f, -0.9f, 0.72f, -0.5f, 0f), true, false);
+                p.line(cx - 0.5f * r, cy, cx + 0.92f * r, cy);
+                break;
+            case MORE:
+                p.dot(cx, cy - 0.62f * r, 0.13f * r);
+                p.dot(cx, cy, 0.13f * r);
+                p.dot(cx, cy + 0.62f * r, 0.13f * r);
+                break;
+            case CHECK:
+                p.poly(pts(cx, cy, r, -0.74f, 0.04f, -0.26f, 0.56f, 0.78f, -0.56f), false, false);
+                break;
+            case MUTE:
+                p.arc(cx - 0.58f * r, cy - 0.86f * r, cx + 0.58f * r, cy + 0.3f * r, 180f, 180f);
+                p.line(cx - 0.58f * r, cy - 0.28f * r, cx - 0.78f * r, cy + 0.52f * r);
+                p.line(cx + 0.58f * r, cy - 0.28f * r, cx + 0.78f * r, cy + 0.52f * r);
+                p.line(cx - 0.78f * r, cy + 0.52f * r, cx + 0.78f * r, cy + 0.52f * r);
+                p.dot(cx, cy + 0.82f * r, 0.12f * r);
+                p.line(cx - 0.82f * r, cy - 0.82f * r, cx + 0.82f * r, cy + 0.82f * r);
                 break;
             default:
                 break;

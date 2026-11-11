@@ -578,7 +578,7 @@ S2 = [
  ('sms2: removing record messages tells nobody', 'SmsOutbox.java', 'if (n > 0) {\n            save();\n            changed();\n        }\n        return n;\n    }\n\n    /** Deletes every message', 'if (n > 0) {\n            save();\n        }\n        return n;\n    }\n\n    /** Deletes every message'),
 ]
 TEXTS_FILES = ["SmsLength.java", "SmsReactions.java", "SmartReply.java", "TextsLocal.java", "TextsCache.java", "ThreadListRules.java", "ThreadRows.java",
-               "FileBlobStore.java"]
+               "FileBlobStore.java", "ThreadMerge.java"]
 TEXTS_TEST = ROOT + "/tools/test/TextsLogicTest.java"
 TEXTS_JAVAC = ["-sourcepath", ROOT + "/app/src/main/java"]
 TX = [
@@ -609,6 +609,8 @@ TX = [
  ('texts: the last message I sent is not marked', 'ThreadRows.java', 'lastMine.lastOfMine = true;', ';'),
  ('texts: the new-messages line does not end the group above it', 'ThreadRows.java', 'out.get(j).groupEnd = true;', ';'),
  ('texts: no day headings', 'ThreadRows.java', 'if (newDay) {', 'if (false) {'),
+ ('texts: what the phone dropped stays on screen', 'ThreadMerge.java', 'if (m.time < from) {', 'if (true) {'),
+ ('texts: an older page replaces what is on screen', 'ThreadMerge.java', '        } else {\n            for (Sms.Msg m : have) {\n                out.put(m.id, m);\n            }\n        }', '        }'),
  ('texts: any name is a name for a saved file', 'FileBlobStore.java', 'if (!NAME.matcher(name).matches() || name.endsWith(".tmp") || name.startsWith(".")) {', 'if (false) {'),
 ]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
