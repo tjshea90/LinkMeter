@@ -64,10 +64,18 @@ final class TextsViews {
             return;
         }
         b.setVisibility(View.VISIBLE);
-        b.setText(count == 0 ? "" : count > 99 ? "99+" : String.valueOf(count));
         Context c = b.getContext();
-        b.setMinWidth(Ui.dp(c, count == 0 ? 10 : 20));
-        b.setMinHeight(Ui.dp(c, count == 0 ? 10 : 20));
+        boolean dot = count == 0;
+        b.setText(dot ? "" : count > 99 ? "99+" : String.valueOf(count));
+        b.setMinWidth(Ui.dp(c, dot ? 10 : 20));
+        b.setMinHeight(Ui.dp(c, dot ? 10 : 20));
+        b.setPadding(dot ? 0 : Ui.dp(c, 6), 0, dot ? 0 : Ui.dp(c, 6), 0);
+        ViewGroup.LayoutParams lp = b.getLayoutParams();
+        if (lp != null) {
+            lp.width = dot ? Ui.dp(c, 10) : ViewGroup.LayoutParams.WRAP_CONTENT;
+            lp.height = dot ? Ui.dp(c, 10) : Ui.dp(c, 20);
+            b.setLayoutParams(lp);
+        }
     }
 
     /** A 44 dp touch target with an icon in the text colour. */

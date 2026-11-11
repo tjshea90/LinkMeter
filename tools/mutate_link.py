@@ -568,6 +568,7 @@ S2 = [
  ('sms2: the phone does not wake the waiting request', 'SmsApi.java', 'backend.setChangeListener(gate::bump);', ';'),
  ('sms2: an older page includes the newer record entries', 'SmsApi.java', 'if (m.time < before) {\n                    older.add(m);', 'if (true) {\n                    older.add(m);'),
  ('sms2: a page never says there is more', 'SmsApi.java', 'merged = new ArrayList<>(merged.subList(merged.size() - limit, merged.size()));\n            more = true;', 'merged = new ArrayList<>(merged.subList(merged.size() - limit, merged.size()));'),
+ ('sms2: a group thread does not say who is who', 'SmsApi.java', 'if (head.addresses.size() > 1) {\n            for (String a : head.addresses) {', 'if (head.addresses.size() > 99) {\n            for (String a : head.addresses) {'),
  ('sms2: one letter is a search', 'SmsApi.java', 'if (text.length() >= 2) {', 'if (text.length() >= 0) {'),
  ('sms2: what the tablet sent is not searched', 'SmsApi.java', 'if (m.body.toLowerCase(Locale.ROOT).contains(low) && !SmsMerge.duplicate(m, found)) {', 'if (false) {'),
  ('sms2: the tablet record of a deleted message stays', 'SmsApi.java', 'outbox.remove(logIds);', ';'),

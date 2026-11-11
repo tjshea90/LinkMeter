@@ -383,6 +383,23 @@ public final class SmsV2Test {
         }
     }
 
+    // ---------------------------------------------------------------- the names of the people in a group
+
+    static void groupNames() throws Exception {
+        try (Srv srv = new Srv()) {
+            RemoteSms sms = srv.sms();
+            String g = "5551111111,5552222222";
+            srv.fake.db.add(SmsProtocolTest.msg("s1", g, "+15551111111", false, "hi all", T0 + 1000));
+            srv.fake.db.add(SmsProtocolTest.msg("s2", g, "+15552222222", false, "hello", T0 + 2000));
+            srv.fake.names.put("5551111111", "Alex");
+            srv.fake.names.put("5552222222", "Sam");
+            Sms.Convo c = sms.thread(g, 10);
+            eq("Alex|Sam", c.people.get("5551111111") + "|" + c.people.get("5552222222"), "a group's thread says who is who, by number key");
+            fill(srv.fake, 2);
+            eq(0, sms.thread(K, 10).people.size(), "a conversation with one person has no list of people");
+        }
+    }
+
     // ---------------------------------------------------------------- search
 
     static void searching() throws Exception {
@@ -542,6 +559,7 @@ public final class SmsV2Test {
         gate();
         waitingForNews();
         paging();
+        groupNames();
         searching();
         deleting();
         outboxRemoval();

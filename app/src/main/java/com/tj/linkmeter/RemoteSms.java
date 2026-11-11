@@ -117,6 +117,14 @@ final class RemoteSms {
         Map<String, Object> m = obj(link.call("GET", "/sms/thread?key=" + enc(key) + "&limit=" + limit + (before > 0 ? "&before=" + before : ""), 30000));
         Sms.Convo c = new Sms.Convo();
         c.more = Json.bool(m, "more", false);
+        Object who = m.get("who");
+        if (who instanceof Map) {
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) who).entrySet()) {
+                if (e.getKey() instanceof String && e.getValue() instanceof String) {
+                    c.people.put((String) e.getKey(), (String) e.getValue());
+                }
+            }
+        }
         c.head.key = Json.str(m, "key", key);
         c.head.name = Json.str(m, "name", "");
         c.head.addresses.addAll(SmsJson.strings(m, "addr"));

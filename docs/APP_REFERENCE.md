@@ -449,3 +449,18 @@ Tools: `tools/checkpoint.sh` (log, commit, push with retries), `tools/ci.sh` (sa
 `tools/handoff-check.sh` (warns when this file is stale), `tools/test.sh` (offline tests, including
 `tools/test/test_release_decision.py` for the release pipeline's merge gate, and `tools/test-framer.sh` for the picture cutter).
 `CHECKPOINTS.md` is the append-only log they write.
+
+## Texts (rebuilt 2026-11-11, see docs/TEXTS_OVERHAUL.md)
+
+Phone: `SmsApi` (protocol 2: `/sms/stamp?since=&wait=` waits up to 25 s for news and is woken by `ChangeGate`, `/sms/thread?before=`
+pages back and returns `more` and `who` (names of a group's people), `/sms/search`, `/sms/delete`, `/sms/read`), `SmsStore` (a
+ContentObserver on the messages and contacts databases bumps a counter; one scan per change is shared by list, header and search;
+batched picture-message queries; LIMIT in the sort order with a fallback; delete and mark read through `Priv.run` as the shell user, then
+checked by looking again). An old phone says `"v":1`: the tablet then asks every 3 s and has no search, delete or mark read.
+Tablet: `TextsTab` (list, search, select, pin/archive/delete with Undo, menu, settings, two panes from 720 dp, the long-polling thread
+`linkmeter-texts-poll`, the saved copy shown first), `TextThread` (bubbles in groups, reactions folded into their message, quick
+replies, drafts, optimistic send, load earlier on scroll, delete/forward/copy/details), `TextsViews`/`IconButton`/`Icons` (pieces).
+Pure and tested: `TextsLocal` (the tablet's choices), `TextsCache` (saved copy), `BlobStore`/`FileBlobStore`, `ThreadListRules`,
+`ThreadRows`, `ThreadMerge`, `SmsReactions`, `SmartReply`, `SmsLength`, `ChangeGate`. The pictures: `tools/preview.sh --tests
+"com.tj.linkmeter.TextsPreviewTest"` (`PretendSms` puts the real `SmsApi` behind a fake database; `TextsTab.testLink` is the seam).
+

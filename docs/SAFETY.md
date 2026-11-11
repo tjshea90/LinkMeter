@@ -175,3 +175,23 @@ link that the phone listens on, so the tablet can switch the hotspot back ON whe
 - **What the Safety check shows:** the hotspot, Wi-Fi and the Bluetooth link are the phone's own switches. The Safety check shows them
   as information (on, off, or cannot tell: never "off" when the phone does not say) and says that Restore everything does not change
   them. They are not "still changed by LinkMeter".
+
+## 10. Texts (the tablet reads, sends, deletes and marks read the phone's texts)
+
+Off until the phone's owner switches "Let the tablet use my texts" on (the card "Texts" on the phone's own screen); while it is off the phone
+answers nothing about texts, and the tablet wipes what it had saved. Only the paired tablet can ask.
+
+- **Reading and sending** use the phone's messages database with the permissions LinkMeter was given (read texts, send texts, see contact
+  names). A text is sent only when someone presses Send on the tablet. Chats that Google Messages sends as RCS are not in that database,
+  so they are neither shown nor sent; nothing in LinkMeter reads or changes RCS.
+- **Deleting and marking read.** Only the phone's default messaging app may change the messages database, so LinkMeter asks first on the
+  tablet ("Delete this conversation?" and "Delete this message?"), then asks the phone to try it as the shell user through Shizuku
+  (`content delete` for the chosen messages or conversations, `content update` to set the read flag), looks again to see whether it worked,
+  and says which of the two happened. What the phone refuses stays on the phone; the tablet then hides it on its own side, with an Undo
+  for eight seconds. Nothing else in the messages database is ever written, and what the tablet itself sent (its own record on the
+  phone) is the only thing deleted for good without the phone's say.
+- **The saved copy on the tablet** (so that the tab opens at once and still shows the texts when the phone is out of reach): the newest
+  conversations and up to 80 messages of up to 30 conversations, text only (no pictures), in the app's private folder. Settings in the
+  Texts tab: keep it or not, hide the words of texts in the list, clear it now. It is cleared when the phone says texts are off.
+- **Nothing here dials.** A phone number in a text is shown as text and is never made a link; only web addresses and e-mail addresses are.
+

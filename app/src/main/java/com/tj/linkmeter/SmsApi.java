@@ -318,7 +318,16 @@ final class SmsApi {
         for (Sms.Msg m : merged) {
             msgs.add(SmsJson.msg(m));
         }
-        return FsApi.Reply.json(Json.obj("key", key, "name", head.name, "addr", new ArrayList<>(head.addresses), "msgs", msgs, "more", more));
+        Map<String, Object> who = new java.util.LinkedHashMap<>(); // the people of a group by name, so that a bubble can say who wrote it
+        if (head.addresses.size() > 1) {
+            for (String a : head.addresses) {
+                String n = backend.nameFor(a);
+                if (n != null && !n.isEmpty()) {
+                    who.put(PhoneNumbers.key(a), n);
+                }
+            }
+        }
+        return FsApi.Reply.json(Json.obj("key", key, "name", head.name, "addr", new ArrayList<>(head.addresses), "msgs", msgs, "more", more, "who", who));
     }
 
     private String currentStamp() {

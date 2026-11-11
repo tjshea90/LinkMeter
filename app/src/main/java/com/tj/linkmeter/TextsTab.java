@@ -186,6 +186,16 @@ final class TextsTab extends Tab {
         return new RemoteSms(new PeerLink(host, Net.peerToken(act)));
     }
 
+    /** An error in words for the user: a connection that failed says why (the hotspot, Shizuku...). */
+    static String explain(IOException e) {
+        if (e instanceof Client.ConnectFailed) {
+            String w = Client.why((Client.ConnectFailed) e);
+            return w.isEmpty() ? w : Character.toUpperCase(w.charAt(0)) + w.substring(1);
+        }
+        String m = e.getMessage();
+        return m == null || m.isEmpty() ? "The phone could not be reached." : Character.toUpperCase(m.charAt(0)) + m.substring(1);
+    }
+
     TextTime.Env env() {
         return TextTime.Env.device(android.text.format.DateFormat.is24HourFormat(act));
     }
@@ -366,7 +376,7 @@ final class TextsTab extends Tab {
             try {
                 st = remote().state();
             } catch (IOException e) {
-                err = e.getMessage();
+                err = explain(e);
             }
             final Sms.State fs = st;
             final String fe = err;
@@ -480,7 +490,7 @@ final class TextsTab extends Tab {
                 } else if (fe instanceof RemoteSms.Off) {
                     loadState(); // switched off since: say so
                 } else if (fe != null) {
-                    setProblem(fe.getMessage());
+                    setProblem(explain(fe));
                 }
             });
         });
@@ -532,7 +542,7 @@ final class TextsTab extends Tab {
                     });
                     return;
                 } catch (IOException e) {
-                    final String why = e.getMessage();
+                    final String why = explain(e);
                     post(() -> {
                         if (gen == pollGen) {
                             setProblem(why);
@@ -855,6 +865,9 @@ final class TextsTab extends Tab {
         }
         items = ThreadListRules.build(threads, local, searching ? query : "", unreadOnly, archivedView);
         rows.clear();
+        if (searching && !hits.isEmpty() && !items.isEmpty()) {
+            rows.add("Conversations");
+        }
         rows.addAll(items);
         if (searching && !hits.isEmpty()) {
             rows.add("Texts");
@@ -1049,7 +1062,7 @@ final class TextsTab extends Tab {
             mid.setOrientation(LinearLayout.VERTICAL);
             LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             mp.leftMargin = Ui.dp(c, 14);
-            mp.rightMargin = Ui.dp(c, 8);
+            // first line: the name, what is set for it, and when
             LinearLayout nameRow = new LinearLayout(c);
             nameRow.setOrientation(LinearLayout.HORIZONTAL);
             nameRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -1059,28 +1072,34 @@ final class TextsTab extends Tab {
             nameRow.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             pinned = new IconButton(c, Icons.Kind.PIN, Ui.DIM, 0, "Pinned", null);
             pinned.setScale(0.9f);
-            nameRow.addView(pinned, new LinearLayout.LayoutParams(Ui.dp(c, 14), Ui.dp(c, 14)));
+            LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(Ui.dp(c, 14), Ui.dp(c, 14));
+            pp.leftMargin = Ui.dp(c, 6);
+            nameRow.addView(pinned, pp);
             muted = new IconButton(c, Icons.Kind.MUTE, Ui.DIM, 0, "Muted", null);
             muted.setScale(0.9f);
             LinearLayout.LayoutParams mu = new LinearLayout.LayoutParams(Ui.dp(c, 14), Ui.dp(c, 14));
             mu.leftMargin = Ui.dp(c, 4);
             nameRow.addView(muted, mu);
+            time = Ui.text(c, "", 12, Ui.DIM, false);
+            time.setSingleLine(true);
+            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tp.leftMargin = Ui.dp(c, 8);
+            nameRow.addView(time, tp);
             mid.addView(nameRow);
+            // second line: the last text, and the unread mark
+            LinearLayout previewRow = new LinearLayout(c);
+            previewRow.setOrientation(LinearLayout.HORIZONTAL);
+            previewRow.setGravity(Gravity.CENTER_VERTICAL);
             preview = Ui.text(c, "", 14, Ui.DIM, false);
             preview.setSingleLine(true);
             preview.setEllipsize(TextUtils.TruncateAt.END);
-            mid.addView(preview);
-            row.addView(mid, mp);
-            LinearLayout right = new LinearLayout(c);
-            right.setOrientation(LinearLayout.VERTICAL);
-            right.setGravity(Gravity.END);
-            time = Ui.text(c, "", 12, Ui.DIM, false);
-            right.addView(time);
+            previewRow.addView(preview, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             badge = TextsViews.badge(c);
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            bp.topMargin = Ui.dp(c, 6);
-            right.addView(badge, bp);
-            row.addView(right, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(c, 20));
+            bp.leftMargin = Ui.dp(c, 8);
+            previewRow.addView(badge, bp);
+            mid.addView(previewRow);
+            row.addView(mid, mp);
         }
 
         void bind(ThreadListRules.Item it) {

@@ -39,7 +39,15 @@ always.
   suggestions work (Options > Keyboard > "Suggestions and glide typing"); switch that off to send exactly the letters you tap, which is
   better for codes, web addresses and passwords. "Incognito" (off) asks the keyboard not to learn what you type; some keyboards then
   also switch glide typing off. The phone never types `*` or `#`.
-- **Speed, Screen, Files, Texts:** as before. Texts are off until you switch them on at the phone (card "Texts").
+- **Texts:** off until you switch them on at the phone (card "Texts"). The list opens at once and keeps itself up to date (a new text
+  appears within a second or two, no need to open the conversation). Tap a conversation to read it, hold one to select several (pin,
+  mark read, archive, delete), tap the magnifier to search names and texts, tap + to write. In a conversation: hold a message to copy,
+  forward, delete or see its details; quick replies appear when the last text is a question; a text you are typing is kept until you
+  send it; reactions from iPhones ("Loved ...") show on the message they are about. **Delete** removes it on the tablet and asks the phone
+  to delete it too; most phones only let their own Messages app do that, then the texts stay on the phone and the strip says so (Undo
+  brings them back here). On a wide tablet screen the list stays on the left. The menu (the three dots) has unread only, archived,
+  mark all read, refresh and Texts settings.
+- **Speed, Screen, Files:** as before.
 
 ## 3. If something breaks
 
@@ -64,6 +72,8 @@ Tell me what happened, in your own words, for any of these:
 - The Screen tab left open while the phone sleeps (the tablet is meant to rest after a while, and wake when you touch it).
 - The phone's own screen: does the first card name the right thing? Do Stop, Forget all tablets and Switch role ask first?
 - The Signal tab: Scan, the comparison, Search for a network again, Phone info screen.
+- Texts (use the newest release on BOTH devices): does the list open at once? Does a new text show up by itself without opening it? Do
+  Delete, Archive, Pin, Search and a picture message work? Does Delete say "Deleted on the phone" or "The phone kept it"?
 - Glide typing (SwiftKey): Screen tab > Options > Keyboard > "Test the keyboard". In box 1 (a plain text box) and in box 2 (the Type
   button's field, with what it would send written underneath): does a glided word work? Tell me which of the two glides, and what the
   last lines of the test say (version, keyboard, counts).

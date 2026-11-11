@@ -154,6 +154,8 @@ final class Sms {
         final List<Msg> msgs = new ArrayList<>();
         /** There are older messages than these on the phone. */
         boolean more;
+        /** In a group: the contact names of the people in it, by {@link PhoneNumbers#key} of their number (empty for one person). */
+        final java.util.Map<String, String> people = new java.util.HashMap<>();
     }
 
     /** A message found by a search, with the name of its conversation. */

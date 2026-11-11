@@ -72,6 +72,8 @@ final class TextThread {
     private boolean sending;
     private boolean paused;
     private List<String> replies = new ArrayList<>();
+    /** The names of the people in a group, by number key. */
+    private final java.util.Map<String, String> people = new java.util.HashMap<>();
     private final List<Attach.Item> pending = new ArrayList<>();
 
     private LinearLayout root;
@@ -238,7 +240,11 @@ final class TextThread {
         normalBar.setOrientation(LinearLayout.HORIZONTAL);
         normalBar.setGravity(Gravity.CENTER_VERTICAL);
         normalBar.setPadding(Ui.dp(act, 4), 0, Ui.dp(act, 4), 0);
-        normalBar.addView(TextsViews.icon(act, Icons.Kind.BACK, "Back", v -> tab.closeThread()));
+        if (!tab.isWide()) { // beside the list there is nothing to go back to
+            normalBar.addView(TextsViews.icon(act, Icons.Kind.BACK, "Back", v -> tab.closeThread()));
+        } else {
+            normalBar.setPadding(Ui.dp(act, 14), 0, Ui.dp(act, 4), 0);
+        }
         avatar = TextsViews.avatar(act, 38);
         TextsViews.bindAvatar(avatar, name, key, false);
         normalBar.addView(avatar, new LinearLayout.LayoutParams(Ui.dp(act, 38), Ui.dp(act, 38)));
@@ -347,12 +353,18 @@ final class TextThread {
         }
     }
 
+    /** How many messages one request asks for: a page; a phone of the first kind cannot page back, so it is asked for many at once. */
+    private int pageSize() {
+        return tab.phoneIsV2() ? PAGE : 200;
+    }
+
     /** Asks the phone for the newest page and joins it with what is shown. */
     void reload() {
         final long my = tab.session();
+        final int size = pageSize();
         tab.net().execute(() -> {
             try {
-                final Sms.Convo c = tab.remote().thread(key, PAGE);
+                final Sms.Convo c = tab.remote().thread(key, size);
                 TextsCache cache = tab.cache();
                 act.ui.post(() -> {
                     if (my == tab.session() && !paused) {
@@ -362,7 +374,7 @@ final class TextThread {
             } catch (final IOException e) {
                 act.ui.post(() -> {
                     if (my == tab.session() && !paused) {
-                        showStatus(e.getMessage());
+                        showStatus(TextsTab.explain(e));
                     }
                 });
             }
@@ -376,7 +388,8 @@ final class TextThread {
             title.setText(name);
             TextsViews.bindAvatar(avatar, name, key, false);
         }
-        boolean gap = c.msgs.size() >= PAGE && !msgs.isEmpty() && c.msgs.get(0).time > msgs.get(msgs.size() - 1).time;
+        people.putAll(c.people);
+        boolean gap = c.msgs.size() >= pageSize() && !msgs.isEmpty() && c.msgs.get(0).time > msgs.get(msgs.size() - 1).time;
         if (gap || firstLoad) {
             msgs.clear();
             msgs.addAll(c.msgs);
@@ -1025,15 +1038,15 @@ final class TextThread {
             column.setOrientation(LinearLayout.VERTICAL);
             who = Ui.text(act, "", 11, Ui.DIM, true);
             who.setPadding(Ui.dp(act, 12), 0, 0, Ui.dp(act, 2));
-            column.addView(who);
+            column.addView(who, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             bubble = new LinearLayout(act);
             bubble.setOrientation(LinearLayout.VERTICAL);
             bubble.setPadding(Ui.dp(act, 12), Ui.dp(act, 8), Ui.dp(act, 12), Ui.dp(act, 8));
             partsBox = new LinearLayout(act);
             partsBox.setOrientation(LinearLayout.VERTICAL);
-            bubble.addView(partsBox);
+            bubble.addView(partsBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             body = Ui.text(act, "", 15.5f, Ui.FG, false);
-            bubble.addView(body);
+            bubble.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             column.addView(bubble, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             reactions = Ui.text(act, "", 13, Ui.FG, false);
             reactions.setBackground(roundStroke(Ui.CARD_HI, Ui.BG, 12));
@@ -1045,7 +1058,7 @@ final class TextThread {
             column.addView(reactions, rp);
             meta = Ui.text(act, "", 11, Ui.DIM, false);
             meta.setPadding(Ui.dp(act, 6), Ui.dp(act, 3), Ui.dp(act, 6), 0);
-            column.addView(meta);
+            column.addView(meta, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             outer.addView(column, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
 
@@ -1089,7 +1102,8 @@ final class TextThread {
             final int maxText = (int) (act.getResources().getDisplayMetrics().widthPixels * (tab.isWide() ? 0.34f : 0.72f));
 
             if (group && !m.mine && r.groupStart && !r.sender.isEmpty()) {
-                who.setText(PhoneNumbers.pretty(r.sender));
+                String known = people.get(PhoneNumbers.key(r.sender));
+                who.setText(known != null ? known : PhoneNumbers.pretty(r.sender));
                 who.setVisibility(View.VISIBLE);
             } else {
                 who.setVisibility(View.GONE);
