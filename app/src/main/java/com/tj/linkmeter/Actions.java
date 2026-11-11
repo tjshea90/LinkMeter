@@ -504,6 +504,9 @@ final class Actions {
         f.secureGranted = Boot.canWriteSecure(c);
         f.pairingKept = Boot.pairingKept(c);
         f.bootAssist = Boot.assist(c);
+        f.hotspotOn = Radios.hotspot(c); // null = the phone does not say
+        f.wifiOn = Radios.wifi(c);
+        f.btLink = BtServer.stateText();
         return SafetyReport.report(f);
     }
 

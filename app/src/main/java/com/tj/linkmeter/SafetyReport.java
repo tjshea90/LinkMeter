@@ -38,6 +38,22 @@ final class SafetyReport {
         boolean pairingKept;
         /** Boot assist is on (the phone switches wireless debugging on by itself after a restart). */
         boolean bootAssist;
+        /**
+         * The phone's OWN switches, which the tablet can also move (hotspot, Wi-Fi) or listen at (the Bluetooth link). They are
+         * information, never "changes still in place": Restore everything does not touch them. null / "" = the phone does not say,
+         * and that is never printed as "off".
+         */
+        Boolean hotspotOn;
+        Boolean wifiOn;
+        /** The Bluetooth link in the listener's own words ("on, listening for the paired tablet"); "" = cannot tell. */
+        String btLink = "";
+    }
+
+    /** What is said above the three switches, after the verdict: they are not changes, and Restore everything leaves them as they are. */
+    static final String SWITCHES_NOTE = "The phone's own switches (the tablet can move them; Restore everything does not change them):";
+
+    private static String onOff(Boolean on) {
+        return on == null ? "cannot tell" : on.booleanValue() ? "on" : "off";
     }
 
     /** Things LinkMeter changed that are still in place, one line each. Empty when there are none. */
@@ -136,6 +152,12 @@ final class SafetyReport {
                 sb.append(otherChanged(f) ? "\n" : "").append("The boot items stay until you undo them: on the tablet, Phone tab > Undo the setup (Restore everything leaves them alone).");
             }
         }
-        return sb.toString().trim();
+        // the phone's own switches come last, as information: the answer to "is my phone still changed?" is above
+        StringBuilder out = new StringBuilder(sb.toString().trim());
+        out.append("\n\n").append(SWITCHES_NOTE).append('\n');
+        out.append("Hotspot: ").append(onOff(f.hotspotOn)).append('\n');
+        out.append("Wi-Fi: ").append(onOff(f.wifiOn)).append('\n');
+        out.append("Bluetooth link: ").append(f.btLink.isEmpty() ? "cannot tell" : f.btLink);
+        return out.toString();
     }
 }

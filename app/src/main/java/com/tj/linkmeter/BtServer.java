@@ -115,7 +115,7 @@ final class BtServer {
     static String stateText() {
         switch (state) {
             case "on":
-                return "on: this phone is listening for the paired tablet";
+                return "on, listening for the paired tablet";
             case "off":
                 return "Bluetooth is switched off on this phone";
             case "perm":

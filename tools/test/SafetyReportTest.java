@@ -44,6 +44,51 @@ public final class SafetyReportTest {
             check(SafetyReport.changes(f).isEmpty() && !SafetyReport.radioChanged(f), "no change, nothing for the safety net");
         }
 
+        // ---- the phone's own switches (hotspot, Wi-Fi, the Bluetooth link) are information, never a change
+        {
+            Boolean[] tri = {null, Boolean.TRUE, Boolean.FALSE};
+            String[] links = {"", "on, listening for the paired tablet", "Bluetooth is switched off on this phone",
+                "LinkMeter is not allowed to use Bluetooth yet (the \"Nearby devices\" permission)", "switched off in LinkMeter on this phone",
+                "this phone has no Bluetooth, or the service is not running", "could not start listening (the listener keeps ending)"};
+            int n = 0;
+            for (Boolean hot : tri) {
+                for (Boolean wifi : tri) {
+                    for (String link : links) {
+                        SafetyReport.Facts f = base();
+                        f.hotspotOn = hot;
+                        f.wifiOn = wifi;
+                        f.btLink = link;
+                        String r = SafetyReport.report(f);
+                        String ctx = " [hotspot " + hot + ", Wi-Fi " + wifi + ", link '" + link + "']";
+                        n++;
+                        check(r.contains("LinkMeter has nothing changed on this phone."), "a clean phone still says so" + ctx + ": " + r);
+                        check(!r.contains("Still changed"), "and lists no change" + ctx);
+                        check(SafetyReport.changes(f).isEmpty(), "no switch is a change" + ctx);
+                        check(!SafetyReport.otherChanged(f) && !SafetyReport.radioChanged(f) && !SafetyReport.bootChanged(f), "and none counts for Restore everything, the safety net or the boot items" + ctx);
+                        check(!r.contains("Restore everything puts it back") && !r.contains("safety net") && !r.contains("Undo the setup"), "so nothing is promised" + ctx);
+                        // the words: exactly the fact, and not known is never off
+                        String hs = hot == null ? "cannot tell" : hot ? "on" : "off";
+                        String wf = wifi == null ? "cannot tell" : wifi ? "on" : "off";
+                        check(r.contains("\nHotspot: " + hs + "\n"), "the hotspot line says " + hs + ctx);
+                        check(r.contains("\nWi-Fi: " + wf + "\n"), "the Wi-Fi line says " + wf + ctx);
+                        check(r.endsWith("\nBluetooth link: " + (link.isEmpty() ? "cannot tell" : link)), "the Bluetooth line says what the listener says, and is the last line" + ctx);
+                        if (hot == null) {
+                            check(!r.contains("Hotspot: off"), "a hotspot the phone does not report is never printed as off" + ctx);
+                        }
+                        if (wifi == null) {
+                            check(!r.contains("Wi-Fi: off"), "a Wi-Fi the phone does not report is never printed as off" + ctx);
+                        }
+                        check(r.contains(SafetyReport.SWITCHES_NOTE), "and it says that Restore everything leaves them as they are" + ctx);
+                        check(r.indexOf("LinkMeter has nothing changed") < r.indexOf(SafetyReport.SWITCHES_NOTE) && r.indexOf(SafetyReport.SWITCHES_NOTE) < r.indexOf("Hotspot: ")
+                                && r.indexOf("Hotspot: ") < r.indexOf("Wi-Fi: ") && r.indexOf("Wi-Fi: ") < r.indexOf("Bluetooth link: "),
+                                "the verdict comes first and the information after it, in the same order every time" + ctx);
+                    }
+                }
+            }
+            check(n == 63, "all combinations tried: " + n);
+            check(SafetyReport.SWITCHES_NOTE.contains("Restore everything does not change them") && SafetyReport.SWITCHES_NOTE.contains("own switches"), "the sentence says what it must");
+        }
+
         // ---- every single change is reported, and reported as a change
         String[] names = {"types", "leg", "lockFlag", "blip", "airplane", "hotspot", "menu", "secure", "pairing", "assist"};
         for (int i = 0; i < names.length; i++) {
@@ -133,9 +178,18 @@ public final class SafetyReportTest {
             f.pairingKept = (m & 512) != 0;
             f.bootAssist = (m & 1024) != 0;
             f.guardWatching = (m & 1) != 0;
+            // the switches change with the mask as well: whatever they are, they are never a change, and every equality below must still hold
+            Boolean[] tri3 = {null, Boolean.TRUE, Boolean.FALSE};
+            f.hotspotOn = tri3[m % 3];
+            f.wifiOn = tri3[(m / 3) % 3];
+            f.btLink = (m / 9) % 2 == 0 ? "" : "on, listening for the paired tablet";
             boolean any = m != 0;
             String r = SafetyReport.report(f);
             combos++;
+            check(r.contains(SafetyReport.SWITCHES_NOTE), "the switches' sentence is always there [mask " + m + "]");
+            check(r.indexOf(SafetyReport.SWITCHES_NOTE) > Math.max(r.indexOf("Still changed by LinkMeter"), r.indexOf("nothing changed on this phone")),
+                    "and after the verdict, whatever the verdict is [mask " + m + "]");
+            check(r.contains("\nHotspot: ") && r.contains("\nWi-Fi: ") && r.contains("\nBluetooth link: "), "and so are the three lines [mask " + m + "]");
             check(any == r.contains("Still changed by LinkMeter"), "a change is reported exactly when there is one [mask " + m + "]");
             check(any != r.contains("nothing changed on this phone"), "'nothing changed' exactly when there is nothing [mask " + m + "]");
             check(SafetyReport.changes(f).size() == Integer.bitCount(m), "one line per change [mask " + m + "]");

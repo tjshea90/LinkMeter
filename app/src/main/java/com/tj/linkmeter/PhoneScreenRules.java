@@ -473,8 +473,9 @@ final class PhoneScreenRules {
     }
 
     static Question stopQuestion(PhoneScreenFacts f) {
+        // a restart brings it back only while "Start LinkMeter when the phone starts" is on
         return new Question("Stop LinkMeter?", "The tablet can then not reach this phone, over the hotspot or over Bluetooth, until you "
-                + "press Start here or the phone restarts." + saverNote(f), "Stop", "Keep it running");
+                + "press Start here" + (f.autoStart ? " or the phone restarts." : ".") + saverNote(f), "Stop", "Keep it running");
     }
 
     static Question forgetQuestion(PhoneScreenFacts f) {

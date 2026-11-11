@@ -565,6 +565,14 @@ public final class PhoneScreenRulesTest {
             }
             // each says what is lost
             yes(stop.message.contains("over the hotspot or over Bluetooth") && stop.message.contains("press Start here"), "Stop says what is lost and how to get it back" + ctx);
+            // a restart brings LinkMeter back only while the start after a restart is on
+            for (boolean auto : new boolean[] {true, false}) {
+                f.autoStart = auto;
+                PhoneScreenRules.Question q = PhoneScreenRules.stopQuestion(f);
+                eq(auto, q.message.contains("or the phone restarts"), "Stop promises a restart only while the start after a restart is on (autostart " + auto + ")");
+                yes(!q.message.contains("..") && !q.message.contains(" ."), "and reads well (autostart " + auto + "): " + q.message);
+            }
+            f.autoStart = true;
             yes(forget.message.contains("pair it again") && forget.message.contains("hotspot"), "Forget says how to pair again" + ctx);
             yes(role.message.contains("stops") && role.message.contains("choose"), "Switch role says the service stops" + ctx);
             eq("Stop", stop.yes, "Stop's yes");

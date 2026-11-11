@@ -38,6 +38,12 @@ exist too, but they say plainly that someone has to touch the phone afterwards.
   has (`RemoteRoutes.givesWay`), so a stranger in range cannot push the tablet out.
   Needs the `BLUETOOTH_CONNECT` permission on Android 12+ (the phone is Android 16): given through Shizuku by `bt_setup`
   (`pm grant`), or by Android's own "Nearby devices" question on the phone.
+  The phone's own screen (LinkMeter on the phone, "Tablet link") has the switch "Let the tablet reach this phone over Bluetooth",
+  the state of the link in words, and ONE button for what is missing: "Allow Bluetooth" (`BtServer.grantPermission` through Shizuku
+  when it is ready, else Android's own question; a refusal that Android will not repeat opens the app's page), "Switch Bluetooth
+  on" (`BtServer.switchOn` through Shizuku, else Android's own question) or "Try again" (`BtServer.recheck`). While the screen is
+  shown, a `perm` state whose permission was since given in Android's settings makes the listener look again. `bt_setup` runs the
+  same two steps (`grantPermission`, `switchOn`) and then reads the address.
 - Tablet (Android 10): `BtLink` connects with `getRemoteDevice(mac).createInsecureRfcommSocketToServiceRecord(UUID)`. It needs
   the phone's Bluetooth address. An app cannot read its own address, but the shell can: `bt_setup` on the phone reads
   `settings get secure bluetooth_address` through Shizuku and the phone then reports it in `/s` (`btmac`), so the tablet learns it
@@ -69,8 +75,9 @@ sends. So the tablet's secret (the pairing token) never travels on Bluetooth:
 ## What may travel over Bluetooth (`RemoteRoutes.overBluetooth`)
 
 Only: `/s`, `/sig`, `/boot`, `/act`, `/probe`, `/cells`, `/screen/state`, `/screen/on`, `/screen/off`, `/speed/start|stop|status`.
-Refused there (need the hotspot): files, texts, the screen's picture and touches and typing, the app update, pairing, and the
-`/band*` routes. A request with a body is refused and ends the connection.
+Refused there (need the hotspot): files, texts, the screen's picture and touches and typing, the app update and pairing. (The
+`/band*` routes no longer exist on the phone at all, on either route: they answer "unknown request".) A request with a body is
+refused and ends the connection.
 
 `/act` carries EVERY action name over Bluetooth, not only the switches of this document: also the network-type and radio
 actions (`net_lte`, `net_5g`, `radio_cycle`, `restart_modem`), `restore`, `safety`, `setup`, the hotspot band and the boot
@@ -200,7 +207,7 @@ Nothing here has run on the devices, so the tablet is written to claim only what
 ## Battery saver changes (`Eco`, its decisions are in `SaverPlan` and tested offline)
 
 - ONE stored switch, Automatic or Off (`Cfg.ecoAuto`, Automatic by default), changed only through `Eco.setAuto`: by the tablet's
-  `eco_auto_on|off`, by the phone's own checkbox, and by Restore everything, which puts the settings back AND stores Off and
+  `eco_auto_on|off`, by the phone's own switch (LinkMeter on the phone, Battery), and by Restore everything, which puts the settings back AND stores Off and
   says so ("The battery saver is now switched off. Switch it on again in the Phone tab."). The saver itself is "on" while its
   settings are in place (`eco` in `/s`; `ecoAuto` is the stored choice). `eco` and `ecoAuto` are two facts: Home never says
   "on" from the choice alone (`SaverPlan.homeFact`).
@@ -251,7 +258,10 @@ Nothing here has run on the devices, so the tablet is written to claim only what
   (fallback of `hotspot_off`) keeps its existing failsafe (`Saved.blip`).
 - New things that stay changed until undone: the `BLUETOOTH_CONNECT` permission (harmless; taken back with `pm revoke` or in the
   phone's app settings), Bluetooth switched on by `bt_setup`, the phone's Wi-Fi switch after `wifi_on|off`, the hotspot after
-  `hotspot_on|off`. They are listed in `docs/SAFETY.md` and are not "Restore everything" items (they are the user's own switches).
+  `hotspot_on|off`. They are listed in `docs/SAFETY.md` (section 3, and section 9 for what a stranger in range can do and what is not
+  protected) and are not "Restore everything" items (they are the user's own switches). The Safety check prints the hotspot, the
+  Wi-Fi and the Bluetooth link as information (on, off or cannot tell) and says that Restore everything does not change them
+  (`SafetyReport`, tested: no combination of them is ever a "change").
 - The phone-side switch "Let the tablet reach this phone over Bluetooth" (`Cfg.btLink`, on by default) turns the listener
   off AND closes the connections that are open (the screen calls `BtServer.recheck()` after moving it).
 

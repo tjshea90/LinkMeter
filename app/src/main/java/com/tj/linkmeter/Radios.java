@@ -97,13 +97,18 @@ final class Radios {
         return RemoteRoutes.hotspotOn(api, heard, Boot.hotspotOn(app));
     }
 
-    static boolean wifiOn(Context c) {
+    /** Is the phone's Wi-Fi switched on? null when the phone does not say (the Safety check never prints that as "off"). */
+    static Boolean wifi(Context c) {
         try {
             WifiManager wm = (WifiManager) c.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            return wm != null && wm.isWifiEnabled();
+            return wm == null ? null : Boolean.valueOf(wm.isWifiEnabled());
         } catch (RuntimeException e) {
-            return false;
+            return null;
         }
+    }
+
+    static boolean wifiOn(Context c) {
+        return Boolean.TRUE.equals(wifi(c));
     }
 
     static boolean screenOn(Context c) {

@@ -320,6 +320,16 @@ Y = [
  ("safety: a band lock note is no radio change", "SafetyReport.java", "return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.menuRecent;", "return f.typesChanged || f.legChanged || f.radioBlip || f.airplaneTimer || f.menuRecent;"),
  ("safety: a 5G leg note is not put back by Restore everything", "SafetyReport.java", "return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged", "return f.typesChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged"),
  ("safety: the report lists a leg line again", "SafetyReport.java", 'sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append(\'\\n\');', 'sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append(\'\\n\');\n        sb.append("5G leg: on (normal)\\n");'),
+ ('safety: a hotspot that is on counts as a change', 'SafetyReport.java', '        if (f.batterySaver) {\n            l.add("the battery saver is on:', '        if (Boolean.TRUE.equals(f.hotspotOn)) {\n            l.add("the hotspot is on");\n        }\n        if (f.batterySaver) {\n            l.add("the battery saver is on:'),
+ ('safety: Wi-Fi on counts for Restore everything', 'SafetyReport.java', '|| f.menuRecent\n                || f.batterySaver;', '|| f.menuRecent\n                || f.batterySaver || Boolean.TRUE.equals(f.wifiOn);'),
+ ('safety: the Bluetooth link counts as a boot item', 'SafetyReport.java', 'return f.secureGranted || f.pairingKept || f.bootAssist;', 'return f.secureGranted || f.pairingKept || f.bootAssist || f.btLink.startsWith("on");'),
+ ('safety: a switch that is not known is printed as off', 'SafetyReport.java', 'return on == null ? "cannot tell" : on.booleanValue() ? "on" : "off";', 'return on != null && on.booleanValue() ? "on" : "off";'),
+ ('safety: a hotspot that is on is printed as off', 'SafetyReport.java', 'return on == null ? "cannot tell" : on.booleanValue() ? "on" : "off";', 'return on == null ? "cannot tell" : on.booleanValue() ? "off" : "on";'),
+ ('safety: the Bluetooth line says nothing when the phone does not tell', 'SafetyReport.java', 'append(f.btLink.isEmpty() ? "cannot tell" : f.btLink)', 'append(f.btLink)'),
+ ('safety: the sentence that Restore everything leaves the switches alone is dropped', 'SafetyReport.java', '        out.append("\\n\\n").append(SWITCHES_NOTE).append(\'\\n\');\n', '        out.append("\\n\\n");\n'),
+ ('safety: the switches are not in the report', 'SafetyReport.java', '        out.append("Hotspot: ").append(onOff(f.hotspotOn)).append(\'\\n\');\n        out.append("Wi-Fi: ").append(onOff(f.wifiOn)).append(\'\\n\');\n', ''),
+ ('safety: the Bluetooth line is not in the report', 'SafetyReport.java', '        out.append("Bluetooth link: ").append(f.btLink.isEmpty() ? "cannot tell" : f.btLink);\n', ''),
+ ('safety: the sentence promises Restore everything puts the switches back', 'SafetyReport.java', 'Restore everything does not change them):', 'Restore everything puts them back):'),
 ]
 PACE2_FILES = ["ScreenPace.java"]
 PACE2_TEST = ROOT + "/tools/test/ScreenPaceTest.java"
@@ -521,6 +531,7 @@ PS = [
  ('phonescreen: the pairing seconds lose their zero', 'PhoneScreenRules.java', '(s % 60 < 10 ? "0" : "")', '""'),
  ('phonescreen: the pairing window never reads as closed', 'PhoneScreenRules.java', 'if (f.pairingLeftSec <= 0) {\n            return "";', 'if (f.pairingLeftSec < 0) {\n            return "";'),
  ('phonescreen: Stop does not say what is lost', 'PhoneScreenRules.java', '"The tablet can then not reach this phone, over the hotspot or over Bluetooth, until you "', '"The tablet can then not reach this phone until you "'),
+ ('phonescreen: Stop promises that a restart brings it back though the start after a restart is off', 'PhoneScreenRules.java', '(f.autoStart ? " or the phone restarts." : ".")', '" or the phone restarts."'),
  ("phonescreen: the saver's changes are mentioned when it is off", 'PhoneScreenRules.java', 'return f.saverOn ? " The battery saver\'s changes', 'return !f.saverOn ? " The battery saver\'s changes'),
  ('phonescreen: a word of the listener it does not know claims an error', 'PhoneScreenFacts.java', '        return Bt.NONE;\n    }\n\n    /** {@code Priv.OFF', '        return Bt.ERROR;\n    }\n\n    /** {@code Priv.OFF'),
  ('phonescreen: a Shizuku state that is not known reads as ready', 'PhoneScreenFacts.java', 'return state == 2 ? Shizuku.READY : state == 1 ? Shizuku.NOT_ALLOWED : Shizuku.OFF;', 'return state == 0 ? Shizuku.OFF : state == 1 ? Shizuku.NOT_ALLOWED : Shizuku.READY;'),

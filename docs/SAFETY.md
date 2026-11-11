@@ -2,14 +2,15 @@
 
 Rule 1 of this project: **the phone must never break, brick, or lose its internet for good.** This file says how that is kept,
 and where it cannot be (section 7). The "Safety check" button (Phone tab, Signal tab) shows at any moment what LinkMeter still has
-changed. First audit 2026-11-09 (v0.2.82); second check the same day, on phone codes (section 2); third, on "start the phone after a restart" (section 8). Use the newest release on the
+changed. First audit 2026-11-09 (v0.2.82); second check the same day, on phone codes (section 2); third, on "start the phone after a restart" (section 8); fourth, 2026-11-11, on remote power and the Bluetooth link (section 9). Use the newest release on the
 Releases page, never v0.2.79 to v0.2.82 (they can dial any code you give them), and put the SAME release on the phone and on the tablet.
 
 ## 1. What LinkMeter never does
 
 - No root. Everything runs as the normal Android "shell" user through Shizuku (the same power as `adb shell`).
 - It never flashes, never writes the modem's memory (NV, EFS, NVRAM), never touches the IMEI, partitions, the bootloader or
-  recovery, never disables or uninstalls an app, never changes a security setting.
+  recovery, never disables or uninstalls an app. It changes no security setting of the phone except the permissions it gives ITSELF
+  through Shizuku when you ask (one row in section 3: "Permissions LinkMeter gives itself", and the one-time permission of section 8).
 - It holds no permission to place calls or send USSD, and nothing in it does either.
 - The only app it installs is itself, from the tablet, and Android refuses it unless the package and signing key match and the
   version is not older.
@@ -48,10 +49,14 @@ copy and the tripwire must fail every time.
 |---|---|---|---|
 | 5G on/off (allowed network types; only the 5G bit is touched, LTE must be in the mask, every write is read back) | Android settings | yes | Restore everything; the safety net; Settings > Mobile networks > Network mode |
 | Left by a version up to v0.2.102: a band lock, a 5G-leg request (this phone's modem never obeyed either) | modem state | unknown | this version never sets them; Restore everything, the safety net and a clean-up once at every start of the phone's app still clear them; the Safety check lists them while they are noted |
-| Radio restart (off 4 s, on) and the "Hotspot off" airplane blip | radio power | no (a restart turns the radio on) | written down first and forced back on after, also after a crash |
-| Airplane mode "on" from the tablet | Android settings | yes | ends by itself after 15 min; Restore; quick settings |
+| Radio restart (off 4 s, on) and the airplane blip that "Hotspot off" falls back on only when its clean way fails (never over Bluetooth) | radio power | no (a restart turns the radio on) | written down first and forced back on after, also after a crash |
+| Airplane mode "on" (the phone's `airplane_on` action: this version's tablet has no button for it any more, Standby replaces it, but an older tablet still sends it) | Android settings | yes | ends by itself after 15 min; Restore; quick settings |
+| Hotspot on / off from the tablet (also the first half of Standby) | the phone's normal hotspot switch | not verified on this phone | the other button on the tablet (over Bluetooth while the hotspot is off); the phone's quick settings. Restore everything leaves it alone |
+| Wi-Fi on / off from the tablet | the phone's normal Wi-Fi switch | yes | the other button; the phone's quick settings. Switching Wi-Fi on can switch the hotspot off on a phone that cannot do both. Restore everything leaves it alone |
+| Standby (the hotspot off, then the screen off) | the two switches above | no | "Hotspot on" from the tablet over Bluetooth, or the phone's power key. Mobile data, calls and texts are not touched |
+| Restart and Power off from the tablet | nothing is changed | not applicable | cannot be undone from the tablet: after Restart the phone must be unlocked and Shizuku started by hand, after Power off it must be switched on by hand. Both ask first (section 9) |
 | Hotspot Wi-Fi band | hotspot config | yes | Restore everything; Settings > Mobile hotspot |
-| Battery saver (background Wi-Fi and Bluetooth scanning off, the always-on display off, a 15 second screen timeout; on while the tablet uses the hotspot) | Android settings | yes | each changed value is saved first and put back: by the Off choice, by Restore everything (which also stores Off, so the saver stays off), by itself when the tablet has been gone for 10 min (it stays on while the hotspot is on and the tablet answers, or while the phone rests with its screen off), and when the phone's screen comes on and the tablet is gone |
+| Battery saver, Automatic (background Wi-Fi and Bluetooth scanning off, the always-on display off, a 15 second screen timeout; on while the tablet uses the hotspot; never Bluetooth itself, mobile data or the hotspot's speed. The choice Automatic / Off is LinkMeter's own setting, moved by the tablet's Phone tab and by the phone's own screen) | Android settings | yes | each changed value is saved first and put back: by the Off choice, by Restore everything (which also stores Off, so the saver stays off), by itself when the tablet has been gone for 10 min (it stays on while the hotspot is on and the tablet answers, or while the phone rests with its screen off), and when the phone's screen comes on and the tablet is gone |
 | Screen timeout and brightness during a remote screen session | Android settings | yes | each value is saved first and put back when the tablet leaves; also by itself a minute after it is gone |
 | A phone screen opened from here (Phone info, or one named screen) | the phone's own screen | what you change in it | see section 7 |
 | "Start the phone after a restart": the one-time permission to change secure settings (`WRITE_SECURE_SETTINGS`) | Android's permissions | yes | Undo the setup (tablet, Phone tab: `pm revoke`); see section 8 |
@@ -60,6 +65,11 @@ copy and the tripwire must fail every time.
 | Boot assist switch | LinkMeter's own setting | yes | Undo the setup |
 | The tablet's own hotspot (a Wi-Fi Direct group) | the tablet's Wi-Fi | until stopped | the flow stops it itself; Stop hotspot; switching the tablet's Wi-Fi off |
 | The phone's hotspot, started by the flow | the phone's normal hotspot switch | yes | the normal switch (swipe down, Hotspot) |
+| The Bluetooth link: while the phone service runs, a listener on the phone (a Bluetooth service named LinkMeter), behind the switch "Let the tablet reach this phone over Bluetooth" (on by default) | LinkMeter's own setting | the switch yes; the listener only while the service runs | the switch on the phone's own screen (Tablet link; it also hangs up the connections that are open); Stop; switching Bluetooth off (section 9) |
+| The Bluetooth permission for LinkMeter ("Nearby devices") | Android's permissions | yes | Settings > Apps > LinkMeter > Permissions > Nearby devices. It is given by the tablet's Set up through Shizuku, by the phone's own Allow Bluetooth or Allow everything, or by your tap. Restore everything leaves it alone |
+| Bluetooth switched on by Set up or by the phone's Switch Bluetooth on (only if it was off) | the phone's normal Bluetooth switch | yes | the phone's quick settings (the link then waits until Bluetooth is on again) |
+| The phone's own Bluetooth address, read once through Shizuku | LinkMeter's storage on the phone and on the paired tablet | yes | clearing LinkMeter's data; the phone tells it only to a paired tablet |
+| Permissions LinkMeter gives itself through Shizuku: "Prepare phone" and the phone's Allow everything (no battery limit for LinkMeter, the "active" standby bucket, all-files access, the phone and notification permissions) and the texts grants (the app setting that lets a hand-installed app use the texts permissions, then reading texts, sending texts and reading contact names) | Android's permissions and app settings | yes | Settings > Apps > LinkMeter (Permissions, Battery, All files access); Restore everything leaves them alone. The texts grants are given only while texts are switched on (the phone's Texts switch, Allow texts access, or the tablet's Texts tab asking the phone) |
 
 ## 4. The safety net (works with no tablet and no internet)
 
@@ -100,6 +110,8 @@ unreachable), the words of the Safety check, the typing rule described in sectio
 - **A false alarm.** If the carrier's own connectivity check fails while data really works, the safety net may put the settings back
   after 4 minutes. That costs you the setting, never the connection.
 - **Deleting files** in the file manager is permanent.
+- **Remote power and the Bluetooth link** (section 9): what the tablet can switch, what a stranger in range can and cannot do, what
+  cannot be undone from the tablet, and what is not protected.
 
 ## 8. Start the phone after a restart (boot automation)
 
@@ -122,3 +134,44 @@ What it does and why: see `docs/BOOT_FLOW.md`. What it can change, all of it lis
   confirmed, never asks the phone for its hotspot while Shizuku is not running, never claims success it has not seen, and sends nothing
   after Cancel), the phone's own boot decisions over every combination, the finder over a real loopback network, and the Safety check text.
   **Not tested on real devices:** the Wi-Fi Direct group on the tablet, the phone joining it, wireless debugging and Shizuku starting.
+
+## 9. Remote power and the Bluetooth link
+
+The tablet can switch the phone's hotspot and Wi-Fi, put its screen to sleep and wake it, start Standby, restart it, power it off and
+read its status. Over the phone's hotspot that was always possible. Since v0.2.137 the same small requests also travel over a Bluetooth
+link that the phone listens on, so the tablet can switch the hotspot back ON when it is off. The design and the reasons are in
+`docs/REMOTE_LINK.md`. **Not seen on the devices yet.**
+
+- **Who may command the phone:** only a tablet that was paired. Pairing works only over the hotspot, and only in the two minutes after
+  Pair tablet was pressed on the phone (its own screen counts the time down); it is never possible over Bluetooth. Over the hotspot
+  every request carries the tablet's secret (32 hex digits). Over Bluetooth the secret is never sent: the phone starts each connection
+  with a fresh random number, and every request carries a signature (HMAC-SHA256 with the secret over that number, a counter, the method
+  and the address of the request). A recorded request cannot be replayed (the counter must rise, and a new connection has a new
+  number), and a changed request no longer matches its signature.
+- **Which requests travel over Bluetooth:** only the small ones: the status, the signal reading, the cell list, the boot status, the
+  actions (every action name: the switches above, but also Restore everything, the Safety check and what is left of the network
+  actions), the screen's state, sleep and wake, and the speed test's start, stop and status. NOT over Bluetooth: files, texts, the
+  screen's picture, touches and typing, the app update, pairing.
+- **What a stranger in range can do:** connect (as far as is known nothing on the phone asks who is calling, and the service named
+  LinkMeter can be seen by a device that asks; not verified on the phone). Then be refused: nothing is answered without a valid
+  signature, three wrong ones end the connection, and so does silence (15 seconds before a first good request, 90 after one). At most
+  two connections are open at once, and the one that has not proved itself is closed first, so a stranger cannot keep the tablet out.
+  He cannot learn the secret from what he hears (it is not sent), and cannot command the phone without it.
+- **What you can do about it, at the phone:** the switch "Let the tablet reach this phone over Bluetooth" (LinkMeter on the phone,
+  Tablet link) turns the listener off and hangs up the connections that are open. Stop ends the listener with the rest of the service,
+  and switching Bluetooth off ends it too. "Forget all tablets" makes the phone forget every paired tablet.
+- **What cannot be undone from the tablet:** Restart and Power off (both ask first). After a restart the phone has to be unlocked and
+  Shizuku started by hand (section 8 says what the app can do by itself); after Power off the phone has to be switched on by hand,
+  because nothing in a phone that is off listens. Standby can be undone from the tablet ("Hotspot on" over Bluetooth) as long as the
+  Bluetooth link works. If it does not, the phone has to be picked up: that is why the tablet makes one live call over Bluetooth before
+  it switches the hotspot off, and says so when the call fails.
+- **What is NOT protected, open on purpose:** the tablet sends its pairing secret, unsigned and in clear, to the gateway of whatever
+  Wi-Fi it is on, taking that gateway for the phone (`Net.phoneHost`). On the phone's own hotspot that is right. On somebody else's
+  Wi-Fi it hands the secret to whoever runs that network, and with the secret a person can command the phone: over the phone's
+  hotspot if they can join it, and over Bluetooth if they are in range while the link is switched on. Standby makes the tablet join
+  other networks more often. This is older behaviour, recorded in `HANDOFF.md` (decision 9) and not fixed here: the proper fix needs
+  both apps (the phone would first prove that it knows the secret). If you suspect the secret is out: Forget all tablets on the phone,
+  Pair again (new secret) on the tablet (Settings), and pair again with the tablet on the phone's hotspot.
+- **What the Safety check shows:** the hotspot, Wi-Fi and the Bluetooth link are the phone's own switches. The Safety check shows them
+  as information (on, off, or cannot tell: never "off" when the phone does not say) and says that Restore everything does not change
+  them. They are not "still changed by LinkMeter".
