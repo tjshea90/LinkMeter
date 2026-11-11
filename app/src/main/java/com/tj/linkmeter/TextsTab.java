@@ -2052,6 +2052,8 @@ final class TextsTab extends Tab {
             status = (contactsLoaded || !contactRows.isEmpty() ? "Showing what was loaded before. " : "") + contactsProblem;
         } else if (!contactsLoaded) {
             status = "Loading the phone's contacts…";
+        } else if (state != null && state.version < 3 && phonePeople.size() >= 20) { // an older phone answers 20 at most
+            status = "Showing 20 contacts. Install the newest release on the phone to list all of them and to save contacts there.";
         } else {
             status = contactRows.size() + (contactRows.size() == 1 ? " contact" : " contacts");
         }

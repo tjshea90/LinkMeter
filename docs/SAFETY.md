@@ -216,5 +216,23 @@ answers nothing about texts, and the tablet wipes what it had saved. Only the pa
   is sent in clear in every request (decision 9 in `HANDOFF.md`, open on purpose): whoever is on the phone's hotspot and listens can
   learn it and then ask the phone for texts like the tablet does. An encrypted channel keyed with that same secret would protect
   nothing, so none was built; closing this gap for real means changing the whole link (keys that are never sent, for every request).
+- **Contacts.** The tablet can save a contact on the phone or give a new name to the contact that has a number (Texts menu > Contacts,
+  or a conversation's menu > Add to contacts / Rename contact). For that the phone's LinkMeter has one more permission, "change contacts"
+  (`WRITE_CONTACTS`; it is in the same Android group as reading contacts, which the app already had, and the tablet's "Ask the phone to
+  allow it" gives it through Shizuku). It is used only when somebody presses Save on the tablet: it makes one new contact (in the account
+  most of the phone's contacts live in, a Google account first, so that it syncs) or changes the name of the one that has the number. It
+  never deletes a contact, never changes a number, and never touches a contact for any other reason. The Contacts screen asks the phone for
+  up to 1000 contacts (names and numbers) instead of the 20 suggestions of the New message screen: still only the paired tablet can ask,
+  and only while texts are switched on. A name given on the tablet is also kept on the tablet (encrypted with the rest of the saved copy);
+  when the phone could not save it, the screen says "on this tablet only".
+- **Quick emoji replies** send an ordinary text (one emoji) from the phone, only when the emoji is tapped, like any text.
+- **Looking at an attachment before sending** (a large card above the box, a full screen preview with a zoomable photo, PDF pages, the
+  start of a text file) happens on the tablet only; nothing is sent until Send. "Open in another app" gives a copy to another app on the
+  same tablet. The preview window is kept out of screenshots when "Hide Texts from screenshots" is on.
+- **Connection details** (Texts menu) list the last requests to the phone with their route, time and result. They never hold a text, a
+  number or a search word (only the route before the question mark).
+- **Slow phone.** The tablet waits up to 45 s for a list or a conversation (8 s for the connection), asks once more when the phone did not
+  answer in time, and says "The phone is slow to answer" (not "Can't reach the phone") for a phone that is there. This changes nothing about
+  what the phone may be asked.
 - **Nothing here dials.** A phone number in a text is shown as text and is never made a link; only web addresses and e-mail addresses are.
 

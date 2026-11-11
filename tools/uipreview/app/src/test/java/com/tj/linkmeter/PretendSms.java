@@ -32,6 +32,10 @@ final class PretendSms implements SmsApi.Backend {
     final List<Sms.Person> people = new ArrayList<>();
     /** The phone cannot be reached. */
     volatile boolean offline;
+    /** The phone is there but does not answer in time (a read that times out), for everything but the waiting stamp request. */
+    volatile boolean slow;
+    /** How many requests were answered or refused as too slow (the tablet asks a slow phone once more). */
+    final java.util.concurrent.atomic.AtomicInteger slowAsked = new java.util.concurrent.atomic.AtomicInteger();
     /** The tablet's switch on the phone. */
     volatile boolean on = true;
     volatile String stamp = "p1";
@@ -163,6 +167,10 @@ final class PretendSms implements SmsApi.Backend {
     private Client.Resp answer(String target, InputStream body, long len) throws IOException {
         if (offline) {
             throw new Client.ConnectFailed(new java.net.SocketTimeoutException("connect timed out"));
+        }
+        if (slow && !target.startsWith("/sms/stamp")) {
+            slowAsked.incrementAndGet();
+            throw new java.net.SocketTimeoutException("Read timed out");
         }
         FsApi.Reply r = reply(target, body, len);
         Client.Resp out = new Client.Resp();

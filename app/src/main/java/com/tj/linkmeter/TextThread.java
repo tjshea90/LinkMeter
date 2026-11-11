@@ -288,10 +288,16 @@ final class TextThread {
     }
 
     void showStatus(String text) {
+        showStatus(text, Ui.AMBER);
+    }
+
+    /** The line above the messages: a problem in amber, or a quiet "Loading…" in grey. */
+    private void showStatus(String text, int color) {
         if (status == null) {
             return;
         }
         status.setText(text == null ? "" : text);
+        status.setTextColor(color);
         status.setVisibility(text == null || text.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
@@ -362,6 +368,9 @@ final class TextThread {
     void reload() {
         final long my = tab.session();
         final int size = pageSize();
+        if (firstLoad && msgs.isEmpty() && temps.isEmpty()) {
+            showStatus("Loading messages…", Ui.DIM); // a slow phone: say that something is happening
+        }
         tab.net().execute(() -> {
             try {
                 final Sms.Convo c = tab.remote().thread(key, size);

@@ -467,7 +467,18 @@ before sealing is still read), `TextsLock` (when to ask for the screen lock: 2 m
 `TextsVault` (the Keystore key `linkmeter.texts.v1`, `wipe`, `deviceSecure`; `testKey` is the seam for the pictures),
 `MainActivity.confirmDeviceCredential` (KeyguardManager question, answered in `onActivityResult`, REQ_UNLOCK) and `applySecure` with
 `Tab.secure()` (FLAG_SECURE, changed only when the tab in front changes), `TextsViews.show`/`closeAll` (every Texts dialog goes through
-them so the lock can close them), `TextsViews.pill`/`copyCode` (the Copy code button). Why no encrypted channel for `/sms/*`: see
+them so the lock can close them, previews included), `TextsViews.pill`/`copyCode` (the Copy code button), `TextsViews.messageMenu`
+(a message's menu with the emoji row; `EmojiText`: the six quick replies and "only emoji" for big bubbles). Round 2 (field report of
+2026-11-11): `ContactBook` (the phone's contacts as ONE read: number -> name by the last ten digits; before it a conversation list made
+one contacts query per person), `SmsStore` watches the contacts quietly (a changed name, not every touch, wakes the tablet) and its safety
+look is one small query; the tablet reads with 3 threads (`net`) and changes with 1 (`out`), waits `RemoteSms.READ_MS` = 45 s, 8 s to
+connect (`PeerLink`), asks a timed-out read once more (`RemoteSms.read`), says `TextsTab.SLOW`; `LinkLog`/`TimedLink` keep the last 40
+requests (route, time, result) for Texts menu > Connection details. Protocol 3 (state `"v":3`, `"cw"`): `POST /sms/contact` {name,
+number} saves a contact or renames the one with the number (`SmsStore.saveContact`, needs `WRITE_CONTACTS`, asked with the others in
+`SmsAccess.ASK` and given by the Shizuku grant; the account is the one most contacts live in, Google first), `/sms/contacts?limit=` lists
+up to 1000. The tablet's names: `TextsLocal` names (`setName`/`display`/`settle`: a tablet-only name always wins, a phone-confirmed one wins
+while the phone has none or for 10 minutes), `ContactDialog`, the Contacts screen in `TextsTab`. Attachments: `AttachPreview` (large
+thumbnails through `Thumbs`, the full screen preview: `ZoomView`, `PdfRenderer` pages, text, details), cards in `TextThread.showChips`. Why no encrypted channel for `/sms/*`: see
 `docs/SAFETY.md` section 10 ("What is NOT encrypted"). The pictures: `tools/preview.sh --tests
 "com.tj.linkmeter.TextsPreviewTest"` (`PretendSms` puts the real `SmsApi` behind a fake database; `TextsTab.testLink` is the seam).
 

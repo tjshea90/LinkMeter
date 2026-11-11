@@ -85,3 +85,16 @@ text) that has a Reply action. A `NotificationListenerService` on the phone (the
 RemoteInput; the tablet would show those chats as their own list ("Chats"), honestly labelled: only messages that came after it was
 switched on, pictures mostly not, a reply only while that notification is still on the phone. Android 15 and later hide one-time codes
 in notifications from listeners. It reads message notifications of Google Messages (and Samsung Messages), so it needs the user's yes.
+
+## Round 2: the user's first field report (2026-11-11), after trying v0.2.162 / v0.2.164 on the devices
+Their words: "It says can't reach the phone, timed out, but it seems to be working. It just loads chats really slowly. ... When I view texts
+it often says read timed out", and four wishes: save and rename contacts like on the phone (and save them on the phone too if possible),
+a long press on a received text for a quick emoji reply, large thumbnails of what is attached with a full screen look before sending.
+What the code showed (read, not measured on the phone): (1) the phone looked up every contact name with its own query, 100 queries for a
+list of 100 conversations, and threw the whole name cache away at every change in the contacts, which on a Samsung is constant (sync,
+"last contacted" after every text), and each change also woke the tablet to ask for the whole list again; (2) the tablet ran every Texts
+request on ONE thread, so a slow list held up opening a conversation, and gave up after 3 s for the connection and 30 s for an answer;
+(3) a slow answer was worded as "Can't reach the phone". Fixed as in `docs/APP_REFERENCE.md` (the speed fix is on the PHONE: install the
+newest release there too). NOT measured on a device: ask the user whether it is quicker, and for the Connection details lines if not.
+Done as asked: quick emoji reply, large attachment cards with a full screen preview, contacts (tablet names + saved on the phone when it lets
+LinkMeter). Not done: contact photos, deleting a contact, several numbers for one contact (the phone's own Contacts app does those).

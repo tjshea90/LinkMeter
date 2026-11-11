@@ -878,4 +878,47 @@ public class TextsPreviewTest {
         check(findText(decor(a), "Robin Hood") != null, "it is in the list");
         shot(a, "texts-contacts-added");
     }
+
+    // ------------------------------------------------------------ a phone that is slow is not a phone that cannot be reached
+
+    @Test
+    public void aSlowPhoneIsSaidToBeSlow() throws Exception {
+        PretendSms ph = phone();
+        MainActivity first = tablet();
+        first.openTab(Tab.TEXTS);
+        settle(); // the list was fetched and saved
+        first.openTab(Tab.HOME);
+        ph.slow = true;
+        TextsTab.LOG.clear();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(ph.slowAsked.get() >= 2, "a read that timed out is asked once more: " + ph.slowAsked.get());
+        TextView sub = findText(decor(a), "slow to answer");
+        check(sub != null, "it says the phone is slow, not that it cannot be reached");
+        check(findText(decor(a), "Can't reach the phone") == null, "and does not say it cannot be reached");
+        check(findText(decor(a), "Alex Rivera") != null, "the saved copy is still there to read");
+        shot(a, "texts-slow");
+        // the details say how long each request took and how it ended, never what it was about
+        openMenuItem(a, "More", "Connection details");
+        android.app.AlertDialog d = latestDialog();
+        check(d != null && d.isShowing(), "the connection details are open");
+        check(findTextRaw(d.getWindow().getDecorView(), "timed out waiting for the phone") != null, "they say requests timed out");
+        check(findTextRaw(d.getWindow().getDecorView(), "GET /sms/state") != null, "and which request it was");
+        PreviewTest.save(d.getWindow().getDecorView(), "texts-connection-details");
+        d.dismiss();
+        // the phone answers again
+        ph.slow = false;
+        click(a, "More");
+        settle();
+        android.app.AlertDialog menu = latestDialog();
+        int n = menu.getListView().getCount();
+        for (int i = 0; i < n; i++) {
+            if (String.valueOf(menu.getListView().getAdapter().getItem(i)).contains("Refresh now")) {
+                menu.getListView().performItemClick(null, i, i);
+            }
+        }
+        later(800);
+        check(findText(decor(a), "slow to answer") == null, "once it answers the warning is gone");
+    }
 }

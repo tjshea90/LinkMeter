@@ -51,6 +51,15 @@ always.
   list, **lock Texts with the tablet's screen lock** (asks again after 2 minutes away; needs a PIN, pattern or password set in
   Android), hide Texts from screenshots and the recent apps picture, erase everything saved here. Pairing again erases it too. Texts
   themselves (SMS/MMS) cannot be end-to-end encrypted by any app, and chats that Google Messages sends as RCS are not shown.
+  **Quick reply:** press and hold a text sent to you and tap an emoji (thumbs up, heart, laughing, surprised, sad, thanks): it is sent at
+  once as a text of its own; a text of only emoji is drawn big. **Attachments:** the paperclip puts large cards above the box (a photo's
+  picture, a PDF's first page, the name and size); tap a card to see it full screen before sending (pinch or double-tap to zoom a photo,
+  Previous/Next for a PDF, the start of a text file; Remove there or the cross on the card takes it off). **Contacts:** a conversation's
+  menu has Add to contacts or Rename contact; Texts menu > Contacts lists the phone's contacts (search, + for a new one, tap one to send a
+  text or rename it). A name is saved on this tablet at once and on the phone too when "Also save on the phone" is on and the phone lets
+  LinkMeter (it asks the phone to allow that; Shizuku must be running); the screen says which of the two happened. **If it says "The phone is
+  slow to answer"** the phone is there but did not answer in time; LinkMeter asks again by itself. Texts menu > Connection details shows how
+  long each request took (Copy puts it on the clipboard: it holds no texts).
 - **Speed, Screen, Files:** as before.
 
 ## 3. If something breaks
@@ -79,7 +88,10 @@ Tell me what happened, in your own words, for any of these:
 - Texts (use the newest release on BOTH devices): does the list open at once? Does a new text show up by itself without opening it? Do
   Delete, Archive, Pin, Search and a picture message work? Does Delete say "Deleted on the phone" or "The phone kept it"?
   With Texts settings > "Lock Texts with the screen lock" on: does it ask after 2 minutes away, and not before? Does a fresh code text
-  show Copy code, and does it copy only the digits?
+  show Copy code, and does it copy only the digits? Is the list quicker to load than before (install the newest release on the PHONE too:
+  that is where the speed fix is)? If it still says "slow to answer" often, open Texts menu > Connection details and send me the lines.
+  Press and hold a received text: does the emoji row appear and does a tap send it? Attach a photo and a PDF: are the cards large and does a
+  tap show them full screen? Add a number to your contacts: does the phone's Contacts app have it afterwards?
 - Glide typing (SwiftKey): Screen tab > Options > Keyboard > "Test the keyboard". In box 1 (a plain text box) and in box 2 (the Type
   button's field, with what it would send written underneath): does a glided word work? Tell me which of the two glides, and what the
   last lines of the test say (version, keyboard, counts).
