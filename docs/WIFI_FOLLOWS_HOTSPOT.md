@@ -67,10 +67,14 @@ hotspot once the phone has switched it on.
 - `tools/test/TabletWifiRulesTest.java` (in `tools/test.sh`): every combination of setting, action, Wi-Fi state at the press and at the
   result, network at the press and now (2,595 checks); the words never say "is on/off" without a read-back.
 - `python3 tools/mutate_link.py wififollow`: 26 deliberate breakages of the rules, all must be caught.
-- `tools/preview.sh --tests com.tj.linkmeter.WifiFollowPreviewTest`: the real `HomeTab` and `TabletWifi` against the pretend phone
-  (`PreviewTest.Pretend`), Robolectric's pretend Wi-Fi manager (it, unlike Android 10, lets the app switch Wi-Fi: `TabletWifi.refusedForTest`
-  stands for the real Android), and a pretend list of Wi-Fi networks. Pictures: `tools/uipreview/out/state-home-wifi-*.png`,
-  `state-settings-wifi-follow.png`.
+- `tools/preview.sh --tests com.tj.linkmeter.WifiFollowPreviewTest` (21 scenarios): the real `HomeTab` and `TabletWifi` against the pretend
+  phone (`PreviewTest.Pretend`), Robolectric's pretend Wi-Fi manager (it, unlike Android 10, lets the app switch Wi-Fi:
+  `TabletWifi.refusedForTest` stands for the real Android), and a pretend list of Wi-Fi networks: Hotspot on switches it / opens the panel /
+  leaves it alone (phone refused, setting off, already on, app out of sight); Hotspot off and Standby switch it off; another network, a
+  screen that was left, a "Sent" answer after the screen was left and a follow-up that gave up leave it alone; the new card, the meter and
+  the Settings switch. Pictures: `tools/uipreview/out/state-home-wifi-*.png`, `state-settings-wifi-follow.png`.
+- `python3 tools/mutate_wifi_glue.py`: 9 deliberate breakages of `HomeTab`, `TabletWifi` and `SettingsTab` (run with everything committed),
+  each must make a named scenario above fail.
 
 ## Not built (ask the user first)
 
