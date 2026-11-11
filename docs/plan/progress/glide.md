@@ -35,5 +35,11 @@ PLAN (small steps, save after each):
    record the release with tools/save-only.sh, tell the user honestly it cannot be tried with SwiftKey here and what to send back
    (Options > Information > Copy diagnostics after one glide).
 
-STATE: (update below as steps finish)
-- [ ] 1  - [ ] 2  - [ ] 3  - [ ] 4  - [ ] 5
+STATE: ALL DONE AND RELEASED as v0.2.157 (commit 219e64d = main, run #157 green; HANDOFF records it in 71a8e8c). Steps 1-5 done: incognito is an
+option (default off); the field is a full BaseInputConnection with updateSelection reports; TypingMirror replaces TypingDraft (185,272 offline
+checks, 10 `typing:` breakages all caught); PreviewTest.typingFieldAllowsGlide + typingFieldFollowsAnyKeyboard pass against the real
+BaseInputConnection and catch 4 deliberate glue bugs; Options > Information has a "Keyboard:" line (counts, never typed text).
+NOT TRIED WITH SWIFTKEY (cannot be here). NEXT: only the user's report. If glide still fails ask for the "Keyboard:" line and the version:
+composing/committed 0 = SwiftKey sent nothing for this field (it switched glide off: try other EditorInfo flags, e.g. TYPE_TEXT_FLAG_AUTO_CORRECT /
+CAP_SENTENCES / MULTI_LINE, a real extracted text, requestCursorUpdates support); counts above 0 = the keyboard wrote, look further on
+(ScreenTab.sendText -> sendChunks -> phone ShellMain.typeText).
