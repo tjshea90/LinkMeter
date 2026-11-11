@@ -83,6 +83,12 @@ public class DeepSleepPreviewTest {
         return d;
     }
 
+    /** Does the question have its third button? (AlertDialog always hands out the button object; it is hidden when nothing was set.) */
+    static boolean hasThirdButton(AlertDialog d) {
+        Button b = d.getButton(AlertDialog.BUTTON_NEUTRAL);
+        return b != null && b.getVisibility() == View.VISIBLE && b.getText().length() > 0;
+    }
+
     static boolean saysInQuestion(AlertDialog d, String part) {
         return textContaining(d.getWindow().getDecorView(), part) != null;
     }
@@ -136,7 +142,7 @@ public class DeepSleepPreviewTest {
         Cfg.setDeepSleep(app(), false);
         MainActivity a = tablet();
         AlertDialog d = question(a, "Hotspot off");
-        check(d.getButton(AlertDialog.BUTTON_NEUTRAL) == null, "no third button");
+        check(!hasThirdButton(d), "no third button");
         check(saysInQuestion(d, "The phone's hotspot goes off, and the tablet loses its internet."), "the old words");
         check(!saysInQuestion(d, "airplane mode"), "airplane mode is not mentioned");
         d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
@@ -150,7 +156,7 @@ public class DeepSleepPreviewTest {
         Pretend p = onTheHotspot(false);
         MainActivity a = tablet();
         AlertDialog d = question(a, "Hotspot off");
-        check(d.getButton(AlertDialog.BUTTON_NEUTRAL) == null, "no third button");
+        check(!hasThirdButton(d), "no third button");
         check(saysInQuestion(d, "This phone's app is older, so it only switches the hotspot off"), "says why");
         d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
         settle();
@@ -167,7 +173,7 @@ public class DeepSleepPreviewTest {
         noNetworks();
         MainActivity a = tablet();
         AlertDialog d = question(a, "Hotspot off");
-        check(d.getButton(AlertDialog.BUTTON_NEUTRAL) == null, "no third button");
+        check(!hasThirdButton(d), "no third button");
         check(saysInQuestion(d, "Location, airplane mode and the screen are left alone this time"), "says they are left alone");
         check(saysInQuestion(d, "may have to be picked up"), "and the old warning");
         dialogShot("state-home-deep-no-link");
@@ -210,7 +216,12 @@ public class DeepSleepPreviewTest {
         settle();
         p.via = "bt";
         p.status = status(false, false, false, Boolean.FALSE, true).replace("\"deep\":1", "\"deep\":1,\"dres\":\"Airplane mode was switched off again: Bluetooth could not stay on, and then the tablet could not wake the phone.\"");
-        for (int i = 0; i < 21; i++) { // 21 x 3.1 s: past the 60 s the deep follow-up waits
+        for (int i = 0; i < 16; i++) { // 16 x 3.1 s = 50 s: past the usual 40, and the deep follow-up is still looking
+            later(3100);
+        }
+        mustShow(a, "Sent. Looking at the phone's status");
+        mustNotShow(a, "The phone has not confirmed it yet");
+        for (int i = 0; i < 5; i++) { // 21 x 3.1 s = 65 s: past the 60 s the deep follow-up waits
             later(3100);
         }
         mustShow(a, "The phone has not confirmed it yet: its status says the hotspot is off, airplane mode is off and the screen is off, location is off. "
