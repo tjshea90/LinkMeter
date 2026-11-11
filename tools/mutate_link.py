@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -490,6 +490,46 @@ SR = [
  ("search: giving up claims success", "SearchFollow.java", 'return new Outcome(false, "The phone did not say that the restart ended.', 'return new Outcome(true, "The phone did not say that the restart ended.'),
  ("search: giving up says it searched", "SearchFollow.java", '"The phone did not say that the restart ended. Scan to see where it is now."', '"The phone searched for a network again."'),
 ]
+PHONESCREEN_FILES = ["PhoneScreenFacts.java", "PhoneScreenRules.java"]
+PHONESCREEN_TEST = ROOT + "/tools/test/PhoneScreenRulesTest.java"
+PS = [
+ ('phonescreen: a phone that has not allowed LinkMeter in Shizuku is called ready', 'PhoneScreenRules.java', 'if (f.shizuku == PhoneScreenFacts.Shizuku.NOT_ALLOWED) {\n            return Attention.SHIZUKU_NOT_ALLOWED;\n        }', 'if (false) {\n            return Attention.SHIZUKU_NOT_ALLOWED;\n        }'),
+ ('phonescreen: a phone with no tablet paired is called ready', 'PhoneScreenRules.java', 'if (f.tablets <= 0) {\n            return Attention.NO_TABLET;', 'if (false) {\n            return Attention.NO_TABLET;'),
+ ('phonescreen: a missing tablet is said before a stopped service', 'PhoneScreenRules.java', 'if (!f.running) {\n            return Attention.STOPPED;\n        }\n        if (f.tablets <= 0) {', 'if (f.tablets <= 0) {\n            return Attention.NO_TABLET;\n        }\n        if (!f.running) {\n            return Attention.STOPPED;\n        }\n        if (false) {'),
+ ('phonescreen: Shizuku that is not running is not noticed', 'PhoneScreenRules.java', 'if (f.shizuku == PhoneScreenFacts.Shizuku.OFF) {', 'if (false) {'),
+ ('phonescreen: the Bluetooth card ignores the switch of the link', 'PhoneScreenRules.java', 'if (f.btSwitch && f.bt == PhoneScreenFacts.Bt.PERM) {', 'if (f.bt == PhoneScreenFacts.Bt.PERM) {'),
+ ('phonescreen: Bluetooth being off is not noticed', 'PhoneScreenRules.java', 'if (f.btSwitch && f.bt == PhoneScreenFacts.Bt.OFF) {', 'if (false) {'),
+ ("phonescreen: a stopped phone is only 'Needs attention'", 'PhoneScreenRules.java', 'if (!f.running) {\n            return Chip.STOPPED;\n        }', 'if (false) {\n            return Chip.STOPPED;\n        }'),
+ ('phonescreen: the chip says Ready though a card asks for attention', 'PhoneScreenRules.java', 'return attention(f) == Attention.NONE ? Chip.READY : Chip.NEEDS_ATTENTION;', 'return f.tablets > 0 ? Chip.READY : Chip.NEEDS_ATTENTION;'),
+ ('phonescreen: a hotspot that is not known reads as off', 'PhoneScreenRules.java', 'if (f.hotspot == null) {\n            return new Line("not known", Tone.QUIET);\n        }', 'if (f.hotspot == null) {\n            return new Line("off", Tone.QUIET);\n        }'),
+ ('phonescreen: an address makes a hotspot that is off read as on', 'PhoneScreenRules.java', 'if (!f.hotspot.booleanValue()) {\n            return new Line("off", Tone.QUIET);\n        }', 'if (!f.hotspot.booleanValue() && f.hotspotAddress.isEmpty()) {\n            return new Line("off", Tone.QUIET);\n        }'),
+ ('phonescreen: the Bluetooth permission counts while the link is switched off', 'PhoneScreenRules.java', 'if (f.btSwitch && !f.btPermission) {\n            m.add(Item.BLUETOOTH);', 'if (!f.btPermission) {\n            m.add(Item.BLUETOOTH);'),
+ ('phonescreen: the battery limit does not count as missing', 'PhoneScreenRules.java', 'if (!f.batteryUnrestricted) {\n            m.add(Item.BATTERY);', 'if (false) {\n            m.add(Item.BATTERY);'),
+ ('phonescreen: Allow everything is offered without Shizuku', 'PhoneScreenRules.java', 'return f.shizuku == PhoneScreenFacts.Shizuku.READY && !missing(f).isEmpty();', 'return !missing(f).isEmpty();'),
+ ('phonescreen: the single buttons stay when Shizuku can do it all', 'PhoneScreenRules.java', 'if (f.shizuku == PhoneScreenFacts.Shizuku.READY) {\n            return out;\n        }', 'if (false) {\n            return out;\n        }'),
+ ('phonescreen: the Bluetooth button is offered in the permissions card too', 'PhoneScreenRules.java', 'if (i != Item.BLUETOOTH && i != Item.BATTERY) {', 'if (i != Item.BATTERY) {'),
+ ('phonescreen: a missing Bluetooth permission has no button', 'PhoneScreenRules.java', 'BtButton.ALLOW);', 'BtButton.NONE);'),
+ ('phonescreen: Bluetooth that is off has no button', 'PhoneScreenRules.java', 'so nothing can listen.", BtButton.SWITCH_ON);', 'so nothing can listen.", BtButton.NONE);'),
+ ('phonescreen: a link that could not start cannot be tried again', 'PhoneScreenRules.java', 'BtButton.TRY_AGAIN);', 'BtButton.NONE);'),
+ ('phonescreen: a stopped phone says its link is ready', 'PhoneScreenRules.java', 'if (!f.running) {\n            return new BtLine(new Line("stopped", Tone.QUIET),', 'if (false) {\n            return new BtLine(new Line("stopped", Tone.QUIET),'),
+ ('phonescreen: a link switched off is not said', 'PhoneScreenRules.java', 'if (!f.btSwitch) {\n            return new BtLine(new Line("switched off"', 'if (false) {\n            return new BtLine(new Line("switched off"'),
+ ('phonescreen: when the tablet last asked is left out', 'PhoneScreenRules.java', '+ (f.btAsked.isEmpty() ? "" : " " + Character.toUpperCase(f.btAsked.charAt(0)) + f.btAsked.substring(1) + "."),', '+ "",'),
+ ('phonescreen: Boot assist can be used without the start after a restart', 'PhoneScreenRules.java', 'if (!f.autoStart) {\n            return new Assist(false,', 'if (false) {\n            return new Assist(false,'),
+ ('phonescreen: Boot assist can be used without the one-time permission', 'PhoneScreenRules.java', 'if (!f.bootPermission) {\n            return new Assist(false,', 'if (false) {\n            return new Assist(false,'),
+ ('phonescreen: the texts button is offered while texts are off', 'PhoneScreenRules.java', 'return f.textsOn && !f.textsMissing.isEmpty();', 'return !f.textsMissing.isEmpty();'),
+ ('phonescreen: texts that still lack something read as ready', 'PhoneScreenRules.java', 'if (f.textsMissing.isEmpty()) {\n            return new Line("On. The paired', 'if (true) {\n            return new Line("On. The paired'),
+ ('phonescreen: the pairing seconds lose their zero', 'PhoneScreenRules.java', '(s % 60 < 10 ? "0" : "")', '""'),
+ ('phonescreen: the pairing window never reads as closed', 'PhoneScreenRules.java', 'if (f.pairingLeftSec <= 0) {\n            return "";', 'if (f.pairingLeftSec < 0) {\n            return "";'),
+ ('phonescreen: Stop does not say what is lost', 'PhoneScreenRules.java', '"The tablet can then not reach this phone, over the hotspot or over Bluetooth, until you "', '"The tablet can then not reach this phone until you "'),
+ ("phonescreen: the saver's changes are mentioned when it is off", 'PhoneScreenRules.java', 'return f.saverOn ? " The battery saver\'s changes', 'return !f.saverOn ? " The battery saver\'s changes'),
+ ('phonescreen: a word of the listener it does not know claims an error', 'PhoneScreenFacts.java', '        return Bt.NONE;\n    }\n\n    /** {@code Priv.OFF', '        return Bt.ERROR;\n    }\n\n    /** {@code Priv.OFF'),
+ ('phonescreen: a Shizuku state that is not known reads as ready', 'PhoneScreenFacts.java', 'return state == 2 ? Shizuku.READY : state == 1 ? Shizuku.NOT_ALLOWED : Shizuku.OFF;', 'return state == 0 ? Shizuku.OFF : state == 1 ? Shizuku.NOT_ALLOWED : Shizuku.READY;'),
+ ('phonescreen: the number of paired tablets is not shown', 'PhoneScreenRules.java', 'new Line(f.tablets + " paired", Tone.GOOD);', 'new Line("1 paired", Tone.GOOD);'),
+ ('phonescreen: the Pair button is renamed', 'PhoneScreenRules.java', 'static final String PAIR_BUTTON = "Pair tablet";', 'static final String PAIR_BUTTON = "Pair a tablet";'),
+ ('phonescreen: the Bluetooth switch is renamed', 'PhoneScreenRules.java', 'static final String BT_SWITCH = "Let the tablet reach this phone over Bluetooth";', 'static final String BT_SWITCH = "Let the tablet use Bluetooth";'),
+ ('phonescreen: a stale tab name comes back', 'PhoneScreenRules.java', 'static final String BREAKS_HINT = "Works on the phone alone: no tablet and no internet needed.";', 'static final String BREAKS_HINT = "Works on the phone alone. The tablet\'s Control tab does the same.";'),
+ ('phonescreen: the hotspot of an older name stays in the restore hint', 'PhoneScreenRules.java', 'Restore puts the network types, the hotspot band, the battery saver (it is then switched "\n            + "off), airplane mode and mobile data back as they were.', 'Restore puts the network types, the band lock, the hotspot band, the battery saver (it is then switched "\n            + "off), airplane mode and mobile data back as they were.'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -501,7 +541,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (PHONETAB_FILES, PHONETAB_TEST, "com.tj.linkmeter.PhoneTabRulesTest", B),
           (LEG_FILES, LEG_TEST, "com.tj.linkmeter.NrLegTest", N), (TYPES_FILES, TYPES_TEST, "com.tj.linkmeter.TypesFlagTest", U),
           (LEVER_FILES, LEVER_TEST, "com.tj.linkmeter.LeverRunTest", LV),
-          (SIGNAL_FILES, SIGNAL_TEST, "com.tj.linkmeter.SignalRulesTest", SG), (SEARCH_FILES, SEARCH_TEST, "com.tj.linkmeter.SearchFollowTest", SR)]
+          (SIGNAL_FILES, SIGNAL_TEST, "com.tj.linkmeter.SignalRulesTest", SG), (SEARCH_FILES, SEARCH_TEST, "com.tj.linkmeter.SearchFollowTest", SR),
+          (PHONESCREEN_FILES, PHONESCREEN_TEST, "com.tj.linkmeter.PhoneScreenRulesTest", PS)]
 only = sys.argv[1:]
 caught = missed = 0
 for FILES, TEST, TESTCLASS, M in SUITES:

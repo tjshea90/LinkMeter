@@ -31,6 +31,9 @@ java -cp "$out" com.tj.linkmeter.SignalRulesTest || fail=1
 echo "== Searching for a network again (SearchFollow: done only when the phone said so, a silent phone is the restart and not a failure, a failed restart says why, giving up claims nothing)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SearchFollow.java tools/test/SearchFollowTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.SearchFollowTest || fail=1
+echo "== The phone's own screen (PhoneScreenRules: the chip never says Ready for a phone nobody can use, the one attention card, the Bluetooth line and its button, what is missing, Boot assist needs the start after a restart, the questions that guard a stray tap)"
+javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/PhoneScreenFacts.java app/src/main/java/com/tj/linkmeter/PhoneScreenRules.java tools/test/PhoneScreenRulesTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.PhoneScreenRulesTest || fail=1
 echo "== PhonePower (the Sleep / Wake button rules)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhonePower.java tools/test/PhonePowerTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhonePowerTest || fail=1
