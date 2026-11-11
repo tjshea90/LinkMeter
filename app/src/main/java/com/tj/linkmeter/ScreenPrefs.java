@@ -171,8 +171,8 @@ final class ScreenPrefs {
     }
 
     /**
-     * The Type button's keyboard works as in any text field: suggestions and glide (swipe) typing are available, and the keyboard
-     * is asked not to learn from it. Off = exactly the letters that are tapped, one by one (for codes, addresses and passwords).
+     * The Type button's keyboard works as in any text field: suggestions and glide (swipe) typing are available. Off = exactly the
+     * letters that are tapped, one by one (for codes, addresses and passwords).
      */
     boolean keyboardSuggestions() {
         return Cfg.getBool(c, "kbSuggest", true);
@@ -180,6 +180,18 @@ final class ScreenPrefs {
 
     void setKeyboardSuggestions(boolean v) {
         Cfg.setBool(c, "kbSuggest", v);
+    }
+
+    /**
+     * Ask the keyboard not to learn what is typed with the Type button (keyboards show their incognito mode). Off by default: some
+     * keyboards switch glide typing off while they are incognito.
+     */
+    boolean keyboardIncognito() {
+        return Cfg.getBool(c, "kbIncognito", false);
+    }
+
+    void setKeyboardIncognito(boolean v) {
+        Cfg.setBool(c, "kbIncognito", v);
     }
 
     void setShowStats(boolean v) {
@@ -255,6 +267,7 @@ final class ScreenPrefs {
         setStillImage(true);
         setShowStats(true);
         setKeyboardSuggestions(true);
+        setKeyboardIncognito(false);
         setKeepIndex(2);
         setDimIndex(0);
         setSleepOnLeave(true);

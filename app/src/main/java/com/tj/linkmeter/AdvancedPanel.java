@@ -301,15 +301,19 @@ final class AdvancedPanel {
         col.addView(phoneInfo, Ui.lp(c, 6));
         col.addView(Ui.button(c, "Put the phone's screen settings back now", v -> host.restorePhone()), Ui.lp(c, 4));
 
-        // ---------------------------------------------------------------- info
         // ---------------------------------------------------------------- keyboard
         col.addView(heading("Keyboard (the Type button)"));
         col.addView(check("Suggestions and glide typing", prefs.keyboardSuggestions(), prefs::setKeyboardSuggestions), Ui.lp(c, 6));
         col.addView(note("On: the tablet's keyboard works as in any text field, so suggestions and glide (swipe) typing are there. "
-                + "What you type still goes to the phone as you type it, and the keyboard is asked not to learn from it. A keyboard "
-                + "may correct a word when you finish it. Off: the keyboard sends exactly the letters you tap, one by one, which is "
-                + "better for codes, web addresses and passwords. It takes effect the next time you press Type."), Ui.lp(c, 2));
+                + "What you type still goes to the phone as you type it. A keyboard may correct a word when you finish it. Off: the "
+                + "keyboard sends exactly the letters you tap, one by one, which is better for codes, web addresses and passwords. "
+                + "It takes effect the next time you press Type."), Ui.lp(c, 2));
+        col.addView(check("Incognito: ask the keyboard not to learn what I type", prefs.keyboardIncognito(), prefs::setKeyboardIncognito),
+                Ui.lp(c, 6));
+        col.addView(note("Keyboards then show their incognito mode, and some switch glide typing off while it is on. If glide "
+                + "typing does not work, leave this off."), Ui.lp(c, 2));
 
+        // ---------------------------------------------------------------- info
         col.addView(heading("Information"));
         final TextView info = Ui.text(c, host.diagnostics(), 11, Ui.FG, false);
         info.setTypeface(Typeface.MONOSPACE);

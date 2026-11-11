@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.View;
@@ -236,6 +237,11 @@ final class ScreenTab extends Tab {
             @Override
             public void key(int keyCode) {
                 sendKey(keyCode);
+            }
+
+            @Override
+            public void blocked() {
+                blockedNote();
             }
         });
         overlay = new FrameLayout(act);
@@ -480,6 +486,7 @@ final class ScreenTab extends Tab {
             hud.setText("");
         }
         typingView.setSuggestions(prefs.keyboardSuggestions());
+        typingView.setIncognito(prefs.keyboardIncognito());
         typingView.requestFocus();
         final InputMethodManager imm = (InputMethodManager) act.getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) {
@@ -1289,11 +1296,16 @@ final class ScreenTab extends Tab {
     }
 
     /** Sends typed text over the live channel (a phone key press per character); held back until it is up. */
+    /** The phone never types * or # (every dangerous dialer code needs one, see TypingFilter): say so. */
+    private void blockedNote() {
+        Toast.makeText(act, "* and # are not typed on the phone from here: they can start phone service codes. "
+                + "Type them on the phone itself.", Toast.LENGTH_LONG).show();
+    }
+
     private void sendText(String text) {
         // The phone never types * or # (every dangerous dialer code needs one, see TypingFilter): say so, and send the rest.
         if (TypingFilter.hasBlockedSymbol(text)) {
-            Toast.makeText(act, "* and # are not typed on the phone from here: they can start phone service codes. "
-                    + "Type them on the phone itself.", Toast.LENGTH_LONG).show();
+            blockedNote();
         }
         String s = TypingFilter.keep(text);
         if (s.isEmpty()) {
@@ -1659,6 +1671,9 @@ final class ScreenTab extends Tab {
         sb.append("Last video problem: ").append(lastError.isEmpty() ? "none" : lastError).append('\n');
         sb.append("Video restarts because a picture arrived damaged: ").append(resyncs).append('\n');
         sb.append("Phone settings: ").append(profileText).append('\n');
+        String ime = Settings.Secure.getString(act.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+        sb.append("Keyboard: ").append(ime == null || ime.isEmpty() ? "app unknown" : ime).append(", Type field ")
+                .append(typingView.report()).append('\n');
         sb.append("Decoders on this tablet: ").append(decs.isEmpty() ? "none found" : decs.toString());
         return sb.toString();
     }

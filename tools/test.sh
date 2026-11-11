@@ -57,9 +57,9 @@ java -cp "$out" com.tj.linkmeter.LeverRunTest || fail=1
 echo "== Phone codes (TypingFilter: the remote keyboard never types * or #, over all 65,536 characters)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/TypingFilter.java tools/test/TypingFilterTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.TypingFilterTest || fail=1
-echo "== The remote keyboard's draft (TypingDraft: tapped letters, glide typing, corrections and suggestions reach the phone as the least Backspace-and-type that makes its text equal the keyboard's, over 120,000 random keyboard steps)"
-javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/TypingDraft.java tools/test/TypingDraftTest.java || fail=1
-java -cp "$out" com.tj.linkmeter.TypingDraftTest || fail=1
+echo "== The remote keyboard's text (TypingMirror: the phone's text is kept equal to the tablet's typing field whatever the keyboard does in it: tapped letters, glide typing, corrections, suggestions, re-opened words, a moved cursor, pasted text, emoji, line breaks; over 120,000 random keyboard steps)"
+javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/TypingMirror.java tools/test/TypingMirrorTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.TypingMirrorTest || fail=1
 echo "== Phone codes (tripwire: the app dials nothing and can place no call or USSD; typed text and keys only through the guarded routes; no digit, *, # or call key; the document lists no dial code)"
 python3 tools/test/test_dial_paths.py || fail=1
 echo "== Boot automation (BootNames, Subnet, BootPlan: the tablet hotspot's name and password, where to look for the phone, what the phone does by itself after a restart)"
