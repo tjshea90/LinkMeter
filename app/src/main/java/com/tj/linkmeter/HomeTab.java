@@ -84,6 +84,12 @@ final class HomeTab extends Tab {
     private boolean hotspotButtonTurnsOff;
     /** The card's main button sends a switch right now ("Turn the hotspot on"), so it waits with the switches below. */
     private boolean bannerSends;
+    /**
+     * What the switch on its way asks of the tablet's own Wi-Fi (TabletWifiRules), decided at the press; and the Wi-Fi network the
+     * tablet was on then IF the phone answered over it (so it was the phone's hotspot). Used once, when the switch is settled.
+     */
+    private TabletWifiRules.Wish wifiWish = TabletWifiRules.Wish.NONE;
+    private long wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
 
     /** What one poll found. Built on the worker thread, shown on the UI thread. */
     private static final class Snap {
@@ -270,7 +276,10 @@ final class HomeTab extends Tab {
         }
         if (follow != null) {
             // nobody is looking any more: the phone is not asked on, and nothing is claimed about the switch (nor about the
-            // lines above: they are the last answer, and after "Hotspot off" the phone may not be reachable for a new one)
+            // lines above: they are the last answer, and after "Hotspot off" the phone may not be reachable for a new one).
+            // Nothing was confirmed, so the tablet's own Wi-Fi is left as it is.
+            wifiWish = TabletWifiRules.Wish.NONE;
+            wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
             endFollow("Sent. LinkMeter stopped looking for the result when this screen was left. The lines above show the "
                     + "phone's latest answer, which may be from before the switch.", true);
         }
@@ -426,6 +435,7 @@ final class HomeTab extends Tab {
             }
             if (o != null) {
                 endFollow(o.text, o.ok);
+                settleWifi(o.ok, o.text); // (a follow-up that gave up says ok = false: the tablet's Wi-Fi is left alone then)
             }
         }
         paintBanner(s);
@@ -637,6 +647,10 @@ final class HomeTab extends Tab {
         }
         touched();
         busy = true;
+        // Does the tablet's own Wi-Fi go with this switch (TabletWifiRules)? Decided now, from what is true now; done only once the
+        // phone's switch is settled. If the phone answered over the Wi-Fi at the last look, the network the tablet is on IS its hotspot.
+        wifiWish = TabletWifiRules.atPress(Cfg.wifiFollow(act), action, TabletWifi.on(act));
+        wifiNetworkAtPress = Reach.WIFI.equals(lastVia) ? TabletWifi.network(act) : TabletWifiRules.NO_NETWORK;
         paintSwitches();
         setAction(label + "…", true);
         Call.run(act, "POST", "/act?name=" + action, readMs, (ok, text, json) -> {
@@ -661,6 +675,7 @@ final class HomeTab extends Tab {
             // look again now and a little later: a hotspot takes a few seconds to come up or go down
             askNow();
             act.ui.postDelayed(this::askNow, 4000);
+            settleWifi(ok, text); // the answer is final: ok means the phone did it (over Bluetooth it answers after acting)
         });
     }
 
@@ -671,6 +686,47 @@ final class HomeTab extends Tab {
         busy = false;
         setAction(text, ok);
         paintSwitches();
+    }
+
+    /**
+     * The phone's switch is settled: now the tablet's own Wi-Fi, if it goes with the switch (TabletWifiRules decides, from what is
+     * true NOW). confirmed: the phone said it moved, or its status showed it. A switch that did not move, or that nobody
+     * confirmed because the screen was left, leaves the tablet's Wi-Fi alone. What became of the Wi-Fi is added to the line that
+     * already tells what the phone did.
+     */
+    private void settleWifi(boolean confirmed, final String phoneSaid) {
+        TabletWifiRules.Wish wish = wifiWish;
+        long before = wifiNetworkAtPress;
+        wifiWish = TabletWifiRules.Wish.NONE;
+        wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
+        if (wish == TabletWifiRules.Wish.NONE) {
+            return;
+        }
+        final TabletWifiRules.Verdict v = TabletWifiRules.atResult(wish, confirmed, TabletWifi.on(act), before, TabletWifi.network(act));
+        if (v == TabletWifiRules.Verdict.NOTHING) {
+            return;
+        }
+        if (v == TabletWifiRules.Verdict.LEAVE_ON_OTHER_NETWORK) {
+            addWifiWords(phoneSaid, TabletWifiRules.words(v, TabletWifiRules.Way.DONE), true);
+            return;
+        }
+        final boolean on = v == TabletWifiRules.Verdict.SWITCH_ON;
+        // (the panel opens only while the app is in front: Android 10 lets an app open a screen only then, and nobody would see it)
+        TabletWifi.set(act, on, act::inFront, way -> {
+            addWifiWords(phoneSaid, TabletWifiRules.words(v, way), TabletWifiRules.good(true, way));
+            if (on) {
+                // the tablet needs a few seconds to find the hotspot and join it: look again when it has had them
+                act.ui.postDelayed(this::askNow, 10000);
+            }
+        });
+    }
+
+    /** Adds the Wi-Fi sentence to the phone's result line, unless a newer line has taken its place meanwhile. */
+    private void addWifiWords(String phoneSaid, String wifiSaid, boolean ok) {
+        if (!actionMsg.equals(phoneSaid) || wifiSaid.isEmpty()) {
+            return;
+        }
+        setAction(TabletWifiRules.join(phoneSaid, wifiSaid), actionOk && ok);
     }
 
     private void hotspotPressed() {

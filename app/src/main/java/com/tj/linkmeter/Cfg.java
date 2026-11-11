@@ -153,6 +153,18 @@ final class Cfg {
         sp(c).edit().putBoolean("share", on).apply();
     }
 
+    /**
+     * Tablet: the tablet's own Wi-Fi follows the phone's hotspot (TabletWifiRules): switched on after "Hotspot on", off after
+     * "Hotspot off" and Standby. ON by default; it only ever asks Android for what the user pressed a button for.
+     */
+    static boolean wifiFollow(Context c) {
+        return sp(c).getBoolean("wifiFollow", true);
+    }
+
+    static void setWifiFollow(Context c, boolean on) {
+        sp(c).edit().putBoolean("wifiFollow", on).apply();
+    }
+
     // ------------------------------------------------------------ phone options
 
     /** Phone: start the sender when the phone boots. */

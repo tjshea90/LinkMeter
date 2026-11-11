@@ -6,7 +6,6 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Typeface;
-import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CompoundButton;
@@ -283,14 +282,8 @@ final class BootSection implements BootDriver.Listener {
     }
 
     private void openWifi() {
-        try {
-            act.startActivity(new Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY));
-        } catch (RuntimeException e) {
-            try {
-                act.startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS));
-            } catch (RuntimeException e2) {
-                Toast.makeText(act, "Open Settings > Wi-Fi and switch it on.", Toast.LENGTH_LONG).show();
-            }
+        if (!TabletWifi.openSwitch(act)) {
+            Toast.makeText(act, "Open Settings > Wi-Fi and switch it on.", Toast.LENGTH_LONG).show();
         }
     }
 

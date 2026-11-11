@@ -59,6 +59,11 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- lifecycle
 
+    /** Is the app in front right now (resumed, not paused)? Android 10 lets an app open a screen only then. */
+    boolean inFront() {
+        return resumed;
+    }
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);

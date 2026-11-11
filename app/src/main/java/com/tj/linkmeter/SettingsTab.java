@@ -327,6 +327,12 @@ final class SettingsTab extends Tab {
 
     private void buildTablet(LinearLayout col) {
         LinearLayout card = Ui.card(act, "This tablet", null);
+        Ui.Toggle follow = new Ui.Toggle(act, "Switch the tablet's Wi-Fi with the hotspot",
+                "\"Hotspot on\" switches this tablet's Wi-Fi on; \"Hotspot off\" and Standby switch it off. Android does not let an app "
+                + "do that by itself: LinkMeter opens Android's Wi-Fi switch for one tap (with Shizuku running on this tablet it "
+                + "needs none). A tablet that is on another Wi-Fi network keeps its Wi-Fi.",
+                Cfg.wifiFollow(act), (b, on) -> Cfg.setWifiFollow(act, on));
+        card.addView(follow.view, Ui.lp(act, 6));
         Ui.Toggle keep = new Ui.Toggle(act, "Keep the screen on in every tab",
                 "The " + SCREEN + " tab keeps the tablet awake by itself while it is open (its own option). This is for all the other tabs.",
                 Cfg.keepOn(act), (b, on) -> {

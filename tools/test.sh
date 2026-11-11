@@ -22,6 +22,9 @@ java -cp "$out" com.tj.linkmeter.QualityPresetsTest || fail=1
 echo "== Phone address field (PhoneAddress: only a complete IPv4 address or nothing is ever stored, and the line under the field says which one is in use)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhoneAddress.java tools/test/PhoneAddressTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhoneAddressTest || fail=1
+echo "== The tablet's Wi-Fi follows the phone's hotspot (TabletWifiRules: on only after a settled Hotspot on, off only after a settled Hotspot off or Standby, never for a switch that did not move, never when it already is so or is not known, never a Wi-Fi that carries another network, no claim without a read-back; every combination)"
+javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/TabletWifiRules.java tools/test/TabletWifiRulesTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.TabletWifiRulesTest || fail=1
 echo "== The Phone tab's rules (PhoneTabRules: which banner wins, the battery current in words, a switch the phone does not report is 'not known', the update only over the hotspot)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhoneTabRules.java tools/test/PhoneTabRulesTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhoneTabRulesTest || fail=1
