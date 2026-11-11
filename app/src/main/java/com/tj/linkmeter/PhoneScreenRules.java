@@ -494,8 +494,9 @@ final class PhoneScreenRules {
     static final String TABLET_PHONE_TAB = "Phone";
     static final String TABLET_SETTINGS_TAB = "Settings";
 
-    static final String BT_EXPLAIN = "While the hotspot is off, the tablet can still switch it on from far away, and switch Wi-Fi, the "
-            + "screen and Standby. Off: with the hotspot off, only you can switch it on, at the phone.";
+    static final String BT_EXPLAIN = "While the hotspot is off, the tablet can still reach this phone over Bluetooth (within Bluetooth "
+            + "range): it can switch the hotspot on, and switch Wi-Fi, the screen and Standby. Off: with the hotspot off, only you can "
+            + "switch it on, at the phone.";
     static final String SCREEN_SWITCH = "Let the tablet see and control this screen";
     static final String SCREEN_EXPLAIN = "The tablet's Screen tab: the picture, touches and typing. Off: the tablet still gets the "
             + "status and can still put the screen to sleep and wake it.";
@@ -516,8 +517,9 @@ final class PhoneScreenRules {
     static final String PERMISSIONS_HINT = "Shizuku lets LinkMeter do what the tablet asks: hotspot, Wi-Fi, screen, restart, restore. "
             + "It stops when the phone restarts and has to be started again.";
     static final String BATTERY_TIP = "Set LinkMeter to Unrestricted battery use, so Android never stops it while the screen is off.";
-    static final String RESTORE_HINT = "Restore puts the network types, the hotspot band, the battery saver (it is then switched "
-            + "off), airplane mode and mobile data back as they were. The Restore button on LinkMeter's notification does the same.";
+    static final String RESTORE_HINT = "Restore puts the network types, the hotspot band and the battery saver back as they were (the "
+            + "saver is then switched off), switches airplane mode off and mobile data on. The Restore button on LinkMeter's "
+            + "notification does the same.";
     static final String BREAKS_HINT = "Works on the phone alone: no tablet and no internet needed.";
     static final String PAIR_HINT = "Pair once, with the tablet on this phone's hotspot (the window stays open for 2 minutes). "
             + "After that the tablet connects by itself.";

@@ -447,7 +447,7 @@ final class ControlTab extends Tab {
             case SHIZUKU_OFF:
                 bannerTitle.setText("Shizuku is not running on the phone");
                 bannerText.setText("Most of the controls below need it. After a phone restart it has to be started again: the "
-                        + "steps are further down, under Start the phone after a restart.");
+                        + "steps are further down, under After a phone restart.");
                 bannerMain.setText("After a phone restart");
                 bannerMain.setOnClickListener(v -> showRestartCard());
                 break;
@@ -688,7 +688,7 @@ final class ControlTab extends Tab {
 
     private void askRestart() {
         confirm("Restart the phone?", "The phone restarts. Afterwards it has to be unlocked by hand, and Shizuku has to be started "
-                + "again (the steps are under Start the phone after a restart). Until then the tablet cannot switch anything on the "
+                + "again (the steps are under After a phone restart). Until then the tablet cannot switch anything on the "
                 + "phone.", "Restart", () -> send("reboot", "Restarting the phone", 15000));
     }
 

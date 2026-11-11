@@ -539,7 +539,7 @@ PS = [
  ('phonescreen: the Pair button is renamed', 'PhoneScreenRules.java', 'static final String PAIR_BUTTON = "Pair tablet";', 'static final String PAIR_BUTTON = "Pair a tablet";'),
  ('phonescreen: the Bluetooth switch is renamed', 'PhoneScreenRules.java', 'static final String BT_SWITCH = "Let the tablet reach this phone over Bluetooth";', 'static final String BT_SWITCH = "Let the tablet use Bluetooth";'),
  ('phonescreen: a stale tab name comes back', 'PhoneScreenRules.java', 'static final String BREAKS_HINT = "Works on the phone alone: no tablet and no internet needed.";', 'static final String BREAKS_HINT = "Works on the phone alone. The tablet\'s Control tab does the same.";'),
- ('phonescreen: the hotspot of an older name stays in the restore hint', 'PhoneScreenRules.java', 'Restore puts the network types, the hotspot band, the battery saver (it is then switched "\n            + "off), airplane mode and mobile data back as they were.', 'Restore puts the network types, the band lock, the hotspot band, the battery saver (it is then switched "\n            + "off), airplane mode and mobile data back as they were.'),
+ ('phonescreen: the hotspot of an older name stays in the restore hint', 'PhoneScreenRules.java', 'Restore puts the network types, the hotspot band and the battery saver back', 'Restore puts the network types, the band lock, the hotspot band and the battery saver back'),
 ]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),

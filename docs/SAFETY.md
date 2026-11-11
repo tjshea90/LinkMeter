@@ -61,7 +61,7 @@ copy and the tripwire must fail every time.
 | A phone screen opened from here (Phone info, or one named screen) | the phone's own screen | what you change in it | see section 7 |
 | "Start the phone after a restart": the one-time permission to change secure settings (`WRITE_SECURE_SETTINGS`) | Android's permissions | yes | Undo the setup (tablet, Phone tab: `pm revoke`); see section 8 |
 | Wireless debugging switched on by LinkMeter after a restart | Android settings | no: Android switches it off by itself when the Wi-Fi goes | switch it off in Developer options; Undo the setup stops LinkMeter doing it |
-| Android's 7-day timeout for wireless-debugging pairings switched off (only if you ask) | Android settings | yes | Forget after 7 days, or Undo the setup (the old value is saved and put back) |
+| Android's 7-day timeout for wireless-debugging pairings switched off (only if you ask) | Android settings | yes | the switch "Keep the pairing longer than 7 days" (tablet, Phone tab, "After a phone restart"), or Undo the setup (the old value is saved and put back) |
 | Boot assist switch | LinkMeter's own setting | yes | Undo the setup |
 | The tablet's own hotspot (a Wi-Fi Direct group) | the tablet's Wi-Fi | until stopped | the flow stops it itself; Stop hotspot; switching the tablet's Wi-Fi off |
 | The phone's hotspot, started by the flow | the phone's normal hotspot switch | yes | the normal switch (swipe down, Hotspot) |
@@ -119,8 +119,8 @@ What it does and why: see `docs/BOOT_FLOW.md`. What it can change, all of it lis
 
 - **A permission.** After you press One-time setup (Phone tab on the tablet, Shizuku running), LinkMeter holds `WRITE_SECURE_SETTINGS`.
   That permission lets an app change Android's secure settings, so it is a real grant. LinkMeter's code writes exactly three settings with it
-  (`Boot.java`): `development_settings_enabled` and `adb_wifi_enabled` (to switch wireless debugging on) and, only if you press Keep the
-  pairing, `adb_allowed_connection_time` (Android's 7-day timeout for adb authorizations). Undo the setup takes it back with `pm revoke`.
+  (`Boot.java`): `development_settings_enabled` and `adb_wifi_enabled` (to switch wireless debugging on) and, only if you switch on Keep the
+  pairing longer than 7 days, `adb_allowed_connection_time` (Android's 7-day timeout for adb authorizations). Undo the setup takes it back with `pm revoke`.
 - **Wireless debugging stays on only while a Wi-Fi network is joined.** Android switches it off itself when the Wi-Fi goes, and it only
   runs on the tablet's own hotspot, which has a WPA2 password. Android still asks "Allow wireless debugging on this network?" and still
   needs the pairing number typed into Shizuku: LinkMeter cannot answer either.
