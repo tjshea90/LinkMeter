@@ -28,6 +28,9 @@ final class TextsVault {
     /** Goes up whenever everything was erased, so a Texts tab that still holds the old key opens its files again. */
     private static final AtomicLong EPOCH = new AtomicLong();
 
+    /** For the pictures made by tools/uipreview, which have no Android Keystore: the key to use instead (null: the real Keystore). */
+    static SecretKey testKey;
+
     private TextsVault() {}
 
     static long epoch() {
@@ -36,6 +39,9 @@ final class TextsVault {
 
     /** The key for the saved copy, made on first use. Null when this tablet's Keystore does not work: then nothing is saved. */
     static synchronized SecretKey key() {
+        if (testKey != null) {
+            return testKey;
+        }
         try {
             KeyStore ks = KeyStore.getInstance(PROVIDER);
             ks.load(null);

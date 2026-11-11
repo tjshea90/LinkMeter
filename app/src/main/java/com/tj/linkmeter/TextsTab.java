@@ -370,9 +370,9 @@ final class TextsTab extends Tab {
         messageMode = true;
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setGravity(Gravity.CENTER);
         int pad = Ui.dp(act, 24);
-        col.setPadding(pad, pad * 3, pad, pad);
+        col.setPadding(pad, pad, pad, pad * 2);
         IconButton lockIcon = new IconButton(act, Icons.Kind.LOCK, Ui.ACCENT, 0x264C8DFF, "Locked", null);
         lockIcon.setScale(0.42f);
         col.addView(lockIcon, new LinearLayout.LayoutParams(Ui.dp(act, 92), Ui.dp(act, 92)));

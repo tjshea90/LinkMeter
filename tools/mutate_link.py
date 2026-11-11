@@ -579,7 +579,7 @@ S2 = [
  ('sms2: removing record messages tells nobody', 'SmsOutbox.java', 'if (n > 0) {\n            save();\n            changed();\n        }\n        return n;\n    }\n\n    /** Deletes every message', 'if (n > 0) {\n            save();\n        }\n        return n;\n    }\n\n    /** Deletes every message'),
 ]
 TEXTS_FILES = ["SmsLength.java", "SmsReactions.java", "SmartReply.java", "TextsLocal.java", "TextsCache.java", "ThreadListRules.java", "ThreadRows.java",
-               "FileBlobStore.java", "ThreadMerge.java"]
+               "FileBlobStore.java", "ThreadMerge.java", "Sealer.java", "AesGcmSealer.java", "SealedBlobStore.java", "TextsLock.java"]
 TEXTS_TEST = ROOT + "/tools/test/TextsLogicTest.java"
 TEXTS_JAVAC = ["-sourcepath", ROOT + "/app/src/main/java"]
 TX = [
@@ -613,6 +613,20 @@ TX = [
  ('texts: what the phone dropped stays on screen', 'ThreadMerge.java', 'if (m.time < from) {', 'if (true) {'),
  ('texts: an older page replaces what is on screen', 'ThreadMerge.java', '        } else {\n            for (Sms.Msg m : have) {\n                out.put(m.id, m);\n            }\n        }', '        }'),
  ('texts: any name is a name for a saved file', 'FileBlobStore.java', 'if (!NAME.matcher(name).matches() || name.endsWith(".tmp") || name.startsWith(".")) {', 'if (false) {'),
+ ('texts: a sealed blob opens under any name', 'SealedBlobStore.java', 'return ("linkmeter-texts-v1|" + name).getBytes(StandardCharsets.UTF_8);', 'return "linkmeter-texts-v1|".getBytes(StandardCharsets.UTF_8);'),
+ ('texts: a shorter tag on a sealed blob', 'AesGcmSealer.java', 'private static final int TAG_BITS = 128;', 'private static final int TAG_BITS = 96;'),
+ ('texts: the text is stored unsealed', 'SealedBlobStore.java', 'byte[] sealed = sealer.seal(data, aad(name));', 'byte[] sealed = data;'),
+ ('texts: junk is taken for an old plain blob', 'SealedBlobStore.java', "if (raw.length > 0 && (raw[0] == '{' || raw[0] == '[')) {", 'if (raw.length > 0) {'),
+ ('texts: an old plain blob is refused', 'SealedBlobStore.java', "if (raw.length > 0 && (raw[0] == '{' || raw[0] == '[')) {", 'if (false) {'),
+ ('texts: the name is not bound when sealing', 'AesGcmSealer.java', '            c.init(Cipher.ENCRYPT_MODE, key);\n            c.updateAAD(aad);', '            c.init(Cipher.ENCRYPT_MODE, key);'),
+ ('texts: the lock never asks again', 'TextsLock.java', 'if (unlockedAt > 0 && (leftAt == 0 || now - leftAt <= GRACE_MS)) {', 'if (unlockedAt > 0) {'),
+ ('texts: the lock asks on every return', 'TextsLock.java', '(leftAt == 0 || now - leftAt <= GRACE_MS)', '(leftAt == 0)'),
+ ('texts: the lock asks exactly at the limit', 'TextsLock.java', 'now - leftAt <= GRACE_MS', 'now - leftAt < GRACE_MS'),
+ ('texts: the lock asks a tablet without a screen lock', 'TextsLock.java', 'if (!lockOn || !deviceSecure) {', 'if (!lockOn) {'),
+ ('texts: the lock asks when it is switched off', 'TextsLock.java', 'if (!lockOn || !deviceSecure) {', 'if (!deviceSecure) {'),
+ ('texts: an unlock is forgotten', 'TextsLock.java', 'unlockedAt = now;', 'unlockedAt = 0;'),
+ ('texts: leaving twice moves the time', 'TextsLock.java', 'if (unlockedAt > 0 && leftAt == 0) {', 'if (unlockedAt > 0) {'),
+ ('texts: relock does not lock', 'TextsLock.java', 'synchronized void relock() {\n        unlockedAt = 0;', 'synchronized void relock() {\n        unlockedAt = unlockedAt;'),
 ]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),

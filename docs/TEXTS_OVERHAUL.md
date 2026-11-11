@@ -69,6 +69,7 @@ The Texts feature as first built is described in `docs/FILES_AND_TEXTS_PLAN.md` 
 - [x] P1 phone side and protocol v2 (ChangeGate, SmsApi v2, RemoteSms, SmsStore speed, delete/read attempts) + offline tests (`SmsV2Test`, 17 `sms2:` breakages)
 - [x] P2 tablet logic (TextsLocal, TextsCache, ThreadListRules, ThreadRows, ThreadMerge, SmsReactions, SmartReply, SmsLength, FileBlobStore) + offline tests (`TextsLogicTest`, 30 `texts:` breakages)
 - [x] P3 tablet GUI (`TextsTab`, `TextThread`, `TextsViews`, `IconButton`, new `Icons`; `tools/uipreview/.../TextsPreviewTest` draws 10 states with `PretendSms`: look at `tools/uipreview/out/texts-*.png`) released as v0.2.162
-- [ ] P4 security (saved copy encrypted, lock, secure window, hidden previews, clear)
+- [x] P4 S1 security on the tablet (saved copy and choices sealed with AES-GCM and a Keystore key, Texts lock with the screen lock, no screenshots / blank recent apps picture, hidden previews, erase everything saved, erase on pairing again): `Sealer`/`AesGcmSealer`/`SealedBlobStore`/`TextsLock` (pure, tested), `TextsVault` (Keystore), `TextsTab` lock screen and settings, `MainActivity.confirmDeviceCredential`/`applySecure`, `TextsViews.show` (closes dialogs when the lock engages); 15 breakages; pictures `texts-locked`, `texts-settings`
+- [ ] P4 S2 encrypted channel for `/sms/*` between the phone and the tablet (optional; see Design)
 - [ ] docs, HANDOFF, release(s)
 - [ ] Field test by the user: speed, new replies appearing by themselves, delete/hide, search, lock

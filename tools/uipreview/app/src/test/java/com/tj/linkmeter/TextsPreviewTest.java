@@ -31,9 +31,13 @@ public class TextsPreviewTest {
     @After
     public void tearDown() {
         TextsTab.testLink = null;
+        TextsVault.testKey = null;
+        TextsTab.relock();
     }
 
     static PretendSms phone() throws Exception {
+        TextsVault.testKey = new javax.crypto.spec.SecretKeySpec(new byte[32], "AES"); // there is no Android Keystore in this test
+        TextsTab.relock();
         pretendPhone("wifi", true, true);
         PretendSms ph = new PretendSms(PretendSms.gradientJpeg());
         TextsTab.testLink = ph.link();
@@ -321,5 +325,150 @@ public class TextsPreviewTest {
         tapRow(a, 0);
         settle();
         shot(a, "texts-wide-thread");
+    }
+
+    // ------------------------------------------------------------ the lock, the screenshot block and the settings
+
+    static void secureScreen(MainActivity a, boolean secure) {
+        android.app.KeyguardManager km = (android.app.KeyguardManager) a.getSystemService(android.content.Context.KEYGUARD_SERVICE);
+        org.robolectric.Shadows.shadowOf(km).setIsDeviceSecure(secure);
+    }
+
+    static void lockOn(boolean on) {
+        new TextsPrefs(org.robolectric.RuntimeEnvironment.getApplication()).setLock(on);
+    }
+
+    /** Answers the tablet's screen-lock question that the app put up (passed or cancelled). */
+    static void answerLockQuestion(MainActivity a, boolean passed) throws Exception {
+        org.robolectric.shadows.ShadowActivity sa = org.robolectric.Shadows.shadowOf(a);
+        org.robolectric.shadows.ShadowActivity.IntentForResult q = sa.getNextStartedActivityForResult();
+        check(q != null, "the screen-lock question was put up");
+        sa.receiveResult(q.intent, passed ? android.app.Activity.RESULT_OK : android.app.Activity.RESULT_CANCELED, null);
+        settle();
+    }
+
+    static boolean flagSecure(MainActivity a) {
+        return (a.getWindow().getAttributes().flags & android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0;
+    }
+
+    @Test
+    public void lockedUntilTheScreenLockIsPassed() throws Exception {
+        phone();
+        MainActivity a = tablet();
+        secureScreen(a, true);
+        lockOn(true);
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(findText(decor(a), "Texts are locked") != null, "the lock screen is up");
+        check(findText(decor(a), "Alex") == null && findText(decor(a), "Mom") == null, "no conversation is on screen while locked");
+        shot(a, "texts-locked");
+
+        // a Cancel leaves it locked, and the Unlock button asks again
+        answerLockQuestion(a, false);
+        check(findText(decor(a), "Texts are locked") != null, "still locked after a Cancel");
+        PreviewTest.press(a, "Unlock");
+        answerLockQuestion(a, true);
+        later(600);
+        check(findText(decor(a), "Texts are locked") == null, "the lock screen is gone once the screen lock was passed");
+        check(findText(decor(a), "Alex") != null, "the conversations are there");
+
+        // another tab and back at once: no new question
+        a.openTab(Tab.HOME);
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(findText(decor(a), "Texts are locked") == null, "back within the grace time: not asked again");
+        check(org.robolectric.Shadows.shadowOf(a).getNextStartedActivityForResult() == null, "no question was put up");
+
+        // away for longer: locked again, and nothing of the texts stays on screen
+        a.openTab(Tab.HOME);
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(TextsLock.GRACE_MS + 5_000));
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(findText(decor(a), "Texts are locked") != null, "locked again after a long time away");
+        check(findText(decor(a), "Alex") == null, "no conversation is on screen");
+        answerLockQuestion(a, true);
+        later(600);
+        check(findText(decor(a), "Alex") != null, "unlocked again");
+    }
+
+    @Test
+    public void lockEngagesWhenTheAppComesBackAfterALongTime() throws Exception {
+        phone();
+        MainActivity a = tablet();
+        secureScreen(a, true);
+        lockOn(true);
+        a.openTab(Tab.TEXTS);
+        settle();
+        answerLockQuestion(a, true);
+        later(600);
+        // a conversation and a question are open, then the app goes away and comes back much later
+        tapRow(a, 0);
+        settle();
+        check(findText(decor(a), "Let me know if 7") != null, "a conversation is open");
+        click(a, "More");
+        settle();
+        check(ShadowAlertDialog.getLatestAlertDialog() != null && ShadowAlertDialog.getLatestAlertDialog().isShowing(), "a menu is open");
+        a.onPause();
+        org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(TextsLock.GRACE_MS + 5_000));
+        a.onResume();
+        settle();
+        check(findText(decor(a), "Texts are locked") != null, "locked when the app came back");
+        check(findText(decor(a), "Let me know if 7") == null, "the conversation is gone from the screen");
+        check(!ShadowAlertDialog.getLatestAlertDialog().isShowing(), "the open menu was closed");
+    }
+
+    @Test
+    public void noLockWithoutAScreenLock() throws Exception {
+        phone();
+        MainActivity a = tablet();
+        secureScreen(a, false);
+        lockOn(true);
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(findText(decor(a), "Texts are locked") == null, "a tablet without a screen lock has nothing to ask for");
+        check(findText(decor(a), "Alex") != null, "the conversations are there");
+    }
+
+    @Test
+    public void keepsTextsOutOfScreenshots() throws Exception {
+        phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(!flagSecure(a), "screenshots are allowed by default");
+        new TextsPrefs(org.robolectric.RuntimeEnvironment.getApplication()).setSecureWindow(true);
+        a.openTab(Tab.HOME);
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(flagSecure(a), "screenshots of the Texts tab are blocked");
+        a.onPause(); // the recent apps picture is taken after this: the flag must still be set
+        check(flagSecure(a), "still blocked while the app is going away");
+        a.onResume();
+        a.openTab(Tab.HOME);
+        check(!flagSecure(a), "the other tabs can be captured again");
+    }
+
+    @Test
+    public void settingsDialog() throws Exception {
+        phone();
+        MainActivity a = tablet();
+        secureScreen(a, true);
+        a.openTab(Tab.TEXTS);
+        settle();
+        click(a, "More");
+        settle();
+        // the menu's "Texts settings" entry
+        AlertDialog menu = ShadowAlertDialog.getLatestAlertDialog();
+        int n = menu.getListView().getCount();
+        int at = -1;
+        for (int i = 0; i < n; i++) {
+            if (String.valueOf(menu.getListView().getAdapter().getItem(i)).contains("settings")) {
+                at = i;
+            }
+        }
+        check(at >= 0, "the menu has the settings entry");
+        menu.getListView().performItemClick(null, at, at);
+        dialog("texts-settings");
+        closeDialog();
     }
 }
