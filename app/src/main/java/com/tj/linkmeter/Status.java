@@ -66,6 +66,15 @@ final class Status {
             o.put("wifi", Radios.wifiOn(c));
             o.put("scr", Radios.screenOn(c));
             o.put("air", Radios.airplane(c));
+            Boolean location = Radios.location(c);
+            if (location != null) {
+                o.put("loc", location.booleanValue()); // left out when the phone cannot tell
+            }
+            o.put("deep", 1); // this phone app knows "Hotspot off" in its deep form (hotspot, location, airplane mode, screen)
+            String deepResult = DeepSleep.last;
+            if (!deepResult.isEmpty()) {
+                o.put("dres", deepResult.length() > 240 ? deepResult.substring(0, 240) : deepResult); // what the last deep sleep did
+            }
             BtServer.poke(); // a Bluetooth door that failed to open is tried again while the tablet is here to see the result
             o.put("bt", BtServer.state());
             String mac = Cfg.btMac(c);

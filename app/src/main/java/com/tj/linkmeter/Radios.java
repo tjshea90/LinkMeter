@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.location.LocationManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.PowerManager;
@@ -125,6 +126,16 @@ final class Radios {
             return Settings.Global.getInt(c.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
         } catch (RuntimeException e) {
             return false;
+        }
+    }
+
+    /** Is location (the master switch in the quick settings) on? null when the phone does not say. No permission and no Shizuku needed. */
+    static Boolean location(Context c) {
+        try {
+            LocationManager lm = c.getSystemService(LocationManager.class);
+            return lm == null ? null : Boolean.valueOf(lm.isLocationEnabled());
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 

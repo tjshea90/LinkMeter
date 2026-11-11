@@ -63,7 +63,7 @@ final class Actions {
     static void later(final Context c, final String name, final boolean viaBluetooth) {
         final Context app = c.getApplicationContext();
         final Object hold = new Object();
-        Awake.work(app, hold, 90_000L); // the phone may be asleep, and the link that kept it awake is about to go
+        Awake.work(app, hold, awakeMs(name)); // the phone may be asleep, and the link that kept it awake is about to go
         new Thread(() -> {
             try {
                 Thread.sleep(800);
@@ -78,6 +78,21 @@ final class Actions {
                 Awake.workDone(hold); // done, or given up: the phone may sleep again (a Standby should not sit awake for 90 s)
             }
         }, "linkmeter-delayed").start();
+    }
+
+    /**
+     * How long the processor is kept awake for a delayed action: the usual 90 s, and longer for the two that wait for the radio or
+     * for Bluetooth to come back (airplane mode off, then the hotspot; the hotspot, location, airplane mode, Bluetooth, the screen).
+     */
+    private static long awakeMs(String name) {
+        switch (name) {
+            case "hotspot_on":
+            case "boot_hotspot_on":
+            case "hotspot_off_deep":
+                return 150_000L;
+            default:
+                return 90_000L;
+        }
     }
 
     /** The answer as text, or as the error it is when the switch did not move. */
@@ -98,11 +113,12 @@ final class Actions {
     static String perform(Context app, String name, boolean viaBluetooth) throws IOException {
         switch (name) {
             case "hotspot_on":
-            case "boot_hotspot_on": {
-                String r = SwitchWords.resultLine(Cells.shellMain(app, "hotspot-start").out);
-                Boot.hotspotResult = r; // "start the phone after a restart" asks how it went once the tablet is on the hotspot
-                return said(SwitchWords.hotspotOn(r));
-            }
+            case "boot_hotspot_on":
+                // airplane mode off first if it is on (the hotspot cannot work in it), then the hotspot: DeepSleepRules.wake
+                return DeepSleep.wake(app);
+            case "hotspot_off_deep":
+                // the hotspot, location, airplane mode (only with Bluetooth up), the screen: DeepSleepRules.sleep
+                return DeepSleep.sleep(app);
             case "hotspot_off":
                 return said(hotspotOff(app, viaBluetooth));
             case "hotspot_restart":
@@ -181,7 +197,7 @@ final class Actions {
     }
 
     /** The checked Sleep (the same steps as the Screen tab's Sleep button). */
-    private static SwitchWords.Said screenOff(Context app) {
+    static SwitchWords.Said screenOff(Context app) {
         try {
             PowerSequence.Result res = Screen.powerNow(app, false, true);
             return SwitchWords.screenOff(res.reached, res.how);
@@ -212,7 +228,12 @@ final class Actions {
             case "wifi_on":
             case "wifi_off":
             case "standby":
+            case "hotspot_off_deep":
                 return perform(c, name, viaBluetooth);
+            case "location_on":
+                return said(PhoneLocation.set(c, true));
+            case "location_off":
+                return said(PhoneLocation.set(c, false));
             case "bt_setup":
                 return BtServer.setup(c);
             case "eco_auto_on":
@@ -549,7 +570,7 @@ final class Actions {
     }
 
     /** Polls for up to `seconds` while the radio is definitely off; returns the last state (see radioState). */
-    private static int waitRadioState(Context app, int seconds) {
+    static int waitRadioState(Context app, int seconds) {
         int st = radioState(app);
         for (int i = 0; i < seconds / 2 && st == 0; i++) {
             try {

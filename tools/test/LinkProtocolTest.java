@@ -316,6 +316,33 @@ public final class LinkProtocolTest {
         for (String a : new String[] {"poweroff", "reboot", "airplane_on", "hotspot_off", "hotspot_restart", "radio_cycle", "standby", "hotspot_on", "wifi_on"}) {
             check(RemoteRoutes.cutsLink(a, false, null), a + " over the network, hotspot not known: answered first as before");
         }
+        // "Hotspot off" in its deep form (hotspot, location, airplane mode, screen): airplane mode can restart Bluetooth under the
+        // request, so it is answered first on EVERY route, whatever the phone says about its hotspot or airplane mode
+        for (int m = 0; m < 8; m++) {
+            check(RemoteRoutes.cutsLink("hotspot_off_deep", (m & 1) != 0, (m & 2) != 0, (m & 4) != 0), "hotspot_off_deep always answers first");
+        }
+        check(RemoteRoutes.cutsLink("hotspot_off_deep", true, null) && RemoteRoutes.cutsLink("hotspot_off_deep", false, null), "hotspot_off_deep answers first, hotspot not known");
+        // "Hotspot on" from airplane mode: ending airplane mode can restart Bluetooth, so over Bluetooth it answers first as well
+        for (String a : new String[] {"hotspot_on", "boot_hotspot_on"}) {
+            check(RemoteRoutes.cutsLink(a, true, false, true) && RemoteRoutes.cutsLink(a, true, true, true) && RemoteRoutes.cutsLink(a, true, null, true),
+                    a + " over Bluetooth from airplane mode answers first");
+            check(RemoteRoutes.cutsLink(a, false, false, true) && RemoteRoutes.cutsLink(a, false, null, true), a + " over the hotspot route from airplane mode: as before");
+            check(!RemoteRoutes.cutsLink(a, true, false, false) && !RemoteRoutes.cutsLink(a, true, null, false), a + " over Bluetooth with no airplane mode: the real result comes back");
+        }
+        // airplane mode changes the answer of no other action
+        for (String a : new String[] {"hotspot_off", "hotspot_restart", "radio_cycle", "standby", "wifi_on", "wifi_off", "poweroff", "reboot", "airplane_on", "safety",
+            "location_on", "location_off", "screen_off", "airplane_off", "nonsense"}) {
+            for (int m = 0; m < 4; m++) {
+                check(RemoteRoutes.cutsLink(a, (m & 1) != 0, (m & 2) != 0, true) == RemoteRoutes.cutsLink(a, (m & 1) != 0, (m & 2) != 0, false),
+                        a + ": airplane mode changes nothing");
+            }
+        }
+        // the location switches keep the link
+        for (String a : new String[] {"location_on", "location_off"}) {
+            for (int m = 0; m < 8; m++) {
+                check(!RemoteRoutes.cutsLink(a, (m & 1) != 0, (m & 2) != 0, (m & 4) != 0), a + " keeps the link");
+            }
+        }
         for (String a : new String[] {"safety", "restore", "net_lte", "net_5g", "eco_on", "eco_off", "screen_off", "bt_setup", "eco_auto_on", "", "nonsense",
             "airplane_off", "restart_modem", "hotspot_info"}) {
             for (int m = 0; m < 4; m++) {

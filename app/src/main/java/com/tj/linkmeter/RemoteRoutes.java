@@ -41,19 +41,31 @@ final class RemoteRoutes {
      * {@link #hotspotOn}). Not known counts as "may be cut": answering first is the safe side, the answer still arrives.
      */
     static boolean cutsLink(String action, boolean viaBluetooth, Boolean hotspotOn) {
+        return cutsLink(action, viaBluetooth, hotspotOn, false);
+    }
+
+    /**
+     * The same, for a phone that may be in airplane mode (airplaneOn). "Hotspot on" then begins with ending airplane mode, and that
+     * can restart Bluetooth, which may be what the request came over: so there it is answered first, like on the hotspot route, and
+     * the tablet reads the result from the status. "Hotspot off" in its deep form (hotspot, location, airplane mode, screen) ends in
+     * airplane mode, which can restart Bluetooth too: answered first on every route.
+     */
+    static boolean cutsLink(String action, boolean viaBluetooth, Boolean hotspotOn, boolean airplaneOn) {
         switch (action) {
             case "poweroff":
             case "reboot":
             case "airplane_on":
+            case "hotspot_off_deep":
                 return true; // the phone, or every radio, goes away
             case "hotspot_off":
             case "hotspot_restart":
             case "radio_cycle": // the radio restart takes the hotspot down with it
             case "standby":
-            case "hotspot_on": // a phone that is on somebody's Wi-Fi leaves it to become the hotspot
-            case "boot_hotspot_on":
             case "wifi_on": // many phones cannot be a hotspot and a Wi-Fi client at once: the hotspot may stop
                 return !viaBluetooth;
+            case "hotspot_on": // a phone that is on somebody's Wi-Fi leaves it to become the hotspot
+            case "boot_hotspot_on":
+                return !viaBluetooth || airplaneOn;
             case "wifi_off":
                 // only when the request came through the Wi-Fi that is being switched off; not known = it may have
                 return !viaBluetooth && !Boolean.TRUE.equals(hotspotOn);
