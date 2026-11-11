@@ -34,9 +34,19 @@ DONE: [x] TabletWifiRules + TabletWifiRulesTest (2,595 checks) + tools/test.sh  
 [x] HomeTab hooks (wifiWish/settleWifi/addWifiWords/switchWifiOn) + card 'The hotspot is on, but the tablet's Wi-Fi is off' + meter 'Off'
 [x] 26 `wififollow:` breakages in tools/mutate_link.py (all caught)  [x] tools/uipreview/.../WifiFollowPreviewTest.java (17 scenarios, ALL PASS, pictures looked at)
 [x] docs: USER_GUIDE, SAFETY row, APP_REFERENCE  [x] local build + tools/test.sh passed once (before the card/test/doc changes)
-IN PROGRESS: full tools/preview.sh run (all OLD preview tests must still pass: they press Hotspot off/on, my hook now also switches the pretend Wi-Fi) -> log in
-  the scratchpad preview-full.log (ends with 'preview-full exit=N'). If an old test fails because the screen text now has the Wi-Fi sentence, fix the TEST's expectation
-  (or the Wi-Fi state of that test), not the feature.
-TO DO: glue breakages by hand (see the list in HANDOFF/notes: drop settleWifi call, drop the onHide clear, ignore `confirmed`, network-at-press always none) each must make
-  WifiFollowPreviewTest fail; rerun tools/test.sh + ./gradlew assembleRelease; rewrite the HANDOFF bullet as DONE; plain `tools/checkpoint.sh` (release), check run + release
-  (GitHub MCP actions_list / list_releases), give https://github.com/tjshea90/LinkMeter/releases; tell the user: one tap on Android 10 (not zero), offer the helper app.
+STATE AT 18:22 UTC (commit 15144dd, WIP): fixes from my own review are IN THE TREE but NOT YET REBUILT/RE-TESTED:
+  (1) HomeTab.send: `sentOnly` (a "later"/Sent answer is NOT a confirmed switch: settleWifi(ok && !sentOnly, ...)); (2) bannerWifi: the Home card's
+  "Switch Wi-Fi on" is greyed while a phone switch is on its way (paintSwitches) and switchWifiOn() refuses while busy; (3) Settings text no longer promises a
+  silent Shizuku route (the tablet has no button that asks Shizuku for LinkMeter's permission). Docs: docs/WIFI_FOLLOWS_HOTSPOT.md (the full story),
+  USER_GUIDE, SAFETY, APP_REFERENCE; HANDOFF has a compact bullet (+ question 1b for the user).
+  New: 3 more scenarios in WifiFollowPreviewTest (aSentAnswerAfterTheScreenWasLeftConfirmsNothing, theWifiSwitchIsNotOpenedWhileTheAppIsOutOfSight,
+  theCardsButtonWaitsForASwitchOnItsWay) and tools/mutate_wifi_glue.py (9 breakages of HomeTab/TabletWifi/SettingsTab, each must fail a NAMED scenario).
+RUNNING WHEN THIS NOTE WAS WRITTEN: the full tools/preview.sh run (log: scratchpad preview-full.log, last line 'preview-full exit=N'; it compiled the code BEFORE the fixes:
+  it only checks that the OLD preview tests still pass with the hook) and tools/test.sh (test-run2.log).
+TO DO, in this order: 1. check preview-full exit=0 (if an old test fails because its screen text now carries the Wi-Fi sentence, fix the TEST's expectation);
+  2. tools/preview.sh --tests com.tj.linkmeter.WifiFollowPreviewTest (21 scenarios, all must pass; look at the new pictures if any);
+  3. ./gradlew --no-daemon assembleRelease; tools/test.sh; python3 tools/mutate_link.py wififollow (26 caught);
+  4. python3 tools/mutate_wifi_glue.py (9 caught; needs a committed tree);
+  5. HANDOFF bullet is written; plain `tools/checkpoint.sh "<the user-readable sentence>"` (RELEASE), check run + release (GitHub MCP actions_list / list_releases),
+     add a `note:` commit via tools/save-only.sh with the release number ("WI-FI RELEASE vX"), give https://github.com/tjshea90/LinkMeter/releases;
+  6. tell the user: one tap on Android 10 (not zero), install the TABLET only (phone unchanged), the zero-tap helper app is an option, what to report back.
