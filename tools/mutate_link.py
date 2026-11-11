@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java; for "texts:", tools/test/TextsLogicTest.java; for "wififollow:", tools/test/TabletWifiRulesTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java; for "texts:", tools/test/TextsLogicTest.java; for "wififollow:", tools/test/TabletWifiRulesTest.java; for "deep:", tools/test/DeepSleepRulesTest.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror, ChangeGate, SmsApi (the version 2 routes), SmsLength, SmsReactions, SmartReply, TextsLocal, TextsCache, ThreadListRules, ThreadRows, FileBlobStore, TabletWifiRules or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror, ChangeGate, SmsApi (the version 2 routes), SmsLength, SmsReactions, SmartReply, TextsLocal, TextsCache, ThreadListRules, ThreadRows, FileBlobStore, TabletWifiRules, DeepSleepRules or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -700,6 +700,28 @@ WF = [
  ("wififollow: the Wi-Fi sentence replaces the phone's", "TabletWifiRules.java", 'return phoneSaid + " " + wifiSaid;', "return wifiSaid;"),
  ("wififollow: the Wi-Fi sentence sticks to the phone's", "TabletWifiRules.java", 'return phoneSaid + " " + wifiSaid;', "return phoneSaid + wifiSaid;"),
 ]
+DEEP_FILES = ["SwitchWords.java", "DeepSleepRules.java"]
+DEEP_TEST = ROOT + "/tools/test/DeepSleepRulesTest.java"
+DP = [
+ ("deep: airplane mode without looking at the Bluetooth link", "DeepSleepRules.java", "if (!p.linkIsUp()) {", "if (false) {"),
+ ("deep: the link after airplane mode is not checked", "DeepSleepRules.java", "} else if (p.linkStaysUp()) {", "} else if (true) {"),
+ ("deep: a link that did not stay up is not undone", "DeepSleepRules.java", "SwitchWords.Said off = p.airplaneOff();\n                if (off.done) {\n                    air = new SwitchWords.Said(false, \"Airplane mode was switched off again", "SwitchWords.Said off = new SwitchWords.Said(true, \"\");\n                if (off.done) {\n                    air = new SwitchWords.Said(false, \"Airplane mode was switched off again"),
+ ("deep: a stranded phone is not said to need picking up", "DeepSleepRules.java", "\"again. The phone has to be picked up: swipe down and tap Airplane mode.\"", "\"again.\""),
+ ("deep: a stranded phone is not known to be in airplane mode", "DeepSleepRules.java", "tap Airplane mode.\");\n                    airplane = true;", "tap Airplane mode.\");\n                    airplane = false;"),
+ ("deep: a failed airplane switch is checked for Bluetooth", "DeepSleepRules.java", "if (!on.done) {\n                air = on;", "if (false) {\n                air = on;"),
+ ("deep: location switched off when it is off already", "DeepSleepRules.java", "} else if (!location.booleanValue()) {", "} else if (false) {"),
+ ("deep: location not known is acted on", "DeepSleepRules.java", "if (location == null) {", "if (false) {"),
+ ("deep: location that stayed on is called done", "DeepSleepRules.java", "done &= loc.done;", "done &= true;"),
+ ("deep: the hotspot's failure is forgotten", "DeepSleepRules.java", "done &= hotspot.done;", "done &= true;"),
+ ("deep: airplane mode's failure is forgotten", "DeepSleepRules.java", "done &= air.done;", "done &= true;"),
+ ("deep: the screen's failure is forgotten", "DeepSleepRules.java", "done &= screen.done;", "done &= true;"),
+ ("deep: the screen is skipped after a failure", "DeepSleepRules.java", "SwitchWords.Said screen = p.screenOff();", "SwitchWords.Said screen = done ? p.screenOff() : new SwitchWords.Said(true, \"The screen is off.\");"),
+ ("deep: airplane mode is said to be on without Bluetooth", "DeepSleepRules.java", "\"Airplane mode is on, and Bluetooth stays on so that the tablet can wake the phone.\"", "\"Airplane mode is on.\""),
+ ("deep: waking starts the hotspot in airplane mode", "DeepSleepRules.java", "if (!off.done) {\n                return new SwitchWords.Said(false, SwitchWords.dot(off.text)", "if (false) {\n                return new SwitchWords.Said(false, SwitchWords.dot(off.text)"),
+ ("deep: waking does not wait for the radio", "DeepSleepRules.java", "p.waitForRadio();", ""),
+ ("deep: waking ends airplane mode that is not on", "DeepSleepRules.java", "if (p.airplaneIsOn()) {", "if (true) {"),
+ ("deep: waking does not say airplane mode was ended", "DeepSleepRules.java", "lead = \"Airplane mode is off. \";", "lead = \"\";"),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -716,7 +738,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (TYPING_FILES, TYPING_TEST, "com.tj.linkmeter.TypingMirrorTest", TD),
           (SMS2_FILES, SMS2_TEST, "com.tj.linkmeter.SmsV2Test", S2, SMS2_JAVAC),
           (TEXTS_FILES, TEXTS_TEST, "com.tj.linkmeter.TextsLogicTest", TX, TEXTS_JAVAC),
-          (WIFI_FILES, WIFI_TEST, "com.tj.linkmeter.TabletWifiRulesTest", WF)]
+          (WIFI_FILES, WIFI_TEST, "com.tj.linkmeter.TabletWifiRulesTest", WF),
+          (DEEP_FILES, DEEP_TEST, "com.tj.linkmeter.DeepSleepRulesTest", DP)]
 only = sys.argv[1:]
 caught = missed = 0
 for suite in SUITES:

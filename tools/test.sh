@@ -25,6 +25,9 @@ java -cp "$out" com.tj.linkmeter.PhoneAddressTest || fail=1
 echo "== The tablet's Wi-Fi follows the phone's hotspot (TabletWifiRules: on only after a settled Hotspot on, off only after a settled Hotspot off or Standby, never for a switch that did not move, never when it already is so or is not known, never a Wi-Fi that carries another network, no claim without a read-back; every combination)"
 javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/TabletWifiRules.java tools/test/TabletWifiRulesTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.TabletWifiRulesTest || fail=1
+echo "== Hotspot off puts the phone to sleep, Hotspot on wakes it (DeepSleepRules: the four steps in order; location off only if it was on; airplane mode only while the Bluetooth link is up and kept only if Bluetooth stays up, otherwise switched off again, and the words say so when it cannot be; the screen is always tried; waking ends airplane mode first and never starts the hotspot in it; every combination against simulated phones)"
+javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/SwitchWords.java app/src/main/java/com/tj/linkmeter/DeepSleepRules.java tools/test/DeepSleepRulesTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.DeepSleepRulesTest || fail=1
 echo "== The Phone tab's rules (PhoneTabRules: which banner wins, the battery current in words, a switch the phone does not report is 'not known', the update only over the hotspot)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/PhoneTabRules.java tools/test/PhoneTabRulesTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.PhoneTabRulesTest || fail=1
