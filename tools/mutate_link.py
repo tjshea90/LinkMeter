@@ -223,6 +223,18 @@ F = [
  ("follow: airplane mode 'on' for any status", "FollowUp.java", "if (seen != null && is(seen.airplane, true)) {", "if (seen != null) {"),
  ("follow: giving up after silence quotes an older status", "FollowUp.java", "        last = seen;\n", "        last = seen == null ? last : seen;\n"),
  ("follow: giving up says 'still off' for a hotspot nobody can tell", "FollowUp.java", 'return notYet(last.hotspot == null ? "it does not say whether its hotspot is on" : "its status still says the hotspot is off");', 'return notYet("its status still says the hotspot is off");'),
+ ("follow: deep confirmed without airplane mode", "FollowUp.java", "is(seen.hotspot, false) && is(seen.airplane, true) && is(seen.screen, false)", "is(seen.hotspot, false) && is(seen.screen, false)"),
+ ("follow: deep confirmed with the screen on", "FollowUp.java", "is(seen.hotspot, false) && is(seen.airplane, true) && is(seen.screen, false)", "is(seen.hotspot, false) && is(seen.airplane, true)"),
+ ("follow: deep confirmed with the hotspot on", "FollowUp.java", "is(seen.hotspot, false) && is(seen.airplane, true) && is(seen.screen, false)", "is(seen.airplane, true) && is(seen.screen, false)"),
+ ("follow: deep gone after two silent looks", "FollowUp.java", "static final int GONE_AFTER_DEEP = 6;", "static final int GONE_AFTER_DEEP = 2;"),
+ ("follow: deep gives up as early as the others", "FollowUp.java", "static final long GIVE_UP_DEEP_MS = 60_000L;", "static final long GIVE_UP_DEEP_MS = 40_000L;"),
+ ("follow: Hotspot on from airplane mode gives up early", "FollowUp.java", "fromAirplane ? GIVE_UP_FROM_AIRPLANE_MS : GIVE_UP_MS", "GIVE_UP_MS"),
+ ("follow: every Hotspot on waits as long as from airplane mode", "FollowUp.java", "fromAirplane ? GIVE_UP_FROM_AIRPLANE_MS : GIVE_UP_MS", "GIVE_UP_FROM_AIRPLANE_MS"),
+ ("follow: location still on is said as off", "FollowUp.java", "seen.location.booleanValue() ? \" Location is still on.\" : \" Location is off.\"", "seen.location.booleanValue() ? \" Location is off.\" : \" Location is still on.\""),
+ ("follow: the phone's note is dropped at give-up", "FollowUp.java", "+ onOff(last.screen) + (last.location == null ? \"\" : \", location is \" + onOff(last.location)) + note());", "+ onOff(last.screen) + (last.location == null ? \"\" : \", location is \" + onOff(last.location)));"),
+ ("follow: the note's full stop doubles", "FollowUp.java", "while (n.endsWith(\".\")) {", "while (n.endsWith(\".\") && n.length() > 9999) {"),
+ ("follow: deep silence is worded like Hotspot off", "FollowUp.java", "            case \"hotspot_off_deep\":\n                what = \"its hotspot going off and the phone going to sleep\";", "            case \"hotspot_off_deep_x\":\n                what = \"its hotspot going off and the phone going to sleep\";"),
+ ("follow: the deep action is not followed", "FollowUp.java", "            case \"hotspot_off_deep\":\n                return new FollowUp(action, GIVE_UP_DEEP_MS, GONE_AFTER_DEEP);", "            case \"hotspot_off_deep_x\":\n                return new FollowUp(action, GIVE_UP_DEEP_MS, GONE_AFTER_DEEP);"),
 ]
 TROUBLE_FILES = ["Trouble.java"]
 TROUBLE_TEST = ROOT + "/tools/test/TroubleTest.java"

@@ -73,6 +73,7 @@ final class TabletWifiRules {
             case "hotspot_on":
                 return Wish.ON;
             case "hotspot_off":
+            case "hotspot_off_deep": // the hotspot, then location, airplane mode and the screen
             case "standby": // the hotspot goes off with the screen
                 return Wish.OFF;
             default: // the screen, the phone's own Wi-Fi, a restart of the hotspot, power: the hotspot stays or comes back by itself

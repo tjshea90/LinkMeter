@@ -71,6 +71,21 @@ public final class FollowUpTest {
             check(FollowUp.of(a) == null, a + " has nothing the status could show: 'Sent' stays the last word");
         }
         check(FollowUp.EVERY_MS == 3000 && FollowUp.GIVE_UP_MS == 40000 && FollowUp.GONE_AFTER == 2, "every 3 s, for about 40 s, two silent looks = gone");
+        check(FollowUp.of("hotspot_off_deep") != null, "the deep Hotspot off is followed up");
+        check(FollowUp.GIVE_UP_DEEP_MS == 60000 && FollowUp.GONE_AFTER_DEEP == 6 && FollowUp.GIVE_UP_FROM_AIRPLANE_MS == 90000,
+                "deep: 60 s and six silent looks; from airplane mode: 90 s");
+    }
+
+    /** How long each follow-up looks: 40 s, except the deep Hotspot off (60 s) and Hotspot on from airplane mode (90 s). */
+    static void patience() {
+        for (String a : FOLLOWED) {
+            check(FollowUp.of(a).giveUpMs() == 40000, a + " looks for 40 s");
+            check(FollowUp.of(a, false).giveUpMs() == 40000, a + " looks for 40 s (not from airplane mode)");
+            boolean on = a.equals("hotspot_on") || a.equals("boot_hotspot_on");
+            check(FollowUp.of(a, true).giveUpMs() == (on ? 90000 : 40000), a + " from airplane mode: " + FollowUp.of(a, true).giveUpMs());
+        }
+        check(FollowUp.of("hotspot_off_deep").giveUpMs() == 60000 && FollowUp.of("hotspot_off_deep", true).giveUpMs() == 60000, "the deep Hotspot off looks for 60 s");
+        check(FollowUp.of("nonsense", true) == null && FollowUp.of("radio_cycle", true) == null, "nothing to follow stays nothing from airplane mode");
     }
 
     static void stories() {
@@ -220,10 +235,165 @@ public final class FollowUpTest {
         }
     }
 
+    /** A status for the deep Hotspot off: hotspot, screen, airplane, location (1 on, 0 off, other = not said) and the phone's note. */
+    static FollowUp.Seen deepSeen(int hs, int scr, int air, int loc, String note) {
+        return new FollowUp.Seen(b(hs), b(scr), Boolean.FALSE, b(air), b(loc), note);
+    }
+
+    static FollowUp.Outcome runDeep(int at, FollowUp.Seen... looks) {
+        return run("hotspot_off_deep", at, looks);
+    }
+
+    static void deep() {
+        FollowUp.Outcome o;
+        // the usual night: the statuses come in the order the phone does its steps
+        o = runDeep(4, deepSeen(1, 1, 0, 1, ""), deepSeen(0, 1, 0, 1, ""), deepSeen(0, 1, 0, 0, ""), deepSeen(0, 1, 1, 0, ""), deepSeen(0, 0, 1, 0, ""));
+        check(o.ok && o.text.equals("The hotspot and the screen are off and airplane mode is on. Location is off."), "deep, the usual night: " + o.text);
+        // location still on: told, and the rest still counts
+        o = runDeep(0, deepSeen(0, 0, 1, 1, ""));
+        check(o.ok && o.text.equals("The hotspot and the screen are off and airplane mode is on. Location is still on."), "deep, location still on: " + o.text);
+        // location not said (an older status): nothing is said about it
+        o = runDeep(0, deepSeen(0, 0, 1, -1, ""));
+        check(o.ok && o.text.equals("The hotspot and the screen are off and airplane mode is on."), "deep, location not said: " + o.text);
+        // part of it is not the result: all three have to show
+        for (int hs = 0; hs <= 1; hs++) {
+            for (int scr = 0; scr <= 1; scr++) {
+                for (int air = 0; air <= 1; air++) {
+                    FollowUp.Outcome r = runDeepMaybe(deepSeen(hs, scr, air, 0, ""));
+                    boolean all = hs == 0 && scr == 0 && air == 1;
+                    check((r != null) == all, "deep: hotspot " + hs + ", screen " + scr + ", airplane " + air + (all ? " settles it" : " does not settle it"));
+                }
+            }
+        }
+        // a status that does not say a field does not show it
+        check(runDeepMaybe(deepSeen(-1, 0, 1, 0, "")) == null && runDeepMaybe(deepSeen(0, -1, 1, 0, "")) == null && runDeepMaybe(deepSeen(0, 0, -1, 0, "")) == null,
+                "deep: a field the phone does not say is not 'done'");
+        // Bluetooth is away for a few looks while the phone puts it back: five silent looks are not 'gone', the sixth is
+        o = runDeep(-1, deepSeen(1, 1, 0, 1, ""), null, null, null, null, null);
+        check(o != null, "deep: six silent looks end it");
+        FollowUp f = FollowUp.of("hotspot_off_deep");
+        boolean early = false;
+        for (int i = 0; i < 5; i++) {
+            early |= f.look(null) != null;
+        }
+        check(!early, "deep: five silent looks in a row are not 'gone' yet");
+        o = f.look(null);
+        check(o != null && o.ok && o.text.equals("The phone no longer answers, which is what its hotspot going off and the phone going to sleep looks like from here. "
+                + "The tablet cannot ask it what it did. Press Hotspot on to wake it; if that does not answer either, the phone has to be picked up."),
+                "deep, the sixth silent look: " + (o == null ? "nothing" : o.text));
+        wellFormed(o);
+        // ... and an answer in between starts the count again, and settles it when it shows the result
+        f = FollowUp.of("hotspot_off_deep");
+        for (int i = 0; i < 5; i++) {
+            f.look(null);
+        }
+        check(f.look(deepSeen(0, 1, 0, 0, "")) == null, "deep: an answer that does not show the result settles nothing");
+        for (int i = 0; i < 5; i++) {
+            check(f.look(null) == null, "deep: the silent count started again");
+        }
+        o = f.look(deepSeen(0, 0, 1, 0, ""));
+        check(o != null && o.ok && o.text.startsWith("The hotspot and the screen are off and airplane mode is on."), "deep: a late answer settles it");
+        // time over: what the last status said, and what the phone says it did
+        o = runDeep(-1, deepSeen(0, 0, 0, 0, "Airplane mode was switched off again: Bluetooth could not stay on, and then the tablet could not wake the phone."));
+        check(!o.ok && o.text.equals("The phone has not confirmed it yet: its status says the hotspot is off, airplane mode is off and the screen is off, location is off. "
+                + "The phone says: Airplane mode was switched off again: Bluetooth could not stay on, and then the tablet could not wake the phone."),
+                "deep, time over, airplane mode undone by the phone: " + o.text);
+        o = runDeep(-1, deepSeen(1, 1, 0, -1, ""));
+        check(!o.ok && o.text.equals("The phone has not confirmed it yet: its status says the hotspot is on, airplane mode is off and the screen is on."),
+                "deep, time over, nothing happened, no note: " + o.text);
+        o = runDeep(-1, deepSeen(0, 1, -1, 1, "  The screen did not stay off.  "));
+        check(!o.ok && o.text.equals("The phone has not confirmed it yet: its status says the hotspot is off, airplane mode is not known and the screen is on, location is on. "
+                + "The phone says: The screen did not stay off."), "deep, time over, note tidied: " + o.text);
+        String gone = "The phone no longer answers, which is what its hotspot going off and the phone going to sleep looks like from here. "
+                + "The tablet cannot ask it what it did. Press Hotspot on to wake it; if that does not answer either, the phone has to be picked up.";
+        o = runDeep(-1, null, null);
+        check(o.ok && o.text.equals(gone), "deep, silent when the time is over (fewer than six looks): said as that: " + o.text);
+        o = runDeep(-1, deepSeen(1, 1, 0, 1, ""), null, null);
+        check(o.ok && o.text.equals(gone), "deep, silent at the end of the time: " + o.text);
+        o = FollowUp.of("hotspot_off_deep").giveUp();
+        check(!o.ok && o.text.equals("The phone has not confirmed it yet: it does not answer right now."), "deep, no look at all: " + o.text);
+    }
+
+    /** The outcome of one look at a new follow-up, or null when it keeps looking. */
+    static FollowUp.Outcome runDeepMaybe(FollowUp.Seen s) {
+        return FollowUp.of("hotspot_off_deep").look(s);
+    }
+
+    /** Hotspot on from airplane mode is the same as Hotspot on; only the patience differs (the status is what counts). */
+    static void fromAirplane() {
+        for (String a : new String[] {"hotspot_on", "boot_hotspot_on"}) {
+            FollowUp f = FollowUp.of(a, true);
+            check(f.look(OFF) == null && f.look(null) == null, a + " from airplane mode: keeps looking");
+            FollowUp.Outcome o = f.look(ON);
+            check(o != null && o.ok && o.text.equals("The hotspot is on."), a + " from airplane mode: confirmed by the status");
+            f = FollowUp.of(a, true);
+            for (int i = 0; i < 20; i++) {
+                check(f.look(null) == null, a + " from airplane mode: silence is only silence");
+            }
+            FollowUp.Outcome g = f.giveUp();
+            check(!g.ok && g.text.equals("The phone has not confirmed it yet: it does not answer right now."), a + " from airplane mode: not confirmed: " + g.text);
+        }
+    }
+
+    /** Random stories for the deep Hotspot off, against an oracle written from the list of promises. */
+    static void randomDeep() {
+        Random rnd = new Random(77);
+        String[] notes = {"", "Location could not be switched off.", "Airplane mode was switched off again: Bluetooth could not stay on."};
+        for (int story = 0; story < 30000; story++) {
+            FollowUp f = FollowUp.of("hotspot_off_deep");
+            int silent = 0;
+            FollowUp.Seen last = null;
+            FollowUp.Outcome o = null;
+            int looks = 1 + rnd.nextInt(20);
+            for (int i = 0; i < looks && o == null; i++) {
+                FollowUp.Seen s = rnd.nextInt(3) == 0 ? null
+                        : deepSeen(rnd.nextInt(3) - 1, rnd.nextInt(3) - 1, rnd.nextInt(3) - 1, rnd.nextInt(3) - 1, notes[rnd.nextInt(notes.length)]);
+                silent = s == null ? silent + 1 : 0;
+                last = s;
+                o = f.look(s);
+                boolean shows = s != null && Boolean.FALSE.equals(s.hotspot) && Boolean.TRUE.equals(s.airplane) && Boolean.FALSE.equals(s.screen);
+                if (o != null) {
+                    wellFormed(o);
+                    check(o.ok, "deep: a look only ever settles it in the phone's favour: " + o.text);
+                    if (o.text.startsWith("The phone no longer answers")) {
+                        check(s == null && silent >= 6, "deep: 'no longer answers' only after six silent looks");
+                        check(!o.text.contains(" is off.") && !o.text.contains(" is on.") && !o.text.contains("are off."), "deep: silence claims no state: " + o.text);
+                    } else {
+                        check(shows, "deep: a claim only for a status that shows all three: " + o.text);
+                        check(s.location == null ? !o.text.contains("Location") : o.text.endsWith(s.location.booleanValue() ? "Location is still on." : "Location is off."),
+                                "deep: location told as the status shows it: " + o.text);
+                        check(o.text.startsWith("The hotspot and the screen are off and airplane mode is on."), "deep: the claim's words: " + o.text);
+                    }
+                } else {
+                    check(!shows, "deep: a status that shows it settles it at once");
+                    check(silent < 6, "deep: six silent looks settle it");
+                }
+            }
+            if (o == null) {
+                FollowUp.Outcome g = f.giveUp();
+                wellFormed(g);
+                if (g.ok) {
+                    check(last == null && silent > 0 && g.text.startsWith("The phone no longer answers"), "deep: giving up is only 'ok' when the phone stopped answering: " + g.text);
+                } else {
+                    check(g.text.startsWith("The phone has not confirmed it yet: "), "deep: not confirmed is said as that: " + g.text);
+                    check((last == null) == g.text.contains("does not answer right now"), "deep: 'does not answer' exactly when the last look was silent: " + g.text);
+                    if (last != null) {
+                        check(g.text.contains("its status says the hotspot is " + (last.hotspot == null ? "not known" : last.hotspot ? "on" : "off")), "deep: the hotspot as the last status said: " + g.text);
+                        check(last.note.isEmpty() ? !g.text.contains("The phone says") : g.text.contains("The phone says: "), "deep: the phone's note only when there is one: " + g.text);
+                    }
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) {
         which();
+        patience();
         stories();
         random();
+        deep();
+        fromAirplane();
+        randomDeep();
         System.out.println(checks + " checks, " + failed + " failed");
         if (failed > 0) {
             System.exit(1);

@@ -63,6 +63,7 @@ public final class TabletWifiRulesTest {
         eq(Wish.ON, TabletWifiRules.wishOf("hotspot_on"), "hotspot on wants Wi-Fi on");
         eq(Wish.OFF, TabletWifiRules.wishOf("hotspot_off"), "hotspot off wants Wi-Fi off");
         eq(Wish.OFF, TabletWifiRules.wishOf("standby"), "standby switches the hotspot off, so it wants Wi-Fi off");
+        eq(Wish.OFF, TabletWifiRules.wishOf("hotspot_off_deep"), "the deep Hotspot off switches the hotspot off, so it wants Wi-Fi off");
         // every other name the tablet sends: the hotspot is not switched by them
         for (String a : new String[] {"hotspot_restart", "boot_hotspot_on", "wifi_on", "wifi_off", "airplane_on", "poweroff", "reboot",
             "eco_auto_on", "eco_auto_off", "eco_on", "eco_off", "radio_cycle", "", "unknown", "HOTSPOT_ON", " hotspot_on", "hotspot_on ",
@@ -79,15 +80,17 @@ public final class TabletWifiRulesTest {
         eq(Wish.OFF, TabletWifiRules.atPress(true, "hotspot_off", Boolean.TRUE), "hotspot off with Wi-Fi on");
         eq(Wish.NONE, TabletWifiRules.atPress(true, "hotspot_off", Boolean.FALSE), "hotspot off with Wi-Fi off already");
         eq(Wish.OFF, TabletWifiRules.atPress(true, "standby", Boolean.TRUE), "standby with Wi-Fi on");
+        eq(Wish.OFF, TabletWifiRules.atPress(true, "hotspot_off_deep", Boolean.TRUE), "the deep Hotspot off with Wi-Fi on");
+        eq(Wish.NONE, TabletWifiRules.atPress(true, "hotspot_off_deep", Boolean.FALSE), "the deep Hotspot off with Wi-Fi off already");
         eq(Wish.NONE, TabletWifiRules.atPress(true, "standby", Boolean.FALSE), "standby with Wi-Fi off already");
         // the user's setting is the master switch
-        for (String a : new String[] {"hotspot_on", "hotspot_off", "standby"}) {
+        for (String a : new String[] {"hotspot_on", "hotspot_off", "hotspot_off_deep", "standby"}) {
             for (Boolean w : new Boolean[] {Boolean.TRUE, Boolean.FALSE, null}) {
                 eq(Wish.NONE, TabletWifiRules.atPress(false, a, w), "setting off: " + a + " with Wi-Fi " + w);
             }
         }
         // not known is never acted on
-        for (String a : new String[] {"hotspot_on", "hotspot_off", "standby"}) {
+        for (String a : new String[] {"hotspot_on", "hotspot_off", "hotspot_off_deep", "standby"}) {
             eq(Wish.NONE, TabletWifiRules.atPress(true, a, null), "Wi-Fi state not known: " + a);
         }
         // other switches never touch it
@@ -156,7 +159,7 @@ public final class TabletWifiRulesTest {
 
     /** Every combination of what could be true at the press and at the result, against rules written the other way round. */
     private static void everything() {
-        String[] actions = {"hotspot_on", "hotspot_off", "standby", "hotspot_restart", "wifi_on", "poweroff"};
+        String[] actions = {"hotspot_on", "hotspot_off", "hotspot_off_deep", "standby", "hotspot_restart", "wifi_on", "poweroff"};
         Boolean[] states = {Boolean.TRUE, Boolean.FALSE, null};
         long[] atPresses = {NONE, HOTSPOT};
         long[] nows = {NONE, HOTSPOT, HOME};
@@ -185,7 +188,7 @@ public final class TabletWifiRulesTest {
                                         eq(Verdict.NOTHING, v, "left alone: " + where);
                                     }
                                     // 2. only these three actions ever touch it
-                                    if (!(action.equals("hotspot_on") || action.equals("hotspot_off") || action.equals("standby"))) {
+                                    if (!(action.equals("hotspot_on") || action.equals("hotspot_off") || action.equals("hotspot_off_deep") || action.equals("standby"))) {
                                         eq(Verdict.NOTHING, v, "other action: " + where);
                                     }
                                     // 3. a state that is not known is never acted on
@@ -199,7 +202,7 @@ public final class TabletWifiRulesTest {
                                     }
                                     if (v == Verdict.SWITCH_OFF) {
                                         yes(nowState != null && nowState, "switched off only when on: " + where);
-                                        yes(action.equals("hotspot_off") || action.equals("standby"), "switched off only for Hotspot off / Standby: " + where);
+                                        yes(action.equals("hotspot_off") || action.equals("hotspot_off_deep") || action.equals("standby"), "switched off only for Hotspot off / Standby: " + where);
                                         // 5. never a Wi-Fi that carries a network that is not the hotspot's
                                         yes(netNow == NONE || (netAtPress != NONE && netNow == netAtPress), "off only when useless: " + where);
                                     }
@@ -207,7 +210,7 @@ public final class TabletWifiRulesTest {
                                     if (enabled && confirmed && action.equals("hotspot_on") && atPressState != null && !atPressState && nowState != null) {
                                         yes(Boolean.TRUE.equals(after), "Hotspot on ends with Wi-Fi on: " + where);
                                     }
-                                    if (enabled && confirmed && (action.equals("hotspot_off") || action.equals("standby")) && atPressState != null
+                                    if (enabled && confirmed && (action.equals("hotspot_off") || action.equals("hotspot_off_deep") || action.equals("standby")) && atPressState != null
                                             && atPressState && nowState != null && nowState) {
                                         boolean other = netNow != NONE && !(netAtPress != NONE && netNow == netAtPress);
                                         yes(other ? Boolean.TRUE.equals(after) : Boolean.FALSE.equals(after), "Hotspot off ends with Wi-Fi off unless on another network: " + where);
@@ -215,7 +218,7 @@ public final class TabletWifiRulesTest {
                                     }
                                     // 7. the other-network verdict only for an off wish
                                     if (v == Verdict.LEAVE_ON_OTHER_NETWORK) {
-                                        yes(action.equals("hotspot_off") || action.equals("standby"), "left on only for an off wish: " + where);
+                                        yes(action.equals("hotspot_off") || action.equals("hotspot_off_deep") || action.equals("standby"), "left on only for an off wish: " + where);
                                         yes(netNow != NONE, "left on only on a network: " + where);
                                     }
                                 }
@@ -225,7 +228,7 @@ public final class TabletWifiRulesTest {
                 }
             }
         }
-        yes(worlds == 2 * 6 * 3 * 2 * 3 * 2 * 3, "all the worlds were visited: " + worlds);
+        yes(worlds == 2 * 7 * 3 * 2 * 3 * 2 * 3, "all the worlds were visited: " + worlds);
     }
 
     private static void words() {

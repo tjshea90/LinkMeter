@@ -18,6 +18,14 @@ final class FollowUp {
     static final long GIVE_UP_MS = 40_000L;
     /** This many looks in a row without an answer, and the phone counts as out of reach (one lost answer is not that). */
     static final int GONE_AFTER = 2;
+    /**
+     * "Hotspot off" in its deep form ends in airplane mode, and Bluetooth may be away for several looks while the phone puts it back:
+     * so it takes longer to give up, and more silent looks before the phone counts as out of reach.
+     */
+    static final long GIVE_UP_DEEP_MS = 60_000L;
+    static final int GONE_AFTER_DEEP = 6;
+    /** "Hotspot on" from airplane mode waits for the radio before it starts the hotspot: the phone may need this long. */
+    static final long GIVE_UP_FROM_AIRPLANE_MS = 90_000L;
 
     /** What one status of the phone showed. A field the status left out (the phone cannot tell) is null. */
     static final class Seen {
@@ -25,12 +33,22 @@ final class FollowUp {
         final Boolean screen;
         final Boolean wifi;
         final Boolean airplane;
+        /** Location, as the phone's status says; null when it does not. */
+        final Boolean location;
+        /** What the phone says it did the last time it went to sleep ("dres"), "" when it says nothing. */
+        final String note;
 
         Seen(Boolean hotspot, Boolean screen, Boolean wifi, Boolean airplane) {
+            this(hotspot, screen, wifi, airplane, null, "");
+        }
+
+        Seen(Boolean hotspot, Boolean screen, Boolean wifi, Boolean airplane, Boolean location, String note) {
             this.hotspot = hotspot;
             this.screen = screen;
             this.wifi = wifi;
             this.airplane = airplane;
+            this.location = location;
+            this.note = note == null ? "" : note;
         }
     }
 
@@ -46,14 +64,24 @@ final class FollowUp {
     }
 
     private final String action;
+    /** How long to look before giving up, and how many silent looks in a row mean the phone is out of reach. */
+    private final long giveUpMs;
+    private final int goneAfter;
     /** Looks in a row that got no answer. */
     private int silent;
     /** Since the request, the hotspot was seen off or the phone out of reach (a restart must pass through that). */
     private boolean wentAway;
     private Seen last;
 
-    private FollowUp(String action) {
+    private FollowUp(String action, long giveUpMs, int goneAfter) {
         this.action = action;
+        this.giveUpMs = giveUpMs;
+        this.goneAfter = goneAfter;
+    }
+
+    /** How long this follow-up looks before it gives up (the caller asks {@link #giveUp} when that time is over). */
+    long giveUpMs() {
+        return giveUpMs;
     }
 
     /**
@@ -61,9 +89,20 @@ final class FollowUp {
      * restart is one of those: it has its own question, radio_cycle_state).
      */
     static FollowUp of(String action) {
+        return of(action, false);
+    }
+
+    /**
+     * The same; fromAirplane: the phone was in airplane mode when the hotspot was asked to come on. The phone then ends airplane mode,
+     * waits for its radio and only then starts the hotspot, so the wait is longer.
+     */
+    static FollowUp of(String action, boolean fromAirplane) {
         switch (action) {
+            case "hotspot_off_deep":
+                return new FollowUp(action, GIVE_UP_DEEP_MS, GONE_AFTER_DEEP);
             case "hotspot_on":
             case "boot_hotspot_on":
+                return new FollowUp(action, fromAirplane ? GIVE_UP_FROM_AIRPLANE_MS : GIVE_UP_MS, GONE_AFTER);
             case "hotspot_off":
             case "hotspot_restart":
             case "standby":
@@ -72,7 +111,7 @@ final class FollowUp {
             case "airplane_on":
             case "poweroff":
             case "reboot":
-                return new FollowUp(action);
+                return new FollowUp(action, GIVE_UP_MS, GONE_AFTER);
             default:
                 return null;
         }
@@ -89,7 +128,7 @@ final class FollowUp {
         if (seen == null || is(seen.hotspot, false)) {
             wentAway = true;
         }
-        boolean gone = silent >= GONE_AFTER;
+        boolean gone = silent >= goneAfter;
         switch (action) {
             case "hotspot_on":
             case "boot_hotspot_on":
@@ -102,6 +141,13 @@ final class FollowUp {
             case "standby":
                 if (seen != null && is(seen.hotspot, false) && is(seen.screen, false)) {
                     return new Outcome(true, "The hotspot and the screen are off.");
+                }
+                return gone ? silence() : null;
+            case "hotspot_off_deep":
+                // the hotspot, airplane mode and the screen are the result; location is told as the status shows it
+                if (seen != null && is(seen.hotspot, false) && is(seen.airplane, true) && is(seen.screen, false)) {
+                    return new Outcome(true, "The hotspot and the screen are off and airplane mode is on."
+                            + (seen.location == null ? "" : seen.location.booleanValue() ? " Location is still on." : " Location is off."));
                 }
                 return gone ? silence() : null;
             case "hotspot_restart":
@@ -150,6 +196,10 @@ final class FollowUp {
                 what = "its Wi-Fi going off";
                 then = "The tablet cannot ask it whether it did.";
                 break;
+            case "hotspot_off_deep":
+                what = "its hotspot going off and the phone going to sleep";
+                then = "The tablet cannot ask it what it did. Press Hotspot on to wake it; if that does not answer either, the phone has to be picked up.";
+                break;
             default: // hotspot_off, standby
                 what = "its hotspot going off";
                 then = "The tablet cannot ask it whether it did.";
@@ -174,6 +224,9 @@ final class FollowUp {
                 return notYet(last.hotspot == null ? "it does not say whether its hotspot is on" : "its status still says the hotspot is on");
             case "standby":
                 return notYet("its status says the hotspot is " + onOff(last.hotspot) + " and the screen is " + onOff(last.screen));
+            case "hotspot_off_deep":
+                return notYet("its status says the hotspot is " + onOff(last.hotspot) + ", airplane mode is " + onOff(last.airplane) + " and the screen is "
+                        + onOff(last.screen) + (last.location == null ? "" : ", location is " + onOff(last.location)) + note());
             case "hotspot_restart":
                 if (last.hotspot == null) {
                     return notYet("it does not say whether its hotspot is on");
@@ -188,6 +241,15 @@ final class FollowUp {
             default:
                 return notYet("it still answers");
         }
+    }
+
+    /** What the phone said it did, as the end of a sentence: ". The phone says: ...", or nothing. */
+    private String note() {
+        String n = last == null ? "" : last.note.trim();
+        while (n.endsWith(".")) {
+            n = n.substring(0, n.length() - 1).trim();
+        }
+        return n.isEmpty() ? "" : ". The phone says: " + n;
     }
 
     private static String onOff(Boolean b) {

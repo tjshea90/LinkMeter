@@ -66,7 +66,7 @@ final class Call {
     /** A status of the phone as {@link FollowUp} looks at it; null for no status (the phone did not answer). */
     static FollowUp.Seen seen(JSONObject status) {
         return status == null ? null : new FollowUp.Seen(flag(status, "hs"), flag(status, "scr"), flag(status, "wifi"),
-                flag(status, "air"));
+                flag(status, "air"), flag(status, "loc"), status.optString("dres", ""));
     }
 
     /** A yes/no field of the phone's status, or null when the phone left it out (it cannot tell, or its app is older). */
