@@ -2,6 +2,7 @@ package com.tj.linkmeter;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -13,6 +14,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -27,6 +29,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import javax.crypto.SecretKey;
 
 /**
  * Tablet only: the phone's texts. A list of conversations (with search, selecting several, pin, archive, delete, unread filter), a
@@ -61,6 +64,17 @@ final class TextsTab extends Tab {
     private BlobStore blobs;
     private TextsLocal local;
     private TextsCache cache;
+    /** Which erasing ({@link TextsVault#epoch}) the open files belong to. */
+    private long storageEpoch = -1;
+    /** The tablet's Keystore did not work, so nothing is written to the tablet (the choices last until the app closes). */
+    private boolean memoryOnly;
+
+    /** When the screen lock was last passed and when the tab was left; it lives as long as the app does, not as long as one screen. */
+    private static final TextsLock LOCK = new TextsLock();
+    /** The lock screen is up and no text is on screen. */
+    private boolean locked;
+    /** The tablet's screen-lock question was already put in this visit (it is not put again by itself after a Cancel). */
+    private boolean askedUnlock;
 
     private Sms.State state;
     private boolean v2;
@@ -232,19 +246,8 @@ final class TextsTab extends Tab {
 
     @Override
     View build() {
-        session++;
-        open = null;
-        openKey = "";
-        composing = false;
-        detailShown = false;
-        messageMode = false;
-        listPane = null;
-        searching = false;
-        selecting = false;
-        selected.clear();
-        query = "";
+        resetScreen();
         prefs = new TextsPrefs(act);
-        openStorage();
         root = new FrameLayout(act);
         root.setBackgroundColor(Ui.BG);
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
@@ -256,6 +259,36 @@ final class TextsTab extends Tab {
         });
         wide = act.getResources().getConfiguration().screenWidthDp >= WIDE_DP;
         undoBar = buildUndoBar();
+        if (mustUnlock()) {
+            locked = true;
+            showLocked(false);
+        } else {
+            locked = false;
+            begin();
+        }
+        return root;
+    }
+
+    /** A clean screen: nothing open, nothing selected, answers that are still on their way are ignored (a rebuilt tab, or the lock). */
+    private void resetScreen() {
+        session++;
+        pollGen++;
+        open = null;
+        openKey = "";
+        composing = false;
+        detailShown = false;
+        messageMode = false;
+        listPane = null;
+        searching = false;
+        selecting = false;
+        selected.clear();
+        query = "";
+        askedUnlock = false;
+    }
+
+    /** The tab, unlocked: the saved copy at once; the phone is asked in the background once the tab is shown. */
+    private void begin() {
+        openStorage();
         TextsCache.Saved<List<Sms.Thread>> saved = prefs.keepCopy() && cache != null ? cache.loadThreads() : null;
         if (saved != null) { // the saved copy at once; the phone is asked in the background
             threads.clear();
@@ -268,47 +301,165 @@ final class TextsTab extends Tab {
         } else {
             showMessage("Texts", "Checking the phone…", null, null, null, null);
         }
-        return root;
+    }
+
+    @Override
+    boolean secure() {
+        return new TextsPrefs(act).secureWindow();
     }
 
     private void openStorage() {
-        if (local != null && cache != null) {
+        if (local != null && cache != null && storageEpoch == TextsVault.epoch()) {
             return;
         }
-        try {
-            blobs = new FileBlobStore(new File(act.getFilesDir(), "texts"));
-        } catch (IOException e) {
-            blobs = new BlobStore() { // no folder to write in: the choices last until the app closes
+        storageEpoch = TextsVault.epoch();
+        TextsVault.sweepOpened(act, 60 * 60_000L);
+        BlobStore store = null;
+        SecretKey key = TextsVault.key();
+        if (key != null) {
+            try {
+                store = new SealedBlobStore(new FileBlobStore(TextsVault.dir(act)), new AesGcmSealer(key));
+            } catch (IOException ignored) {
+                // no folder to write in
+            }
+        }
+        memoryOnly = store == null;
+        if (store == null) { // nothing can be saved in a sealed form: nothing is written; the choices last until the app closes
+            store = new BlobStore() {
                 private final java.util.Map<String, byte[]> m = new java.util.HashMap<>();
 
                 @Override
-                public byte[] read(String name) {
+                public synchronized byte[] read(String name) {
                     return m.get(name);
                 }
 
                 @Override
-                public void write(String name, byte[] data) {
+                public synchronized void write(String name, byte[] data) {
                     m.put(name, data);
                 }
 
                 @Override
-                public void delete(String name) {
+                public synchronized void delete(String name) {
                     m.remove(name);
                 }
 
                 @Override
-                public List<String> names() {
+                public synchronized List<String> names() {
                     return new ArrayList<>(m.keySet());
                 }
             };
         }
+        blobs = store;
         local = new TextsLocal(blobs);
         cache = new TextsCache(blobs, System::currentTimeMillis, 30, 80);
+    }
+
+    // ------------------------------------------------------------ the Texts lock
+
+    /** Forget that the screen lock was passed (the next visit asks again). For the pictures made by tools/uipreview. */
+    static void relock() {
+        LOCK.relock();
+    }
+
+    private boolean mustUnlock() {
+        return prefs != null && LOCK.needsUnlock(prefs.lock(), TextsVault.deviceSecure(act), SystemClock.elapsedRealtime());
+    }
+
+    /** The lock screen. {@code cannotAsk}: the tablet did not show its screen-lock question; the way out is to switch the lock off. */
+    private void showLocked(boolean cannotAsk) {
+        messageMode = true;
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        int pad = Ui.dp(act, 24);
+        col.setPadding(pad, pad * 3, pad, pad);
+        IconButton lockIcon = new IconButton(act, Icons.Kind.LOCK, Ui.ACCENT, 0x264C8DFF, "Locked", null);
+        lockIcon.setScale(0.42f);
+        col.addView(lockIcon, new LinearLayout.LayoutParams(Ui.dp(act, 92), Ui.dp(act, 92)));
+        TextView head = Ui.text(act, "Texts are locked", 22, Ui.FG, true);
+        head.setGravity(Gravity.CENTER);
+        col.addView(head, Ui.lp(act, 18));
+        TextView t = Ui.text(act, cannotAsk
+                ? "This tablet did not show its screen-lock question, so LinkMeter cannot check that it is you."
+                : "Unlock with this tablet's screen lock to see your texts. Nobody can read them here until you do.", 15, Ui.DIM, false);
+        t.setGravity(Gravity.CENTER);
+        col.addView(t, Ui.lp(act, 10));
+        col.addView(Ui.primary(act, cannotAsk ? "Try again" : "Unlock", v -> askUnlock()), Ui.lp(act, 18));
+        if (cannotAsk) {
+            col.addView(Ui.button(act, "Switch the Texts lock off", v -> {
+                prefs.setLock(false);
+                unlockedNow();
+            }), Ui.lp(act, 8));
+        }
+        root.removeAllViews();
+        root.addView(Ui.scroll(act, col), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    /** Puts the tablet's own screen-lock question. A Cancel leaves the lock screen up with its Unlock button. */
+    private void askUnlock() {
+        boolean asked = act.confirmDeviceCredential("Texts", "Unlock to see your texts.", passed -> {
+            if (passed && locked) {
+                unlockedNow();
+            }
+        });
+        if (!asked && locked) {
+            showLocked(true);
+        }
+    }
+
+    private void unlockedNow() {
+        LOCK.unlocked(SystemClock.elapsedRealtime());
+        locked = false;
+        restart();
+    }
+
+    /** The screen from the start: the saved copy if there is one, then the phone is asked. */
+    private void restart() {
+        resetScreen();
+        root.removeAllViews();
+        threads.clear();
+        begin();
+        if (shown) {
+            startWork();
+        }
+    }
+
+    /** Everything on screen goes and the lock screen takes its place (the tab was away longer than the lock allows). */
+    private void lockNow() {
+        TextsViews.closeAll();
+        hideKeyboard();
+        if (open != null) {
+            open.pause();
+        }
+        resetScreen();
+        hideUndoNow();
+        threads.clear();
+        items = new ArrayList<>();
+        rows.clear();
+        hits.clear();
+        act.backHandler = null;
+        act.setTabBarVisible(true);
+        locked = true;
+        showLocked(false);
     }
 
     @Override
     void onShow() {
         shown = true;
+        if (!locked && mustUnlock()) {
+            lockNow();
+        }
+        if (locked) {
+            if (!askedUnlock) {
+                askedUnlock = true;
+                askUnlock();
+            }
+            return;
+        }
+        startWork();
+    }
+
+    private void startWork() {
         loadState();
         act.ui.removeCallbacks(tick);
         act.ui.postDelayed(tick, 30_000);
@@ -317,6 +468,7 @@ final class TextsTab extends Tab {
     @Override
     void onHide() {
         shown = false;
+        LOCK.left(SystemClock.elapsedRealtime());
         session++;
         pollGen++;
         act.ui.removeCallbacks(tick);
@@ -1231,12 +1383,12 @@ final class TextsTab extends Tab {
         if (list.isEmpty()) {
             return;
         }
-        new AlertDialog.Builder(act)
+        TextsViews.show(new AlertDialog.Builder(act)
                 .setTitle(list.size() == 1 ? "Delete this conversation?" : "Delete " + list.size() + " conversations?")
                 .setMessage("It is removed from this tablet. LinkMeter also asks the phone to delete it, but a phone usually lets only its "
                         + "own Messages app do that; if it refuses, the texts stay on the phone and only disappear here.")
                 .setPositiveButton("Delete", (d, w) -> deleteConversations(list))
-                .setNegativeButton("Cancel", null).show();
+                .setNegativeButton("Cancel", null));
     }
 
     /** Hides the conversations here at once, then asks the phone to delete them and says what it did. */
@@ -1404,7 +1556,10 @@ final class TextsTab extends Tab {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(Ui.dp(act, 20), Ui.dp(act, 8), Ui.dp(act, 20), Ui.dp(act, 8));
         col.addView(new Ui.Toggle(act, "Keep a saved copy on this tablet", "The tab opens at once and still shows your texts when the phone is out of reach. "
-                + "Switch off to keep nothing here.", prefs.keepCopy(), (b, on) -> {
+                + (memoryOnly
+                ? "This tablet's Keystore does not work, so nothing is written to the tablet: the copy lasts until the app is closed."
+                : "The copy is encrypted with a key that stays inside this tablet's Keystore. Switch off to keep nothing here."),
+                prefs.keepCopy(), (b, on) -> {
             prefs.setKeepCopy(on);
             if (!on && cache != null) {
                 cache.clear();
@@ -1415,20 +1570,63 @@ final class TextsTab extends Tab {
                     prefs.setHidePreviews(on);
                     renderList();
                 }).view, Ui.lp(act, 6));
+        col.addView(new Ui.Toggle(act, "Lock Texts with the screen lock", TextsVault.deviceSecure(act)
+                ? "Asks for this tablet's screen lock (PIN, pattern, password or fingerprint) when you open Texts after being away for more than "
+                + TextsLock.GRACE_MS / 60_000L + " minutes."
+                : "This tablet has no screen lock yet. Set a PIN, pattern or password in Android's Settings first.",
+                prefs.lock(), (b, on) -> setLockOption(b, on)).view, Ui.lp(act, 6));
+        col.addView(new Ui.Toggle(act, "Hide Texts from screenshots", "No screenshots or screen recordings of the Texts tab, and a blank picture of it "
+                + "in the recent apps list.", prefs.secureWindow(), (b, on) -> {
+            prefs.setSecureWindow(on);
+            act.applySecure();
+        }).view, Ui.lp(act, 6));
+        col.addView(Ui.hint(act, "Texts reach this tablet from the phone over the phone's own hotspot. Ordinary texts (SMS and MMS) are not end-to-end "
+                + "encrypted by any app: the phone company can read them. RCS chats stay inside Google Messages."), Ui.lp(act, 12));
         col.addView(Ui.button(act, "Clear the saved copy now", v -> {
             if (cache != null) {
                 cache.clear();
             }
             Toast.makeText(act, "The saved copy was cleared.", Toast.LENGTH_SHORT).show();
         }), Ui.lp(act, 12));
-        col.addView(Ui.button(act, "Forget my pins, archive and drafts", v -> new AlertDialog.Builder(act)
+        col.addView(Ui.button(act, "Forget my pins, archive and drafts", v -> TextsViews.show(new AlertDialog.Builder(act)
                 .setTitle("Forget them?")
                 .setMessage("Pinned, muted and archived conversations, drafts, and the conversations you deleted on this tablet come back as the phone has them.")
                 .setPositiveButton("Forget", (d, w) -> {
                     local.forgetAll();
                     renderList();
-                }).setNegativeButton("Cancel", null).show()), Ui.lp(act, 8));
-        new AlertDialog.Builder(act).setTitle("Texts settings").setView(Ui.scroll(act, col)).setPositiveButton("Done", null).show();
+                }).setNegativeButton("Cancel", null))), Ui.lp(act, 8));
+        col.addView(Ui.danger(act, "Erase everything saved here", v -> TextsViews.show(new AlertDialog.Builder(act)
+                .setTitle("Erase everything saved here?")
+                .setMessage("The saved copy of your texts, your pins, archive, drafts and hidden conversations, and the key that protects them are "
+                        + "erased from this tablet. Nothing is deleted on the phone; the texts load again from it.")
+                .setPositiveButton("Erase", (d, w) -> eraseSaved()).setNegativeButton("Cancel", null))), Ui.lp(act, 8));
+        TextsViews.show(new AlertDialog.Builder(act).setTitle("Texts settings").setView(Ui.scroll(act, col)).setPositiveButton("Done", null));
+    }
+
+    /** The lock switch: it needs a screen lock to ask for, and it asks the next time Texts is opened after being away. */
+    private void setLockOption(CompoundButton b, boolean on) {
+        if (!on) {
+            prefs.setLock(false);
+            return;
+        }
+        if (!TextsVault.deviceSecure(act)) {
+            b.setChecked(false);
+            Toast.makeText(act, "This tablet has no screen lock yet. Set a PIN, pattern or password in Android's Settings, then switch this on.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        prefs.setLock(true);
+        LOCK.unlocked(SystemClock.elapsedRealtime()); // you are here now: it asks after you have been away
+    }
+
+    /** Erases the saved copy, the tablet's choices and the key; the texts are then loaded from the phone again. */
+    private void eraseSaved() {
+        TextsVault.wipe(act);
+        local = null;
+        cache = null;
+        blobs = null;
+        Toast.makeText(act, "Everything saved here was erased.", Toast.LENGTH_SHORT).show();
+        restart();
     }
 
     // ------------------------------------------------------------ the undo strip

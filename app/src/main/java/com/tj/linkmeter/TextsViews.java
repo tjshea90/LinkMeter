@@ -97,6 +97,41 @@ final class TextsViews {
                 actions[i].run();
             }
         });
-        b.show();
+        show(b);
+    }
+
+    private static final java.util.List<java.lang.ref.WeakReference<AlertDialog>> OPEN = new java.util.ArrayList<>();
+
+    /**
+     * Every question and menu of the Texts screens is shown through here, so that all of them can be closed at once when the Texts
+     * lock engages (a question left open while the app was away must not stay on top of the lock screen).
+     */
+    static AlertDialog show(AlertDialog.Builder b) {
+        AlertDialog d = b.show();
+        synchronized (OPEN) {
+            for (java.util.Iterator<java.lang.ref.WeakReference<AlertDialog>> it = OPEN.iterator(); it.hasNext(); ) {
+                AlertDialog o = it.next().get();
+                if (o == null || !o.isShowing()) {
+                    it.remove();
+                }
+            }
+            OPEN.add(new java.lang.ref.WeakReference<>(d));
+        }
+        return d;
+    }
+
+    /** Closes every question and menu that {@link #show} put up. */
+    static void closeAll() {
+        java.util.List<java.lang.ref.WeakReference<AlertDialog>> all;
+        synchronized (OPEN) {
+            all = new java.util.ArrayList<>(OPEN);
+            OPEN.clear();
+        }
+        for (java.lang.ref.WeakReference<AlertDialog> r : all) {
+            AlertDialog d = r.get();
+            if (d != null && d.isShowing()) {
+                d.dismiss();
+            }
+        }
     }
 }

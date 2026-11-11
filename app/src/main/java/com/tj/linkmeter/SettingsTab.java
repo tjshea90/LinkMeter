@@ -375,9 +375,11 @@ final class SettingsTab extends Tab {
         new AlertDialog.Builder(act)
                 .setTitle("Make a new secret?")
                 .setMessage("The phone will no longer know this tablet until they are paired again: on the phone tap Pair tablet "
-                        + "(with the tablet on the phone's hotspot), then open " + HOME + " here.")
+                        + "(with the tablet on the phone's hotspot), then open " + HOME + " here. The saved copy of the phone's texts on "
+                        + "this tablet is erased too (it may be another phone next).")
                 .setPositiveButton("New secret", (d, w) -> {
                     Cfg.resetToken(act);
+                    TextsVault.wipe(act);
                     BtLink.closeSoon(); // its connection was made with the old secret
                     paintLink(); // and so was its "Ready"
                     Toast.makeText(act, "Done. On the phone tap Pair tablet, then open " + HOME + ".", Toast.LENGTH_LONG).show();

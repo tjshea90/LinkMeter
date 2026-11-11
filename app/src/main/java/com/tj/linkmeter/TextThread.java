@@ -562,10 +562,10 @@ final class TextThread {
             }
             final List<Sms.Thread> one = new ArrayList<>();
             one.add(t);
-            new AlertDialog.Builder(act).setTitle("Delete this conversation?")
+            TextsViews.show(new AlertDialog.Builder(act).setTitle("Delete this conversation?")
                     .setMessage("It is removed from this tablet. LinkMeter also asks the phone to delete it, but a phone usually lets only its "
                             + "own Messages app do that; if it refuses, the texts stay on the phone and only disappear here.")
-                    .setPositiveButton("Delete", (d, w) -> tab.deleteConversations(one)).setNegativeButton("Cancel", null).show();
+                    .setPositiveButton("Delete", (d, w) -> tab.deleteConversations(one)).setNegativeButton("Cancel", null));
         });
         TextsViews.menu(act, null, labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
     }
@@ -642,10 +642,10 @@ final class TextThread {
         if (list.isEmpty()) {
             return;
         }
-        new AlertDialog.Builder(act).setTitle(list.size() == 1 ? "Delete this message?" : "Delete " + list.size() + " messages?")
+        TextsViews.show(new AlertDialog.Builder(act).setTitle(list.size() == 1 ? "Delete this message?" : "Delete " + list.size() + " messages?")
                 .setMessage("They are removed from this tablet. LinkMeter also asks the phone to delete them, but a phone usually lets only its "
                         + "own Messages app do that; if it refuses, they stay on the phone and only disappear here.")
-                .setPositiveButton("Delete", (d, w) -> doDelete(list)).setNegativeButton("Cancel", null).show();
+                .setPositiveButton("Delete", (d, w) -> doDelete(list)).setNegativeButton("Cancel", null));
     }
 
     private void doDelete(final List<Sms.Msg> list) {
@@ -833,13 +833,13 @@ final class TextThread {
             Toast.makeText(act, "Pictures and files can't be sent again from here. Attach them and send a new text.", Toast.LENGTH_LONG).show();
             return;
         }
-        new AlertDialog.Builder(act).setTitle("Send again?").setMessage(m.body)
+        TextsViews.show(new AlertDialog.Builder(act).setTitle("Send again?").setMessage(m.body)
                 .setPositiveButton("Send again", (d, w) -> {
                     temps.remove(m);
                     input.setText(m.body);
                     send();
                 }).setNeutralButton("Delete", (d, w) -> doDelete(java.util.Collections.singletonList(m)))
-                .setNegativeButton("Cancel", null).show();
+                .setNegativeButton("Cancel", null));
     }
 
     // ------------------------------------------------------------ one picture or file
@@ -889,9 +889,9 @@ final class TextThread {
         String who = m.mine ? "To: " + (addresses.size() > 1 ? addresses.size() + " people" : name) : "From: " + (m.address.isEmpty() ? name : PhoneNumbers.pretty(m.address));
         String kind = m.mms || !m.parts.isEmpty() ? "Picture message" : "Text message";
         String state = m.mine ? stateText(m) : "";
-        new AlertDialog.Builder(act).setTitle("Message details")
+        TextsViews.show(new AlertDialog.Builder(act).setTitle("Message details")
                 .setMessage(who + "\n" + when + "\n" + kind + (state.isEmpty() ? "" : "\n" + state))
-                .setPositiveButton("Close", null).show();
+                .setPositiveButton("Close", null));
     }
 
     // ------------------------------------------------------------ the bubbles

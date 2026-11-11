@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     private static final int REQ_NOTIFICATIONS = 8;
     /** Also asked by the tablet's Settings tab. */
     static final int REQ_BLUETOOTH = 9;
+    private static final int REQ_UNLOCK = 10;
 
     /** Shared with the tabs. */
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -242,6 +243,7 @@ public class MainActivity extends Activity {
             root = buildChooser();
         }
         setContentView(root);
+        applySecure();
         if (cur != null && resumed) {
             cur.onShow();
         }
@@ -369,6 +371,7 @@ public class MainActivity extends Activity {
         for (int j = 0; j < bar.length; j++) {
             bar[j].setActive(j == i);
         }
+        applySecure();
         if (start && resumed) {
             cur.onShow();
         }
@@ -481,6 +484,50 @@ public class MainActivity extends Activity {
             PickResult cb = pickResult;
             pickResult = null;
             cb.onResult(result, data);
+        } else if (req == REQ_UNLOCK && unlockResult != null) {
+            UnlockResult cb = unlockResult;
+            unlockResult = null;
+            cb.onResult(result == RESULT_OK);
+        }
+    }
+
+    /** Told when the tablet's screen-lock question (started by {@link #confirmDeviceCredential}) is answered. */
+    interface UnlockResult {
+        void onResult(boolean passed);
+    }
+
+    private UnlockResult unlockResult;
+
+    /**
+     * Asks for the tablet's own screen lock (PIN, pattern, password or fingerprint, whichever the tablet offers) and tells the callback
+     * whether it was passed. Returns false, and never calls the callback, when the tablet has no screen lock or cannot show the question.
+     */
+    boolean confirmDeviceCredential(String title, String text, UnlockResult callback) {
+        android.app.KeyguardManager km = (android.app.KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+        Intent i = km == null ? null : km.createConfirmDeviceCredentialIntent(title, text);
+        if (i == null) {
+            return false;
+        }
+        unlockResult = callback;
+        try {
+            startActivityForResult(i, REQ_UNLOCK);
+            return true;
+        } catch (RuntimeException e) {
+            unlockResult = null;
+            return false;
+        }
+    }
+
+    /**
+     * The window of a tab can be kept out of screenshots, screen recordings and the recent apps list ({@link Tab#secure}). The flag is
+     * only changed when the tab in front changes, never when the app is paused: the recent apps picture is taken after the pause.
+     */
+    void applySecure() {
+        boolean on = cur != null && cur.secure();
+        if (on) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
         }
     }
 

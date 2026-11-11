@@ -777,7 +777,153 @@ public final class TextsLogicTest {
         yes(!l.isHidden("s1") && l.isHidden("s2"), "unhidden");
     }
 
+    // ------------------------------------------------------------------ sealed storage and the lock
+
+    static javax.crypto.SecretKey key(int seed) {
+        byte[] k = new byte[32];
+        new Random(seed).nextBytes(k);
+        return new javax.crypto.spec.SecretKeySpec(k, "AES");
+    }
+
+    static byte[] hex(String s) {
+        byte[] b = new byte[s.length() / 2];
+        for (int i = 0; i < b.length; i++) {
+            b[i] = (byte) Integer.parseInt(s.substring(2 * i, 2 * i + 2), 16);
+        }
+        return b;
+    }
+
+    static String hexOf(byte[] b) {
+        StringBuilder sb = new StringBuilder();
+        for (byte x : b) {
+            sb.append(String.format("%02x", x & 0xff));
+        }
+        return sb.toString();
+    }
+
+    static boolean throwsIo(Callable c) {
+        try {
+            c.call();
+            return false;
+        } catch (IOException e) {
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    interface Callable {
+        void call() throws Exception;
+    }
+
+    static void sealed() throws Exception {
+        // the standard test vector for AES-GCM (NIST test case 4: key, 96-bit IV, 20 bytes of AAD, 60 bytes of text): what we would
+        // store for it is IV, ciphertext, tag, and we open it
+        byte[] kat = hex("cafebabefacedbaddecaf888"
+                + "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091"
+                + "5bc94fbc3221a5db94fae95ae7121a47");
+        byte[] katKey = hex("feffe9928665731c6d6a8f9467308308");
+        AesGcmSealer std = new AesGcmSealer(new javax.crypto.spec.SecretKeySpec(katKey, "AES"));
+        byte[] katAad = hex("feedfacedeadbeeffeedfacedeadbeefabaddad2");
+        eq("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39",
+                hexOf(std.open(kat, katAad)), "AES-GCM known answer");
+        yes(throwsIo(() -> std.open(kat, new byte[0])), "the same bytes with other AAD do not open");
+        // what seal() writes is IV, ciphertext, tag, in that order: the platform cipher opens it by itself
+        byte[] mine = std.seal("hello".getBytes(StandardCharsets.UTF_8), katAad);
+        eq(12 + 5 + 16, mine.length, "IV + text + tag");
+        javax.crypto.Cipher plainCipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        plainCipher.init(javax.crypto.Cipher.DECRYPT_MODE, new javax.crypto.spec.SecretKeySpec(katKey, "AES"),
+                new javax.crypto.spec.GCMParameterSpec(128, Arrays.copyOfRange(mine, 0, 12)));
+        plainCipher.updateAAD(katAad);
+        eq("hello", new String(plainCipher.doFinal(mine, 12, mine.length - 12), StandardCharsets.UTF_8), "the layout is IV, ciphertext, tag");
+
+        Mem mem = new Mem();
+        SealedBlobStore s = new SealedBlobStore(mem, new AesGcmSealer(key(1)));
+        for (int n : new int[] {0, 1, 100, 100_000}) {
+            byte[] data = new byte[n];
+            new Random(n).nextBytes(data);
+            s.write("b", data);
+            yes(Arrays.equals(data, s.read("b")), "a sealed blob of " + n + " bytes reads back");
+        }
+        byte[] secret = "dinner at seven with Alex, code 482913".getBytes(StandardCharsets.UTF_8);
+        s.write("note.json", secret);
+        byte[] stored = mem.m.get("note.json");
+        yes(stored[0] == SealedBlobStore.MAGIC && stored[1] == SealedBlobStore.VERSION, "stored with the sealed header");
+        yes(!new String(stored, StandardCharsets.ISO_8859_1).contains("Alex") && !new String(stored, StandardCharsets.ISO_8859_1).contains("482913"),
+                "nothing readable is stored");
+        s.write("again.json", secret);
+        yes(!Arrays.equals(mem.m.get("note.json"), mem.m.get("again.json")), "the same text is sealed differently each time (a new IV)");
+
+        // damage anywhere is noticed
+        for (int pos : new int[] {2, 5, 13, 14, stored.length - 1, stored.length - 8}) {
+            byte[] bad = stored.clone();
+            bad[pos] ^= 0x01;
+            mem.m.put("bad", bad);
+            yes(throwsIo(() -> s.read("bad")), "a changed byte at " + pos + " is noticed");
+        }
+        byte[] cut = Arrays.copyOf(stored, stored.length - 3);
+        mem.m.put("cut", cut);
+        yes(throwsIo(() -> s.read("cut")), "a cut blob is noticed");
+        mem.m.put("junk", new byte[] {1, 2, 3, 4, 5});
+        yes(throwsIo(() -> s.read("junk")), "something that is neither sealed nor JSON is refused");
+        // bound to its name
+        mem.m.put("other.json", stored.clone());
+        yes(throwsIo(() -> s.read("other.json")), "a blob copied under another name does not open");
+        // another key
+        SealedBlobStore wrong = new SealedBlobStore(mem, new AesGcmSealer(key(2)));
+        yes(throwsIo(() -> wrong.read("note.json")), "another key does not open it");
+        // before sealing existed: plain JSON is read, and the next write seals it
+        mem.m.put("old.json", "{\"pinned\":{\"k\":5}}".getBytes(StandardCharsets.UTF_8));
+        eq("{\"pinned\":{\"k\":5}}", new String(s.read("old.json"), StandardCharsets.UTF_8), "plain JSON from before is still read");
+        s.write("old.json", "{}".getBytes(StandardCharsets.UTF_8));
+        yes(mem.m.get("old.json")[0] == SealedBlobStore.MAGIC, "and is sealed by the next write");
+        yes(s.read("nothing") == null, "no blob, null");
+
+        // the tablet's choices and saved copy on top of it
+        SealedBlobStore store = new SealedBlobStore(new Mem(), new AesGcmSealer(key(3)));
+        TextsLocal l = new TextsLocal(store);
+        l.setPinned("k", true, 7);
+        l.setDraft("k", "secret draft");
+        l.flush();
+        yes(new TextsLocal(store).isPinned("k") && new TextsLocal(store).draft("k").equals("secret draft"), "the choices survive a restart through the seal");
+        TextsCache cache = new TextsCache(store, () -> 5L, 5, 5);
+        List<Sms.Thread> ts = new ArrayList<>();
+        ts.add(thread("5551", "Alex", "hello", 10, true, 4));
+        cache.saveThreads(ts);
+        eq("Alex", cache.loadThreads().value.get(0).name, "the saved copy survives it too");
+        // a key that is gone (a restored backup, a new tablet): the choices and the copy start empty, nothing crashes
+        SealedBlobStore lost = new SealedBlobStore(((SealedBlobStore) store).inner(), new AesGcmSealer(key(9)));
+        yes(!new TextsLocal(lost).isPinned("k"), "without the key the choices start empty");
+        yes(new TextsCache(lost, () -> 5L, 5, 5).loadThreads() == null, "and so does the saved copy");
+    }
+
+    static void lock() {
+        TextsLock k = new TextsLock();
+        yes(k.needsUnlock(true, true, 1000), "the first time it asks");
+        yes(k.needsUnlock(true, true, 1001), "and keeps asking until it is unlocked");
+        yes(!k.needsUnlock(false, true, 1002), "never when the lock is off");
+        yes(!k.needsUnlock(true, false, 1002), "never when the tablet has no screen lock to ask for");
+        k.unlocked(2000);
+        yes(!k.needsUnlock(true, true, 2001), "unlocked: it does not ask");
+        yes(!k.needsUnlock(true, true, 900_000), "and does not ask while the tab stays on screen, however long");
+        k.left(10_000);
+        yes(!k.needsUnlock(true, true, 10_000 + TextsLock.GRACE_MS), "back within the short while: still unlocked");
+        k.left(20_000);
+        k.left(30_000); // leaving twice does not move the time
+        yes(k.needsUnlock(true, true, 20_000 + TextsLock.GRACE_MS + 1), "away for longer: it asks again");
+        k.unlocked(100_000);
+        k.relock();
+        yes(k.needsUnlock(true, true, 100_001), "relocked at once");
+        k.unlocked(200_000);
+        k.left(200_100);
+        yes(!k.needsUnlock(true, true, 200_200), "a quick look at another tab does not ask");
+        k.left(200_300);
+        yes(k.needsUnlock(true, true, 200_300 + TextsLock.GRACE_MS + 5), "but a long one does");
+    }
+
     public static void main(String[] args) throws Exception {
+        sealed();
+        lock();
         merges();
         files();
         lengths();

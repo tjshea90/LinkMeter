@@ -40,6 +40,11 @@ abstract class Tab {
     /** The tab left the screen or the app went to the background. Stop all work here. */
     void onHide() {}
 
+    /** Keep this tab out of screenshots, screen recordings and the recent apps list while it is the one in front? */
+    boolean secure() {
+        return false;
+    }
+
     /** Somebody touched the tablet (any touch, key or trackball event of the app) while this tab is the current one. */
     void onUserInteraction() {}
 }
