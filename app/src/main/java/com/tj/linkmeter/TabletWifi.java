@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Network;
 import android.net.wifi.WifiManager;
-import android.os.SystemClock;
 import android.provider.Settings;
 import java.io.IOException;
 import java.util.function.BooleanSupplier;
@@ -28,9 +27,15 @@ final class TabletWifi {
         void done(TabletWifiRules.Way way);
     }
 
-    /** How long a switch that was taken may need before the state shows it. */
-    private static final long SETTLE_MS = 6_000L;
+    /** How long a switch that was taken may need before the state shows it: this many looks, one every {@link #LOOK_MS}. */
+    private static final int LOOKS = 24;
     private static final long LOOK_MS = 250L;
+
+    /**
+     * Tests only (tools/uipreview): true stands for an Android that refuses to switch the Wi-Fi, as Android 10 does for this app,
+     * whatever the test's pretend Wi-Fi manager would do. Never set in the app.
+     */
+    static volatile boolean refusedForTest;
 
     private TabletWifi() {}
 
@@ -90,6 +95,9 @@ final class TabletWifi {
     /** The direct call. On Android 10 and newer this answers false for this app; it is kept for the builds where it does not. */
     @SuppressWarnings("deprecation")
     private static boolean direct(Context app, boolean on) {
+        if (refusedForTest) {
+            return false;
+        }
         try {
             WifiManager wm = (WifiManager) app.getSystemService(Context.WIFI_SERVICE);
             return wm != null && wm.setWifiEnabled(on) && settled(app, on);
@@ -100,6 +108,9 @@ final class TabletWifi {
 
     /** Through Shizuku, if it runs on this tablet and LinkMeter is allowed in it. Never asks for anything. */
     private static boolean viaShizuku(Context app, boolean on) {
+        if (refusedForTest) {
+            return false;
+        }
         try {
             if (!Priv.ready()) {
                 return false;
@@ -114,13 +125,9 @@ final class TabletWifi {
 
     /** Did the state follow? Looks for a few seconds: a switch that was taken shows after a moment, one that was not never does. */
     private static boolean settled(Context app, boolean on) {
-        long end = SystemClock.elapsedRealtime() + SETTLE_MS;
-        while (true) {
+        for (int i = 0; i < LOOKS; i++) {
             if (already(app, on)) {
                 return true;
-            }
-            if (SystemClock.elapsedRealtime() >= end) {
-                return false;
             }
             try {
                 Thread.sleep(LOOK_MS);
@@ -129,6 +136,7 @@ final class TabletWifi {
                 return false;
             }
         }
+        return already(app, on);
     }
 
     /**

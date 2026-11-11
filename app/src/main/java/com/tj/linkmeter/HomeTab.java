@@ -90,6 +90,8 @@ final class HomeTab extends Tab {
      */
     private TabletWifiRules.Wish wifiWish = TabletWifiRules.Wish.NONE;
     private long wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
+    /** The card's "Switch Wi-Fi on" is working on it (Shizuku can take a few seconds). */
+    private boolean wifiBusy;
 
     /** What one poll found. Built on the worker thread, shown on the UI thread. */
     private static final class Snap {
@@ -400,6 +402,8 @@ final class HomeTab extends Tab {
         } else if (s.onWifi) {
             mWifi.set("Tablet Wi-Fi to phone", "Connected", "this tablet doesn't report the signal",
                     -1, -1f, Ui.GREY);
+        } else if (Boolean.FALSE.equals(TabletWifi.on(act))) {
+            mWifi.set("Tablet Wi-Fi to phone", "Off", "the tablet's Wi-Fi is switched off", -1, -1f, Ui.GREY);
         } else {
             // what the phone itself says about its hotspot, when it answered another way; nothing is guessed from the silence
             Boolean hs = s.phone == null ? null : Call.flag(s.phone, "hs");
@@ -470,7 +474,16 @@ final class HomeTab extends Tab {
         if (s.phone != null && Reach.BLUETOOTH.equals(s.via)) {
             Boolean hs = Call.flag(s.phone, "hs");
             banner.setVisibility(View.VISIBLE);
-            if (hs != null && hs) {
+            if (hs != null && hs && Boolean.FALSE.equals(TabletWifi.on(act))) {
+                // The tablet cannot join anything while its own Wi-Fi is off: "joins by itself" would be wrong. Say so, offer the switch.
+                bannerTitle.setText("The hotspot is on, but the tablet's Wi-Fi is off");
+                bannerText.setText("The tablet cannot join the phone's hotspot while its own Wi-Fi is off. Until it is on, the phone is "
+                        + "reached over Bluetooth, which carries the switches and the status but no internet, files or screen.");
+                bannerMain.setText("Switch Wi-Fi on");
+                bannerMain.setOnClickListener(v -> switchWifiOn());
+                bannerMain.setEnabled(!wifiBusy);
+                bannerOther.setVisibility(View.GONE);
+            } else if (hs != null && hs) {
                 // On a Wi-Fi network (very likely the hotspot itself) it is only this question that did not get through there:
                 // "has not joined it yet" would be a guess, and usually a wrong one.
                 bannerTitle.setText(s.onWifi ? "The phone answered over Bluetooth this time"
@@ -718,6 +731,23 @@ final class HomeTab extends Tab {
                 // the tablet needs a few seconds to find the hotspot and join it: look again when it has had them
                 act.ui.postDelayed(this::askNow, 10000);
             }
+        });
+    }
+
+    /** The card's "Switch Wi-Fi on": the same switch as after "Hotspot on", for a hotspot that is on while the tablet's Wi-Fi is off. */
+    private void switchWifiOn() {
+        if (wifiBusy) {
+            return;
+        }
+        touched();
+        wifiBusy = true;
+        bannerMain.setEnabled(false);
+        setAction("Switching the tablet's Wi-Fi on…", true);
+        TabletWifi.set(act, true, act::inFront, way -> {
+            wifiBusy = false;
+            setAction(TabletWifiRules.words(TabletWifiRules.Verdict.SWITCH_ON, way), TabletWifiRules.good(true, way));
+            askNow();
+            act.ui.postDelayed(this::askNow, 10000); // the tablet needs a few seconds to find the hotspot and join it
         });
     }
 
