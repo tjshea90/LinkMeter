@@ -127,9 +127,12 @@ echo "== Texts, pure parts (phone-number keys, merging the phone's messages with
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/PhoneNumbers.java $FM/Sms.java $FM/SmsMerge.java $FM/MmsPdu.java $FM/MmsFit.java $FM/TextTime.java tools/test/SmsPureTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.SmsPureTest || fail=1
 echo "== Texts protocol (the real server code and the real client over a real socket against a fake phone: privacy, permissions, lists, threads, sending, files, the outbox log)"
-javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/SmsJson.java $FM/SmsOutbox.java $FM/SmsStaging.java $FM/SmsApi.java $FM/SmsHttp.java $FM/RemoteSms.java \
+javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/ChangeGate.java $FM/SmsJson.java $FM/SmsOutbox.java $FM/SmsStaging.java $FM/SmsApi.java $FM/SmsHttp.java $FM/RemoteSms.java \
   tools/test/SmsProtocolTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.SmsProtocolTest || fail=1
+echo "== Texts protocol 2 (waiting for news instead of asking every 3 s, paging back through a conversation, search, delete and mark read, over a real socket)"
+javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" tools/test/SmsV2Test.java || fail=1
+java -cp "$out" com.tj.linkmeter.SmsV2Test || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

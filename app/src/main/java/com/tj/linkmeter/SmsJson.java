@@ -9,11 +9,12 @@ final class SmsJson {
     private SmsJson() {}
 
     static Map<String, Object> state(Sms.State s) {
-        return Json.obj("v", 1, "on", s.on, "read", s.read, "send", s.send, "contacts", s.contacts, "note", s.note);
+        return Json.obj("v", s.version, "on", s.on, "read", s.read, "send", s.send, "contacts", s.contacts, "note", s.note);
     }
 
     static Sms.State stateFrom(Map<String, Object> m) {
         Sms.State s = new Sms.State();
+        s.version = (int) Json.num(m, "v", 1);
         s.on = Json.bool(m, "on", false);
         s.read = Json.bool(m, "read", false);
         s.send = Json.bool(m, "send", false);
@@ -79,6 +80,34 @@ final class SmsJson {
             m.parts.add(partFrom(p));
         }
         return m;
+    }
+
+    static Map<String, Object> hit(Sms.Hit h) {
+        Map<String, Object> o = msg(h.msg);
+        o.put("name", h.name);
+        return o;
+    }
+
+    static Sms.Hit hitFrom(Map<String, Object> o) {
+        Sms.Hit h = new Sms.Hit();
+        h.msg = msgFrom(o);
+        h.name = Json.str(o, "name", "");
+        return h;
+    }
+
+    static Map<String, Object> deleteResult(Sms.DeleteResult r) {
+        return Json.obj("doneIds", new ArrayList<>(r.doneIds), "failedIds", new ArrayList<>(r.failedIds), "doneKeys", new ArrayList<>(r.doneKeys),
+                "failedKeys", new ArrayList<>(r.failedKeys), "why", r.why);
+    }
+
+    static Sms.DeleteResult deleteResultFrom(Map<String, Object> m) {
+        Sms.DeleteResult r = new Sms.DeleteResult();
+        r.doneIds.addAll(strings(m, "doneIds"));
+        r.failedIds.addAll(strings(m, "failedIds"));
+        r.doneKeys.addAll(strings(m, "doneKeys"));
+        r.failedKeys.addAll(strings(m, "failedKeys"));
+        r.why = Json.str(m, "why", "");
+        return r;
     }
 
     static Map<String, Object> person(Sms.Person p) {

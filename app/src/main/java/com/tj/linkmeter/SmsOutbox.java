@@ -40,6 +40,8 @@ final class SmsOutbox {
     private final List<Sms.Msg> entries = new ArrayList<>();
     private long nextId = 1;
     private long version;
+    /** Called (outside nothing in particular) after every change; the phone uses it to wake the tablet's waiting request. */
+    private volatile Runnable onChange;
 
     SmsOutbox(File dir, LongSupplier clock) throws IOException {
         this(dir, clock, MAX_ENTRIES, MAX_AGE_MS, MAX_FILE_BYTES);
@@ -104,6 +106,18 @@ final class SmsOutbox {
         }
     }
 
+    void setOnChange(Runnable r) {
+        onChange = r;
+    }
+
+    private void changed() {
+        version++;
+        Runnable r = onChange;
+        if (r != null) {
+            r.run();
+        }
+    }
+
     private File fileOf(String partId) {
         return new File(files, partId.replace('.', '_'));
     }
@@ -136,7 +150,7 @@ final class SmsOutbox {
         entries.add(e);
         prune();
         save();
-        version++;
+        changed();
         return e.copy();
     }
 
@@ -159,7 +173,7 @@ final class SmsOutbox {
             if (m.id.equals(id)) {
                 m.state = state;
                 m.error = error == null ? "" : error;
-                version++;
+                changed();
                 try {
                     save();
                 } catch (IOException ignored) {
@@ -194,6 +208,42 @@ final class SmsOutbox {
                 return;
             }
         }
+    }
+
+    /** Deletes these messages of the record ("o12") for good; the record is the tablet's own. Returns how many were there. */
+    synchronized int remove(List<String> ids) throws IOException {
+        int n = 0;
+        for (Iterator<Sms.Msg> it = entries.iterator(); it.hasNext();) {
+            Sms.Msg m = it.next();
+            if (ids.contains(m.id)) {
+                drop(m);
+                it.remove();
+                n++;
+            }
+        }
+        if (n > 0) {
+            save();
+            changed();
+        }
+        return n;
+    }
+
+    /** Deletes every message of one conversation from the record. Returns how many were there. */
+    synchronized int removeKey(String key) throws IOException {
+        int n = 0;
+        for (Iterator<Sms.Msg> it = entries.iterator(); it.hasNext();) {
+            Sms.Msg m = it.next();
+            if (m.key.equals(key)) {
+                drop(m);
+                it.remove();
+                n++;
+            }
+        }
+        if (n > 0) {
+            save();
+            changed();
+        }
+        return n;
     }
 
     synchronized List<Sms.Msg> all() {

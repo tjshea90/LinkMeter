@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java) fail.
 
-Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
+Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror, ChangeGate, SmsApi (the version 2 routes) or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
 """
 import os, shutil, subprocess, sys, tempfile
@@ -555,6 +555,28 @@ TD = [
  ('typing: the Delete key is sent as Backspace', 'TypingMirror.java', 'sink.key(FORWARD_DEL);', 'sink.key(DEL);'),
  ('typing: Backspace beyond the field is passed on one short', 'TypingMirror.java', 'void deleteBefore(int n) {\n        for (int i = 0; i < n; i++) {', 'void deleteBefore(int n) {\n        for (int i = 0; i < n - 1; i++) {'),
 ]
+SMS2_FILES = ["ChangeGate.java", "SmsApi.java", "SmsOutbox.java"]
+SMS2_TEST = ROOT + "/tools/test/SmsV2Test.java"
+# the rest of the texts code, from the source folder, and the first texts test whose fake phone this one extends
+SMS2_JAVAC = ["-sourcepath", ROOT + "/app/src/main/java", ROOT + "/tools/test/SmsProtocolTest.java"]
+S2 = [
+ ('sms2: the long poll never waits', 'SmsApi.java', 'if (wait == 0 || since.isEmpty() || !cur.equals(since) || left <= 0) {', 'if (true) {'),
+ ('sms2: the long poll ignores the stamp it was given', 'SmsApi.java', 'if (wait == 0 || since.isEmpty() || !cur.equals(since) || left <= 0) {', 'if (wait == 0 || since.isEmpty() || left <= 0) {'),
+ ('sms2: the wait is not capped', 'SmsApi.java', 'static final int MAX_WAIT_S = 25;', 'static final int MAX_WAIT_S = 2500;'),
+ ('sms2: the phone says it speaks protocol 1', 'SmsApi.java', 'static final int VERSION = 2;', 'static final int VERSION = 1;'),
+ ('sms2: the tablet record does not wake the waiting request', 'SmsApi.java', 'outbox.setOnChange(gate::bump);', ';'),
+ ('sms2: the phone does not wake the waiting request', 'SmsApi.java', 'backend.setChangeListener(gate::bump);', ';'),
+ ('sms2: an older page includes the newer record entries', 'SmsApi.java', 'if (m.time < before) {\n                    older.add(m);', 'if (true) {\n                    older.add(m);'),
+ ('sms2: a page never says there is more', 'SmsApi.java', 'merged = new ArrayList<>(merged.subList(merged.size() - limit, merged.size()));\n            more = true;', 'merged = new ArrayList<>(merged.subList(merged.size() - limit, merged.size()));'),
+ ('sms2: one letter is a search', 'SmsApi.java', 'if (text.length() >= 2) {', 'if (text.length() >= 0) {'),
+ ('sms2: what the tablet sent is not searched', 'SmsApi.java', 'if (m.body.toLowerCase(Locale.ROOT).contains(low) && !SmsMerge.duplicate(m, found)) {', 'if (false) {'),
+ ('sms2: the tablet record of a deleted message stays', 'SmsApi.java', 'outbox.remove(logIds);', ';'),
+ ('sms2: the tablet record of a deleted conversation stays', 'SmsApi.java', 'outbox.removeKey(k);\n            askKeys.add(k);', 'askKeys.add(k);'),
+ ('sms2: any id may reach the phone database', 'SmsApi.java', 'Pattern.compile("[sm][0-9]{1,12}")', 'Pattern.compile(".*")'),
+ ('sms2: the gate does not wake its waiters', 'ChangeGate.java', 'version++;\n        notifyAll();', 'version++;'),
+ ('sms2: the gate waits the whole time even when it changed', 'ChangeGate.java', 'while (version == seen) {', 'while (true) {'),
+ ('sms2: removing record messages tells nobody', 'SmsOutbox.java', 'if (n > 0) {\n            save();\n            changed();\n        }\n        return n;\n    }\n\n    /** Deletes every message', 'if (n > 0) {\n            save();\n        }\n        return n;\n    }\n\n    /** Deletes every message'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -568,10 +590,13 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (LEVER_FILES, LEVER_TEST, "com.tj.linkmeter.LeverRunTest", LV),
           (SIGNAL_FILES, SIGNAL_TEST, "com.tj.linkmeter.SignalRulesTest", SG), (SEARCH_FILES, SEARCH_TEST, "com.tj.linkmeter.SearchFollowTest", SR),
           (PHONESCREEN_FILES, PHONESCREEN_TEST, "com.tj.linkmeter.PhoneScreenRulesTest", PS),
-          (TYPING_FILES, TYPING_TEST, "com.tj.linkmeter.TypingMirrorTest", TD)]
+          (TYPING_FILES, TYPING_TEST, "com.tj.linkmeter.TypingMirrorTest", TD),
+          (SMS2_FILES, SMS2_TEST, "com.tj.linkmeter.SmsV2Test", S2, SMS2_JAVAC)]
 only = sys.argv[1:]
 caught = missed = 0
-for FILES, TEST, TESTCLASS, M in SUITES:
+for suite in SUITES:
+  FILES, TEST, TESTCLASS, M = suite[:4]
+  JX = suite[4] if len(suite) > 4 else []
   for m in M:
       name, f, old, new = m[0], m[1], m[2], m[3]
       extra = m[4] if len(m) > 4 else None
@@ -591,7 +616,7 @@ for FILES, TEST, TESTCLASS, M in SUITES:
               os.makedirs(d + "/src", exist_ok=True)
               open(d + "/src/" + x, "w").write(t)
               srcs.append(d + "/src/" + x)
-          c = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", d + "/out"] + srcs + [TEST], capture_output=True, text=True)
+          c = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", d + "/out"] + JX + srcs + [TEST], capture_output=True, text=True)
           if c.returncode != 0:
               print("DOES NOT COMPILE: %s\n%s" % (name, c.stderr[-600:]))
               missed += 1

@@ -92,7 +92,7 @@ public final class SmsProtocolTest {
         final List<String> types = new ArrayList<>();
     }
 
-    static final class Fake implements SmsApi.Backend {
+    static class Fake implements SmsApi.Backend {
         volatile boolean on = true;
         volatile boolean read = true;
         volatile boolean send = true;

@@ -6,11 +6,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
 
 /**
  * What the phone answers when the tablet asks about texts (the /sms/* requests). It is private: while the switch "Let the tablet use
@@ -18,11 +23,17 @@ import java.util.function.LongSupplier;
  * tablet's own record, checking numbers, staging files, recording what was sent) is plain Java and tested offline; what only Android
  * can do (read the messages database, send, look up contacts, scale a picture) is handed in as {@link Backend}.
  *
- * Routes: state, grant, stamp, threads, thread, attach, send, part, contacts (see docs/FILES_AND_TEXTS_PLAN.md). The caller has
+ * Routes: state, grant, stamp (can wait for news), threads, thread (pages back in time), search, attach, send, part, contacts, delete, read
+ * (see docs/FILES_AND_TEXTS_PLAN.md and docs/TEXTS_OVERHAUL.md). The caller has
  * already checked that the other device is paired. An older app answers 404 "unknown request" to all of them.
  */
 final class SmsApi {
-    static final int VERSION = 1;
+    /** 2 = /sms/stamp can wait for news, /sms/thread pages back in time, /sms/search, /sms/delete, /sms/read. */
+    static final int VERSION = 2;
+    /** The longest a /sms/stamp request may wait for news, in seconds. */
+    static final int MAX_WAIT_S = 25;
+    private static final Pattern PROVIDER_ID = Pattern.compile("[sm][0-9]{1,12}");
+    private static final Pattern OUTBOX_ID = Pattern.compile("o[0-9]{1,12}");
     static final long MAX_BODY = 256 * 1024;
     static final int MAX_TEXT = 20_000;
     static final int MAX_RECIPIENTS = 20;
@@ -72,18 +83,69 @@ final class SmsApi {
 
         /** The image as a JPEG no larger than px on its longer side, or null if it cannot be read. */
         byte[] scale(byte[] image, int px);
+
+        // ---- protocol 2. Defaults, so that a backend that does not know them still works (and answers "cannot").
+
+        /** The newest {@code limit} messages older than {@code before} (milliseconds) of one conversation (any order). */
+        default List<Sms.Msg> messagesBefore(String key, long before, int limit) throws IOException {
+            List<Sms.Msg> out = new ArrayList<>();
+            for (Sms.Msg m : messages(key, 500)) {
+                if (m.time < before) {
+                    out.add(m);
+                }
+            }
+            Collections.sort(out, new Comparator<Sms.Msg>() {
+                @Override
+                public int compare(Sms.Msg a, Sms.Msg b) {
+                    return Long.compare(a.time, b.time);
+                }
+            });
+            return out.size() > limit ? new ArrayList<>(out.subList(out.size() - limit, out.size())) : out;
+        }
+
+        /** Messages whose text contains the query, newest first, at most {@code limit}. */
+        default List<Sms.Msg> search(String query, int limit) throws IOException {
+            return new ArrayList<>();
+        }
+
+        /**
+         * Tries to delete messages ("s12", "m34") and whole conversations (keys) from the phone's database. Only the phone's default
+         * messaging app may write that database; what could not be deleted is reported as failed, with a sentence about why.
+         */
+        default Sms.DeleteResult delete(List<String> ids, List<String> keys) throws IOException {
+            Sms.DeleteResult r = new Sms.DeleteResult();
+            r.failedIds.addAll(ids);
+            r.failedKeys.addAll(keys);
+            r.why = "This phone does not let LinkMeter delete texts.";
+            return r;
+        }
+
+        /** Tries to mark conversations as read on the phone (the same limits as {@link #delete}); the keys are in doneKeys or failedKeys. */
+        default Sms.DeleteResult markRead(List<String> keys) throws IOException {
+            Sms.DeleteResult r = new Sms.DeleteResult();
+            r.failedKeys.addAll(keys);
+            r.why = "This phone does not let LinkMeter mark texts as read.";
+            return r;
+        }
+
+        /** The backend calls this when the phone's messages or contacts changed (so that a waiting request answers at once). */
+        default void setChangeListener(Runnable listener) {}
     }
 
     private final Backend backend;
     private final SmsOutbox outbox;
     private final SmsStaging staging;
     private final LongSupplier clock;
+    /** Goes up when the phone's messages or the tablet's record change: wakes the requests that wait for news. */
+    private final ChangeGate gate = new ChangeGate();
 
     SmsApi(Backend backend, SmsOutbox outbox, SmsStaging staging, LongSupplier clock) {
         this.backend = backend;
         this.outbox = outbox;
         this.staging = staging;
         this.clock = clock;
+        backend.setChangeListener(gate::bump);
+        outbox.setOnChange(gate::bump);
     }
 
     private static String p(Map<String, String> q, String key, String def) {
@@ -99,12 +161,18 @@ final class SmsApi {
         }
     }
 
+    /** How many seconds a /sms/stamp request may hold on: what was asked, between none and {@link #MAX_WAIT_S}. */
+    static int waitSeconds(Map<String, String> q) {
+        return clamp(num(q, "wait", 0), 0, MAX_WAIT_S);
+    }
+
     private static int clamp(long v, int lo, int hi) {
         return (int) Math.max(lo, Math.min(hi, v));
     }
 
     private Sms.State state() {
         Sms.State s = new Sms.State();
+        s.version = VERSION;
         s.on = backend.on();
         s.read = backend.canRead();
         s.send = backend.canSend();
@@ -134,7 +202,13 @@ final class SmsApi {
                     }
                     return FsApi.Reply.json(SmsJson.state(state()));
                 case "/sms/stamp":
-                    return FsApi.Reply.json(Json.obj("stamp", backend.stamp() + "|" + outbox.stamp()));
+                    return stamp(q);
+                case "/sms/search":
+                    return search(q);
+                case "/sms/delete":
+                    return delete(body, bodyLen);
+                case "/sms/read":
+                    return markRead(body, bodyLen);
                 case "/sms/threads":
                     return threads(q);
                 case "/sms/thread":
@@ -203,10 +277,26 @@ final class SmsApi {
             return FsApi.Reply.err(409, "which conversation?");
         }
         int limit = clamp(num(q, "limit", 100), 1, 500);
+        long before = num(q, "before", 0);
         List<Sms.Msg> logged = outbox.forKey(key);
-        List<Sms.Msg> merged = SmsMerge.thread(backend.messages(key, limit), logged);
+        List<Sms.Msg> asked;
+        if (before > 0) { // the page before the one the tablet has
+            asked = backend.messagesBefore(key, before, limit + 1);
+            List<Sms.Msg> older = new ArrayList<>();
+            for (Sms.Msg m : logged) {
+                if (m.time < before) {
+                    older.add(m);
+                }
+            }
+            logged = older;
+        } else {
+            asked = backend.messages(key, limit + 1);
+        }
+        List<Sms.Msg> merged = SmsMerge.thread(asked, logged);
+        boolean more = false; // one message more than asked for was fetched, to find out
         if (merged.size() > limit) {
             merged = new ArrayList<>(merged.subList(merged.size() - limit, merged.size()));
+            more = true;
         }
         Sms.Thread head = backend.header(key);
         if (head == null) {
@@ -228,7 +318,146 @@ final class SmsApi {
         for (Sms.Msg m : merged) {
             msgs.add(SmsJson.msg(m));
         }
-        return FsApi.Reply.json(Json.obj("key", key, "name", head.name, "addr", new ArrayList<>(head.addresses), "msgs", msgs));
+        return FsApi.Reply.json(Json.obj("key", key, "name", head.name, "addr", new ArrayList<>(head.addresses), "msgs", msgs, "more", more));
+    }
+
+    private String currentStamp() {
+        return backend.stamp() + "|" + outbox.stamp();
+    }
+
+    /**
+     * The stamp changes whenever any message arrives or changes. With {@code since} and {@code wait} the request holds on (at most
+     * {@link #MAX_WAIT_S} seconds) until it differs from {@code since}: the tablet hears about news at once and asks far less often.
+     */
+    private FsApi.Reply stamp(Map<String, String> q) {
+        String since = p(q, "since", "");
+        long wait = waitSeconds(q);
+        long end = System.nanoTime() + wait * 1_000_000_000L;
+        String cur;
+        try {
+            while (true) {
+                long seen = gate.version();
+                cur = currentStamp();
+                long left = (end - System.nanoTime()) / 1_000_000L;
+                if (wait == 0 || since.isEmpty() || !cur.equals(since) || left <= 0) {
+                    break;
+                }
+                gate.await(seen, Math.min(left, 1000)); // at least once a second the stamp is looked at again
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            cur = currentStamp();
+        }
+        return FsApi.Reply.json(Json.obj("stamp", cur));
+    }
+
+    private FsApi.Reply search(Map<String, String> q) throws IOException {
+        FsApi.Reply no = needRead();
+        if (no != null) {
+            return no;
+        }
+        String text = p(q, "q", "").trim();
+        int limit = clamp(num(q, "limit", 30), 1, 100);
+        List<Object> out = new ArrayList<>();
+        if (text.length() >= 2) {
+            List<Sms.Msg> found = new ArrayList<>(backend.search(text, limit));
+            String low = text.toLowerCase(Locale.ROOT);
+            for (Sms.Msg m : outbox.all()) { // what the tablet sent is only in its record
+                if (m.body.toLowerCase(Locale.ROOT).contains(low) && !SmsMerge.duplicate(m, found)) {
+                    found.add(m);
+                }
+            }
+            Collections.sort(found, new Comparator<Sms.Msg>() {
+                @Override
+                public int compare(Sms.Msg a, Sms.Msg b) {
+                    int c = Long.compare(b.time, a.time);
+                    return c != 0 ? c : a.id.compareTo(b.id);
+                }
+            });
+            Map<String, String> names = new HashMap<>();
+            for (Sms.Thread t : SmsMerge.threads(backend.threads(300), outbox.all())) {
+                names.put(t.key, t.name);
+            }
+            for (Sms.Msg m : found) {
+                if (out.size() >= limit) {
+                    break;
+                }
+                Sms.Hit h = new Sms.Hit();
+                h.msg = m;
+                String n = names.get(m.key);
+                h.name = n != null && !n.isEmpty() ? n : PhoneNumbers.pretty(m.address);
+                out.add(SmsJson.hit(h));
+            }
+        }
+        return FsApi.Reply.json(Json.obj("hits", out));
+    }
+
+    private static void addAll(Sms.DeleteResult into, Sms.DeleteResult from) {
+        into.doneIds.addAll(from.doneIds);
+        into.failedIds.addAll(from.failedIds);
+        into.doneKeys.addAll(from.doneKeys);
+        into.failedKeys.addAll(from.failedKeys);
+        if (!from.why.isEmpty()) {
+            into.why = from.why;
+        }
+    }
+
+    /**
+     * Deletes messages (ids) and whole conversations (keys). What the tablet itself sent is only in its own record, which is deleted
+     * here for good; the rest is up to the phone's database, which only the default messaging app may write, so the backend tries and
+     * says what it could not do. The tablet hides on its own side what the phone kept.
+     */
+    private FsApi.Reply delete(InputStream body, long len) throws IOException {
+        FsApi.Reply no = needRead();
+        if (no != null) {
+            return no;
+        }
+        Map<String, Object> m = Json.parseObject(new String(readBody(body, len, MAX_BODY), StandardCharsets.UTF_8));
+        List<String> ids = SmsJson.strings(m, "ids");
+        List<String> keys = SmsJson.strings(m, "keys");
+        if (ids.size() > 500 || keys.size() > 50) {
+            return FsApi.Reply.err(409, "That is too many at once.");
+        }
+        Sms.DeleteResult r = new Sms.DeleteResult();
+        List<String> providerIds = new ArrayList<>();
+        List<String> logIds = new ArrayList<>();
+        for (String id : ids) {
+            if (PROVIDER_ID.matcher(id).matches()) {
+                providerIds.add(id);
+            } else if (OUTBOX_ID.matcher(id).matches()) {
+                logIds.add(id);
+            } else {
+                r.failedIds.add(id);
+            }
+        }
+        outbox.remove(logIds);
+        r.doneIds.addAll(logIds); // gone from the record, or never there: either way gone
+        List<String> askKeys = new ArrayList<>();
+        for (String k : keys) {
+            if (k.isEmpty() || k.length() > 400) {
+                r.failedKeys.add(k);
+                continue;
+            }
+            outbox.removeKey(k);
+            askKeys.add(k);
+        }
+        if (!providerIds.isEmpty() || !askKeys.isEmpty()) {
+            addAll(r, backend.delete(providerIds, askKeys));
+        }
+        return FsApi.Reply.json(SmsJson.deleteResult(r));
+    }
+
+    private FsApi.Reply markRead(InputStream body, long len) throws IOException {
+        FsApi.Reply no = needRead();
+        if (no != null) {
+            return no;
+        }
+        Map<String, Object> m = Json.parseObject(new String(readBody(body, len, MAX_BODY), StandardCharsets.UTF_8));
+        List<String> keys = SmsJson.strings(m, "keys");
+        if (keys.size() > 100) {
+            return FsApi.Reply.err(409, "That is too many at once.");
+        }
+        return FsApi.Reply.json(SmsJson.deleteResult(backend.markRead(keys)));
     }
 
     private static byte[] readBody(InputStream body, long len, long max) throws IOException {

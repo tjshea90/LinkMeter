@@ -89,6 +89,17 @@ final class RemoteSms {
         return Json.str(obj(link.call("GET", "/sms/stamp", 10000)), "stamp", "");
     }
 
+    /**
+     * Protocol 2: holds on at the phone for up to {@code waitSec} seconds until the stamp is no longer {@code since}, and answers at
+     * once when it already is not. The answer is the stamp (the same one when nothing happened in all that time).
+     */
+    String stamp(String since, int waitSec) throws IOException {
+        if (since == null || since.isEmpty() || waitSec <= 0) {
+            return stamp();
+        }
+        return Json.str(obj(link.call("GET", "/sms/stamp?since=" + enc(since) + "&wait=" + waitSec, (waitSec + 12) * 1000)), "stamp", "");
+    }
+
     List<Sms.Thread> threads(int limit) throws IOException {
         List<Sms.Thread> out = new ArrayList<>();
         for (Map<String, Object> o : Json.objects(obj(link.call("GET", "/sms/threads?limit=" + limit, 30000)), "threads")) {
@@ -98,8 +109,14 @@ final class RemoteSms {
     }
 
     Sms.Convo thread(String key, int limit) throws IOException {
-        Map<String, Object> m = obj(link.call("GET", "/sms/thread?key=" + enc(key) + "&limit=" + limit, 30000));
+        return thread(key, limit, 0);
+    }
+
+    /** The newest {@code limit} messages older than {@code before} (milliseconds; 0 = the newest of all). {@code more} tells if there are older ones. */
+    Sms.Convo thread(String key, int limit, long before) throws IOException {
+        Map<String, Object> m = obj(link.call("GET", "/sms/thread?key=" + enc(key) + "&limit=" + limit + (before > 0 ? "&before=" + before : ""), 30000));
         Sms.Convo c = new Sms.Convo();
+        c.more = Json.bool(m, "more", false);
         c.head.key = Json.str(m, "key", key);
         c.head.name = Json.str(m, "name", "");
         c.head.addresses.addAll(SmsJson.strings(m, "addr"));
@@ -152,6 +169,27 @@ final class RemoteSms {
             }
         }
         return bo.toByteArray();
+    }
+
+    /** Messages whose text contains the query, newest first, each with the name of its conversation. */
+    List<Sms.Hit> search(String query, int limit) throws IOException {
+        List<Sms.Hit> out = new ArrayList<>();
+        for (Map<String, Object> o : Json.objects(obj(link.call("GET", "/sms/search?q=" + enc(query) + "&limit=" + limit, 30000)), "hits")) {
+            out.add(SmsJson.hitFrom(o));
+        }
+        return out;
+    }
+
+    /** Asks the phone to delete messages and conversations; see {@link Sms.DeleteResult} for what it did and did not do. */
+    Sms.DeleteResult delete(List<String> ids, List<String> keys) throws IOException {
+        byte[] bytes = Json.write(Json.obj("ids", ids, "keys", keys)).getBytes(StandardCharsets.UTF_8);
+        return SmsJson.deleteResultFrom(obj(link.put("/sms/delete", new ByteArrayInputStream(bytes), bytes.length, null)));
+    }
+
+    /** Asks the phone to mark conversations as read (doneKeys / failedKeys say which). */
+    Sms.DeleteResult markRead(List<String> keys) throws IOException {
+        byte[] bytes = Json.write(Json.obj("keys", keys)).getBytes(StandardCharsets.UTF_8);
+        return SmsJson.deleteResultFrom(obj(link.put("/sms/read", new ByteArrayInputStream(bytes), bytes.length, null)));
     }
 
     List<Sms.Person> contacts(String query) throws IOException {

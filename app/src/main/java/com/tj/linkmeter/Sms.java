@@ -103,6 +103,8 @@ final class Sms {
 
     /** What the phone says about the Texts feature. */
     static final class State {
+        /** The protocol the phone speaks: 1 = the first texts routes, 2 = waiting for news, older messages, search, delete, mark read. */
+        int version = 1;
         /** False when the phone's app is too old to know the Texts routes at all. */
         boolean supported = true;
         /** The switch "Let the tablet use my texts" in the phone's app. */
@@ -150,6 +152,24 @@ final class Sms {
     static final class Convo {
         final Thread head = new Thread();
         final List<Msg> msgs = new ArrayList<>();
+        /** There are older messages than these on the phone. */
+        boolean more;
+    }
+
+    /** A message found by a search, with the name of its conversation. */
+    static final class Hit {
+        Msg msg = new Msg();
+        String name = "";
+    }
+
+    /** What the phone did when asked to delete messages or conversations, or to mark conversations read. */
+    static final class DeleteResult {
+        final List<String> doneIds = new ArrayList<>();
+        final List<String> failedIds = new ArrayList<>();
+        final List<String> doneKeys = new ArrayList<>();
+        final List<String> failedKeys = new ArrayList<>();
+        /** Why something failed, in a sentence for the user; "" when nothing did. */
+        String why = "";
     }
 
     /** The answer to a send. */
