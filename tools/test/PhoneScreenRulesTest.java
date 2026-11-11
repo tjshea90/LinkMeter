@@ -499,15 +499,13 @@ public final class PhoneScreenRulesTest {
                 f.textsMissing = missing;
                 Line l = PhoneScreenRules.textsLine(f);
                 String ctx = " (texts " + on + ", missing '" + missing + "')";
-                if (!on) {
-                    eq("Off. The tablet cannot see your texts.", l.text, "texts off" + ctx);
-                    eq(Tone.QUIET, l.tone, "texts off is quiet" + ctx);
-                } else if (missing.isEmpty()) {
-                    eq("On. The paired tablet can read your texts and send texts and pictures through this phone.", l.text, "texts ready" + ctx);
-                    eq(Tone.GOOD, l.tone, "texts ready is green" + ctx);
-                } else {
+                if (on && !missing.isEmpty()) {
                     eq("On, but not ready. LinkMeter may not " + missing + " yet.", l.text, "texts not ready" + ctx);
                     eq(Tone.WARN, l.tone, "texts not ready is amber" + ctx);
+                } else {
+                    // the switch and its explanation say off, and what on means: no line repeats them
+                    eq("", l.text, "texts off, or on and ready: no line" + ctx);
+                    eq(Tone.QUIET, l.tone, "no line is quiet" + ctx);
                 }
                 eq(on && !missing.isEmpty(), PhoneScreenRules.textsButton(f), "the texts button only while on and lacking something" + ctx);
                 say(l.text);

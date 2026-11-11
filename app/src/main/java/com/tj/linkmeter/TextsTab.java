@@ -258,8 +258,8 @@ final class TextsTab extends Tab {
                 if (my == session && shown) {
                     if (fs != null && (!fs.read || !fs.send)) {
                         showMessage("Still not allowed", (fs.note.isEmpty() ? "" : fs.note + "\n\n")
-                                + "Open LinkMeter on the phone, Phone tab, and tap \"Allow texts access\". Shizuku has to be running on the phone "
-                                + "for this to work from here.", "Check again", this::loadState, null, null);
+                                + "Open LinkMeter on the phone, Phone tab, and tap \"" + PhoneScreenRules.TEXTS_BUTTON + "\". Shizuku has to be "
+                                + "running on the phone for this to work from here.", "Check again", this::loadState, null, null);
                     } else {
                         applyState(fs, fe);
                     }

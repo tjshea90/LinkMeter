@@ -397,14 +397,15 @@ final class PhoneScreenRules {
 
     // ------------------------------------------------------------------------------------------------------------ texts
 
+    /**
+     * What the texts still lack, or nothing: the switch and its explanation already say "off" and what "on" means, so a line that
+     * repeated them would only be noise. Empty text = no line.
+     */
     static Line textsLine(PhoneScreenFacts f) {
-        if (!f.textsOn) {
-            return new Line("Off. The tablet cannot see your texts.", Tone.QUIET);
+        if (f.textsOn && !f.textsMissing.isEmpty()) {
+            return new Line("On, but not ready. LinkMeter may not " + f.textsMissing + " yet.", Tone.WARN);
         }
-        if (f.textsMissing.isEmpty()) {
-            return new Line("On. The paired tablet can read your texts and send texts and pictures through this phone.", Tone.GOOD);
-        }
-        return new Line("On, but not ready. LinkMeter may not " + f.textsMissing + " yet.", Tone.WARN);
+        return new Line("", Tone.QUIET);
     }
 
     /** The button for the texts permissions: only while the texts are on and still lack something ({@code textsMissing}: "read texts, send texts"). */

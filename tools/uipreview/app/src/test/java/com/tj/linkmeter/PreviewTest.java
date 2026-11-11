@@ -1580,6 +1580,7 @@ public class PreviewTest {
     @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
     public void phoneQuestions() throws Exception {
         PhoneScreenFacts f = phoneReady();
+        f.saverOn = false;
         MainActivity a = phoneScreen(f, 1.0f);
         press(a, "Stop");
         dialogShot("phone-ask-stop");
@@ -1619,8 +1620,9 @@ public class PreviewTest {
         shot(a, "phone-restore-result");
     }
 
+    /** (Android 10: Robolectric's Android 15 cannot answer "may this app see all files", which the Files tab asks; the tab has no newer states.) */
     @Test
-    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    @Config(sdk = 29, qualifiers = "w384dp-h832dp-port-hdpi")
     public void phoneFilesTab() throws Exception {
         MainActivity a = phoneScreen(phoneReady(), 1.0f);
         a.openTab(Tab.FILES);

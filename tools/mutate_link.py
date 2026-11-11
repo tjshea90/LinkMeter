@@ -517,7 +517,7 @@ PS = [
  ('phonescreen: Boot assist can be used without the start after a restart', 'PhoneScreenRules.java', 'if (!f.autoStart) {\n            return new Assist(false,', 'if (false) {\n            return new Assist(false,'),
  ('phonescreen: Boot assist can be used without the one-time permission', 'PhoneScreenRules.java', 'if (!f.bootPermission) {\n            return new Assist(false,', 'if (false) {\n            return new Assist(false,'),
  ('phonescreen: the texts button is offered while texts are off', 'PhoneScreenRules.java', 'return f.textsOn && !f.textsMissing.isEmpty();', 'return !f.textsMissing.isEmpty();'),
- ('phonescreen: texts that still lack something read as ready', 'PhoneScreenRules.java', 'if (f.textsMissing.isEmpty()) {\n            return new Line("On. The paired', 'if (true) {\n            return new Line("On. The paired'),
+ ('phonescreen: texts that still lack something read as ready', 'PhoneScreenRules.java', 'if (f.textsOn && !f.textsMissing.isEmpty()) {\n            return new Line("On, but not ready.', 'if (false) {\n            return new Line("On, but not ready.'),
  ('phonescreen: the pairing seconds lose their zero', 'PhoneScreenRules.java', '(s % 60 < 10 ? "0" : "")', '""'),
  ('phonescreen: the pairing window never reads as closed', 'PhoneScreenRules.java', 'if (f.pairingLeftSec <= 0) {\n            return "";', 'if (f.pairingLeftSec < 0) {\n            return "";'),
  ('phonescreen: Stop does not say what is lost', 'PhoneScreenRules.java', '"The tablet can then not reach this phone, over the hotspot or over Bluetooth, until you "', '"The tablet can then not reach this phone until you "'),

@@ -244,7 +244,9 @@ final class PhoneTab extends Tab {
         tRequests = Ui.hint(act, "");
         card.addView(tRequests, Ui.lp(act, 8));
         bStop = Ui.quiet(act, "Stop", v -> ask(PhoneScreenRules.stopQuestion(current()), () -> {
-            act.toggleSender();
+            if (SenderService.active) { // (the question may have stood open while the notification's Stop did it: Start must not follow)
+                act.toggleSender();
+            }
             refresh();
         }));
         card.addView(bStop, Ui.lp(act, 8));
@@ -302,13 +304,14 @@ final class PhoneTab extends Tab {
         card.addView(head);
         fShizuku = new Ui.Fact(act, "Shizuku");
         card.addView(fShizuku.view, Ui.lp(act, 8));
-        bShizuku = Ui.button(act, "", v -> shizukuPressed());
-        bShizuku.setVisibility(View.GONE);
-        card.addView(bShizuku, Ui.lp(act, 6));
         for (PhoneScreenRules.Item i : PhoneScreenRules.Item.values()) {
             fItem[i.ordinal()] = new Ui.Fact(act, PhoneScreenRules.itemName(i));
             card.addView(fItem[i.ordinal()].view, Ui.lp(act, 6));
         }
+        // the facts stay together; what can be pressed comes after them: Shizuku first (it gives the rest), then one button or several
+        bShizuku = Ui.button(act, "", v -> shizukuPressed());
+        bShizuku.setVisibility(View.GONE);
+        card.addView(bShizuku, Ui.lp(act, 10));
         bAllowEverything = Ui.primary(act, "Allow everything", v -> allowEverything());
         bAllowEverything.setVisibility(View.GONE);
         card.addView(bAllowEverything, Ui.lp(act, 10));
@@ -515,6 +518,7 @@ final class PhoneTab extends Tab {
         PhoneScreenRules.Line tl = PhoneScreenRules.textsLine(f);
         tTexts.setText(tl.text);
         tTexts.setTextColor(lineColor(tl.tone));
+        visible(tTexts, !tl.text.isEmpty());
         visible(bTexts, PhoneScreenRules.textsButton(f));
 
         // Battery
@@ -526,8 +530,10 @@ final class PhoneTab extends Tab {
         toggle(tgAutoStart, f.autoStart, autoStartListener);
         PhoneScreenRules.Assist as = PhoneScreenRules.assist(f);
         toggle(tgAssist, f.bootAssist, assistListener);
-        tgAssist.sw.setEnabled(as.enabled);
-        tgAssist.view.setEnabled(as.enabled);
+        // it can always be switched off, also when it cannot run: a switch that is on in name only must not be stuck on
+        boolean usable = as.enabled || f.bootAssist;
+        tgAssist.sw.setEnabled(usable);
+        tgAssist.view.setEnabled(usable);
         tgAssist.view.setAlpha(as.enabled ? 1f : 0.5f);
         tAssist.setText(as.hint);
         tAssist.setTextColor(!as.enabled && f.bootAssist ? Ui.AMBER : Ui.DIM);
@@ -558,7 +564,9 @@ final class PhoneTab extends Tab {
     private void attentionPressed() {
         switch (shownAttention) {
             case STOPPED:
-                act.toggleSender();
+                if (!SenderService.active) { // (the card may be a moment old: a service that has started since must not be stopped)
+                    act.toggleSender();
+                }
                 break;
             case NO_TABLET:
                 act.pairTablet();
@@ -651,38 +659,49 @@ final class PhoneTab extends Tab {
         });
     }
 
-    private void restore() {
+    /** What a button does off the screen's thread; it answers through {@link #result}. */
+    private interface Work {
+        void run(Context app) throws IOException;
+    }
+
+    /**
+     * Runs a button's work on a thread of its own. Whatever happens, the strip is answered: an exception that the work did not expect
+     * would otherwise leave "…" on the screen for ever.
+     *
+     * @param ioPrefix put before the message of an IOException ("" where the work's own sentence is already a whole one)
+     * @param broken what to say when something unexpected went wrong
+     */
+    private void off(String threadName, final String ioPrefix, final String broken, final Work work) {
         final Context app = act.getApplicationContext();
+        new Thread(() -> {
+            try {
+                work.run(app);
+            } catch (IOException e) {
+                result(ioPrefix + e.getMessage(), false);
+            } catch (RuntimeException e) {
+                result(broken, false);
+            }
+        }, threadName).start();
+    }
+
+    private void restore() {
         final boolean ready = Priv.ready(); // without Shizuku the phone can only say what to do by hand
         working("Restoring everything");
-        new Thread(() -> result(Actions.restoreAll(app), ready), "linkmeter-restore").start();
+        off("linkmeter-restore", "", "Restore everything did not finish. Use the steps under \"Without Shizuku\".",
+                app -> result(Actions.restoreAll(app), ready));
     }
 
     private void safety() {
-        final Context app = act.getApplicationContext();
         working("Checking the phone");
-        new Thread(() -> {
-            try {
-                result(Actions.run(app, "safety"), true);
-            } catch (IOException e) {
-                result("Couldn't check the phone: " + e.getMessage(), false);
-            }
-        }, "linkmeter-safety").start();
+        off("linkmeter-safety", "Couldn't check the phone: ", "The check did not finish.", app -> result(Actions.run(app, "safety"), true));
     }
 
     /** Gets the texts permissions: through Shizuku if it is ready, otherwise through Android's own permission question. */
     private void allowTexts() {
         if (Priv.ready()) {
-            final Context app = act.getApplicationContext();
             working("Allowing texts access");
-            new Thread(() -> {
-                try {
-                    String r = SmsAccess.grant(app);
-                    result(r, SmsAccess.missing(app).isEmpty());
-                } catch (IOException e) {
-                    result("Couldn't allow texts access: " + e.getMessage(), false);
-                }
-            }, "linkmeter-sms-grant").start();
+            off("linkmeter-sms-grant", "Couldn't allow texts access: ", "Texts access could not be allowed.",
+                    app -> result(SmsAccess.grant(app), SmsAccess.missing(app).isEmpty()));
         } else {
             act.requestTextsPermissions();
             Toast.makeText(act, "If Android says the setting is restricted, start Shizuku and tap this again, or allow restricted "
@@ -690,11 +709,10 @@ final class PhoneTab extends Tab {
         }
     }
 
-    /** Through Shizuku when it is ready (it can give every permission at once), else one by one through Android's own questions. */
+    /** Through Shizuku, which can give every permission at once (the button is only offered while it is ready). */
     private void allowEverything() {
-        final Context app = act.getApplicationContext();
         working("Allowing everything");
-        new Thread(() -> {
+        off("linkmeter-allow-everything", "", "Not everything could be allowed.", app -> {
             StringBuilder sb = new StringBuilder();
             boolean ok = true;
             try {
@@ -722,7 +740,7 @@ final class PhoneTab extends Tab {
                 }
             }
             result(sb.toString(), ok);
-        }, "linkmeter-allow-everything").start();
+        });
     }
 
     private void allowBluetooth() {
@@ -730,18 +748,13 @@ final class PhoneTab extends Tab {
             act.requestBluetoothPermission(); // Android's own question; the answer makes the listener look again
             return;
         }
-        final Context app = act.getApplicationContext();
         working("Allowing Bluetooth");
-        new Thread(() -> {
-            try {
-                boolean ok = BtServer.grantPermission(app);
-                BtServer.recheck();
-                result(ok ? "LinkMeter may now use Bluetooth. The link starts listening."
-                        : "The phone did not give the Bluetooth permission. Open the app's info page and allow Nearby devices.", ok);
-            } catch (IOException e) {
-                result("Couldn't allow Bluetooth: " + e.getMessage(), false);
-            }
-        }, "linkmeter-bt-allow").start();
+        off("linkmeter-bt-allow", "Couldn't allow Bluetooth: ", "Bluetooth could not be allowed.", app -> {
+            boolean ok = BtServer.grantPermission(app);
+            BtServer.recheck();
+            result(ok ? "LinkMeter may now use Bluetooth. The link starts listening."
+                    : "The phone did not give the Bluetooth permission. Open the app's info page and allow Nearby devices.", ok);
+        });
     }
 
     private void switchBluetoothOn() {
@@ -749,33 +762,19 @@ final class PhoneTab extends Tab {
             act.askBluetoothOn(); // Android's own question
             return;
         }
-        final Context app = act.getApplicationContext();
         working("Switching Bluetooth on");
-        new Thread(() -> {
-            try {
-                boolean ok = BtServer.switchOn(app);
-                BtServer.recheck();
-                result(ok ? "Bluetooth is on." : "Bluetooth could not be switched on. Switch it on in the quick settings.", ok);
-            } catch (IOException e) {
-                result("Couldn't switch Bluetooth on: " + e.getMessage(), false);
-            }
-        }, "linkmeter-bt-on").start();
+        off("linkmeter-bt-on", "Couldn't switch Bluetooth on: ", "Bluetooth could not be switched on.", app -> {
+            boolean ok = BtServer.switchOn(app);
+            BtServer.recheck();
+            result(ok ? "Bluetooth is on." : "Bluetooth could not be switched on. Switch it on in the quick settings.", ok);
+        });
     }
 
     /** The same switch the tablet's buttons move ({@link Eco#setAuto}): the choice is stored at once, the shell work is off the screen's thread. */
     private void setSaver(final boolean on) {
         Cfg.setEcoAuto(act, on);
-        final Context app = act.getApplicationContext();
         working(on ? "Switching the battery saver to Automatic" : "Switching the battery saver off");
-        new Thread(() -> {
-            try {
-                result(Eco.setAuto(app, on), true);
-            } catch (IOException e) {
-                result(String.valueOf(e.getMessage()), false);
-            } catch (RuntimeException e) {
-                result("The battery saver could not be changed.", false);
-            }
-        }, "linkmeter-eco-switch").start();
+        off("linkmeter-eco-switch", "", "The battery saver could not be changed.", app -> result(Eco.setAuto(app, on), true));
     }
 
     // ------------------------------------------------------------------------------------------------------ the facts
