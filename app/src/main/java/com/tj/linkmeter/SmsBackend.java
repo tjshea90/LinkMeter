@@ -61,6 +61,31 @@ final class SmsBackend implements SmsApi.Backend {
     }
 
     @Override
+    public List<Sms.Msg> messagesBefore(String key, long before, int limit) {
+        return store.messagesBefore(key, before, limit);
+    }
+
+    @Override
+    public List<Sms.Msg> search(String query, int limit) {
+        return canRead() ? store.search(query, limit) : new java.util.ArrayList<Sms.Msg>();
+    }
+
+    @Override
+    public Sms.DeleteResult delete(List<String> ids, List<String> keys) {
+        return store.delete(ids, keys);
+    }
+
+    @Override
+    public Sms.DeleteResult markRead(List<String> keys) {
+        return store.markRead(keys);
+    }
+
+    @Override
+    public void setChangeListener(Runnable listener) {
+        store.setListener(listener);
+    }
+
+    @Override
     public Sms.Thread header(String key) {
         return store.header(key);
     }
