@@ -97,7 +97,9 @@ gets the real result:
 | action | asked over the hotspot / Wi-Fi | asked over Bluetooth |
 |---|---|---|
 | `poweroff`, `reboot`, `airplane_on` | answer first | answer first |
-| `hotspot_off`, `hotspot_restart`, `radio_cycle`, `standby`, `hotspot_on`, `boot_hotspot_on`, `wifi_on` | answer first | act, then answer |
+| `hotspot_off_deep` (hotspot, location, airplane mode, screen: `docs/DEEP_SLEEP.md`) | answer first | answer first (airplane mode can restart Bluetooth under the request) |
+| `hotspot_off`, `hotspot_restart`, `radio_cycle`, `standby`, `wifi_on` | answer first | act, then answer |
+| `hotspot_on`, `boot_hotspot_on` | answer first | act, then answer; **answer first when the phone is in airplane mode** (`cutsLink`'s 4th parameter: ending airplane mode may restart Bluetooth) |
 | `wifi_off` | answer first unless the phone's hotspot is known to be on (the request may have come through the Wi-Fi being switched off) | act, then answer |
 
 `restart_modem` is deliberately not in this table: Android obeys `cmd phone restart-modem` only for root on a test build, so on

@@ -133,7 +133,16 @@ public class PreviewTest {
             }, android.os.SystemClock::elapsedRealtime); // the clock the app itself gives Reach (Call.reach)
         }
 
+        /** Every request the phone was asked, in order (for a test that wants to know which action the tablet sent). */
+        final java.util.List<String> targets = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        /** Was this action asked (a request that starts with it, "/act?name=hotspot_off" also matching "...hotspot_off_deep" only if asked)? */
+        boolean asked(String exactTarget) {
+            return targets.contains(exactTarget);
+        }
+
         Client.Resp answer(String target) {
+            targets.add(target);
             if (target.equals("/s")) {
                 statusAsked.incrementAndGet();
             }

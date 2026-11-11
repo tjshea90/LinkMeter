@@ -336,8 +336,8 @@ final class SettingsTab extends Tab {
         Ui.Toggle deep = new Ui.Toggle(act, "Hotspot off also puts the phone to sleep",
                 "After the hotspot, \"Hotspot off\" switches the phone's location off, airplane mode on and its screen off, so it uses "
                 + "almost no battery (no calls or texts meanwhile). \"Hotspot on\" ends airplane mode first and leaves location and the "
-                + "screen alone. Used only while the Bluetooth link has just answered, because airplane mode takes Bluetooth away and "
-                + "the phone keeps it on only so that this tablet can wake the phone.",
+                + "screen alone. Airplane mode is only kept while Bluetooth stays on, so that this tablet can wake the phone, and is "
+                + "only asked for right after the Bluetooth link answered.",
                 Cfg.deepSleep(act), (b, on) -> Cfg.setDeepSleep(act, on));
         card.addView(deep.view, Ui.lp(act, 6));
         Ui.Toggle keep = new Ui.Toggle(act, "Keep the screen on in every tab",

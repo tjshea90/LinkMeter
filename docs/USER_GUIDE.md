@@ -29,6 +29,14 @@ always.
 - **Home:** **Hotspot** (switch the phone's hotspot on or off), **Screen** (put the phone's screen to sleep or wake it) and
   **Standby** (hotspot off and screen off: the phone then idles for days; **Hotspot** wakes it again over Bluetooth). Each button
   that cuts the link asks first and says what it needs.
+- **Hotspot off puts the phone to sleep, Hotspot on wakes it.** **Hotspot off** switches the phone's hotspot off, then its location off (if it was
+  on), then airplane mode on, then its screen off, so it uses almost no battery; in airplane mode it gets **no calls or texts**. **Hotspot on** ends
+  airplane mode first, then switches the hotspot on; it leaves location and the screen alone (location goes back on in the Phone tab, **Location on**).
+  Airplane mode takes Bluetooth away on this phone, and Bluetooth is how the tablet wakes it, so the phone only stays in airplane mode while
+  Bluetooth stays on (it checks, and switches airplane mode off again if not); the tablet only asks for it right after the Bluetooth link answered.
+  The question has **Turn it off**, **Hotspot only** (the old plain Hotspot off) and **Cancel**; Settings > This tablet > "Hotspot off also puts the
+  phone to sleep" turns it off for good. Standby is unchanged (calls and texts still arrive). Home shows the phone's **Airplane mode** and
+  **Location**. Read `docs/DEEP_SLEEP.md` for what is not known yet.
 - **The tablet's own Wi-Fi follows the hotspot** (Settings > This tablet > "Switch the tablet's Wi-Fi with the hotspot", on unless
   you switch it off). After **Hotspot on** the tablet's Wi-Fi is switched on, so that it can join the hotspot; after **Hotspot off**
   or **Standby** it is switched off, so that it does not keep searching. It happens only after the phone has said the switch worked,
@@ -91,6 +99,10 @@ phone's screen). Until Shizuku runs, the tablet can read the status but cannot s
 Tell me what happened, in your own words, for any of these:
 - Settings > Bluetooth link > Set up, then Test: did it say Ready?
 - Hotspot off, then Hotspot on from the tablet; Standby, then waking the phone.
+- Hotspot off (deep): after you press **Turn it off**, does the phone end up with the hotspot off, location off, airplane mode on and the screen off
+  (Home's lines Airplane mode and Location, and the sentence under the buttons)? Does **Hotspot on** from the tablet then wake it (airplane mode off,
+  hotspot on)? If the sentence says "Airplane mode was switched off again: Bluetooth could not stay on", this phone does not keep Bluetooth in
+  airplane mode: switch the setting off and tell me. How long did Hotspot on take from airplane mode?
 - The tablet's Wi-Fi with the hotspot: after Hotspot on, did the panel with the Wi-Fi switch open, and did one tap on it join the
   hotspot? After Hotspot off, did the Wi-Fi go off (after your tap)? Was one tap fine for you, or would you rather have it with no tap
   at all (that needs a second, tiny app on the tablet that Android still allows to switch Wi-Fi: tell me and I build it)?

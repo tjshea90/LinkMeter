@@ -14,6 +14,7 @@ older estimate, kept for the unconfirmed rows.
 | Feature | Where | Needs | Confidence |
 |---|---|---|---|
 | Battery, cell signal, tablet Wi-Fi meters | HomeTab, Status | none | high |
+| "Hotspot off" puts the phone to sleep (hotspot, location off if on, airplane mode only while the Bluetooth link is up and kept only if Bluetooth stays up, screen off); "Hotspot on" ends airplane mode first; Location on/off in the Phone tab | DeepSleepRules (pure), DeepSleep, PhoneLocation, Actions, RemoteRoutes.cutsLink, Status (`loc`, `deep`, `dres`), FollowUp, HomeTab (`askOff`), SettingsTab, ControlTab, Cfg.deepSleep | Shizuku | LOW until field-tested (see `docs/DEEP_SLEEP.md`) |
 | The tablet's own Wi-Fi follows the phone's hotspot (on after Hotspot on, off after Hotspot off / Standby, only after the phone's switch was confirmed and never off while the tablet is on another network; Android 10 refuses apps, so it tries the direct call, Shizuku on the tablet, then opens Android's Wi-Fi switch for one tap, reading the state back each time) | TabletWifiRules (pure), TabletWifi, HomeTab (`settleWifi`), SettingsTab, Cfg.wifiFollow | none (a Shizuku on the tablet that LinkMeter is allowed in would make it silent; no tablet button asks for that) | LOW until field-tested (offline tests, 26 breakages and the screen pictures pass) |
 | One-time pairing (no numbers) | Api.pair, Cfg tokens | tap "Pair tablet" on phone once | high |
 | Always-on phone service, boot start | SenderService, BootReceiver | none | medium (Samsung may kill it: set battery Unrestricted) |
@@ -440,6 +441,7 @@ app/src/main/java/com/tj/linkmeter: Cfg (prefs, trust), Http/Client (sockets), A
 BootReceiver, Status, Priv/Actions/Eco/Cells/ShellMain/Saved/Guard/Notice (privileged and safety), SpeedTest, Files, Net,
 Call (tablet helpers), Updater (tablet-driven phone update), Ui, MeterView, SpeedView, Tab,
 HomeTab/SpeedTab/BandsTab/ControlTab/FilesTab/SettingsTab/PhoneTab/ScreenTab, MainActivity.
+Deep sleep: DeepSleepRules (the steps and the fail-safe, pure), DeepSleep and PhoneLocation (what the phone does for each step).
 Tablet Wi-Fi with the hotspot: TabletWifiRules (the rules, pure), TabletWifi (Android's Wi-Fi manager, Shizuku, the Wi-Fi switch screen).
 Remote screen, phone: Screen (routes), PowerSequence (Sleep / Wake steps), RemoteProfile and ProfilePlan (screen kept on and
 dimmed, restored), ShellMain `inject` and `sleep`.
