@@ -59,6 +59,8 @@ final class TypingView extends View {
     private int cursors;
     private int regions;
     private int reads;
+    private int extracts;
+    private int anchors;
     private int reported;
     private String lastField = "no keyboard has opened it yet";
 
@@ -87,6 +89,7 @@ final class TypingView extends View {
         return lastField + "; since the app started the keyboard opened it " + started + "x, composing " + composing + ", committed "
                 + committed + ", finished " + finished + ", deleted " + deleted + ", keys " + keys + ", action buttons " + actions
                 + ", cursor moves " + cursors + ", words re-opened " + regions + ", text read back " + reads
+                + ", whole text asked for " + extracts + ", cursor position asked for " + anchors
                 + ", cursor reported to it " + reported;
     }
 
@@ -496,8 +499,14 @@ final class TypingView extends View {
 
         @Override
         public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
-            reads++;
+            extracts++;
             return super.getExtractedText(request, flags);
+        }
+
+        @Override
+        public boolean requestCursorUpdates(int cursorUpdateMode) {
+            anchors++;
+            return super.requestCursorUpdates(cursorUpdateMode);
         }
 
         @Override

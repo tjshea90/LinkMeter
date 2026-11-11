@@ -37,7 +37,8 @@ always.
   again** and **Phone info screen** are under Tools.
 - **Screen tab > Type:** opens the tablet's keyboard, and what you type goes to the phone as you type it. Glide (swipe) typing and
   suggestions work (Options > Keyboard > "Suggestions and glide typing"); switch that off to send exactly the letters you tap, which is
-  better for codes, web addresses and passwords. The phone never types `*` or `#`.
+  better for codes, web addresses and passwords. "Incognito" (off) asks the keyboard not to learn what you type; some keyboards then
+  also switch glide typing off. The phone never types `*` or `#`.
 - **Speed, Screen, Files, Texts:** as before. Texts are off until you switch them on at the phone (card "Texts").
 
 ## 3. If something breaks
@@ -63,5 +64,6 @@ Tell me what happened, in your own words, for any of these:
 - The Screen tab left open while the phone sleeps (the tablet is meant to rest after a while, and wake when you touch it).
 - The phone's own screen: does the first card name the right thing? Do Stop, Forget all tablets and Switch role ask first?
 - The Signal tab: Scan, the comparison, Search for a network again, Phone info screen.
-- Glide typing in the Screen tab's Type keyboard (SwiftKey): does a glided word arrive on the phone?
+- Glide typing in the Screen tab's Type keyboard (SwiftKey): does a glided word arrive on the phone? If it does not: glide one word,
+  close the keyboard, open Options, and send me the line that starts with "Keyboard:" (Options > Copy this information).
 - The Safety check on the phone: does it read clearly?

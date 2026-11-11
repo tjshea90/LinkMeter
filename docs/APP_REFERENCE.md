@@ -147,7 +147,7 @@ process per event. Everything needs Shizuku on the phone and the phone setting "
   again when the window regains focus. Back leaves full screen.
 - Typing: Type hides the tab bar and header, swaps the right column for Done, Enter, Backspace, Tab and arrow keys, and opens
   the tablet's keyboard on an invisible `TypingView` that forwards characters (as `t` lines) and keys (`k` lines) as they are
-  typed. Since 2026-11-11 the field is a normal text field by default, so glide typing and suggestions work (Options > Keyboard: "Suggestions and glide typing"; off = the old exact mode: a visible-password field without suggestions); the keyboard's drafts are followed by `TypingDraft`. `RemoteLayout` keeps the picture at the size it had and anchored at the top, so only
+  typed. Since 2026-11-11 the field is a normal text field by default, so glide typing and suggestions work (Options > Keyboard: "Suggestions and glide typing"; off = the old exact mode: a visible-password field without suggestions; a second check, "Incognito", off by default, adds `IME_FLAG_NO_PERSONALIZED_LEARNING`, which keyboards show as their incognito mode). The field is an honest editor (see "Typed text goes wrong with some keyboards" below); `TypingMirror` keeps the phone's text equal to it. `RemoteLayout` keeps the picture at the size it had and anchored at the top, so only
   the bottom of it, where the phone's own keyboard and navigation bar are, goes under the tablet's keyboard. Closing the
   keyboard with its own Back button ends typing mode by itself. A physical keyboard works too. Only characters the phone's
   keyboard map has a key for can be typed (Latin letters, digits, punctuation).
@@ -263,11 +263,23 @@ given a colour or alpha, the bug that dimmed the picture). Android code itself c
 - A hiccup every 3 minutes: the screenrecord restart. Expected; could be hidden by starting the next one early.
 - The phone is rotated while streaming: the stream keeps the size it started with, so the picture and the touch mapping go wrong
   until the tab is left and re-entered. Fix if it matters: restart the stream when the phone's size changes.
-- Typed text goes wrong with some keyboards (composing text): `TypingDraft` follows the keyboard's draft and replaces it by deleting
-  only what changed and typing the rest (tested with 120,000 random keyboard steps); `TypingView` tells the keyboard there is no text
-  around the cursor, so it does not re-open earlier words. If a keyboard still misbehaves, look at which InputConnection call it uses,
-  or switch Options > Keyboard > "Suggestions and glide typing" off. GLIDE TYPING (SwiftKey, field report 2026-11-11): the old field
-  was declared a visible password with no suggestions, and keyboards switch glide off for both.
+- Typed text goes wrong with some keyboards, or a keyboard offers no glide (swipe) typing: `TypingView` is a real text field for the
+  keyboard (v0.2.157 on; the version before it said "no text around the cursor" and never reported the cursor, and set
+  `IME_FLAG_NO_PERSONALIZED_LEARNING`, which SwiftKey shows as incognito). Its `Conn` is a full `BaseInputConnection(view, true)` on a
+  text of its own: the system's editing code does every edit, `*` and `#` are removed before they reach the text (`TypingFilter`), and
+  after the outermost batch of edits ends `TypingMirror.sync` brings the phone's text up to date (Backspace the end of the old text that
+  is gone, type the new end; a line break is the Enter key; the phone's cursor is taken to be at the end of what this field typed) and
+  `InputMethodManager.updateSelection` tells the keyboard the cursor and the draft, as a TextView does. Backspace or Delete beyond the
+  field's own text goes to the phone as it is, but only while the field is empty. Cursor and control keys (arrows, Home, End, Tab,
+  Escape, Page) go to the phone and start the field over (empty text, `TypingMirror.reset`). The text keeps itself short (above 1,500
+  characters the oldest part is dropped at a space; the phone keeps it). Tests: `tools/test/TypingMirrorTest` (185,000 checks, 120,000
+  random keyboard steps incl. cursor moves, selections, re-opened words, emoji, line breaks, shortening) and, with the system's own
+  editing code, `PreviewTest.typingFieldAllowsGlide` and `typingFieldFollowsAnyKeyboard` (run `tools/preview.sh --tests ...`; not part
+  of the pipeline). WHAT THE KEYBOARD DID: Options > Information has a line "Keyboard: <keyboard app>, Type field <field>; ... composing N,
+  committed N, ..." (counts and settings only, never what was typed): if a glide leaves `composing` and `committed` at 0 the keyboard
+  sent nothing (it switched glide off for this field); if they count up the keyboard did write and the fault is further on.
+  GLIDE TYPING (SwiftKey, field reports 2026-11-11): first the field was declared a visible password with no suggestions (keyboards
+  switch glide off for both); then the incognito flag and the text that always read back as empty. NOT VERIFIED on a device.
 - screenrecord refuses on this Samsung build (the status line will say what it printed): the last resort is the own-encoder engine.
 
 ## Releases and the automatic merge (`.github/workflows/build.yml`)

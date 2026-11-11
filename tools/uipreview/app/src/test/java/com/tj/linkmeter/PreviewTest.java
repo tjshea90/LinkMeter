@@ -4,13 +4,20 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.text.InputType;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 import android.widget.Button;
 import android.widget.ScrollView;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -1631,15 +1638,18 @@ public class PreviewTest {
     }
 
     /**
-     * The remote keyboard's field (the Screen tab's Type button): a keyboard such as Microsoft SwiftKey switches glide typing off in a
-     * password field and in a field that asks for no suggestions, so the default field is neither; and what a glide writes (a draft
-     * that is then committed) reaches the listener as the word once and the space. Not a picture: the facts of the field.
+     * The remote keyboard's field (the Screen tab's Type button). A keyboard such as Microsoft SwiftKey switches glide typing off in a
+     * field that looks wrong to it: a password field, "no suggestions", an incognito request, a cursor it was not told about, text it
+     * cannot read back. So the default field is a plain text field that keeps its text and answers when the keyboard reads it, and what
+     * a glide writes reaches the listener as the word once and the space. Not a picture: the facts of the field, with the system's own
+     * editing code behind it.
      */
     @Test
     @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
     public void typingFieldAllowsGlide() throws Exception {
         android.content.Context ctx = RuntimeEnvironment.getApplication();
-        final java.util.List<String> got = new java.util.ArrayList<>();
+        final List<String> got = new ArrayList<>();
+        final int[] blocked = {0};
         TypingView v = new TypingView(ctx);
         v.setListener(new TypingView.Listener() {
             @Override
@@ -1651,36 +1661,322 @@ public class PreviewTest {
             public void key(int code) {
                 got.add("k:" + code);
             }
+
+            @Override
+            public void blocked() {
+                blocked[0]++;
+            }
         });
-        // the default: suggestions and glide
-        android.view.inputmethod.EditorInfo on = new android.view.inputmethod.EditorInfo();
-        android.view.inputmethod.InputConnection ic = v.onCreateInputConnection(on);
-        int variation = on.inputType & android.text.InputType.TYPE_MASK_VARIATION;
-        check(on.inputType == android.text.InputType.TYPE_CLASS_TEXT, "a plain text field, got inputType " + on.inputType);
-        check(variation == 0, "no password or other variation");
-        check((on.inputType & android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) == 0, "suggestions are not switched off");
-        check((on.imeOptions & android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0, "the keyboard is asked not to learn");
+
+        // ---- the default: a plain text field, suggestions and glide on, not incognito
+        EditorInfo on = new EditorInfo();
+        InputConnection ic = v.onCreateInputConnection(on);
+        check(on.inputType == InputType.TYPE_CLASS_TEXT, "a plain text field, got inputType " + on.inputType);
+        check((on.inputType & InputType.TYPE_MASK_VARIATION) == 0, "no password or other variation");
+        check((on.inputType & InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) == 0, "suggestions are not switched off");
+        check((on.imeOptions & EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) == 0, "the keyboard is not asked to be incognito");
         check(on.initialSelStart == 0 && on.initialSelEnd == 0, "the cursor is reported (an empty field, cursor at 0)");
-        // what a glide writes: the word as a draft, then the word and a space committed
-        ic.beginBatchEdit();
+        check("".equals(String.valueOf(on.getInitialTextBeforeCursor(10, 0))), "the field says up front that it is empty");
+
+        // ---- what a glide writes: the word as a draft, then the word and a space committed
         ic.setComposingText("hello", 1);
+        check(got.toString().equals("[t:hello]"), "a glided word reaches the phone once: " + got);
         ic.commitText("hello ", 1);
-        ic.endBatchEdit();
-        check(got.toString().equals("[t:hello, t: ]"), "a glided word reaches the phone once, then the space: " + got);
+        check(got.toString().equals("[t:hello, t: ]"), "and then only the space: " + got);
+        check("hello ".equals(String.valueOf(ic.getTextBeforeCursor(20, 0))), "the field answers when the keyboard reads its text back");
+        check("".equals(String.valueOf(ic.getTextAfterCursor(20, 0))), "nothing is after the cursor");
         got.clear();
+        ic.beginBatchEdit();
+        ic.setComposingText("world", 1);
+        ic.commitText("world ", 1);
+        ic.endBatchEdit();
+        check(got.toString().equals("[t:world ]"), "a batch of edits reaches the phone once, as it ended: " + got);
+
+        // ---- a correction, Backspace, and a word that is re-opened
         ic.setComposingText("teh", 1);
         got.clear();
         ic.commitText("the ", 1);
         check(got.toString().equals("[k:67, k:67, t:he ]"), "a correction deletes only what differs: " + got);
         got.clear();
-        ic.sendKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL));
+        ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
         check(got.toString().equals("[k:67]"), "Backspace is one Backspace: " + got);
-        // the exact mode, for codes and passwords
+        check("hello world the".equals(String.valueOf(ic.getTextBeforeCursor(50, 0))), "and the field lost the space");
+        got.clear();
+        ic.setComposingRegion(12, 15);
+        ic.setComposingText("thy", 1);
+        check(got.toString().equals("[k:67, t:y]"), "a re-opened word changes from the first letter that differs: " + got);
+
+        // ---- * and # are left out before they reach the field
+        ic.finishComposingText();
+        got.clear();
+        ic.commitText("a*b#", 1);
+        check(got.toString().equals("[t:ab]") && blocked[0] == 1, "* and # are left out and the listener is told: " + got + " " + blocked[0]);
+        got.clear();
+        ic.commitText("*", 1);
+        check(got.isEmpty() && blocked[0] == 2, "a text of only * changes nothing: " + got + " " + blocked[0]);
+        check(!String.valueOf(ic.getTextBeforeCursor(50, 0)).contains("*"), "the field never holds one");
+
+        // ---- Enter: the keyboard's action button, the key, and a line break in a text
+        got.clear();
+        ic.performEditorAction(EditorInfo.IME_ACTION_NONE);
+        ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER));
+        ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER));
+        ic.commitText("x\ny", 1);
+        check(got.toString().equals("[k:66, k:66, t:x, k:66, t:y]"), "Enter is the Enter key: " + got);
+
+        // ---- an arrow key moves the phone's cursor: the field starts empty again, and Backspace reaches the phone's own text
+        got.clear();
+        ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT));
+        check(got.toString().equals("[k:21]"), "an arrow key goes to the phone: " + got);
+        check("".equals(String.valueOf(ic.getTextBeforeCursor(50, 0))), "and the field starts empty again");
+        got.clear();
+        ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
+        ic.deleteSurroundingText(2, 1);
+        check(got.toString().equals("[k:67, k:67, k:67, k:112]"), "Backspace and Delete on an empty field are the phone's own: " + got);
+        ic.commitText("ab", 1);
+        got.clear();
+        ic.deleteSurroundingText(3, 0);
+        check(got.toString().equals("[k:67, k:67, k:67]"), "deleting more than the field holds erases the field and then the phone's text: " + got);
+
+        // ---- Backspace with the cursor at the start of a field that holds text changes nothing (the phone's cursor is at the end)
+        ic.commitText("cd", 1);
+        ic.setSelection(0, 0);
+        got.clear();
+        ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
+        ic.deleteSurroundingText(2, 0);
+        check(got.isEmpty(), "nothing before the cursor, so nothing is erased on the phone: " + got);
+        check("cd".equals(fieldText(ic)), "and the field is as it was");
+        ic.setSelection(2, 2);
+        ic.deleteSurroundingText(2, 0);
+
+        // ---- a physical keyboard's Backspace goes through the same field
+        ic.commitText("q", 1);
+        got.clear();
+        check(v.onKeyDown(KeyEvent.KEYCODE_DEL, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)), "the view handles Backspace");
+        check(got.toString().equals("[k:67]"), "once: " + got);
+
+        // ---- incognito only when asked for
+        v.setIncognito(true);
+        EditorInfo inc = new EditorInfo();
+        v.onCreateInputConnection(inc);
+        check((inc.imeOptions & EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0, "incognito is on when it is asked for");
+        v.setIncognito(false);
+
+        // ---- the exact mode, for codes and passwords
         v.setSuggestions(false);
-        android.view.inputmethod.EditorInfo off = new android.view.inputmethod.EditorInfo();
+        EditorInfo off = new EditorInfo();
         v.onCreateInputConnection(off);
-        check((off.inputType & android.text.InputType.TYPE_MASK_VARIATION) == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                && (off.inputType & android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0, "exact mode: no suggestions, so the keyboard sends the letters as tapped");
+        check((off.inputType & InputType.TYPE_MASK_VARIATION) == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                && (off.inputType & InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0, "exact mode: no suggestions, so the keyboard sends the letters as tapped");
+
+        // ---- the diagnostics line holds counts and settings, never what was typed
+        String rep = v.report();
+        check(rep.contains("exact letters") && rep.contains("composing") && !rep.contains("hello") && !rep.contains("world"), "report: " + rep);
+    }
+
+    /**
+     * The remote keyboard's field against the system's own editing code: a keyboard simulated at random (tapped letters, glides,
+     * corrections, suggestions, re-opened words, a moved cursor, selections, pastes, deletes around the cursor, Backspace and Enter as
+     * keys, batches of edits) works on the field, and after every step the phone's text must be the field's text, behind the phone's own
+     * earlier text.
+     */
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void typingFieldFollowsAnyKeyboard() throws Exception {
+        final String seed = "seed text";
+        final StringBuilder phone = new StringBuilder();
+        TypingView v = new TypingView(RuntimeEnvironment.getApplication());
+        v.setListener(new TypingView.Listener() {
+            @Override
+            public void text(String t) {
+                phone.append(t);
+            }
+
+            @Override
+            public void key(int code) {
+                if (code == KeyEvent.KEYCODE_DEL) {
+                    if (phone.length() > 0) {
+                        phone.setLength(phone.offsetByCodePoints(phone.length(), -1));
+                    }
+                } else if (code == KeyEvent.KEYCODE_ENTER) {
+                    phone.append('\n');
+                }
+            }
+
+            @Override
+            public void blocked() {
+            }
+        });
+        Random rnd = new Random(20261111L);
+        String letters = "abcdefghijklmnopqrstuvwxyz";
+        int steps = 0;
+        for (int round = 0; round < 600; round++) {
+            phone.setLength(0);
+            phone.append(seed);
+            InputConnection ic = v.onCreateInputConnection(new EditorInfo());
+            String draft = ""; // what the simulated keyboard is drafting
+            for (int n = 0; n < 40; n++) {
+                int kind = rnd.nextInt(17);
+                String what;
+                switch (kind) {
+                    case 0:
+                    case 1:
+                    case 2:
+                        draft = draft + letters.charAt(rnd.nextInt(letters.length()));
+                        ic.setComposingText(draft, 1);
+                        what = "tap";
+                        break;
+                    case 3: {
+                        StringBuilder w = new StringBuilder();
+                        for (int i = 0, len = 1 + rnd.nextInt(7); i < len; i++) {
+                            w.append(letters.charAt(rnd.nextInt(letters.length())));
+                        }
+                        draft = w.toString();
+                        ic.setComposingText(draft, 1);
+                        what = "glide";
+                        break;
+                    }
+                    case 4:
+                        ic.commitText(draft + " ", 1);
+                        draft = "";
+                        what = "space";
+                        break;
+                    case 5: {
+                        StringBuilder w = new StringBuilder(draft);
+                        if (w.length() > 0) {
+                            w.setCharAt(rnd.nextInt(w.length()), letters.charAt(rnd.nextInt(letters.length())));
+                        }
+                        ic.commitText(w + (rnd.nextBoolean() ? "s" : "") + " ", 1);
+                        draft = "";
+                        what = "autocorrect";
+                        break;
+                    }
+                    case 6:
+                        if (draft.length() > 0) {
+                            draft = draft.substring(0, draft.length() - 1);
+                            ic.setComposingText(draft, 1);
+                        }
+                        what = "backspace in the draft";
+                        break;
+                    case 7:
+                        ic.finishComposingText();
+                        draft = "";
+                        if (rnd.nextBoolean()) {
+                            ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
+                            ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL));
+                        } else {
+                            ic.deleteSurroundingText(1, 0);
+                        }
+                        what = "backspace";
+                        break;
+                    case 8:
+                        ic.finishComposingText();
+                        draft = "";
+                        what = "finish";
+                        break;
+                    case 9:
+                        ic.commitText(draft + "ing ", 1);
+                        draft = "";
+                        what = "suggestion";
+                        break;
+                    case 10:
+                        if (rnd.nextBoolean()) {
+                            ic.commitText(draft + "\n", 1);
+                        } else {
+                            ic.finishComposingText();
+                            if (rnd.nextBoolean()) {
+                                ic.performEditorAction(EditorInfo.IME_ACTION_NONE);
+                            } else {
+                                ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER));
+                            }
+                        }
+                        draft = "";
+                        what = "enter";
+                        break;
+                    case 11:
+                    case 12: {
+                        ic.finishComposingText();
+                        draft = "";
+                        int len = fieldText(ic).length();
+                        int a = rnd.nextInt(len + 1);
+                        ic.setSelection(a, kind == 11 ? a : rnd.nextInt(len + 1));
+                        what = kind == 11 ? "cursor" : "selection";
+                        break;
+                    }
+                    case 13: {
+                        ic.finishComposingText();
+                        draft = "";
+                        String before = String.valueOf(ic.getTextBeforeCursor(100000, 0));
+                        CharSequence sel = ic.getSelectedText(0);
+                        if (sel == null || sel.length() == 0) {
+                            int start = Math.max(before.lastIndexOf(' '), before.lastIndexOf('\n')) + 1;
+                            ic.setComposingRegion(start, before.length());
+                            draft = before.substring(start);
+                        }
+                        what = "re-open";
+                        break;
+                    }
+                    case 14: {
+                        ic.finishComposingText();
+                        draft = "";
+                        StringBuilder w = new StringBuilder();
+                        for (int i = 0, len = 1 + rnd.nextInt(12); i < len; i++) {
+                            int r = rnd.nextInt(20);
+                            w.append(r == 0 ? "\n" : r == 1 ? " " : String.valueOf(letters.charAt(rnd.nextInt(letters.length()))));
+                        }
+                        ic.commitText(w.toString(), 1);
+                        what = "paste";
+                        break;
+                    }
+                    case 15:
+                        ic.finishComposingText();
+                        draft = "";
+                        if (rnd.nextBoolean()) {
+                            ic.deleteSurroundingText(rnd.nextInt(6), rnd.nextInt(6));
+                        } else {
+                            ic.deleteSurroundingTextInCodePoints(rnd.nextInt(6), rnd.nextInt(6));
+                        }
+                        what = "delete around";
+                        break;
+                    default:
+                        ic.finishComposingText();
+                        draft = "";
+                        ic.beginBatchEdit();
+                        ic.commitText(" x", 1);
+                        ic.deleteSurroundingText(rnd.nextInt(4), 0);
+                        ic.commitText("yz", 1);
+                        ic.endBatchEdit();
+                        what = "batch";
+                        break;
+                }
+                steps++;
+                String all = fieldText(ic);
+                String p = phone.toString();
+                String why = "round " + round + ", step " + n + ", after " + what + ": field '" + all + "', phone '" + p + "'";
+                check(p.endsWith(all), "the phone ends with the field's text, " + why);
+                check(seed.startsWith(p.substring(0, p.length() - all.length())), "and before it only the phone's own earlier text, " + why);
+            }
+        }
+        check(steps == 600 * 40, "every random step was checked: " + steps);
+
+        // ---- a long text: the field keeps itself short, the phone keeps everything
+        phone.setLength(0);
+        InputConnection ic = v.onCreateInputConnection(new EditorInfo());
+        StringBuilder typed = new StringBuilder();
+        for (int i = 0; i < 4000; i++) {
+            String w = "w" + (i % 10) + " ";
+            ic.setComposingText(w.trim(), 1);
+            ic.commitText(w, 1);
+            typed.append(w);
+        }
+        check(phone.toString().equals(typed.toString()), "a long text reaches the phone whole");
+        check(fieldText(ic).length() < 2200 && typed.toString().endsWith(fieldText(ic)), "the field kept itself short: " + fieldText(ic).length());
+    }
+
+    /** Everything the field holds, read back through the connection the way a keyboard reads it. */
+    private static String fieldText(InputConnection ic) {
+        CharSequence sel = ic.getSelectedText(0);
+        return String.valueOf(ic.getTextBeforeCursor(100000, 0)) + (sel == null ? "" : sel) + ic.getTextAfterCursor(100000, 0);
     }
 
     private static void check(boolean ok, String what) {
