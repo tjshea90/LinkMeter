@@ -3,7 +3,7 @@
 USER'S WORDS: "When I press turn Hotspot on from my tablet to turn the phone Hotspot on, automatically turn on my tablet wifi. When I
 turn the phone Hotspot off from the tablet, automatically turn off my tablet wifi"
 
-STATUS: WORKING (design done, nothing coded yet when this note was written)
+STATUS: WORKING (core DONE + checkpointed as c09cc50; card/meter + WifiFollowPreviewTest + mutations + docs written, see below)
 
 KEY FACT (read the code, not measured): the tablet is Android 10 and the app targets SDK 34. Since Android 10 an app that targets API 29+
 CANNOT switch Wi-Fi: WifiManager.setWifiEnabled() always returns false for it (WifiServiceImpl checks the caller's target SDK). The boot
@@ -30,6 +30,13 @@ DESIGN
 - Tests: tools/test/TabletWifiRulesTest.java + tools/test.sh entry + `wififollow:` breakages in tools/mutate_link.py; look at the pictures of
   tools/preview.sh (Settings, Home banner). Docs: docs/USER_GUIDE.md, docs/SAFETY.md row, HANDOFF.md (short).
 
-NEXT STEPS (tick as done): [ ] TabletWifiRules + test + test.sh  [ ] TabletWifi glue  [ ] Cfg + Settings toggle  [ ] HomeTab hooks
-[ ] banner/meter for Wi-Fi off  [ ] mutations  [ ] preview pictures  [ ] docs + HANDOFF  [ ] tools/test.sh + gradlew assembleRelease
-[ ] NO_RELEASE checkpoints along the way, plain tools/checkpoint.sh at the end, check run + release, give releases page.
+DONE: [x] TabletWifiRules + TabletWifiRulesTest (2,595 checks) + tools/test.sh  [x] TabletWifi glue (+ test hook refusedForTest)  [x] Cfg.wifiFollow + Settings toggle
+[x] HomeTab hooks (wifiWish/settleWifi/addWifiWords/switchWifiOn) + card 'The hotspot is on, but the tablet's Wi-Fi is off' + meter 'Off'
+[x] 26 `wififollow:` breakages in tools/mutate_link.py (all caught)  [x] tools/uipreview/.../WifiFollowPreviewTest.java (17 scenarios, ALL PASS, pictures looked at)
+[x] docs: USER_GUIDE, SAFETY row, APP_REFERENCE  [x] local build + tools/test.sh passed once (before the card/test/doc changes)
+IN PROGRESS: full tools/preview.sh run (all OLD preview tests must still pass: they press Hotspot off/on, my hook now also switches the pretend Wi-Fi) -> log in
+  the scratchpad preview-full.log (ends with 'preview-full exit=N'). If an old test fails because the screen text now has the Wi-Fi sentence, fix the TEST's expectation
+  (or the Wi-Fi state of that test), not the feature.
+TO DO: glue breakages by hand (see the list in HANDOFF/notes: drop settleWifi call, drop the onHide clear, ignore `confirmed`, network-at-press always none) each must make
+  WifiFollowPreviewTest fail; rerun tools/test.sh + ./gradlew assembleRelease; rewrite the HANDOFF bullet as DONE; plain `tools/checkpoint.sh` (release), check run + release
+  (GitHub MCP actions_list / list_releases), give https://github.com/tjshea90/LinkMeter/releases; tell the user: one tap on Android 10 (not zero), offer the helper app.
