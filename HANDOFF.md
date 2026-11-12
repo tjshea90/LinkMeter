@@ -54,8 +54,9 @@ session's transcript.
     the end of the chat unless I scroll up myself", "it says sending for a long time even though it already sent", "light up the mail icon
     tab ... and put a small number of how many new unread texts", "always show the most recent message in the preview", "compare it to
     popular messaging apps and revamp it", emoji replies as a small emoji connected to the bubble, both ways; their words and everything
-    below in `docs/TEXTS_OVERHAUL.md` "Round 4"; notes `tools/progress.sh --show texts4`; session branch `ccr-a8e3fc17-ngp6l5`; DONE, the
-    closing save publishes the release and a `note:` commit records its number here; NOT TRIED ON THE DEVICES). FOUND: (1) a REAL BUG behind
+    below in `docs/TEXTS_OVERHAUL.md` "Round 4"; notes `tools/progress.sh --show texts4`; session branch `ccr-a8e3fc17-ngp6l5`; DONE and
+    RELEASED as v0.2.180 (https://github.com/tjshea90/LinkMeter/releases/tag/v0.2.180; built from commit `002e6ef`; run #180 green: build,
+    offline tests, merge, release); NOT TRIED ON THE DEVICES). FOUND: (1) a REAL BUG behind
     "Sending…": `TextThread.pause()` (called when Android pauses the app: screen off, the photo picker, another app) set `paused` and
     nothing cleared it, so the open conversation ignored every answer afterwards; also a send answered after a pause left its bubble, and an
     older answer could overwrite a newer one. (2) a ListView keeps its first row when its height changes (keyboard, tab bar, reply chips).
