@@ -12,7 +12,8 @@ package com.tj.linkmeter;
  *
  * The rules that matter:
  *  - nothing happens unless the switch on the PHONE was settled (the phone said so, or its status showed it): the tablet's Wi-Fi
- *    is never touched for a switch that failed;
+ *    is never touched for a switch that failed. One exception, for ON only ({@link #atSent}): when the phone took the request and
+ *    answered "Sent" (it acts after the answer), the Wi-Fi may come on right then;
  *  - Wi-Fi is switched ON only when it is off, and OFF only when it is on, so the screen never "switches" what already is so;
  *  - Wi-Fi is switched OFF only when it is useless: the tablet is on no Wi-Fi network, or still on the very network the phone
  *    answered on at the press (the phone's hotspot, going away). A tablet that is on ANOTHER network (the home router) keeps its
@@ -119,6 +120,19 @@ final class TabletWifiRules {
         boolean noNetwork = networkNow == NO_NETWORK;
         boolean hotspotsNetwork = networkAtPress != NO_NETWORK && networkNow == networkAtPress;
         return noNetwork || hotspotsNetwork ? Verdict.SWITCH_OFF : Verdict.LEAVE_ON_OTHER_NETWORK;
+    }
+
+    /**
+     * When the phone took the switch and answered "Sent" first, because carrying it out cuts the link the answer travels over (since
+     * v0.2.169 "Hotspot on" to a phone in airplane mode is answered so: ending airplane mode disturbs Bluetooth). wifiOnNow: the
+     * tablet's Wi-Fi now (null: not known). The Wi-Fi may come ON at once: the call is over, so Android's Wi-Fi switch can cover the
+     * screen without cutting anything; the tablet needs its Wi-Fi to see the hotspot at all, while its only other way to the phone
+     * (Bluetooth) is the one the phone is disturbing; and a Wi-Fi that is on with no hotspot to join yet does no harm. Waiting for the
+     * confirmation instead left the Wi-Fi off for good whenever that confirmation could not come over Bluetooth. OFF still waits for
+     * the phone's confirmation ({@link #atResult}): switching it off for nothing would cut the tablet off.
+     */
+    static Verdict atSent(Wish wish, Boolean wifiOnNow) {
+        return wish == Wish.ON && Boolean.FALSE.equals(wifiOnNow) ? Verdict.SWITCH_ON : Verdict.NOTHING;
     }
 
     /** The sentence for the result line: what became of the tablet's Wi-Fi. "" when there is nothing to say. */

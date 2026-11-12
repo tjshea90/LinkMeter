@@ -78,6 +78,25 @@ final class Trouble {
     }
 
     /**
+     * Does the card lead with "Switch Wi-Fi on"? When the phone was not reached and the tablet's own Wi-Fi is off: the phone's hotspot
+     * cannot be reached at all then, whatever else is wrong, and after "Hotspot on" the hotspot is very likely on (the tablet joins it
+     * by itself once its Wi-Fi is on). tabletWifiOn: the tablet's Wi-Fi, null when Android does not say (then the card stays as it was).
+     */
+    static boolean wifiFirst(Kind k, Boolean tabletWifiOn) {
+        return Boolean.FALSE.equals(tabletWifiOn) && (k == Kind.NO_ROUTE || k == Kind.NO_ANSWER);
+    }
+
+    static final String WIFI_OFF_TITLE = "The tablet's Wi-Fi is off";
+
+    /** The card's text when it leads with "Switch Wi-Fi on" ({@link #wifiFirst}); the arguments as for {@link #text}. */
+    static String wifiOffText(Kind k, boolean bluetoothTried, String linkWords) {
+        String also = k == Kind.NO_ROUTE ? "and it has no Bluetooth link to the phone"
+                : bluetoothTried ? "and the phone did not answer over Bluetooth either" : "and the phone did not answer";
+        return "The tablet cannot reach the phone's hotspot while its own Wi-Fi is off, " + also + ". Switch the Wi-Fi on: the tablet "
+                + "joins the phone's hotspot by itself once the hotspot is on." + (k == Kind.NO_ROUTE && !linkWords.isEmpty() ? " " + linkWords : "");
+    }
+
+    /**
      * The card's text (the line above the card already gives the error as it came). overBluetooth: the answer, if any, came
      * over Bluetooth. bluetoothTried: the phone was called over Bluetooth. linkWords: why the Bluetooth link cannot be relied
      * on, "" when it is ready (LinkState.words).

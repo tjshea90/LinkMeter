@@ -92,13 +92,20 @@ final class HomeTab extends Tab {
      */
     private TabletWifiRules.Wish wifiWish = TabletWifiRules.Wish.NONE;
     private long wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
-    /** The card's "Switch Wi-Fi on" is working on it (Shizuku can take a few seconds). */
+    /** The tablet's Wi-Fi is being switched on (Shizuku can take a few seconds). */
     private boolean wifiBusy;
     /**
-     * The card's main button is "Switch Wi-Fi on". It waits with the switches below: Android's Wi-Fi switch would pause the app,
-     * which closes the Bluetooth connection that a switch on its way is using.
+     * The card's main button is "Switch Wi-Fi on". It waits while a request to the phone is on its way: Android's Wi-Fi switch would
+     * pause the app, which closes the Bluetooth connection that request is using ({@link #wifiFree}).
      */
     private boolean bannerWifi;
+    /**
+     * Until this time (elapsedRealtime) a pause of the app is Android's Wi-Fi switch that LinkMeter has just opened: a follow-up that
+     * is running then goes on when the screen is back, instead of ending as "the screen was left". 0: no such pause is expected.
+     */
+    private long keepFollowUntil;
+    /** How soon after Android's Wi-Fi switch was opened the app's pause must come to count as that switch's. */
+    private static final long PANEL_PAUSE_MS = 3000L;
 
     /** What one poll found. Built on the worker thread, shown on the UI thread. */
     private static final class Snap {
@@ -293,7 +300,9 @@ final class HomeTab extends Tab {
             worker.quitSafely();
             worker = null;
         }
-        if (follow != null) {
+        boolean ownPanel = SystemClock.elapsedRealtime() <= keepFollowUntil;
+        keepFollowUntil = 0;
+        if (follow != null && !ownPanel) {
             // nobody is looking any more: the phone is not asked on, and nothing is claimed about the switch (nor about the
             // lines above: they are the last answer, and after "Hotspot off" the phone may not be reachable for a new one).
             // Nothing was confirmed, so the tablet's own Wi-Fi is left as it is.
@@ -301,6 +310,23 @@ final class HomeTab extends Tab {
             wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
             endFollow("Sent. LinkMeter stopped looking for the result when this screen was left. The lines above show the "
                     + "phone's latest answer, which may be from before the switch.", true);
+        }
+        // (Android's Wi-Fi switch that LinkMeter just opened covers the screen: the follow-up stays and goes on when the screen is
+        // back, its time counted from the press as always; the phone is not asked meanwhile)
+    }
+
+    /**
+     * May Android's Wi-Fi switch be opened now? Not while a request to the phone is on its way: the switch pauses the app, and that
+     * closes the Bluetooth connection the request is using. A follow-up only reads the phone's status, so it does not hold it back.
+     */
+    private boolean wifiFree() {
+        return !wifiBusy && !(busy && !following);
+    }
+
+    /** Android's Wi-Fi switch was just opened (way ASKED): the pause it causes is not "the screen was left". */
+    private void panelOpened(TabletWifiRules.Way way) {
+        if (way == TabletWifiRules.Way.ASKED) {
+            keepFollowUntil = SystemClock.elapsedRealtime() + PANEL_PAUSE_MS;
         }
     }
 
@@ -499,8 +525,8 @@ final class HomeTab extends Tab {
                         + "reached over Bluetooth, which carries the switches and the status but no internet, files or screen.");
                 bannerMain.setText("Switch Wi-Fi on");
                 bannerMain.setOnClickListener(v -> switchWifiOn());
-                bannerWifi = true; // greyed and freed by paintSwitches, together with the other switches
-                bannerMain.setEnabled(!busy && !wifiBusy);
+                bannerWifi = true; // greyed and freed by paintSwitches while a request to the phone is on its way
+                bannerMain.setEnabled(wifiFree());
                 bannerOther.setVisibility(View.GONE);
             } else if (hs != null && hs) {
                 // On a Wi-Fi network (very likely the hotspot itself) it is only this question that did not get through there:
@@ -509,14 +535,16 @@ final class HomeTab extends Tab {
                         : "The hotspot is on, the tablet has not joined it yet");
                 bannerText.setText(s.onWifi
                         ? "The phone says its hotspot is on, and the tablet is on a Wi-Fi network, but the phone did not answer "
-                        + "there just now. LinkMeter keeps trying the hotspot first. If this stays, check in the tablet's Wi-Fi "
-                        + "settings that it is on the phone's hotspot."
+                        + "there just now. LinkMeter keeps trying the hotspot first. If this stays, check in Wi-Fi settings that "
+                        + "the tablet is on the phone's hotspot."
                         : "The tablet joins the phone's hotspot by itself, usually within half a minute. Until then the phone "
-                        + "is reached over Bluetooth. If it does not join, open the tablet's Wi-Fi settings.");
+                        + "is reached over Bluetooth. If it does not join, open Wi-Fi settings and pick the phone's hotspot.");
                 bannerMain.setText("Ask again");
                 bannerMain.setOnClickListener(v -> askNow());
                 bannerMain.setEnabled(true);
-                bannerOther.setVisibility(View.GONE);
+                bannerOther.setVisibility(View.VISIBLE);
+                bannerOther.setText("Wi-Fi settings");
+                bannerOther.setOnClickListener(v -> openWifiSettings());
             } else {
                 String need = needs(s.phone);
                 boolean asleep = hs != null && Boolean.TRUE.equals(Call.flag(s.phone, "air"));
@@ -544,6 +572,21 @@ final class HomeTab extends Tab {
         Trouble.Kind k = s.trouble;
         if (k != null && Trouble.shown(k, lastPhone != null, s.misses, s.stopped, s.btTried)) {
             boolean linkOk = BtLink.state(act) == LinkState.Kind.READY;
+            if (Trouble.wifiFirst(k, TabletWifi.on(act))) {
+                // the phone's hotspot cannot be reached while the tablet's own Wi-Fi is off: that comes first (after "Hotspot on" the
+                // phone may well have done it, and Bluetooth, the only other way, is what the phone disturbs when it leaves airplane mode)
+                banner.setVisibility(View.VISIBLE);
+                bannerTitle.setText(Trouble.WIFI_OFF_TITLE);
+                bannerText.setText(Trouble.wifiOffText(k, s.btTried, linkOk ? "" : linkWords()));
+                bannerMain.setText("Switch Wi-Fi on");
+                bannerMain.setOnClickListener(v -> switchWifiOn());
+                bannerWifi = true; // greyed and freed by paintSwitches while a request to the phone is on its way
+                bannerMain.setEnabled(wifiFree());
+                bannerOther.setVisibility(View.VISIBLE);
+                bannerOther.setText("Ask again");
+                bannerOther.setOnClickListener(v -> askNow()); // a press: this one may switch the tablet's Bluetooth on
+                return;
+            }
             String text = Trouble.text(k, Reach.BLUETOOTH.equals(s.via), s.btTried, linkOk ? "" : linkWords());
             if (k == Trouble.Kind.PHONE_ERROR) {
                 text += " The " + PHONE + " tab has \"Update phone from this tablet\".";
@@ -669,7 +712,7 @@ final class HomeTab extends Tab {
             bannerMain.setEnabled(can);
         }
         if (bannerWifi) {
-            bannerMain.setEnabled(!busy && !wifiBusy);
+            bannerMain.setEnabled(wifiFree());
         }
         bHotspot.setEnabled(can);
         bHotspotOff.setEnabled(can);
@@ -721,6 +764,8 @@ final class HomeTab extends Tab {
                     h.removeCallbacks(pollTask);
                     h.postDelayed(pollTask, FollowUp.EVERY_MS);
                 }
+                paintSwitches(); // the call is over: only the status is read now, so the card's Wi-Fi button is free again
+                wifiAtSent();
                 return;
             }
             busy = false;
@@ -769,6 +814,7 @@ final class HomeTab extends Tab {
         final boolean on = v == TabletWifiRules.Verdict.SWITCH_ON;
         // (the panel opens only while the app is in front: Android 10 lets an app open a screen only then, and nobody would see it)
         TabletWifi.set(act, on, act::inFront, way -> {
+            panelOpened(way);
             addWifiWords(phoneSaid, TabletWifiRules.words(v, way), TabletWifiRules.good(true, way));
             if (on) {
                 // the tablet needs a few seconds to find the hotspot and join it: look again when it has had them
@@ -777,22 +823,67 @@ final class HomeTab extends Tab {
         });
     }
 
-    /** The card's "Switch Wi-Fi on": the same switch as after "Hotspot on", for a hotspot that is on while the tablet's Wi-Fi is off. */
+    /**
+     * The phone took the switch and answered "Sent" (it acts after the answer: "Hotspot on" to a phone in airplane mode is one). If
+     * the switch wants the tablet's Wi-Fi ON, that is done now (TabletWifiRules.atSent): the call is over, and the tablet needs its
+     * Wi-Fi to see the hotspot at all. The follow-up goes on behind Android's Wi-Fi switch. OFF waits for the confirmation, as before.
+     */
+    private void wifiAtSent() {
+        final TabletWifiRules.Verdict v = TabletWifiRules.atSent(wifiWish, TabletWifi.on(act));
+        if (v != TabletWifiRules.Verdict.SWITCH_ON) {
+            return;
+        }
+        wifiWish = TabletWifiRules.Wish.NONE; // done here: the end of the follow-up has nothing left to do for the Wi-Fi
+        wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
+        final String said = actionMsg;
+        wifiBusy = true;
+        paintSwitches();
+        TabletWifi.set(act, true, act::inFront, way -> {
+            wifiBusy = false;
+            panelOpened(way);
+            paintSwitches();
+            addWifiWords(said, TabletWifiRules.words(v, way), TabletWifiRules.good(true, way));
+        });
+    }
+
+    /**
+     * The card's "Switch Wi-Fi on": the same switch as after "Hotspot on", for a tablet whose Wi-Fi is off while the phone's hotspot
+     * is on or cannot be asked about. It works while a follow-up is running (that only reads the status, and goes on behind Android's
+     * Wi-Fi switch); only a request to the phone that is on its way holds it back, and then the button is greyed.
+     */
     private void switchWifiOn() {
-        if (busy || wifiBusy) {
-            return; // a switch of the phone is on its way (Android's Wi-Fi switch would pause the app and end that call), or this one is
+        if (!wifiFree()) {
+            return; // greyed: a request to the phone is on its way (Android's Wi-Fi switch would pause the app and end that call)
         }
         touched();
         wifiBusy = true;
+        // the user's own press wins over an automatic step that still waits for the phone (a Hotspot off's "Wi-Fi off")
+        wifiWish = TabletWifiRules.Wish.NONE;
+        wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
         bannerMain.setEnabled(false);
         setAction("Switching the tablet's Wi-Fi on…", true);
         TabletWifi.set(act, true, act::inFront, way -> {
             wifiBusy = false;
+            panelOpened(way);
             paintSwitches();
             setAction(TabletWifiRules.words(TabletWifiRules.Verdict.SWITCH_ON, way), TabletWifiRules.good(true, way));
             askNow();
             act.ui.postDelayed(this::askNow, 10000); // the tablet needs a few seconds to find the hotspot and join it
         });
+    }
+
+    /** The card's "Wi-Fi settings": Android's own Wi-Fi switch and networks, for a tablet that has not joined the phone's hotspot. */
+    private void openWifiSettings() {
+        if (!wifiFree()) {
+            setAction("Wi-Fi settings can be opened once the phone has answered the switch on its way.", true);
+            return;
+        }
+        touched();
+        if (TabletWifi.openSwitch(act)) {
+            panelOpened(TabletWifiRules.Way.ASKED);
+        } else {
+            setAction("The tablet's Wi-Fi settings could not be opened. Use Android's quick settings.", false);
+        }
     }
 
     /** Adds the Wi-Fi sentence to the phone's result line, unless a newer line has taken its place meanwhile. */
