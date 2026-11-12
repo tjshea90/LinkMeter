@@ -1,6 +1,6 @@
 # Texts round 4 (the user's request of 2026-11-12) — progress notes
 
-STATUS: WORKING (A+B done) (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
+STATUS: WORKING (A, B, C done) (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
 
 THE USER'S WORDS (2026-11-12): "Improve the text feature in this app. When the keyboard comes up, the text window scrolls up so I can't see the
 last messages. When I open a text message, it is scrolled up. I want to always see the end of the chat for the most recent messages unless I
@@ -49,4 +49,10 @@ DONE SO FAR:
 - tests: tools/test/TextsRound4Test.java (10,748 checks, in tools/test.sh), tools/uipreview TextsRound4PreviewTest (4 scenarios: open long
   + keyboard, scroll up + new text + jump, send after pause -> Sent, two in a row) all pass; TextsPreviewTest 34/34 still pass; pictures
   texts4-*.png looked at.
-NEXT: C badge (BarButton.setBadge, TextsStore shared storage, TextsBadge watcher), D reactions, E preview, F docs/release.
+- C (badge) DONE: BarButton.setBadge (icon + label lit in accent, red round number, 99+), MainActivity.setBadge/badge + updateWatches
+  (Tab.watchWhileHidden: true while the app is in front and another tab is shown), TextsTab.watchWhileHidden/watchLoop (state once, stamp
+  long-poll, threads(100) on change, badgeFromWatch counts with ThreadListRules.badge and saves the list into the cache), renderList sets
+  the badge, wipeSavedCopy sets 0. Tests: TextsRound4Test badge() (14,756 checks in all), TextsRound4PreviewTest.theTextsButtonCountsNewTexts
+  (picture texts4-badge-home looked at: lit icon, red 2).
+NEXT: D reactions (SmsReactions.textFor + parse additions, TextThread long-press reaction bar for any message, send as tapback text, pill
+  styling), E preview, F docs/release.
