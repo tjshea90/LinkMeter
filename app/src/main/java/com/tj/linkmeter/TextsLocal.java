@@ -29,6 +29,8 @@ final class TextsLocal {
     private final BlobStore store;
     private final Map<String, Long> pinned = new LinkedHashMap<>();
     private final Set<String> muted = new LinkedHashSet<>();
+    /** Conversations whose texts are translated into Spanish (Mexico) before they are sent (Translation, TranslateFlow). */
+    private final Set<String> translated = new LinkedHashSet<>();
     private final Map<String, Long> archived = new HashMap<>();
     private final Map<String, Long> cleared = new HashMap<>();
     private final Set<String> hidden = new LinkedHashSet<>();
@@ -63,6 +65,9 @@ final class TextsLocal {
             }
             for (String k : strings(m.get("muted"))) {
                 muted.add(k);
+            }
+            for (String k : strings(m.get("translate"))) {
+                translated.add(k);
             }
             archived.putAll(longs(m.get("archived")));
             cleared.putAll(longs(m.get("cleared")));
@@ -144,7 +149,8 @@ final class TextsLocal {
             String num = contactNumbers.get(e.getKey());
             names.put(e.getKey(), Json.obj("n", e.getValue(), "num", num == null ? "" : num, "p", p == null ? 0L : p));
         }
-        return Json.obj("pinned", new LinkedHashMap<>(pinned), "muted", new ArrayList<>(muted), "archived", new LinkedHashMap<>(archived),
+        return Json.obj("pinned", new LinkedHashMap<>(pinned), "muted", new ArrayList<>(muted), "translate", new ArrayList<>(translated),
+                "archived", new LinkedHashMap<>(archived),
                 "cleared", new LinkedHashMap<>(cleared), "hidden", new ArrayList<>(hidden), "drafts", new LinkedHashMap<>(drafts), "seen", seen,
                 "names", names);
     }
@@ -192,6 +198,18 @@ final class TextsLocal {
 
     synchronized void setMuted(String key, boolean on) {
         if (on ? muted.add(key) : muted.remove(key)) {
+            save();
+        }
+    }
+
+    // ---- translated into Spanish (Mexico)
+
+    synchronized boolean isTranslated(String key) {
+        return translated.contains(key);
+    }
+
+    synchronized void setTranslated(String key, boolean on) {
+        if (on ? translated.add(key) : translated.remove(key)) {
             save();
         }
     }
@@ -424,6 +442,7 @@ final class TextsLocal {
     synchronized void forget(String key) {
         pinned.remove(key);
         muted.remove(key);
+        translated.remove(key);
         archived.remove(key);
         cleared.remove(key);
         drafts.remove(key);
@@ -436,6 +455,7 @@ final class TextsLocal {
     synchronized void forgetChoices() {
         pinned.clear();
         muted.clear();
+        translated.clear();
         archived.clear();
         cleared.clear();
         hidden.clear();
@@ -452,6 +472,7 @@ final class TextsLocal {
         contactSaved.clear();
         pinned.clear();
         muted.clear();
+        translated.clear();
         archived.clear();
         cleared.clear();
         hidden.clear();

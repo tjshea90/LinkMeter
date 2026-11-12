@@ -18,6 +18,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.BaseAdapter;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -32,9 +33,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -94,6 +97,17 @@ final class TextThread {
     private HorizontalScrollView chipScroll;
     private LinearLayout replyBox;
     private HorizontalScrollView replyScroll;
+    /** Your texts translated into Spanish (Mexico) before they go: what Send does (TranslateFlow), and the strip above the box. */
+    private final TranslateFlow flow = new TranslateFlow();
+    private LinearLayout transBox;
+    private TextView transTitle;
+    private TextView transText;
+    private LinearLayout transButtons;
+    private Button transUndo;
+    private Button transEnglish;
+    /** Received messages translated into English: message id -> the line under it (memory only, never saved). */
+    private final Map<String, String> englishOf = new HashMap<>();
+    private final Set<String> englishFailed = new HashSet<>();
 
     TextThread(TextsTab tab, String key, String name, List<String> addresses) {
         this.tab = tab;
@@ -170,6 +184,8 @@ final class TextThread {
         chipScroll.setVisibility(View.GONE);
         root.addView(chipScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        buildTranslateStrip();
+
         counter = Ui.text(act, "", 11, Ui.DIM, false);
         counter.setGravity(Gravity.END);
         counter.setBackgroundColor(Ui.CARD);
@@ -212,6 +228,8 @@ final class TextThread {
             @Override
             public void afterTextChanged(Editable s) {
                 tab.local().setDraft(key, s.toString());
+                flow.boxChanged(s.toString());
+                paintStrip();
                 updateSend();
             }
         });
@@ -230,6 +248,8 @@ final class TextThread {
             input.setText(draft);
             input.setSelection(draft.length());
         }
+        flow.setOn(tab.local().isTranslated(key));
+        paintStrip();
         updateSend();
         showSaved();
         return root;
@@ -323,7 +343,7 @@ final class TextThread {
             return;
         }
         String text = input.getText().toString();
-        boolean can = !sending && (text.trim().length() > 0 || !pending.isEmpty());
+        boolean can = !sending && !flow.translating() && (text.trim().length() > 0 || !pending.isEmpty());
         sendBtn.set(Icons.Kind.SEND, can ? Ui.ON_ACCENT : Ui.DIM, can ? Ui.ACCENT : Ui.CARD_HI);
         sendBtn.setEnabled(can);
         // the length: shown when it matters (a long text is more than one message; pictures make it a picture message)
@@ -564,6 +584,15 @@ final class TextThread {
         acts.add(() -> {
             local.setMuted(key, !local.isMuted(key));
             tab.refreshList();
+        });
+        final boolean translating = local.isTranslated(key);
+        labels.add(translating ? "Stop translating to Spanish" : "Translate my texts to Spanish (Mexico)");
+        acts.add(() -> {
+            if (translating) {
+                setTranslated(false);
+            } else {
+                askTranslate();
+            }
         });
         labels.add("Select messages");
         acts.add(this::startSelecting);
@@ -827,10 +856,27 @@ final class TextThread {
         if (sending || (text.trim().isEmpty() && pending.isEmpty())) {
             return;
         }
+        if (!text.trim().isEmpty()) {
+            TranslateFlow.Do d = flow.send(text);
+            if (d == TranslateFlow.Do.NOTHING) {
+                return;
+            }
+            if (d == TranslateFlow.Do.TRANSLATE) {
+                translateOut(text);
+                return;
+            }
+        }
+        sendNow(text);
+    }
+
+    /** Sends this text with what is attached, as it is (a translation, if any, has been checked already). */
+    private void sendNow(String text) {
+        flow.sent();
         final List<Attach.Item> items = new ArrayList<>(pending);
         input.setText("");
         pending.clear();
         showChips();
+        paintStrip();
         sendMessage(text, items);
     }
 
@@ -898,6 +944,145 @@ final class TextThread {
         t.start();
     }
 
+    // ------------------------------------------------------------ translating into Spanish (Mexico) and into English
+
+    private void buildTranslateStrip() {
+        transBox = new LinearLayout(act);
+        transBox.setOrientation(LinearLayout.VERTICAL);
+        transBox.setBackgroundColor(Ui.CARD);
+        transBox.setPadding(Ui.dp(act, 16), Ui.dp(act, 8), Ui.dp(act, 16), 0);
+        transTitle = Ui.text(act, "", 13, Ui.DIM, false);
+        transBox.addView(transTitle);
+        transText = Ui.text(act, "", 13, Ui.DIM, false);
+        transText.setMaxLines(3);
+        transText.setEllipsize(TextUtils.TruncateAt.END);
+        transBox.addView(transText, Ui.lp(act, 2));
+        transButtons = new LinearLayout(act);
+        transButtons.setOrientation(LinearLayout.HORIZONTAL);
+        transUndo = Ui.quiet(act, "Undo", v -> undoTranslation());
+        transEnglish = Ui.quiet(act, "Send my English", v -> sendEnglish());
+        transButtons.addView(transUndo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        ep.leftMargin = Ui.dp(act, 8);
+        transButtons.addView(transEnglish, ep);
+        transBox.addView(transButtons, Ui.lp(act, 4));
+        transBox.setVisibility(View.GONE);
+        root.addView(transBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    /** The strip above the box, from the state of the translation; and the box's hint. */
+    private void paintStrip() {
+        if (transBox == null || input == null) {
+            return;
+        }
+        if (!flow.on()) {
+            transBox.setVisibility(View.GONE);
+            input.setHint("Text message");
+            return;
+        }
+        input.setHint("Write in English");
+        transBox.setVisibility(View.VISIBLE);
+        transText.setVisibility(View.GONE);
+        transButtons.setVisibility(View.GONE);
+        transTitle.setTextColor(Ui.DIM);
+        if (flow.translating()) {
+            transTitle.setText("Translating into Spanish (Mexico)…");
+        } else if (flow.checking()) {
+            transTitle.setText("This is the Spanish (Mexico)" + (flow.by().isEmpty() ? "" : ", by " + flow.by())
+                    + ". Check it, then press Send to send it.");
+            transText.setText("Your English: \u201c" + flow.english() + "\u201d");
+            transText.setVisibility(View.VISIBLE);
+            transUndo.setVisibility(View.VISIBLE);
+            transButtons.setVisibility(View.VISIBLE);
+        } else if (!flow.why().isEmpty()) {
+            transTitle.setText(flow.why() + " Press Send to try again.");
+            transTitle.setTextColor(Ui.AMBER);
+            transUndo.setVisibility(View.GONE);
+            transButtons.setVisibility(Translation.hasWords(input.getText().toString()) ? View.VISIBLE : View.GONE);
+        } else {
+            transTitle.setText("Your texts here are translated into Spanish (Mexico). Press Send to see the Spanish before it goes.");
+        }
+    }
+
+    /** The switch in the conversation's menu: what it does and what leaves the tablet, asked once each time it is switched on. */
+    private void askTranslate() {
+        TextsViews.show(new AlertDialog.Builder(act).setTitle("Translate your texts to Spanish (Mexico)?")
+                .setMessage("When you press Send, LinkMeter translates your English into Spanish the way it is spoken in Mexico and puts it in "
+                        + "the box for you to check. Press Send again to send it. Undo gives your English back, and \"Send my English\" "
+                        + "sends it as you wrote it.\n\nTo translate, the words of the text go over the internet to MyMemory, a translation "
+                        + "service, or to Google Translate when MyMemory is busy. Nothing else is sent with them: no name, no number.\n\n"
+                        + "A text you receive can be translated into English too: press and hold it.")
+                .setPositiveButton("Translate", (d, w) -> setTranslated(true))
+                .setNegativeButton("Cancel", null));
+    }
+
+    private void setTranslated(boolean on) {
+        tab.local().setTranslated(key, on);
+        flow.setOn(on);
+        paintStrip();
+        updateSend();
+    }
+
+    /** Your English into Spanish (Mexico): the answer goes into the box for you to check (TranslateFlow). */
+    private void translateOut(final String text) {
+        final int n = flow.start(text);
+        paintStrip();
+        updateSend();
+        Translator.translate(act, text, Translation.Way.TO_MEXICAN, a -> {
+            if (input == null) {
+                return;
+            }
+            String spanish = flow.answer(n, input.getText().toString(), a.ok, a.text, a.by, a.why);
+            if (spanish != null) {
+                input.setText(spanish);
+                input.setSelection(spanish.length());
+            }
+            paintStrip();
+            updateSend();
+        });
+    }
+
+    private void undoTranslation() {
+        String english = flow.undo();
+        if (english != null) {
+            input.setText(english);
+            input.setSelection(english.length());
+        }
+        paintStrip();
+        updateSend();
+    }
+
+    /** "Send my English": your words as you wrote them, not the Spanish. */
+    private void sendEnglish() {
+        if (sending) {
+            return;
+        }
+        String english = flow.sendEnglish(input.getText().toString());
+        if (english != null && !english.trim().isEmpty()) {
+            sendNow(english);
+        } else {
+            paintStrip();
+        }
+    }
+
+    /** A received text into English, shown under it (asked for with "Translate to English" in its menu). */
+    private void translateIn(final Sms.Msg m) {
+        englishFailed.remove(m.id);
+        englishOf.put(m.id, "Translating into English…");
+        adapter.notifyDataSetChanged();
+        Translator.translate(act, m.body, Translation.Way.TO_ENGLISH, a -> {
+            if (a.ok) {
+                englishOf.put(m.id, "English" + (a.by.isEmpty() ? "" : ", by " + a.by) + ": " + a.text);
+            } else {
+                englishOf.put(m.id, a.why);
+                englishFailed.add(m.id);
+            }
+            if (adapter != null) {
+                adapter.notifyDataSetChanged();
+            }
+        });
+    }
+
     private void askResend(final Sms.Msg m) {
         if (!m.parts.isEmpty()) {
             Toast.makeText(act, "Pictures and files can't be sent again from here. Attach them and send a new text.", Toast.LENGTH_LONG).show();
@@ -907,7 +1092,9 @@ final class TextThread {
                 .setPositiveButton("Send again", (d, w) -> {
                     temps.remove(m);
                     input.setText(m.body);
-                    send();
+                    if (!sending) {
+                        sendNow(m.body); // as it was written the first time: a Spanish text is not translated again
+                    }
                 }).setNeutralButton("Delete", (d, w) -> doDelete(java.util.Collections.singletonList(m)))
                 .setNegativeButton("Cancel", null));
     }
@@ -1014,6 +1201,10 @@ final class TextThread {
             labels.add("Forward");
             acts.add(() -> tab.forward(m.body));
         }
+        if (!m.mine && Translation.hasWords(m.body) && (!englishOf.containsKey(m.id) || englishFailed.contains(m.id))) {
+            labels.add("Translate to English");
+            acts.add(() -> translateIn(m));
+        }
         labels.add("Delete");
         acts.add(() -> deleteMessages(java.util.Collections.singletonList(m)));
         labels.add("Details");
@@ -1110,6 +1301,7 @@ final class TextThread {
         final TextView body;
         final TextView reactions;
         final TextView copyCode;
+        final TextView english;
         final TextView meta;
 
         Bubble() {
@@ -1142,6 +1334,9 @@ final class TextThread {
             cp.topMargin = Ui.dp(act, 4);
             cp.leftMargin = Ui.dp(act, 4);
             column.addView(copyCode, cp);
+            english = Ui.text(act, "", 13, Ui.DIM, false);
+            english.setPadding(Ui.dp(act, 6), Ui.dp(act, 3), Ui.dp(act, 6), 0);
+            column.addView(english, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             meta = Ui.text(act, "", 11, Ui.DIM, false);
             meta.setPadding(Ui.dp(act, 6), Ui.dp(act, 3), Ui.dp(act, 6), 0);
             column.addView(meta, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1248,6 +1443,16 @@ final class TextThread {
                 copyCode.setText("Copy code");
                 copyCode.setOnClickListener(v -> TextsViews.copyCode(act, code));
                 copyCode.setVisibility(View.VISIBLE);
+            }
+
+            String tr = englishOf.get(m.id);
+            if (tr == null) {
+                english.setVisibility(View.GONE);
+            } else {
+                english.setText(tr);
+                english.setTextColor(englishFailed.contains(m.id) ? Ui.AMBER : Ui.DIM);
+                english.setMaxWidth(maxText);
+                english.setVisibility(View.VISIBLE);
             }
 
             if (r.reactions.isEmpty()) {
