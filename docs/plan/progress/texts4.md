@@ -1,6 +1,6 @@
 # Texts round 4 (the user's request of 2026-11-12) — progress notes
 
-STATUS: WORKING (A, B, C done) (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
+STATUS: WORKING (A, B, C, D done) (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
 
 THE USER'S WORDS (2026-11-12): "Improve the text feature in this app. When the keyboard comes up, the text window scrolls up so I can't see the
 last messages. When I open a text message, it is scrolled up. I want to always see the end of the chat for the most recent messages unless I
@@ -54,5 +54,11 @@ DONE SO FAR:
   long-poll, threads(100) on change, badgeFromWatch counts with ThreadListRules.badge and saves the list into the cache), renderList sets
   the badge, wipeSavedCopy sets 0. Tests: TextsRound4Test badge() (14,756 checks in all), TextsRound4PreviewTest.theTextsButtonCountsNewTexts
   (picture texts4-badge-home looked at: lit icon, red 2).
-NEXT: D reactions (SmsReactions.textFor + parse additions, TextThread long-press reaction bar for any message, send as tapback text, pill
-  styling), E preview, F docs/release.
+- D (reactions) DONE: SmsReactions.textFor/quote/previewOf/same + parse: Spanish iPhone verbs, "Removed X from", "X to “...”" (one emoji only,
+  EmojiText.count); TextThread: long press on ANY message (not a failed one of mine) -> TextsViews.messageMenu row (mine ringed, tap again =
+  take back) + "+" -> TextsViews.emojiGrid(EmojiText.MORE); react() sends the reaction text through the send queue (folded by ThreadRows at
+  once); first reaction: a Toast says how other phones see it (TextsPrefs.reactionExplained); pill = ThreadRows.pill (grouped, counted),
+  tinted when mine, tap -> showReactions (who; Take mine back); reaction texts kept out of the smart replies; ThreadListRules.preview says
+  "Reacted 👍 to “...”". Tests: TextsRound4Test reactionTexts/reactionPreview (17,550 checks in all), TextsRound4PreviewTest
+  reactionsSitOnTheirMessage + spanishIphoneReactions; pictures texts4-reactions, texts4-reaction-menu, texts4-list-reaction looked at.
+NEXT: E preview (tablet fallback for rows without words + 'You:' from what the tablet knows), F docs/release.
