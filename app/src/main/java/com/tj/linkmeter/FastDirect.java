@@ -65,8 +65,10 @@ final class FastDirect {
     static String on(Context c) throws IOException {
         Cfg.setFastDirect(c, true);
         againTries = 0;
-        if (Boolean.TRUE.equals(Radios.hotspot(c))) {
-            Cells.shellMain(c, "hotspot-stop"); // the direct way only: the airplane-mode way would take mobile data away for a moment
+        if (!Boolean.FALSE.equals(Radios.hotspot(c))) {
+            // on, or the phone does not say: stopping an hotspot that is off does no harm, one that is left on makes the group "busy".
+            // The direct way only: the airplane-mode way would take mobile data away for a moment.
+            Cells.shellMain(c, "hotspot-stop");
             Radios.waitHotspot(c, false, 6000);
         }
         if (!Radios.wifiOn(c)) {
@@ -160,7 +162,11 @@ final class FastDirect {
             return "LinkMeter is not allowed to use Nearby Wi-Fi devices. Press Allow everything on the phone's LinkMeter screen "
                     + "(Shizuku must be running), or allow Nearby devices in its app settings.";
         }
-        init(c);
+        try {
+            init(c);
+        } catch (RuntimeException e) {
+            return "Android did not let LinkMeter use Wi-Fi Direct (" + e.getMessage() + ").";
+        }
         if (p2p == null || channel == null) {
             return "this phone has no Wi-Fi Direct.";
         }

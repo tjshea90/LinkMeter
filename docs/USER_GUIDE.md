@@ -97,8 +97,12 @@ always.
   tablet and comes back by itself; if the phone's LinkMeter does not answer (or the hotspot is off) the tablet simply uses the normal
   hotspot and Fast Wi-Fi takes over again by itself when the phone answers. **Quickest switch:** add the **Fast Wi-Fi** tile to the
   tablet's quick settings (swipe down twice from the top, press the pencil, drag the tile in): one tap from anywhere. The notification
-  has **Turn off**. Install the newest release on **both** devices: the phone does the relaying. Settings > Fast Wi-Fi has one option
-  (leave it on). Read `docs/FAST_WIFI.md` for how it works and what is not known yet.
+  has **Turn off**. Install the newest release on **both** devices: the phone does the relaying. Settings > Fast Wi-Fi: leave "Steer
+  apps to their faster way" on. **Without the hotspot at all:** Settings > Fast Wi-Fi > Fast Wi-Fi's Wi-Fi > **Its own Wi-Fi**. Then
+  **Fast Wi-Fi** on Home switches the phone's hotspot off and opens the phone's own Wi-Fi network DIRECT-LM-LinkMeter (2.4 GHz), which
+  the tablet joins by itself (the first time Android may ask "Allow suggested Wi-Fi networks?": tap **Yes**, or pick the network once
+  in Wi-Fi settings); **Hotspot** switches back to the normal hotspot. Try this if Fast Wi-Fi is still slow over the hotspot.
+  Read `docs/FAST_WIFI.md` for how it works and what is not known yet.
 
 ## 3. If something breaks
 

@@ -272,3 +272,10 @@ answers nothing about texts, and the tablet wipes what it had saved. Only the pa
 - **What it is for.** The carrier counts traffic that the phone's hotspot forwards as hotspot traffic and limits its speed; traffic that
   an app on the phone makes is the phone's own. The user said the carrier approved this for a testing period; switching back to
   **Hotspot** (Home, the tile or the notification) returns the tablet to the normal hotspot at once.
+- **Its own Wi-Fi (stage 2, only when chosen in the tablet's Settings).** "Fast Wi-Fi" then switches the phone's hotspot off (the
+  direct way; never airplane mode), the phone's Wi-Fi on (Shizuku) and opens a Wi-Fi Direct network (DIRECT-LM-LinkMeter, 2.4 GHz, WPA2
+  with a random password kept on the phone, given only to a paired tablet in the status). It serves addresses but forwards nothing, so
+  the only way out is the authenticated relay. Undone by **Hotspot** on Home, or ANY hotspot button (they all end it first and bring
+  the normal hotspot back); the phone's Wi-Fi is left on (it was switched on for this). Android 13+ needs "Nearby Wi-Fi devices" for
+  LinkMeter (given by Allow everything through Shizuku; it is never used for location). If the phone restarts with the mode on, the
+  network comes back with LinkMeter's service; Hotspot on from the tablet (over Bluetooth if needed) ends it.

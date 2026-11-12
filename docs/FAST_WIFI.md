@@ -96,8 +96,9 @@ such field and the tablet says to update the phone.
 Pure (no Android, tested in `tools/test`): `Ip4` (IPv4/TCP/UDP/ICMP packets and checksums), `FastProto` (the relay protocol, keys,
 which interfaces and addresses may use it, the VPN's route list), `TunStack` (the tablet's engine, plain Java NIO), `FastRelayCore`
 (the phone's relay, plain Java NIO). Android glue: `FastRelay` (phone: starts the core in the service, DNS, wake lock), `FastVpn`
-(tablet: the VpnService). The end-to-end test runs the real engine and relay in the sandbox on a REAL Linux tun device with curl and
-the Linux kernel's TCP as the app: `tools/fast_e2e.sh` (needs root and /dev/net/tun; skipped otherwise).
+(tablet: the VpnService). The end-to-end test runs the real engine and relay in the sandbox on a REAL Linux tun device with the Linux
+kernel's own TCP/UDP as the app (ordinary sockets talking through the tun): `tools/fast_e2e.sh` (needs root and /dev/net/tun; skipped
+otherwise).
 
 ## How it is switched (stage 1)
 
@@ -114,6 +115,24 @@ the Linux kernel's TCP as the app: `tools/fast_e2e.sh` (needs root and /dev/net/
   `/s`, the switch "Let the tablet use Fast Wi-Fi" on its own screen (`PhoneTab.buildFast`, `Cfg.fastAllowed`, default on).
 - Settings > Fast Wi-Fi: "Steer apps to their faster way" (QUIC refused, `Cfg.fastBlockQuic`, default on).
 
+## Stage 2: the phone's own Wi-Fi (hotspot off), as NetShare does it
+
+Settings > Fast Wi-Fi > "Fast Wi-Fi's Wi-Fi": **The phone's hotspot** (stage 1, the default) or **Its own Wi-Fi**. With its own Wi-Fi:
+- Pressing **Fast Wi-Fi** on Home sends `fast_direct_on`: the phone switches its hotspot off (the direct way only, never the airplane
+  blip), its Wi-Fi on (Shizuku), and makes a Wi-Fi Direct group `DIRECT-LM-LinkMeter` on **2.4 GHz** with a fixed password
+  (`FastDirect`, `Cfg.fastDirect`). Android serves such a group "local only" (addresses, no forwarding, no tethering at all), so the
+  tablet's internet can only go through the relay, which is the point. The answer is "Sent" (it ends the hotspot the request came over).
+- The tablet learned the network's name and password from the phone's status (`fast.ssid`, `fast.pass`, kept in `Cfg.fastSsid/Pass`)
+  and SUGGESTS it to Android (`TabletDirect`, `WifiNetworkSuggestion`: Android 10 lets an app suggest a network, not add one); Android
+  joins it by itself (the first time it asks "Allow suggested Wi-Fi networks?": Yes). The tablet asks for a scan 5 and 15 s later so it
+  joins sooner. `FastVpn` sees the new Wi-Fi, pings the relay at 192.168.49.1 and puts the VPN up. Picking it once in Wi-Fi settings
+  works as well. While the tablet is joining, Home's banner says so (over Bluetooth) instead of "the hotspot is off".
+- Pressing **Hotspot** sends `fast_direct_off`: the group goes, the hotspot comes back (Home's own Hotspot on), the tablet's VPN stops and
+  Android joins the hotspot again by itself. **Every hotspot button** (on, off, deep, Standby) ends the mode first, so they always mean
+  the normal hotspot; Fast Wi-Fi then simply continues over the hotspot (the card offers "Use its own network" to go back).
+- The mode survives a restart of the phone's service (the group is made again); if Android takes the group away, it is made again a few
+  times (3, 6, 9, 12, 15 s later). Android 13+ wants "Nearby Wi-Fi devices" for a group: Allow everything grants it through Shizuku.
+
 ## Tests
 
 - `tools/test.sh`: `FastCodecTest` (packets against a plain reference checksum, a real Linux SYN, the key against Python's HMAC, the
@@ -129,7 +148,10 @@ the Linux kernel's TCP as the app: `tools/fast_e2e.sh` (needs root and /dev/net/
 ## Status
 
 - [x] Stage 1: relay + VPN over the hotspot, toggle on Home, quick settings tile, automatic start (the release number is in HANDOFF).
-- [ ] Stage 2: Wi-Fi Direct link on 2.4 GHz with the hotspot off, automatic switching, released.
+- [x] Stage 2: Wi-Fi Direct link on 2.4 GHz with the hotspot off, automatic switching (the release number is in HANDOFF).
+- Deliberate breakages: `python3 tools/mutate_fast.py` (pure: 26, all caught; e2e: the engine and the relay against the real tun).
 - NOT KNOWN UNTIL THE DEVICES TRY: the real speed (the tablet's CPU and its 2.4 GHz Wi-Fi are the limits: 2.4 GHz single-stream Wi-Fi
   gives roughly 30 to 50 Mbit/s); whether Total Wireless also slows the phone's own traffic while the hotspot is on (then stage 2,
-  with the hotspot off, is the answer); whether this Samsung lets an app keep a Wi-Fi Direct group while the screen is off.
+  with the hotspot off, is the answer); whether this Samsung lets an app keep a Wi-Fi Direct group while the screen is off; whether
+  the tablet (Android 10 Go) joins a suggested network that has no internet of its own (if not: pick DIRECT-LM-LinkMeter once in its
+  Wi-Fi settings, then it joins by itself); whether this tablet's Wi-Fi can use 5 GHz at all (2.4 GHz is used, as asked).

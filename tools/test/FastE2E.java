@@ -281,6 +281,8 @@ public final class FastE2E {
                 }
                 // the client closed its side: answer after that, which only works if the half-close was passed on
                 out.write(("BYE " + count + " " + sb.toString().hashCode() + "\n").getBytes(StandardCharsets.US_ASCII));
+            } else if (w[0].equals("RESETNOW")) {
+                x.setSoLinger(true, 0); // a reset at once, with nothing sent: the app is waiting in read and sends nothing more
             } else if (w[0].equals("RESET")) {
                 byte[] buf = new byte[100_000];
                 out.write(buf);
@@ -474,6 +476,20 @@ public final class FastE2E {
             wasReset = String.valueOf(e.getMessage()).toLowerCase().contains("reset");
         }
         yes(wasReset, "a server's reset reaches the app as a reset");
+        // the same while the app only waits (it sends nothing after its request, so only the engine's own reset can tell it)
+        long t0 = System.nanoTime();
+        boolean quiet = false;
+        try (Socket s = connect(BLOB)) {
+            s.getOutputStream().write("RESETNOW\n".getBytes(StandardCharsets.US_ASCII));
+            s.setSoTimeout(5000);
+            s.getInputStream().read();
+        } catch (SocketException e) {
+            quiet = String.valueOf(e.getMessage()).toLowerCase().contains("reset");
+        } catch (SocketTimeoutException e) {
+            quiet = false;
+        }
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        yes(quiet && ms < 3000, "a reset reaches an app that is only waiting, at once (" + ms + " ms)");
     }
 
     private static void udp() throws IOException {
