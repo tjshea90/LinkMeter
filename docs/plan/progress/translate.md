@@ -1,6 +1,6 @@
 # Translate texts to Mexican Spanish (the user's request, 2026-11-12) — progress notes
 
-STATUS: CLOSING (all verified: tools/test.sh exit 0, assembleRelease OK, whole preview 161/0, 47 breakages caught; the closing plain checkpoint is being pushed; then check the run + release and record the number in HANDOFF.md with tools/save-only.sh)
+STATUS: DONE (released as v0.2.172, commit 7b19b38 = main, run #172 green; HANDOFF.md has the number). Nothing left; wait for the user's report from the tablet.
 
 THE USER'S WORDS: "Add a feature in text feature to translate my texting to Mexican Spanish so that my Mexican friend can understand it. Make sure
 it uses good translation logic. I tried to use Gboard translate but it doesn't work with linkmeter. Diagnose that or build a translator just as good"
