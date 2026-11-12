@@ -139,17 +139,20 @@ Settings > Fast Wi-Fi > "Fast Wi-Fi's Wi-Fi": **The phone's hotspot** (stage 1, 
   hello and ping, SERVFAIL, the 46 routes against a million addresses, interfaces) and `FastRulesTest` (the card in every combination,
   the probe words, speeds, the phone's line).
 - `tools/fast_e2e.sh` (root + /dev/net/tun; the sandbox has both): the real engine and relay on a real Linux tun with the kernel's TCP
-  as the app, 21 checks: ping, 200 MB down and 100 MB up byte for byte (about 2 Gbit/s on the sandbox: the tablet's CPU is perhaps
+  as the app, 22 checks: ping, 200 MB down and 100 MB up byte for byte (about 2 Gbit/s on the sandbox: the tablet's CPU is perhaps
   20 times slower, still well above its 2.4 GHz Wi-Fi), 96 downloads at once, half-close, a server that speaks first, refused and reset
-  connections, UDP, DNS, QUIC and DNS-over-TLS refused at once, nothing left open.
-- `tools/preview.sh --tests "com.tj.linkmeter.FastPreviewTest"`: the Home card in each state and what its buttons send, the Settings
-  card (pictures `tools/uipreview/out/fast-*.png`).
+  connections (also to an app that is only waiting), UDP, DNS, QUIC and DNS-over-TLS refused at once, nothing left open.
+- `tools/preview.sh --tests "com.tj.linkmeter.FastPreviewTest"`: 12 scenarios: the Home card in each state and what its buttons send
+  (also the phone's own network: switching it on and off, the banner while the tablet joins it), the Settings card (pictures
+  `tools/uipreview/out/fast-*.png`). `LinkProtocolTest` knows that `fast_direct_on`/`off` answer first over Wi-Fi.
 
 ## Status
 
 - [x] Stage 1: relay + VPN over the hotspot, toggle on Home, quick settings tile, automatic start (the release number is in HANDOFF).
 - [x] Stage 2: Wi-Fi Direct link on 2.4 GHz with the hotspot off, automatic switching (the release number is in HANDOFF).
-- Deliberate breakages: `python3 tools/mutate_fast.py` (pure: 26, all caught; e2e: the engine and the relay against the real tun).
+- Deliberate breakages: `python3 tools/mutate_fast.py`: 26 of 26 pure (packets, protocol, card) and 11 of 11 of the engine and the
+  relay against the real tun are caught (two gaps found that way were closed with new checks: a compressed name in a DNS question, a
+  reset that must reach an app that is only waiting).
 - NOT KNOWN UNTIL THE DEVICES TRY: the real speed (the tablet's CPU and its 2.4 GHz Wi-Fi are the limits: 2.4 GHz single-stream Wi-Fi
   gives roughly 30 to 50 Mbit/s); whether Total Wireless also slows the phone's own traffic while the hotspot is on (then stage 2,
   with the hotspot off, is the answer); whether this Samsung lets an app keep a Wi-Fi Direct group while the screen is off; whether

@@ -33,7 +33,8 @@ session's transcript.
     `TabletDirect` (network suggestion + scan), the card switches the phone, Home's banner while joining. `docs/FAST_WIFI.md` "Stage 2". NOT TRIED ON THE DEVICES. What stage 1 is: the tablet stays on the phone's hotspot; Home >
     "Internet for this tablet" (Hotspot | Fast Wi-Fi), the quick settings tile and the notification switch a VPN on the tablet whose
     traffic LinkMeter on the phone re-sends itself (phone port 8767). Tests: `tools/test.sh` (FastCodecTest, FastRulesTest),
-    `tools/fast_e2e.sh` (21 checks on a real Linux tun), `tools/preview.sh --tests "com.tj.linkmeter.FastPreviewTest"` (8 scenarios).
+    `tools/fast_e2e.sh` (22 checks on a real Linux tun), `tools/preview.sh --tests "com.tj.linkmeter.FastPreviewTest"` (12 scenarios),
+    `python3 tools/mutate_fast.py` (26 + 11 deliberate breakages, all caught).
     ASK THE USER: is the tablet faster with Fast Wi-Fi on (a speed test site in the tablet's browser, both modes); does every app work;
     did Android's VPN question appear once; does the tile work; the phone's battery with Fast Wi-Fi in use. IF THE SPEED IS STILL CAPPED
     with the hotspot on: stage 2 (Wi-Fi Direct with the hotspot off) is the answer.
