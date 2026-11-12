@@ -531,10 +531,32 @@ final class HomeTab extends Tab {
         return w.contains("Press ") ? w + " That button is in " + SETTINGS + ", under Bluetooth link." : w;
     }
 
+    /** The phone says Fast Wi-Fi's own network is up, and this tablet uses Fast Wi-Fi over it: the hotspot is off on purpose. */
+    private boolean joiningFastNetwork(JSONObject phone) {
+        JSONObject f = phone.optJSONObject("fast");
+        return f != null && f.optBoolean("direct", false) && f.optBoolean("dup", false) && Cfg.fastWanted(act)
+                && FastRules.LINK_DIRECT.equals(Cfg.fastLink(act));
+    }
+
     /** The card under the title: only when it has something to say. */
     private void paintBanner(Snap s) {
         bannerSends = false;
         bannerWifi = false;
+        if (s.phone != null && Reach.BLUETOOTH.equals(s.via) && joiningFastNetwork(s.phone)) {
+            // Fast Wi-Fi's own network replaced the hotspot on purpose: not "the hotspot is off, turn it on"
+            banner.setVisibility(View.VISIBLE);
+            bannerTitle.setText("The tablet is joining Fast Wi-Fi's network");
+            bannerText.setText("The phone's hotspot is off on purpose: Fast Wi-Fi uses the phone's own Wi-Fi network ("
+                    + FastRules.FAST_NET + "). The tablet joins it by itself within a few seconds (if Android asks \"Allow suggested "
+                    + "Wi-Fi networks?\", tap Yes); until then the phone is reached over Bluetooth.");
+            bannerMain.setText("Wi-Fi settings");
+            bannerMain.setOnClickListener(v -> openWifiSettings());
+            bannerMain.setEnabled(true);
+            bannerOther.setVisibility(View.VISIBLE);
+            bannerOther.setText("Ask again");
+            bannerOther.setOnClickListener(v -> askNow());
+            return;
+        }
         if (s.phone != null && Reach.BLUETOOTH.equals(s.via)) {
             Boolean hs = Call.flag(s.phone, "hs");
             banner.setVisibility(View.VISIBLE);

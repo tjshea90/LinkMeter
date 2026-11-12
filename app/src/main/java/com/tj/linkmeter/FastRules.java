@@ -27,9 +27,17 @@ final class FastRules {
         String err = "";
         /** null: the phone does not say. */
         Boolean hotspot;
+        /** Fast Wi-Fi's own Wi-Fi Direct network: the phone's mode (null: a phone app without it), and whether it is up. */
+        Boolean direct;
+        boolean directUp;
+        String directErr = "";
     }
 
-    enum Action { NONE, CONSENT, HOTSPOT_ON, ALLOW }
+    /** Fast Wi-Fi's Wi-Fi (the tablet's choice, Settings > Fast Wi-Fi). */
+    static final String LINK_HOTSPOT = "hotspot";
+    static final String LINK_DIRECT = "direct";
+
+    enum Action { NONE, CONSENT, HOTSPOT_ON, ALLOW, DIRECT_ON, WIFI_SETTINGS }
 
     static final class Card {
         /** 0: Hotspot chosen, 1: Fast Wi-Fi chosen. */
@@ -41,6 +49,9 @@ final class FastRules {
         String actionLabel = "";
     }
 
+    /** The Wi-Fi Direct network's name (FastDirect.NAME on the phone). */
+    static final String FAST_NET = "DIRECT-LM-LinkMeter";
+
     static final int GREY = 0;
     static final int GREEN = 1;
     static final int AMBER = 2;
@@ -50,7 +61,13 @@ final class FastRules {
      * went through it lately ("" when not measured).
      */
     static Card card(boolean wanted, String state, String detail, Phone p, String speed) {
+        return card(wanted, LINK_HOTSPOT, state, detail, p, speed);
+    }
+
+    /** The same, for Fast Wi-Fi's Wi-Fi as the tablet chose it: the phone's hotspot, or its own Wi-Fi Direct network. */
+    static Card card(boolean wanted, String link, String state, String detail, Phone p, String speed) {
         Card c = new Card();
+        boolean direct = LINK_DIRECT.equals(link);
         c.pick = wanted ? 1 : 0;
         if (!wanted) {
             c.tone = GREY;
@@ -65,6 +82,12 @@ final class FastRules {
             c.tone = GREEN;
             c.line = "Fast Wi-Fi is on: the tablet's internet goes through LinkMeter on the phone"
                     + (speed.isEmpty() ? "." : ". " + speed);
+            if (direct && p.known && Boolean.FALSE.equals(p.direct)) {
+                // the phone's hotspot carries it now (its own network was ended, by a hotspot button for example)
+                c.line += " It runs over the phone's hotspot now, not over its own network.";
+                c.action = Action.DIRECT_ON;
+                c.actionLabel = "Use its own network";
+            }
             return c;
         }
         if (PERMISSION.equals(state)) {
@@ -89,6 +112,31 @@ final class FastRules {
         }
         if (p.known && !p.err.isEmpty()) {
             c.line = "The phone could not start Fast Wi-Fi: " + dot(p.err) + " Until then the tablet uses the normal hotspot.";
+            return c;
+        }
+        if (direct && p.known && p.direct == null) {
+            c.line = "Update LinkMeter on the phone: its version has no Wi-Fi network of its own for Fast Wi-Fi yet (Settings > "
+                    + "Fast Wi-Fi can use the hotspot instead).";
+            return c;
+        }
+        if (direct && p.known && Boolean.TRUE.equals(p.direct)) {
+            if (!p.directUp) {
+                c.line = "The phone's own Wi-Fi network for Fast Wi-Fi is not up"
+                        + (p.directErr.isEmpty() ? " yet." : ": " + dot(p.directErr));
+                c.action = Action.DIRECT_ON;
+                c.actionLabel = "Try again";
+                return c;
+            }
+            c.line = "The phone's own Wi-Fi network (" + FAST_NET + ") is on, and the hotspot is off. The tablet joins it by itself; if "
+                    + "Android asks \"Allow suggested Wi-Fi networks?\", tap Yes. Or pick it in Wi-Fi settings once.";
+            c.action = Action.WIFI_SETTINGS;
+            c.actionLabel = "Wi-Fi settings";
+            return c;
+        }
+        if (direct && p.known && Boolean.FALSE.equals(p.direct)) {
+            c.line = "Fast Wi-Fi uses the phone's own Wi-Fi network instead of the hotspot, and that network is off.";
+            c.action = Action.DIRECT_ON;
+            c.actionLabel = "Switch it on";
             return c;
         }
         if (p.known && Boolean.FALSE.equals(p.hotspot)) {

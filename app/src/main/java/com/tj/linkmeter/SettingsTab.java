@@ -380,6 +380,15 @@ final class SettingsTab extends Tab {
                     }
                 });
         card.addView(quic.view, Ui.lp(act, 6));
+        card.addView(Ui.text(act, "Fast Wi-Fi's Wi-Fi", 14.5f, Ui.FG, false), Ui.lp(act, 10));
+        Ui.Choice link = new Ui.Choice(act, new String[] {"The phone's hotspot", "Its own Wi-Fi"},
+                FastRules.LINK_DIRECT.equals(Cfg.fastLink(act)) ? 1 : 0,
+                i -> Cfg.setFastLink(act, i == 1 ? FastRules.LINK_DIRECT : FastRules.LINK_HOTSPOT));
+        card.addView(link.view, Ui.lp(act, 6));
+        card.addView(Ui.hint(act, "The phone's hotspot: the tablet stays on the hotspot it knows; switching is instant. Its own Wi-Fi: "
+                + "the phone switches its hotspot (and with it the carrier's tethering) completely off and opens its own Wi-Fi Direct "
+                + "network on 2.4 GHz (" + FastRules.FAST_NET + "), which the tablet joins by itself; Hotspot on Home switches back. "
+                + "Try this one if Fast Wi-Fi is still slow over the hotspot. The phone needs Shizuku for it."), Ui.lp(act, 4));
         col.addView(card, Ui.lp(act, 12));
     }
 

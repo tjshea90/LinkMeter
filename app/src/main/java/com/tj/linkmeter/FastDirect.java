@@ -29,7 +29,7 @@ final class FastDirect {
     private FastDirect() {}
 
     /** The network's name: Android wants "DIRECT-" and two characters in front. */
-    static final String NAME = "DIRECT-LM-LinkMeter";
+    static final String NAME = FastRules.FAST_NET;
     static final String NEARBY = "android.permission.NEARBY_WIFI_DEVICES";
 
     private static HandlerThread thread;
