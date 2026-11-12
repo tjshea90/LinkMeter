@@ -1,6 +1,6 @@
 # Texts list preview ("No messages" on an unread conversation) — progress notes
 
-STATUS: CLOSING (everything verified; the closing plain checkpoint is being pushed, then: check the run + release, record the release number in HANDOFF.md by a note: commit) (branch ccr-6685b0bb-kms4dg, started 2026-11-12; main = 1c730a3 at the start)
+STATUS: DONE (released as v0.2.170, commit c36055e = main, run #170 green; HANDOFF.md bullet updated with the release number). Nothing left to do for this task; wait for the user's report from the devices. (branch ccr-6685b0bb-kms4dg, started 2026-11-12; main = 1c730a3 at the start)
 
 THE USER'S WORDS (2026-11-12): "One small fix, the texts feature said no messages next to a contact even though I had a new message and it was lit up
 like a new message. I want it to show a preview of the last message just like real texting apps do".
