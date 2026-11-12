@@ -108,6 +108,15 @@ final class FastRelay {
         if (!problem.isEmpty()) {
             o.put("err", problem);
         }
+        // Fast Wi-Fi without the hotspot (stage 2): the mode, whether its network is up, and how the tablet joins it (this answer
+        // only goes to a paired tablet; the password opens the phone's local network, the relay still wants the tablet's key)
+        o.put("direct", Cfg.fastDirect(c));
+        o.put("dup", FastDirect.up);
+        o.put("ssid", FastDirect.NAME);
+        o.put("pass", FastDirect.password(c));
+        if (!FastDirect.last.isEmpty()) {
+            o.put("derr", FastDirect.last);
+        }
         if (k != null) {
             o.put("conns", k.pairs);
             o.put("flows", k.flowCount);

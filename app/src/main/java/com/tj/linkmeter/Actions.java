@@ -114,6 +114,21 @@ final class Actions {
         switch (name) {
             case "hotspot_on":
             case "boot_hotspot_on":
+            case "hotspot_off_deep":
+            case "hotspot_off":
+            case "standby":
+                FastDirect.end(app); // the hotspot buttons always mean the normal hotspot: Fast Wi-Fi's own network goes first
+                break;
+            default:
+                break;
+        }
+        switch (name) {
+            case "fast_direct_on":
+                return FastDirect.on(app);
+            case "fast_direct_off":
+                return FastDirect.off(app);
+            case "hotspot_on":
+            case "boot_hotspot_on":
                 // airplane mode off first if it is on (the hotspot cannot work in it), then the hotspot: DeepSleepRules.wake
                 return DeepSleep.wake(app);
             case "hotspot_off_deep":
@@ -229,6 +244,8 @@ final class Actions {
             case "wifi_off":
             case "standby":
             case "hotspot_off_deep":
+            case "fast_direct_on":
+            case "fast_direct_off":
                 return perform(c, name, viaBluetooth);
             case "fast_allow":
                 // the tablet's Fast Wi-Fi card: the user allows the relay from there (it is on by default)
@@ -353,6 +370,7 @@ final class Actions {
             {"access to all files", Build.VERSION.SDK_INT >= 30 ? "appops set " + p + " MANAGE_EXTERNAL_STORAGE allow" : ""},
             {"the phone permission", "pm grant " + p + " android.permission.READ_PHONE_STATE"},
             {"notifications", Build.VERSION.SDK_INT >= 33 ? "pm grant " + p + " android.permission.POST_NOTIFICATIONS" : ""},
+            {"Nearby Wi-Fi devices (Fast Wi-Fi without the hotspot)", Build.VERSION.SDK_INT >= 33 ? "pm grant " + p + " " + FastDirect.NEARBY : ""},
         };
         StringBuilder done = new StringBuilder();
         StringBuilder failed = new StringBuilder();

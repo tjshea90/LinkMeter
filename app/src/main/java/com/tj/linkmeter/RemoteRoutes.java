@@ -62,6 +62,8 @@ final class RemoteRoutes {
             case "radio_cycle": // the radio restart takes the hotspot down with it
             case "standby":
             case "wifi_on": // many phones cannot be a hotspot and a Wi-Fi client at once: the hotspot may stop
+            case "fast_direct_on": // Fast Wi-Fi's own network replaces the hotspot (docs/FAST_WIFI.md)
+            case "fast_direct_off": // and the hotspot replaces it again
                 return !viaBluetooth;
             case "hotspot_on": // a phone that is on somebody's Wi-Fi leaves it to become the hotspot
             case "boot_hotspot_on":

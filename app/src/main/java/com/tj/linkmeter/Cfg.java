@@ -168,6 +168,41 @@ final class Cfg {
         sp(c).edit().putBoolean("fastAllowed", on).apply();
     }
 
+    /** Phone: Fast Wi-Fi without the hotspot is on (its Wi-Fi Direct network is made again after a restart of the service). */
+    static boolean fastDirect(Context c) {
+        return sp(c).getBoolean("fastDirect", false);
+    }
+
+    static void setFastDirect(Context c, boolean on) {
+        sp(c).edit().putBoolean("fastDirect", on).apply();
+    }
+
+    /** Tablet: Fast Wi-Fi's Wi-Fi: "hotspot" (the phone's hotspot stays on) or "direct" (the phone's own Wi-Fi Direct network). */
+    static String fastLink(Context c) {
+        String s = sp(c).getString("fastLink", "hotspot");
+        return "direct".equals(s) ? "direct" : "hotspot";
+    }
+
+    static void setFastLink(Context c, String link) {
+        sp(c).edit().putString("fastLink", link).apply();
+    }
+
+    /** Tablet: the Wi-Fi Direct network's name and password, as the phone last said them (the tablet joins it with these). */
+    static String fastSsid(Context c) {
+        return sp(c).getString("fastSsid", "");
+    }
+
+    static String fastPass(Context c) {
+        return sp(c).getString("fastPass", "");
+    }
+
+    static void setFastNetwork(Context c, String ssid, String pass) {
+        if (ssid.equals(fastSsid(c)) && pass.equals(fastPass(c))) {
+            return;
+        }
+        sp(c).edit().putString("fastSsid", ssid).putString("fastPass", pass).apply();
+    }
+
     /** Tablet: the user switched Fast Wi-Fi on (it comes back after a restart of the tablet or of the app). */
     static boolean fastWanted(Context c) {
         return sp(c).getBoolean("fastWanted", false);

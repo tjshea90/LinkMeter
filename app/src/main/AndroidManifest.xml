@@ -38,6 +38,11 @@
     <!-- The Bluetooth link (docs/REMOTE_LINK.md): the tablet reaches the phone while the hotspot is off. Android 12 and newer (the
          phone) ask the user for "Nearby devices"; Android 11 and older (the tablet) have the two old permissions instead. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Phone (Android 13+): Fast Wi-Fi's own Wi-Fi Direct network (docs/FAST_WIFI.md). Given through Shizuku with the others. -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="33" />
     <uses-permission
         android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
