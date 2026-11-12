@@ -32,6 +32,7 @@ public class TextsPreviewTest {
     public void tearDown() {
         TextsTab.testLink = null;
         TextsVault.testKey = null;
+        Translator.testEngine = null;
         TextsTab.relock();
     }
 
@@ -948,5 +949,241 @@ public class TextsPreviewTest {
         }
         later(800);
         check(findText(decor(a), "slow to answer") == null, "once it answers the warning is gone");
+    }
+
+    // ------------------------------------------------------------ translating into Spanish (Mexico), and into English
+
+    /** A translator in place of the internet: what it was asked, and what it answers. */
+    static final class PretendTranslator implements Translator.Engine {
+        final java.util.List<String> asked = new java.util.ArrayList<>();
+        String spanish = "¿Puedes llevarme al trabajo mañana?";
+        String english = "What's up? Are you coming tomorrow?";
+        Translation.Answer fail;
+
+        @Override
+        public Translation.Answer translate(String text, Translation.Way way) {
+            asked.add(way + ":" + text);
+            if (fail != null) {
+                return fail;
+            }
+            return Translation.Answer.ok(way == Translation.Way.TO_MEXICAN ? spanish : english, Translation.MYMEMORY);
+        }
+    }
+
+    static PretendTranslator translator() {
+        PretendTranslator t = new PretendTranslator();
+        Translator.testEngine = t;
+        return t;
+    }
+
+    static String lastSent(PretendSms ph) {
+        java.util.List<Sms.Msg> all = ph.outbox.all();
+        return all.isEmpty() ? "" : all.get(all.size() - 1).body;
+    }
+
+    /** Opens Alex's conversation and switches translation on through its menu, answering the question with Translate. */
+    static MainActivity alexTranslated() throws Exception {
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0); // Alex Rivera
+        settle();
+        openMenuItem(a, "More", "Translate my texts to Spanish (Mexico)");
+        AlertDialog ask = latestDialog();
+        check(ask != null && ask.isShowing(), "it asks first");
+        ask.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle();
+        return a;
+    }
+
+    /** THE REQUEST: your English goes out in Spanish (Mexico), after you have seen it; Spain's words are made Mexican first. */
+    @Test
+    public void translateMyTextsToMexicanSpanish() throws Exception {
+        PretendSms ph = phone();
+        PretendTranslator tr = translator();
+        tr.spanish = "Trae una chaqueta, vamos en coche"; // a service's Spain Spanish: made right for Mexico before you see it
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0); // Alex Rivera
+        settle();
+        openMenuItem(a, "More", "Translate my texts to Spanish (Mexico)");
+        AlertDialog ask = latestDialog();
+        check(ask != null && ask.isShowing(), "it asks first");
+        check(findTextRaw(ask.getWindow().getDecorView(), "MyMemory") != null, "and says where the words go");
+        PreviewTest.save(ask.getWindow().getDecorView(), "texts-translate-ask");
+        ask.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle();
+        check(findText(decor(a), "Your texts here are translated into Spanish (Mexico)") != null, "the strip says it is on");
+        EditText box = findEdit(decor(a), "Write in English");
+        check(box != null, "the box asks for English");
+        box.setText("Bring a jacket, we're going by car");
+        settle();
+        click(a, "Send");
+        later(300);
+        check(tr.asked.size() == 1 && tr.asked.get(0).equals("TO_MEXICAN:Bring a jacket, we're going by car"), "your English was asked for: " + tr.asked);
+        check(ph.outbox.size() == 0, "nothing is sent before you have seen the Spanish");
+        check(box.getText().toString().equals("Trae una chamarra, vamos en carro"), "the Spanish, made right for Mexico, is in the box: " + box.getText());
+        check(findText(decor(a), "This is the Spanish (Mexico), by MyMemory") != null, "the strip says who translated it");
+        check(findText(decor(a), "Your English: \u201cBring a jacket") != null, "and keeps your English");
+        shot(a, "texts-translate-check");
+        click(a, "Send");
+        later(500);
+        check(ph.outbox.size() == 1 && lastSent(ph).equals("Trae una chamarra, vamos en carro"), "the Spanish was sent: " + lastSent(ph));
+        check(box.getText().length() == 0, "the box is empty");
+        check(tr.asked.size() == 1, "it was translated once");
+        check(findText(decor(a), "Your texts here are translated") != null, "the strip is back to its short line");
+        shot(a, "texts-translate-sent");
+    }
+
+    @Test
+    public void undoAndSendMyEnglish() throws Exception {
+        PretendSms ph = phone();
+        PretendTranslator tr = translator();
+        tr.spanish = "Nos vemos a las 7";
+        MainActivity a = alexTranslated();
+        EditText box = findEdit(decor(a), "Write in English");
+        box.setText("See you at 7");
+        settle();
+        click(a, "Send");
+        later(300);
+        check(box.getText().toString().equals("Nos vemos a las 7"), "the Spanish is in the box");
+        PreviewTest.press(a, "Undo");
+        settle();
+        check(box.getText().toString().equals("See you at 7"), "Undo gives your English back: " + box.getText());
+        check(findText(decor(a), "This is the Spanish") == null, "nothing is being checked any more");
+        click(a, "Send");
+        later(300);
+        check(tr.asked.size() == 2 && box.getText().toString().equals("Nos vemos a las 7"), "Send translates it again");
+        PreviewTest.press(a, "Send my English");
+        later(500);
+        check(ph.outbox.size() == 1 && lastSent(ph).equals("See you at 7"), "your English went, as you wrote it: " + lastSent(ph));
+        check(box.getText().length() == 0, "the box is empty");
+    }
+
+    @Test
+    public void aFailedTranslationSaysWhyAndSendsNothing() throws Exception {
+        PretendSms ph = phone();
+        PretendTranslator tr = translator();
+        tr.fail = Translation.Answer.failed("The tablet is not on the internet, so nothing could be translated.", false, "");
+        MainActivity a = alexTranslated();
+        EditText box = findEdit(decor(a), "Write in English");
+        box.setText("Are you home?");
+        settle();
+        click(a, "Send");
+        later(300);
+        check(ph.outbox.size() == 0, "nothing was sent");
+        check(box.getText().toString().equals("Are you home?"), "your English is still in the box");
+        check(findText(decor(a), "The tablet is not on the internet") != null, "the strip says why");
+        check(findText(decor(a), "Press Send to try again") != null, "and how to try again");
+        shot(a, "texts-translate-failed");
+        PreviewTest.press(a, "Send my English");
+        later(500);
+        check(ph.outbox.size() == 1 && lastSent(ph).equals("Are you home?"), "or your English goes as it is: " + lastSent(ph));
+    }
+
+    @Test
+    public void theSwitchBelongsToTheConversationAndStays() throws Exception {
+        PretendSms ph = phone();
+        translator();
+        MainActivity a = alexTranslated();
+        a.onBackPressed();
+        settle();
+        tapRow(a, 1); // Mom: not translated
+        settle();
+        check(findText(decor(a), "Your texts here are translated") == null, "another conversation is not translated");
+        check(findEdit(decor(a), "Text message") != null, "its box is the usual one");
+        a.onBackPressed();
+        settle();
+        tapRow(a, 0); // Alex again
+        settle();
+        check(findText(decor(a), "Your texts here are translated") != null, "Alex's conversation is still translated");
+        openMenuItem(a, "More", "Stop translating to Spanish");
+        check(findText(decor(a), "Your texts here are translated") == null && findEdit(decor(a), "Text message") != null, "switched off");
+        EditText box = findEdit(decor(a), "Text message");
+        box.setText("Plain English");
+        settle();
+        click(a, "Send");
+        later(500);
+        check(ph.outbox.size() == 1 && lastSent(ph).equals("Plain English"), "switched off, a text goes as it is");
+    }
+
+    @Test
+    public void translateAReceivedTextIntoEnglish() throws Exception {
+        phone();
+        PretendTranslator tr = translator();
+        tr.english = "Let me know if seven still works for you?";
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0); // Alex
+        settle();
+        findText(decor(a), "Let me know if 7").performLongClick();
+        settle();
+        AlertDialog menu = ShadowAlertDialog.getLatestAlertDialog();
+        TextView item = findTextRaw(menu.getWindow().getDecorView(), "Translate to English");
+        check(item != null, "a text sent to me can be translated");
+        item.performClick();
+        later(300);
+        check(tr.asked.size() == 1 && tr.asked.get(0).startsWith("TO_ENGLISH:Let me know if 7"), "its words were asked for: " + tr.asked);
+        check(findText(decor(a), "English, by MyMemory: Let me know if seven") != null, "the English is shown under it");
+        shot(a, "texts-translate-received");
+        findText(decor(a), "Let me know if 7").performLongClick();
+        settle();
+        AlertDialog again = ShadowAlertDialog.getLatestAlertDialog();
+        check(findTextRaw(again.getWindow().getDecorView(), "Translate to English") == null, "not offered twice");
+        again.dismiss();
+        findText(decor(a), "Yes! What time").performLongClick(); // a text of mine
+        settle();
+        AlertDialog mine = ShadowAlertDialog.getLatestAlertDialog();
+        check(findTextRaw(mine.getWindow().getDecorView(), "Translate to English") == null, "my own texts are not offered it");
+        mine.dismiss();
+    }
+
+    @Test
+    public void withTheSwitchOffNothingIsTranslated() throws Exception {
+        PretendSms ph = phone();
+        PretendTranslator tr = translator();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        tapRow(a, 0);
+        settle();
+        check(findText(decor(a), "translated into Spanish") == null, "no strip");
+        EditText box = findEdit(decor(a), "Text message");
+        box.setText("Just English");
+        settle();
+        click(a, "Send");
+        later(500);
+        check(tr.asked.isEmpty(), "nothing was translated");
+        check(ph.outbox.size() == 1 && lastSent(ph).equals("Just English"), "the text went as it is");
+    }
+
+    /** A Spanish text that failed to go is sent again as it was: it is never translated a second time. */
+    @Test
+    public void resendingASpanishTextDoesNotTranslateItAgain() throws Exception {
+        PretendSms ph = phone();
+        PretendTranslator tr = translator();
+        tr.spanish = "¿Estás en casa?";
+        MainActivity a = alexTranslated();
+        EditText box = findEdit(decor(a), "Write in English");
+        box.setText("Are you home?");
+        settle();
+        click(a, "Send");
+        later(300);
+        ph.offline = true; // the phone cannot be reached: the Spanish fails to go
+        click(a, "Send");
+        later(500);
+        TextView failed = findText(decor(a), "¿Estás en casa?");
+        check(failed != null, "the failed Spanish text is in the conversation");
+        ph.offline = false;
+        failed.performClick();
+        settle();
+        AlertDialog again = ShadowAlertDialog.getLatestAlertDialog();
+        check(again != null && again.isShowing(), "it asks to send it again");
+        again.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        later(500);
+        check(tr.asked.size() == 1, "translated only the first time: " + tr.asked);
+        check(lastSent(ph).equals("¿Estás en casa?"), "the same Spanish went: " + lastSent(ph));
     }
 }

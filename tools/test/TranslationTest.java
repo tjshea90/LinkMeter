@@ -217,6 +217,8 @@ public final class TranslationTest {
         mx("¿Ustedes vienen?", "¿Vosotros venís?", "vosotros venís");
         mx("Su casa es bonita", "Vuestra casa es bonita", "vuestra");
         mx("¿Ya están listos?", "¿Ya estáis listos?", "estáis");
+        mx("¿Rentan un carro?", "¿Alquiláis un coche?", "a regular verb's vosotros form");
+        mx("¿Ya se enojaron?", "¿Ya se enfadasteis?", "a regular verb's vosotros preterite");
         // vale for OK
         mx("Ok, nos vemos", "Vale, nos vemos", "Vale,");
         mx("¡Ok!", "¡Vale!", "¡Vale!");
