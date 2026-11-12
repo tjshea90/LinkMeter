@@ -28,14 +28,18 @@ final class Net {
         return Cfg.PHONE.equals(Cfg.mode(c)) ? Cfg.tabletToken(c) : Cfg.token(c);
     }
 
-    /** The Wi-Fi network Android says the tablet is on, or null. Needs no location permission. */
+    /**
+     * The Wi-Fi network Android says the tablet is on, or null. Needs no location permission. Never Fast Wi-Fi's VPN: a VPN carries
+     * the transports of the network under it, so it also says "Wi-Fi", but the phone is not found through it.
+     */
     static Network wifi(Context c) {
         try {
             ConnectivityManager cm = (ConnectivityManager) c.getApplicationContext()
                     .getSystemService(Context.CONNECTIVITY_SERVICE);
             for (Network n : cm.getAllNetworks()) {
                 NetworkCapabilities nc = cm.getNetworkCapabilities(n);
-                if (nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                if (nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                        && !nc.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
                     return n;
                 }
             }

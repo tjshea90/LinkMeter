@@ -68,6 +68,7 @@ final class FastRelayCore {
     static final long HELLO_MS = 10_000L;
     static final long CONNECT_MS = 15_000L;
     static final long QUIET_MS = 30_000L;
+    static final long REFRESH_MS = 60_000L;
     static final long FLOW_IDLE_MS = 120_000L;
     static final int MAX_PAIRS = 1024;
     static final int MAX_FLOWS = 512;
@@ -100,6 +101,7 @@ final class FastRelayCore {
     boolean loopbackOk;
     private boolean busyOn;
     private long lastTraffic;
+    private long lastRefresh;
     private long nextFlowSweep = Long.MAX_VALUE;
     private int pairCount;
 
@@ -221,6 +223,9 @@ final class FastRelayCore {
                 if (busyOn && now - lastTraffic >= QUIET_MS) {
                     busyOn = false;
                     busy.busy(false);
+                } else if (busyOn && now - lastRefresh >= REFRESH_MS) {
+                    lastRefresh = now;
+                    busy.busy(true); // still busy: the Android side renews its wake lock (it times out by itself otherwise)
                 }
             }
         } catch (IOException | ClosedSelectorException e) {
@@ -237,6 +242,7 @@ final class FastRelayCore {
         lastTraffic = System.currentTimeMillis();
         if (!busyOn) {
             busyOn = true;
+            lastRefresh = lastTraffic;
             busy.busy(true);
         }
     }
@@ -364,6 +370,10 @@ final class FastRelayCore {
             fail(p, FastProto.DENIED);
             return;
         }
+        if (target[1] == 0) {
+            fail(p, FastProto.OK); // a ping: the key is known, nothing to connect
+            return;
+        }
         accepted++;
         p.state = CONNECTING;
         p.deadline = System.currentTimeMillis() + CONNECT_MS;
@@ -468,7 +478,7 @@ final class FastRelayCore {
         }
     }
 
-    /** The answer could not be "connected": say why in the one byte, then close. */
+    /** The one-byte answer without a connection (why not, or OK to a ping), then close. */
     private void fail(Pair p, int code) {
         try {
             if (p.t.isOpen()) {

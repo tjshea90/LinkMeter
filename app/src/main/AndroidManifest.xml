@@ -98,6 +98,20 @@
             android:name=".SmsResultReceiver"
             android:exported="false" />
 
+        <!-- Tablet: Fast Wi-Fi's VPN (docs/FAST_WIFI.md). Only the system may bind it (BIND_VPN_SERVICE). -->
+        <service
+            android:name=".FastVpn"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Carries the user's own tablet's internet traffic over Wi-Fi to the user's own phone, which relays it" />
+        </service>
+
         <!-- specialUse has no time limit (dataSync services are cut off after
              6 hours on Android 15+), which is why it is used here. -->
         <service

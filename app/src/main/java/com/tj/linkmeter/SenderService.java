@@ -71,6 +71,7 @@ public class SenderService extends Service {
                 BootAssist.start(getApplicationContext()); // after a restart: wireless debugging on and the Shizuku notification, if the user switched Boot assist on
                 Radios.watch(getApplicationContext()); // hears the hotspot go on and off, for the status
                 BtServer.start(getApplicationContext()); // the Bluetooth door: the tablet can reach the phone while the hotspot is off
+                FastRelay.start(getApplicationContext()); // Fast Wi-Fi's relay: sleeps until the paired tablet uses it
             }
         }
         // Sticky: if Android ever stops it, it comes back by itself.
@@ -209,6 +210,7 @@ public class SenderService extends Service {
             pool.shutdownNow();
         }
         BtServer.stop();
+        FastRelay.stop(); // its port and its wake lock go with the service
         BootAssist.stop(); // it listens for Wi-Fi networks and for Shizuku: not once the service is stopped (the next start brings it back)
         Radios.unwatch(getApplicationContext());
         Eco.onServiceStop(getApplicationContext()); // no alarm and no screen receiver of the battery saver may outlive the service

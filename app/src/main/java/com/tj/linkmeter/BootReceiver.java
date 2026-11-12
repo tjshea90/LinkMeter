@@ -28,5 +28,15 @@ public class BootReceiver extends BroadcastReceiver {
                 // Android refused a background start; the user can start it from the app.
             }
         }
+        // Tablet: Fast Wi-Fi comes back by itself if it was on (an update or a restart stopped it), once Android's VPN OK is given
+        if (Cfg.TABLET.equals(mode) && Cfg.fastWanted(c)) {
+            try {
+                if (android.net.VpnService.prepare(c) == null) {
+                    FastVpn.start(c);
+                }
+            } catch (RuntimeException ignored) {
+                // the Home card shows it as off; one tap there starts it
+            }
+        }
     }
 }

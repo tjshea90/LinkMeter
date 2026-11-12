@@ -52,6 +52,7 @@ final class HomeTab extends Tab {
     private Button bStandby;
     private TextView tNeed;
     private TextView tAction;
+    private FastCard fast;
 
     private HandlerThread worker;
     private volatile Handler bg;
@@ -214,6 +215,16 @@ final class HomeTab extends Tab {
         bannerWifi = false;
         col.addView(banner, Ui.lp(act, 10));
 
+        // Hotspot or Fast Wi-Fi (docs/FAST_WIFI.md): the card's "Turn the hotspot on" is this screen's own, with its follow-up
+        if (fast != null) {
+            fast.onHide(); // the old card's speed ticker must not outlive its views
+        }
+        fast = new FastCard(act, () -> send("hotspot_on", "Switching the hotspot on", 45000));
+        if (lastPhone != null) {
+            fast.phone(lastPhone);
+        }
+        col.addView(fast.view, Ui.lp(act, 10));
+
         mBat = new MeterView(act);
         mCell = new MeterView(act);
         mWifi = new MeterView(act);
@@ -285,12 +296,18 @@ final class HomeTab extends Tab {
         worker.start();
         bg = new Handler(worker.getLooper());
         bg.post(pollTask);
+        if (fast != null) {
+            fast.onShow();
+        }
     }
 
     @Override
     void onHide() {
         polling = false;
         reachable = false;
+        if (fast != null) {
+            fast.onHide();
+        }
         Handler h = bg;
         bg = null;
         if (h != null) {
@@ -425,6 +442,9 @@ final class HomeTab extends Tab {
             lastPhone = s.phone;
             lastVia = s.via;
             lastOk = s.at;
+            if (fast != null) {
+                fast.phone(s.phone);
+            }
             if (Reach.WIFI.equals(s.via)) {
                 BtLink.heardOverHotspot(act, s.phone); // where its Bluetooth is, and what it says about its side of the link
             }

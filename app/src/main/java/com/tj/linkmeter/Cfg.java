@@ -157,6 +157,35 @@ final class Cfg {
      * Tablet: the tablet's own Wi-Fi follows the phone's hotspot (TabletWifiRules): switched on after "Hotspot on", off after
      * "Hotspot off" and Standby. ON by default; it only ever asks Android for what the user pressed a button for.
      */
+    // ------------------------------------------------------------ Fast Wi-Fi (docs/FAST_WIFI.md)
+
+    /** Phone: may the paired tablet use the relay? On by default (only a paired tablet's key opens it). */
+    static boolean fastAllowed(Context c) {
+        return sp(c).getBoolean("fastAllowed", true);
+    }
+
+    static void setFastAllowed(Context c, boolean on) {
+        sp(c).edit().putBoolean("fastAllowed", on).apply();
+    }
+
+    /** Tablet: the user switched Fast Wi-Fi on (it comes back after a restart of the tablet or of the app). */
+    static boolean fastWanted(Context c) {
+        return sp(c).getBoolean("fastWanted", false);
+    }
+
+    static void setFastWanted(Context c, boolean on) {
+        sp(c).edit().putBoolean("fastWanted", on).apply();
+    }
+
+    /** Tablet: QUIC (UDP 443) refused so apps use TCP, which the relay carries for much less battery. On by default. */
+    static boolean fastBlockQuic(Context c) {
+        return sp(c).getBoolean("fastBlockQuic", true);
+    }
+
+    static void setFastBlockQuic(Context c, boolean on) {
+        sp(c).edit().putBoolean("fastBlockQuic", on).apply();
+    }
+
     static boolean wifiFollow(Context c) {
         return sp(c).getBoolean("wifiFollow", true);
     }

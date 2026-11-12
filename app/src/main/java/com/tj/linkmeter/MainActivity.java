@@ -498,6 +498,40 @@ public class MainActivity extends Activity {
             UnlockResult cb = unlockResult;
             unlockResult = null;
             cb.onResult(result == RESULT_OK);
+        } else if (req == REQ_VPN) {
+            if (result == RESULT_OK) {
+                FastVpn.start(this);
+            } else {
+                Cfg.setFastWanted(this, false);
+                FastVpn.detail = "Fast Wi-Fi needs Android's OK for LinkMeter's VPN; it stays off until then.";
+            }
+        }
+    }
+
+    private static final int REQ_VPN = 11;
+
+    /**
+     * Switches Fast Wi-Fi on (docs/FAST_WIFI.md): Android asks the user once whether LinkMeter may set up a VPN; after that it starts
+     * at once. Tablet only.
+     */
+    void startFastWifi() {
+        Intent ask;
+        try {
+            ask = android.net.VpnService.prepare(this);
+        } catch (RuntimeException e) {
+            FastVpn.detail = "Android refused LinkMeter's VPN: " + e.getMessage();
+            return;
+        }
+        Cfg.setFastWanted(this, true);
+        if (ask == null) {
+            FastVpn.start(this);
+            return;
+        }
+        try {
+            startActivityForResult(ask, REQ_VPN);
+        } catch (RuntimeException e) {
+            Cfg.setFastWanted(this, false);
+            FastVpn.detail = "Android's VPN question could not be shown: " + e.getMessage();
         }
     }
 

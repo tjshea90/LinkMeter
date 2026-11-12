@@ -230,6 +230,13 @@ final class Actions {
             case "standby":
             case "hotspot_off_deep":
                 return perform(c, name, viaBluetooth);
+            case "fast_allow":
+                // the tablet's Fast Wi-Fi card: the user allows the relay from there (it is on by default)
+                FastRelay.setAllowed(c, true);
+                if (!FastRelay.running()) {
+                    throw new NotDone("Fast Wi-Fi is allowed on the phone, but its relay did not start. Restart LinkMeter on the phone.");
+                }
+                return "Fast Wi-Fi is allowed on the phone, and its relay is ready.";
             case "location_on":
                 return said(PhoneLocation.set(c, true));
             case "location_off":

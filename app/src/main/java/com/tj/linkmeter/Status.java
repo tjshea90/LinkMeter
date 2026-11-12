@@ -75,6 +75,7 @@ final class Status {
             if (!deepResult.isEmpty()) {
                 o.put("dres", deepResult.length() > 240 ? deepResult.substring(0, 240) : deepResult); // what the last deep sleep did
             }
+            o.put("fast", FastRelay.status(c)); // Fast Wi-Fi's relay: a tablet sees from this that the phone can relay (docs/FAST_WIFI.md)
             BtServer.poke(); // a Bluetooth door that failed to open is tried again while the tablet is here to see the result
             o.put("bt", BtServer.state());
             String mac = Cfg.btMac(c);

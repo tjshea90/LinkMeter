@@ -23,6 +23,8 @@ final class FastProto {
     /** TCP: what the tablet sends first on every relay connection. */
     static final int HELLO_LEN = 27;
     static final int CMD_TCP4 = 1;
+    /** "Do you know my key?": answered OK or DENIED at once, then closed (the tablet asks before it puts its VPN up). */
+    static final int CMD_PING = 2;
 
     /** TCP: the phone's one-byte answer. */
     static final int OK = 0;
@@ -78,13 +80,22 @@ final class FastProto {
 
     /** The 27 bytes that open a relay connection to addr:port. */
     static byte[] hello(byte[] key, int addr, int port) {
+        return hello(key, CMD_TCP4, addr, port);
+    }
+
+    /** The 27 bytes of a ping: the phone only says whether it knows the key. */
+    static byte[] ping(byte[] key) {
+        return hello(key, CMD_PING, 0, 0);
+    }
+
+    private static byte[] hello(byte[] key, int cmd, int addr, int port) {
         byte[] h = new byte[HELLO_LEN];
         h[0] = 'L';
         h[1] = 'M';
         h[2] = 'F';
         h[3] = VERSION;
         System.arraycopy(key, 0, h, 4, KEY_LEN);
-        h[20] = CMD_TCP4;
+        h[20] = (byte) cmd;
         Ip4.w32(h, 21, addr);
         Ip4.w16(h, 25, port);
         return h;
@@ -92,14 +103,21 @@ final class FastProto {
 
     /**
      * The phone's check of a hello: OK, or DENIED for a wrong version, an unknown key or a destination that must not be reached through
-     * the relay (the phone itself, a private network, multicast). On OK, target[0] is the address and target[1] the port.
+     * the relay (the phone itself, a private network, multicast). On OK, target[0] is the address and target[1] the port, both 0 for a
+     * ping (which asks for no connection).
      */
     static int readHello(byte[] h, List<byte[]> keys, int[] target) {
-        if (h.length < HELLO_LEN || h[0] != 'L' || h[1] != 'M' || h[2] != 'F' || h[3] != VERSION || h[20] != CMD_TCP4) {
+        if (h.length < HELLO_LEN || h[0] != 'L' || h[1] != 'M' || h[2] != 'F' || h[3] != VERSION
+                || (h[20] != CMD_TCP4 && h[20] != CMD_PING)) {
             return DENIED;
         }
         if (!knownKey(keys, h, 4, KEY_LEN)) {
             return DENIED;
+        }
+        if (h[20] == CMD_PING) {
+            target[0] = 0;
+            target[1] = 0;
+            return OK;
         }
         int addr = Ip4.i32(h, 21);
         int port = Ip4.u16(h, 25);
@@ -126,6 +144,51 @@ final class FastProto {
         Ip4.w16(out, off, flow);
         Ip4.w32(out, off + 2, addr);
         Ip4.w16(out, off + 6, port);
+    }
+
+    /**
+     * A SERVFAIL answer to the DNS question q (its number, its question, no answers), so the tablet's resolver gives up at once instead
+     * of waiting when the phone's resolver has no answer. Anything after the question (an EDNS record) is left out.
+     */
+    static byte[] servfail(byte[] q) {
+        int end = questionEnd(q);
+        byte[] a = new byte[Math.max(12, end)];
+        System.arraycopy(q, 0, a, 0, Math.min(q.length, a.length));
+        a[2] = (byte) ((a[2] & 0x01) | 0x80); // a response; recursion desired kept
+        a[3] = (byte) 0x82; // recursion available, SERVFAIL
+        Ip4.w16(a, 4, end > 12 ? 1 : 0);
+        Ip4.w16(a, 6, 0);
+        Ip4.w16(a, 8, 0);
+        Ip4.w16(a, 10, 0);
+        return a;
+    }
+
+    /** Where the first question of a DNS message ends, or 12 (the header alone) when it cannot be read. */
+    static int questionEnd(byte[] q) {
+        if (q.length < 12 || Ip4.u16(q, 4) < 1) {
+            return 12;
+        }
+        int i = 12;
+        while (true) {
+            if (i >= q.length) {
+                return 12;
+            }
+            int l = q[i] & 0xFF;
+            if (l == 0) {
+                i++;
+                break;
+            }
+            if ((l & 0xC0) == 0xC0) {
+                i += 2;
+                break;
+            }
+            if ((l & 0xC0) != 0) {
+                return 12;
+            }
+            i += 1 + l;
+        }
+        i += 4;
+        return i <= q.length ? i : 12;
     }
 
     /** Address 0.0.0.0 port 53 in a UDP header: "a DNS question for the phone's own resolver". */

@@ -60,6 +60,9 @@ final class TunStack {
 
         /** A relay connection worked again after trouble. */
         void relayFine();
+
+        /** The engine stopped by itself (the interface closed, or a fault): the VPN must not stay up without it. */
+        void stopped();
     }
 
     // ------------------------------------------------------------------------------------------- tuning
@@ -118,6 +121,8 @@ final class TunStack {
     private volatile int inTail;
     private volatile boolean sleeping;
     private volatile boolean running;
+    /** stop() was called (an end that nobody asked for is reported through {@link Events#stopped}). */
+    private volatile boolean asked;
     private volatile boolean blockQuic = true;
 
     private DatagramChannel udp;
@@ -170,6 +175,7 @@ final class TunStack {
 
     /** Stops both threads soon; every relay connection is closed (the apps' connections end with the VPN). */
     void stop() {
+        asked = true;
         running = false;
         try {
             selector.wakeup();
@@ -269,6 +275,9 @@ final class TunStack {
         } finally {
             running = false;
             closeAll();
+            if (!asked) {
+                events.stopped();
+            }
         }
     }
 
