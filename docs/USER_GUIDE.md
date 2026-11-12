@@ -89,6 +89,16 @@ always.
   slow to answer"** the phone is there but did not answer in time; LinkMeter asks again by itself. Texts menu > Connection details shows how
   long each request took (Copy puts it on the clipboard: it holds no texts).
 - **Speed, Screen, Files:** as before.
+- **Fast Wi-Fi (2026-11-12): the tablet's internet without the hotspot's speed limit.** Home > "Internet for this tablet" has two
+  choices: **Hotspot** (as always: the carrier limits hotspot traffic to 5 Mbit/s) and **Fast Wi-Fi**. With Fast Wi-Fi the tablet stays
+  on the phone's hotspot, but every app's traffic goes through LinkMeter on the phone, which makes the connections itself, so the
+  carrier sees ordinary phone traffic. The first time, Android asks whether LinkMeter may set up a VPN: press **OK** (the key icon at
+  the top of the tablet's screen then shows while it is on). After that it is one tap. Fast Wi-Fi stays chosen after a restart of the
+  tablet and comes back by itself; if the phone's LinkMeter does not answer (or the hotspot is off) the tablet simply uses the normal
+  hotspot and Fast Wi-Fi takes over again by itself when the phone answers. **Quickest switch:** add the **Fast Wi-Fi** tile to the
+  tablet's quick settings (swipe down twice from the top, press the pencil, drag the tile in): one tap from anywhere. The notification
+  has **Turn off**. Install the newest release on **both** devices: the phone does the relaying. Settings > Fast Wi-Fi has one option
+  (leave it on). Read `docs/FAST_WIFI.md` for how it works and what is not known yet.
 
 ## 3. If something breaks
 

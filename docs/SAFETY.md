@@ -248,3 +248,27 @@ answers nothing about texts, and the tablet wipes what it had saved. Only the pa
   what the phone may be asked.
 - **Nothing here dials.** A phone number in a text is shown as text and is never made a link; only web addresses and e-mail addresses are.
 
+
+## 11. Fast Wi-Fi (the tablet's internet through LinkMeter on the phone, 2026-11-12)
+
+- **What it changes.** On the tablet: a VPN (Android's own VpnService; Android asks the user once, shows a key icon while it is on, and
+  "Turn off" in its notification ends it). It changes no setting of the tablet: when it ends, the tablet's apps use the Wi-Fi directly
+  again at once. On the phone: nothing is switched; the always-on service listens on one more port (8767, TCP and UDP) and, only while
+  the tablet's traffic flows, keeps the processor awake (a partial wake lock, let go 30 s after the traffic stops; it ends by itself
+  after 15 minutes if it is ever not renewed). No radio, hotspot, Wi-Fi or Shizuku setting is touched, so there is nothing to restore,
+  and Restore everything has nothing to add.
+- **Who can use the relay.** Only a paired tablet: every connection starts with a key made from the pairing secret (HMAC-SHA256, the
+  secret itself is never sent with relay traffic), and the phone accepts it only from a private address on its Wi-Fi side (the hotspot
+  or Wi-Fi Direct), never from the mobile network. "Pair again (new secret)" makes a new key; "Forget all tablets" on the phone shuts
+  every old one out at once. The phone's switch "Let the tablet use Fast Wi-Fi" (Fast Wi-Fi card on its own screen, on by default)
+  closes the port.
+- **Where the relay connects.** Only to public internet addresses: never to the phone itself, its loopback, a private network
+  (10/8, 172.16/12, 192.168/16), link-local or multicast addresses. So the tablet cannot use the relay to reach anything on the phone or
+  on a network the phone is on.
+- **What is NOT encrypted by LinkMeter.** The relay carries the tablet's traffic as it is: what the apps encrypt themselves (HTTPS, which
+  is nearly everything) stays encrypted end to end; LinkMeter adds no encryption of its own between the tablet and the phone (the
+  Wi-Fi's own WPA2 protects that hop, as it always did for the hotspot). DNS questions are answered by the phone's own resolver (its
+  Private DNS if it has one).
+- **What it is for.** The carrier counts traffic that the phone's hotspot forwards as hotspot traffic and limits its speed; traffic that
+  an app on the phone makes is the phone's own. The user said the carrier approved this for a testing period; switching back to
+  **Hotspot** (Home, the tile or the notification) returns the tablet to the normal hotspot at once.

@@ -199,6 +199,7 @@ public class FastVpn extends VpnService {
         }
         try {
             up(n, r);
+            retryMs = RETRY_MS;
         } catch (IOException | RuntimeException ex) {
             tearDown();
             waitAgain("The VPN could not be set up: " + ex.getMessage());
@@ -206,10 +207,14 @@ public class FastVpn extends VpnService {
     }
 
     private final Runnable retry = this::attempt;
+    /** The wait before the next look: half a minute, doubled after each look that failed, up to five minutes (a Wi-Fi change resets it). */
+    private long retryMs = RETRY_MS;
 
     private void waitAgain(String why) {
-        down(State.WAITING, why + " The tablet uses its Wi-Fi as before meanwhile; LinkMeter looks again in half a minute.");
-        h.postDelayed(retry, RETRY_MS);
+        down(State.WAITING, why + " The tablet uses its Wi-Fi as before meanwhile; LinkMeter looks again "
+                + (retryMs < 60_000L ? "in half a minute." : "in " + retryMs / 60_000L + " minutes, and at once when the Wi-Fi changes."));
+        h.postDelayed(retry, retryMs);
+        retryMs = Math.min(5 * 60_000L, retryMs * 2);
     }
 
     /** Does the phone's relay answer, and does it know this tablet's key? null if both, else why not in the user's words. */
@@ -356,6 +361,7 @@ public class FastVpn extends VpnService {
         if (!wanted) {
             return;
         }
+        retryMs = RETRY_MS; // a new Wi-Fi: look quickly again
         Network n = Net.wifi(this);
         TunStack e = engine;
         if (e != null && e.running()) {

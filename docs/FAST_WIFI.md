@@ -99,9 +99,36 @@ which interfaces and addresses may use it, the VPN's route list), `TunStack` (th
 (tablet: the VpnService). The end-to-end test runs the real engine and relay in the sandbox on a REAL Linux tun device with curl and
 the Linux kernel's TCP as the app: `tools/fast_e2e.sh` (needs root and /dev/net/tun; skipped otherwise).
 
+## How it is switched (stage 1)
+
+- Tablet, Home > "Internet for this tablet": **Hotspot | Fast Wi-Fi** (`FastCard`, words in `FastRules.card`). Fast Wi-Fi asks Android's
+  VPN question the first time (`MainActivity.startFastWifi`, `VpnService.prepare`), then starts `FastVpn`. The card offers the one thing
+  to do first when there is one: Android's OK, "Turn the hotspot on" (Home's own Hotspot on, with its follow-up), "Allow it on the
+  phone" (action `fast_allow`). It shows the speed every 2 s while Home is open.
+- The quick settings tile `FastTile` (bolt icon) and the notification's **Turn off** switch it from anywhere. `Cfg.fastWanted` keeps the
+  choice: `BootReceiver` starts it again after a restart or an update; `START_STICKY` after Android stopped the service.
+- `FastVpn` puts the VPN up only after a **ping** to the phone's relay answered OK (port open AND key known), takes it down when the
+  Wi-Fi goes or the relay fails 3 times in a row or the engine stops (so the tablet's apps use the Wi-Fi directly again: the normal
+  hotspot), and looks again at every Wi-Fi change and after 30 s, 1, 2, 4, 5 minutes.
+- Phone: `FastRelay` starts with the service (`SenderService`), status `"fast":{v,port,allowed,on,err,conns,flows,up,down,seen}` in
+  `/s`, the switch "Let the tablet use Fast Wi-Fi" on its own screen (`PhoneTab.buildFast`, `Cfg.fastAllowed`, default on).
+- Settings > Fast Wi-Fi: "Steer apps to their faster way" (QUIC refused, `Cfg.fastBlockQuic`, default on).
+
+## Tests
+
+- `tools/test.sh`: `FastCodecTest` (packets against a plain reference checksum, a real Linux SYN, the key against Python's HMAC, the
+  hello and ping, SERVFAIL, the 46 routes against a million addresses, interfaces) and `FastRulesTest` (the card in every combination,
+  the probe words, speeds, the phone's line).
+- `tools/fast_e2e.sh` (root + /dev/net/tun; the sandbox has both): the real engine and relay on a real Linux tun with the kernel's TCP
+  as the app, 21 checks: ping, 200 MB down and 100 MB up byte for byte (about 2 Gbit/s on the sandbox: the tablet's CPU is perhaps
+  20 times slower, still well above its 2.4 GHz Wi-Fi), 96 downloads at once, half-close, a server that speaks first, refused and reset
+  connections, UDP, DNS, QUIC and DNS-over-TLS refused at once, nothing left open.
+- `tools/preview.sh --tests "com.tj.linkmeter.FastPreviewTest"`: the Home card in each state and what its buttons send, the Settings
+  card (pictures `tools/uipreview/out/fast-*.png`).
+
 ## Status
 
-- [ ] Stage 1: relay + VPN over the hotspot, toggle on Home, automatic start, released.
+- [x] Stage 1: relay + VPN over the hotspot, toggle on Home, quick settings tile, automatic start (the release number is in HANDOFF).
 - [ ] Stage 2: Wi-Fi Direct link on 2.4 GHz with the hotspot off, automatic switching, released.
 - NOT KNOWN UNTIL THE DEVICES TRY: the real speed (the tablet's CPU and its 2.4 GHz Wi-Fi are the limits: 2.4 GHz single-stream Wi-Fi
   gives roughly 30 to 50 Mbit/s); whether Total Wireless also slows the phone's own traffic while the hotspot is on (then stage 2,

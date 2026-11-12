@@ -380,6 +380,11 @@ Actions (`/act?name=`): `eco_on`, `eco_off`, `screen_off`, `setup`, `net_get`, `
 (answer immediately), and `airplane_on`, `hotspot_off`, `poweroff` (answer first, run 0.8 s later
 because they cut the link). `airplane_off` also exists.
 
+Fast Wi-Fi (2026-11-12, `docs/FAST_WIFI.md`): a second port, **8767 (TCP and UDP)**, the relay (`FastRelayCore`, started by `FastRelay`
+in the phone's service); its own small protocol (`FastProto`: a 27-byte hello with a key derived from the pairing secret, then raw
+bytes; UDP datagrams with a 16-byte header). `/s` carries `"fast":{...}`; action `fast_allow` switches the phone's "Let the tablet use
+Fast Wi-Fi" on. An older phone app has neither: the tablet's card says to update it.
+
 ## The privileged layer (read before touching Priv/Actions/ShellMain)
 
 1. `Priv.run(cmd)` runs a shell command via Shizuku (`Shizuku.newProcess` by reflection, because
@@ -442,6 +447,9 @@ BootReceiver, Status, Priv/Actions/Eco/Cells/ShellMain/Saved/Guard/Notice (privi
 Call (tablet helpers), Updater (tablet-driven phone update), Ui, MeterView, SpeedView, Tab,
 HomeTab/SpeedTab/BandsTab/ControlTab/FilesTab/SettingsTab/PhoneTab/ScreenTab, MainActivity.
 Deep sleep: DeepSleepRules (the steps and the fail-safe, pure), DeepSleep and PhoneLocation (what the phone does for each step).
+Fast Wi-Fi: Ip4, FastProto, FastRules, TunStack (tablet engine), FastRelayCore (phone relay) are pure; FastRelay (phone glue),
+FastVpn (tablet VpnService), FastCard (Home card), FastTile (quick settings tile); tests FastCodecTest, FastRulesTest, tools/fast_e2e.sh
+(real Linux tun), uipreview FastPreviewTest.
 Tablet Wi-Fi with the hotspot: TabletWifiRules (the rules, pure), TabletWifi (Android's Wi-Fi manager, Shizuku, the Wi-Fi switch screen).
 Remote screen, phone: Screen (routes), PowerSequence (Sleep / Wake steps), RemoteProfile and ProfilePlan (screen kept on and
 dimmed, restored), ShellMain `inject` and `sleep`.
