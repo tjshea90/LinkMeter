@@ -735,21 +735,22 @@ public class WifiFollowPreviewTest {
         wifiIs(true);
         Network hotspot = addWifiNetwork(100);
         MainActivity a = tablet();
-        hotspotOffYes(a, "Hotspot off"); // Sent: the Wi-Fi off waits for the confirmation
-        // the hotspot is gone, the Wi-Fi was switched off by hand, and the phone does not answer over Bluetooth either
+        hotspotOffYes(a, "Hotspot off"); // Sent: the Wi-Fi off waits for the phone's confirmation
+        // the tablet left the hotspot and its Wi-Fi was switched off by hand; the phone answers over Bluetooth, its hotspot still on
         dropNetwork(hotspot);
         noNetworks();
         wifiIs(false);
         p.via = "bt";
-        p.btFails = true;
         later(3100);
-        mustShow(a, "The tablet's Wi-Fi is off");
+        mustShow(a, "The hotspot is on, but the tablet's Wi-Fi is off");
         press(a, "Switch Wi-Fi on");
         settle();
         check(panelWasOpened(a), "your press opened Android's Wi-Fi switch");
         wifiIs(true); // you switched it on there
-        later(3100); // the second silent look: the follow-up of Hotspot off ends, as the phone going away looks
-        check(nothingWasOpened(a), "the end of Hotspot off does not open the switch to take your Wi-Fi away again");
+        p.status = Pretend.status(false, true); // only now does the phone's status show the hotspot off: Hotspot off is confirmed
+        later(3100);
+        mustShow(a, "The hotspot is off.");
+        check(nothingWasOpened(a), "the confirmation of Hotspot off does not open the switch to take your Wi-Fi away again");
         check(wifiIsOn(), "your Wi-Fi stays on");
     }
 }
