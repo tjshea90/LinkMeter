@@ -28,3 +28,10 @@ PLAN:
    with a strip (from your English, Undo, Send my English), second Send sends; long-press a received text -> Translate to English (inline).
 4. tests: tools/test/TranslationTest.java (+ tools/test.sh), breakages, TextsPreviewTest scenarios with a pretend engine; pictures.
 5. docs: docs/TRANSLATE.md, HANDOFF, USER_GUIDE, SAFETY (words leave the tablet only when you use Translate). Release.
+
+DONE (2026-11-12, wip commits on the branch): Translation + TranslateFlow (TranslationTest 56,381 checks, in tools/test.sh), Translator,
+TextsLocal.isTranslated, TextThread (menu entry + explanation, strip, Undo / Send my English, resend untouched, Translate to English on a
+received text), 7 TextsPreviewTest scenarios pass, pictures texts-translate-* LOOKED AT, tools/mutate_translate.py: 36 pure caught (two tests
+added, one dead aparcar guard removed); glue 11 RUNNING (log scratchpad/tr-glue.log). Docs: docs/TRANSLATE.md, SAFETY.md section 10,
+USER_GUIDE, APP_REFERENCE, HANDOFF bullet.
+NEXT: glue result; tools/test.sh; assembleRelease; whole preview; closing plain checkpoint (release); run + release; note: commit with the number.
