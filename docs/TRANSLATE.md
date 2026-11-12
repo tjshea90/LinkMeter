@@ -13,6 +13,7 @@ Google's own Gboard page lists "Translate as you type in the keyboard" and adds 
 (https://goo.gle/gboard; low-RAM Go devices get the lighter Gboard Go). The tablet runs Android 10 **Go edition** (MediaTek MT8168 Go), so
 Gboard's translation does not exist there, in any app; nothing LinkMeter does can switch it on. LinkMeter's message box is a plain Android
 text box (`TextThread`: `TYPE_CLASS_TEXT | MULTI_LINE | CAP_SENTENCES`, no incognito flag, no "no suggestions" flag): it blocks nothing.
+**Confirmed by the user (2026-11-12): "Gboard translate isn't working anywhere"** on the tablet, not only in LinkMeter.
 (Not the cause either: the internet. Texts only work over the phone's hotspot, `RemoteRoutes` has no `/sms` route over Bluetooth, so the
 tablet is on the internet whenever Texts work.)
 
