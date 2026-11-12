@@ -1,6 +1,6 @@
 # Texts round 4 (the user's request of 2026-11-12) — progress notes
 
-STATUS: WORKING (A-E done; F: release left) (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
+STATUS: DONE (released as v0.2.180, commit 002e6ef, run #180 green). Wait for the user's report from the tablet. (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
 
 THE USER'S WORDS (2026-11-12): "Improve the text feature in this app. When the keyboard comes up, the text window scrolls up so I can't see the
 last messages. When I open a text message, it is scrolled up. I want to always see the end of the chat for the most recent messages unless I
