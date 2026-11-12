@@ -324,6 +324,17 @@ public class SmsStoreListTest {
         assertEquals("Message", ThreadListRules.preview(overTheWire(t), false));
     }
 
+    /** The rule from before stays for what cannot be read: the database says there is an attachment, so the line says so. */
+    @Test
+    public void anAttachmentFlagStillGivesAttachmentWhenNothingCanBeRead() {
+        thread(80, T0 + 4000, 1, "", true, true);
+        db.execSQL("DROP TABLE part");
+        db.execSQL("DROP TABLE pdu");
+        Sms.Thread t = list(10).get(80L);
+        assertEquals("Attachment", t.snippet);
+        assertTrue(t.attachment);
+    }
+
     @Test
     public void aDatabaseThatRefusesTheNewQuestionsStillListsTheConversations() {
         thread(70, T0 + 4000, 1, "plain snippet", false, false);

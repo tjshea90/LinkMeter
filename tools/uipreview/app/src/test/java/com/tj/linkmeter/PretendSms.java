@@ -38,6 +38,8 @@ final class PretendSms implements SmsApi.Backend {
     final java.util.concurrent.atomic.AtomicInteger slowAsked = new java.util.concurrent.atomic.AtomicInteger();
     /** The tablet's switch on the phone. */
     volatile boolean on = true;
+    /** The phone sends no words for a conversation whose newest text is unread (the report of 2026-11-12: an older phone app, or a picture message). */
+    volatile boolean noWordsWhenUnread;
     volatile String stamp = "p1";
     private byte[] picture = new byte[0];
     private final SmsApi api;
@@ -292,7 +294,7 @@ final class PretendSms implements SmsApi.Backend {
                 by.put(m.key, t);
             }
             t.count++;
-            t.snippet = m.body.isEmpty() && !m.parts.isEmpty() ? "Attachment" : m.body;
+            t.snippet = noWordsWhenUnread && m.unread ? "" : m.body.isEmpty() && !m.parts.isEmpty() ? "Attachment" : m.body;
             t.time = m.time;
             t.unread |= m.unread;
             t.attachment |= !m.parts.isEmpty();

@@ -183,6 +183,20 @@ public class TextsPreviewTest {
         }
     }
 
+    /** The report of 2026-11-12: a lit-up conversation said "No messages". With no words from the phone the row says there is a new message. */
+    @Test
+    public void listWhenThePhoneSendsNoWords() throws Exception {
+        PretendSms ph = phone();
+        ph.noWordsWhenUnread = true;
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        shot(a, "texts-list-no-words");
+        check(findText(decor(a), "New message") != null, "a conversation that is unread and has no words says 'New message'");
+        check(findText(decor(a), "No messages") == null, "and never that there are no messages");
+        check(findText(decor(a), "Sam Patel") != null, "the conversation is still in the list");
+    }
+
     @Test
     public void deleteAsk() throws Exception {
         PretendSms ph = phone();
