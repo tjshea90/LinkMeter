@@ -486,7 +486,12 @@ thumbnails through `Thumbs`, the full screen preview: `ZoomView`, `PdfRenderer` 
 the database's `snippet` is empty for a picture message without a subject, so `SmsStore.fillPreviews` reads the newest message of the
 conversations with an empty snippet (3 batched queries, busy conversations asked again, nothing kept between scans; rules in the pure
 `SmsPreview`), and `ThreadListRules.preview` says "New message" / "Message", never "No messages", for a conversation that has messages;
-`SmsStoreListTest` (the real `SmsStore` over SQLite) and `python3 tools/mutate_preview.py`. Why no encrypted channel for `/sms/*`: see
+`SmsStoreListTest` (the real `SmsStore` over SQLite) and `python3 tools/mutate_preview.py`. Translation into Spanish (Mexico) (2026-11-12, `docs/TRANSLATE.md`):
+pure `Translation` (pieces under MyMemory's 500 bytes, MyMemory `es-MX` with `onlyprivate=1` first and Google's free endpoint as the
+fallback, their answers, shorthand, the Mexican safety layer `toMexican`) and `TranslateFlow` (Send translates, the Spanish goes into the
+box to be checked, the next Send sends it); `Translator` (HTTPS, one thread, logged without the words), `TextsLocal.isTranslated`, the strip
+and the menu entries in `TextThread`; `TranslationTest`, `TextsPreviewTest` (pretend translator `Translator.testEngine`),
+`python3 tools/mutate_translate.py`. Why no encrypted channel for `/sms/*`: see
 `docs/SAFETY.md` section 10 ("What is NOT encrypted"). The pictures: `tools/preview.sh --tests
 "com.tj.linkmeter.TextsPreviewTest"` (`PretendSms` puts the real `SmsApi` behind a fake database; `TextsTab.testLink` is the seam).
 

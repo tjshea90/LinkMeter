@@ -230,6 +230,14 @@ answers nothing about texts, and the tablet wipes what it had saved. Only the pa
   and only while texts are switched on. A name given on the tablet is also kept on the tablet (encrypted with the rest of the saved copy);
   when the phone could not save it, the screen says "on this tablet only".
 - **Quick emoji replies** send an ordinary text (one emoji) from the phone, only when the emoji is tapped, like any text.
+- **Translation (2026-11-12; off unless switched on for a conversation).** With a conversation's menu > "Translate my texts to Spanish
+  (Mexico)" switched on, pressing Send sends the words in the box from the tablet over HTTPS to MyMemory (Translated, a translation
+  service), or to Google Translate when MyMemory is used up or busy; "Translate to English" in a received text's menu sends that text's
+  words the same way. Only the words of that one text go: no name, no number, no other message. MyMemory is asked for its machine
+  translation only (it is not asked to store the text in its shared memory; what either service keeps on its side is its own). The
+  Spanish is put in the box for you to check, never sent by itself, and the translation of a received text is kept in memory only, never
+  saved. The Texts connection log records the service, the time and the result of each question, never the words. Switched off, nothing
+  leaves the tablet for translation.
 - **Looking at an attachment before sending** (a large card above the box, a full screen preview with a zoomable photo, PDF pages, the
   start of a text file) happens on the tablet only; nothing is sent until Send. "Open in another app" gives a copy to another app on the
   same tablet. The preview window is kept out of screenshots when "Hide Texts from screenshots" is on.

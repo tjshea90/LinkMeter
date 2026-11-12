@@ -70,6 +70,11 @@ always.
   to delete it too; most phones only let their own Messages app do that, then the texts stay on the phone and the strip says so (Undo
   brings them back here). On a wide tablet screen the list stays on the left. The menu (the three dots) has unread only, archived,
   mark all read, refresh and Texts settings. A fresh verification code gets a **Copy code** button (in the list and under the text).
+  **Translate to Spanish (Mexico)** (a conversation's menu, the three dots, > "Translate my texts to Spanish (Mexico)"): write in English
+  and press Send; the Spanish as it is spoken in Mexico appears in the box for you to check, and Send again sends it (Undo gives your
+  English back, "Send my English" sends it untranslated). Hold a text you received > "Translate to English" shows its English under it.
+  The words of that text go over the internet to a translation service (MyMemory, or Google Translate when MyMemory is busy); nothing
+  else does. (Gboard's own translation does not exist on this tablet: Google does not offer it on Android Go devices.)
   **Texts settings** (menu): keep the saved copy (it is encrypted, with a key that stays inside the tablet), hide the words in the
   list, **lock Texts with the tablet's screen lock** (asks again after 2 minutes away; needs a PIN, pattern or password set in
   Android), hide Texts from screenshots and the recent apps picture, erase everything saved here. Pairing again erases it too. Texts

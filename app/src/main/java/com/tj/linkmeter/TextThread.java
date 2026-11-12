@@ -995,7 +995,8 @@ final class TextThread {
             transUndo.setVisibility(View.VISIBLE);
             transButtons.setVisibility(View.VISIBLE);
         } else if (!flow.why().isEmpty()) {
-            transTitle.setText(flow.why() + " Press Send to try again.");
+            String why = flow.why();
+            transTitle.setText(why.contains("Press Send") ? why : why + " Press Send to try again.");
             transTitle.setTextColor(Ui.AMBER);
             transUndo.setVisibility(View.GONE);
             transButtons.setVisibility(Translation.hasWords(input.getText().toString()) ? View.VISIBLE : View.GONE);
