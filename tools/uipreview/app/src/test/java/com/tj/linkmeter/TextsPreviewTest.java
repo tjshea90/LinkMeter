@@ -192,9 +192,23 @@ public class TextsPreviewTest {
         a.openTab(Tab.TEXTS);
         settle();
         shot(a, "texts-list-no-words");
-        check(findText(decor(a), "New message") != null, "a conversation that is unread and has no words says 'New message'");
-        check(findText(decor(a), "No messages") == null, "and never that there are no messages");
-        check(findText(decor(a), "Sam Patel") != null, "the conversation is still in the list");
+        // the two unread demo conversations (Alex, Mom) say so; the round button of the same name is not a text
+        check(countExact(decor(a), "New message") == 2, "both unread conversations say 'New message': " + countExact(decor(a), "New message"));
+        check(findText(decor(a), "No messages") == null, "and nothing says that there are no messages");
+        check(findText(decor(a), "Sam Patel") != null, "the other conversations are still in the list");
+        check(findText(decor(a), "Count me in") != null, "and keep their words (the weekend crew's newest message)");
+    }
+
+    /** How many texts on the screen are exactly this. */
+    static int countExact(View v, String text) {
+        int n = v instanceof TextView && v.isShown() && text.contentEquals(((TextView) v).getText()) ? 1 : 0;
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                n += countExact(g.getChildAt(i), text);
+            }
+        }
+        return n;
     }
 
     @Test

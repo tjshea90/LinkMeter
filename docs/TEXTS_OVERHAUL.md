@@ -98,3 +98,31 @@ request on ONE thread, so a slow list held up opening a conversation, and gave u
 newest release there too). NOT measured on a device: ask the user whether it is quicker, and for the Connection details lines if not.
 Done as asked: quick emoji reply, large attachment cards with a full screen preview, contacts (tablet names + saved on the phone when it lets
 LinkMeter). Not done: contact photos, deleting a contact, several numbers for one contact (the phone's own Contacts app does those).
+
+## Round 3: "No messages" on an unread conversation (the user's report, 2026-11-12)
+Their words: "the texts feature said no messages next to a contact even though I had a new message and it was lit up like a new message. I want
+it to show a preview of the last message just like real texting apps do."
+What the code showed (read, not measured on the phone): the grey line of the list row was only the `snippet` column of the phone's
+`threads` table (`SmsStore.rawThreads`). Android fills that column for a picture message (MMS) from its SUBJECT only, so a picture message
+without a subject (every group text, a picture with a caption) left it EMPTY while `read = 0` lit the row up, and the
+row's rule then said "No messages" (`ThreadListRules.preview`, for an empty snippet without the attachment flag). The conversation screen
+was right all along: it reads the real messages (`messagesBefore`: texts plus the text and files of the picture messages).
+Fixed in two places. PHONE (`SmsStore.fillPreviews`, rules in the pure `SmsPreview`): for the conversations whose snippet is empty
+(the newest 150 of a scan) it reads their newest message itself: ONE query on `content://sms`, ONE on `content://mms`, ONE for the parts of
+the chosen picture messages, all conversations together, never one query per conversation (that was the speed fault of round 2). A very
+busy conversation can use up the whole answer, so the ones that did not show up are asked for again without it (at most 4 rounds). Notices
+that a picture message is waiting (`m_type` 130 and 131) are passed over, as in a conversation. The words win over "Attachment"; a picture
+without words is "Attachment". NOTHING IS KEPT between scans, on purpose: the parts of a picture message are written after its row, so a
+kept answer could stay empty for good, while every change of the database already makes a new scan. TABLET (`ThreadListRules.preview`): an
+older phone app sends no words, so a conversation that has messages but no words is no longer called "No messages": it says "New message"
+(unread) or "Message"; "No messages" is only for a conversation with none. NOT built: a "You: " prefix when the last message is yours
+(the search results have it; the list would need the direction of the last message in `Sms.Thread`, a new field of the protocol).
+Tests: `TextsLogicTest` (`previewLines`, an exhaustive check of every combination against a second way of working the line out),
+`SmsPureTest` (the log's message), `SmsStoreListTest` in `tools/uipreview` (the REAL `SmsStore` over an in-memory SQLite database shaped like
+Android's messaging tables: 16 cases, among them the reported one, a busy conversation, notices, text against picture message, a database
+that refuses the new questions), `TextsPreviewTest.listWhenThePhoneSendsNoWords` (picture `texts-list-no-words`). Deliberate breakages:
+`python3 tools/mutate_preview.py` (13 pure, 11 of the store; every line must say "caught"; commit first, it uses a git worktree).
+NOT KNOWN UNTIL THE PHONE TRIES: that the user's phone really leaves `snippet` empty for such messages (this is how the AOSP telephony
+provider fills it; Samsung's is built on it), and that `thread_id IN (...)` on `content://sms` and `content://mms` is quick on it. If a
+conversation still shows "New message" / "Message" with the newest phone app, the newest message has no text part and no file in the phone's
+database (for example an RCS chat, which lives inside Google Messages and cannot be read by another app).

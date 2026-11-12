@@ -482,7 +482,11 @@ number} saves a contact or renames the one with the number (`SmsStore.saveContac
 `SmsAccess.ASK` and given by the Shizuku grant; the account is the one most contacts live in, Google first), `/sms/contacts?limit=` lists
 up to 1000. The tablet's names: `TextsLocal` names (`setName`/`display`/`settle`: a tablet-only name always wins, a phone-confirmed one wins
 while the phone has none or for 10 minutes), `ContactDialog`, the Contacts screen in `TextsTab`. Attachments: `AttachPreview` (large
-thumbnails through `Thumbs`, the full screen preview: `ZoomView`, `PdfRenderer` pages, text, details), cards in `TextThread.showChips`. Why no encrypted channel for `/sms/*`: see
+thumbnails through `Thumbs`, the full screen preview: `ZoomView`, `PdfRenderer` pages, text, details), cards in `TextThread.showChips`. The grey line of the list (round 3, 2026-11-12):
+the database's `snippet` is empty for a picture message without a subject, so `SmsStore.fillPreviews` reads the newest message of the
+conversations with an empty snippet (3 batched queries, busy conversations asked again, nothing kept between scans; rules in the pure
+`SmsPreview`), and `ThreadListRules.preview` says "New message" / "Message", never "No messages", for a conversation that has messages;
+`SmsStoreListTest` (the real `SmsStore` over SQLite) and `python3 tools/mutate_preview.py`. Why no encrypted channel for `/sms/*`: see
 `docs/SAFETY.md` section 10 ("What is NOT encrypted"). The pictures: `tools/preview.sh --tests
 "com.tj.linkmeter.TextsPreviewTest"` (`PretendSms` puts the real `SmsApi` behind a fake database; `TextsTab.testLink` is the seam).
 

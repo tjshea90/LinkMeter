@@ -58,7 +58,9 @@ always.
   better for codes, web addresses and passwords. "Incognito" (off) asks the keyboard not to learn what you type; some keyboards then
   also switch glide typing off. The phone never types `*` or `#`.
 - **Texts:** off until you switch them on at the phone (card "Texts"). The list opens at once and keeps itself up to date (a new text
-  appears within a second or two, no need to open the conversation). Tap a conversation to read it, hold one to select several (pin,
+  appears within a second or two, no need to open the conversation). Under each name the list shows the start of the last message,
+  also for a group text or a picture message (a picture alone reads "Attachment"; "New message" means the phone gave no words, update
+  the phone's app too). Tap a conversation to read it, hold one to select several (pin,
   mark read, archive, delete), tap the magnifier to search names and texts, tap + to write. In a conversation: hold a message to copy,
   forward, delete or see its details; quick replies appear when the last text is a question; a text you are typing is kept until you
   send it; reactions from iPhones ("Loved ...") show on the message they are about. **Delete** removes it on the tablet and asks the phone
