@@ -1,6 +1,6 @@
 # Texts list preview ("No messages" on an unread conversation) — progress notes
 
-STATUS: WORKING (branch ccr-6685b0bb-kms4dg, started 2026-11-12; main = 1c730a3 at the start)
+STATUS: CLOSING (everything verified; the closing plain checkpoint is being pushed, then: check the run + release, record the release number in HANDOFF.md by a note: commit) (branch ccr-6685b0bb-kms4dg, started 2026-11-12; main = 1c730a3 at the start)
 
 THE USER'S WORDS (2026-11-12): "One small fix, the texts feature said no messages next to a contact even though I had a new message and it was lit up
 like a new message. I want it to show a preview of the last message just like real texting apps do".
@@ -31,3 +31,8 @@ DONE SO FAR (2026-11-12, wip commits d100b85, 2145dac on the branch):
 - docs: docs/TEXTS_OVERHAUL.md 'Round 3', docs/APP_REFERENCE.md line. HANDOFF.md RESUME bullet NOT written yet.
 TO DO: store breakages result; ./gradlew --no-daemon assembleRelease; tools/preview.sh --tests "com.tj.linkmeter.TextsPreviewTest" and LOOK at texts-list*.png;
 HANDOFF.md bullet (after 'TEXTS ROUND 2'); closing save = plain tools/checkpoint.sh (release); check the run + release; give the releases page.
+
+2026-11-12 FINAL CHECKS DONE: tools/test.sh exit 0 twice (TextsLogicTest 312,002 checks); ./gradlew --no-daemon assembleRelease OK; SmsStoreListTest 16/16;
+mutate_preview.py 13 pure + 11 store = 24 caught, 0 missed; TextsPreviewTest list + listWhenThePhoneSendsNoWords pass, pictures texts-list.png and
+texts-list-no-words.png LOOKED AT (rows show the last message; the two unread rows say 'New message' when the phone sends no words; never 'No messages').
+docs: HANDOFF bullet, docs/TEXTS_OVERHAUL.md Round 3, docs/APP_REFERENCE.md, docs/USER_GUIDE.md.
