@@ -1,6 +1,6 @@
 # Wi-Fi panel did not show after Hotspot on (the user's report, 2026-11-12) — progress notes
 
-STATUS: WORKING (branch ccr-6685b0bb-kms4dg; main = c36055e = v0.2.170 at the start)
+STATUS: CLOSING (everything verified; the closing plain checkpoint is being pushed; then check the run + release and record the number in HANDOFF.md with tools/save-only.sh)
 
 THE USER'S WORDS: "When I pressed the turn phone hotspot on button, then turn tablet WiFi on the tablet button, the WiFi setting didn't show up.
 But before it was showing up"
@@ -31,3 +31,7 @@ The two glue runners (mutate_wifi_glue.py, mutate_deep_glue.py) now judge by the
 worktree, which made a PASSING test look "caught".
 RUNNING: glue breakages in worktree scratchpad/wt-glue (19 Wi-Fi + deep "patience"), log scratchpad/glue.log.
 NEXT: their result; whole preview (tools/preview.sh, ~140 tests); closing plain checkpoint (release); check run + release; note: commit with the number.
+
+FINAL CHECKS (2026-11-12 ~03:01 UTC): tools/test.sh exit 0; assembleRelease OK; whole preview 154 tests 0 failed (WifiFollow 28, DeepSleep 13, Preview 70,
+Texts 27, SmsStoreList 16); glue breakages 20/20 caught (the rebuilt yourOwnWifiPressWinsOverAPendingWifiOff catches "a press leaves a pending Wi-Fi off")
++ deep "patience" 2/2; pure breakages 10/10.
