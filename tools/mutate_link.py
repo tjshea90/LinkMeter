@@ -259,6 +259,12 @@ T = [
  ("trouble: a phone that answered an error is said to be out of reach", "Trouble.java", 'return "The phone is there and answered, but not with its status. The two apps may be of different versions. "\n                        + "Put the same version on both.";', 'return "The phone did not answer. Is the phone on and in range?";'),
  ("trouble: the same advice whichever way the phone answered", "Trouble.java", "                return overBluetooth\n", "                return false\n"),
  ("trouble: Bluetooth blamed although it was tried", "Trouble.java", '+ (bluetoothTried || linkWords.isEmpty() ? "" :', '+ (linkWords.isEmpty() ? "" :'),
+ ("trouble: Switch Wi-Fi on leads although the Wi-Fi is on", "Trouble.java", "return Boolean.FALSE.equals(tabletWifiOn) && (k == Kind.NO_ROUTE", "return (k == Kind.NO_ROUTE"),
+ ("trouble: Switch Wi-Fi on leads when the Wi-Fi is not known", "Trouble.java", "return Boolean.FALSE.equals(tabletWifiOn) && (k == Kind.NO_ROUTE", "return !Boolean.TRUE.equals(tabletWifiOn) && (k == Kind.NO_ROUTE"),
+ ("trouble: Switch Wi-Fi on leads for a phone that answered", "Trouble.java", "return Boolean.FALSE.equals(tabletWifiOn) && (k == Kind.NO_ROUTE || k == Kind.NO_ANSWER);", "return Boolean.FALSE.equals(tabletWifiOn);"),
+ ("trouble: Switch Wi-Fi on never leads when nothing could be tried", "Trouble.java", "(k == Kind.NO_ROUTE || k == Kind.NO_ANSWER);\n    }\n\n    static final String WIFI_OFF_TITLE", "(k == Kind.NO_ANSWER);\n    }\n\n    static final String WIFI_OFF_TITLE"),
+ ("trouble: Bluetooth named as tried in the Wi-Fi card when it was not", "Trouble.java", ': bluetoothTried ? "and the phone did not answer over Bluetooth either" : "and the phone did not answer";', ': "and the phone did not answer over Bluetooth either";'),
+ ("trouble: the Wi-Fi card hides why there is no Bluetooth link", "Trouble.java", '(k == Kind.NO_ROUTE && !linkWords.isEmpty() ? " " + linkWords : "")', '""'),
 ]
 SAVER_FILES = ["SaverPlan.java", "ProfilePlan.java"]
 SAVER_TEST = ROOT + "/tools/test/SaverPlanTest.java"
@@ -716,6 +722,10 @@ WF = [
  ("wififollow: a failed phone switch looks good", "TabletWifiRules.java", "return phoneOk && way != Way.FAILED;", "return way != Way.FAILED;"),
  ("wififollow: the Wi-Fi sentence replaces the phone's", "TabletWifiRules.java", 'return phoneSaid + " " + wifiSaid;', "return wifiSaid;"),
  ("wififollow: the Wi-Fi sentence sticks to the phone's", "TabletWifiRules.java", 'return phoneSaid + " " + wifiSaid;', "return phoneSaid + wifiSaid;"),
+ ("wififollow: the Wi-Fi waits for the confirmation at Sent (the report of 2026-11-12)", "TabletWifiRules.java", "return wish == Wish.ON && Boolean.FALSE.equals(wifiOnNow) ? Verdict.SWITCH_ON : Verdict.NOTHING;", "return Verdict.NOTHING;"),
+ ("wififollow: switched OFF at Sent, before the phone confirmed", "TabletWifiRules.java", "return wish == Wish.ON && Boolean.FALSE.equals(wifiOnNow) ? Verdict.SWITCH_ON : Verdict.NOTHING;", "return wish == Wish.ON && Boolean.FALSE.equals(wifiOnNow) ? Verdict.SWITCH_ON : wish == Wish.OFF ? Verdict.SWITCH_OFF : Verdict.NOTHING;"),
+ ("wififollow: switched on at Sent when it is on already", "TabletWifiRules.java", "return wish == Wish.ON && Boolean.FALSE.equals(wifiOnNow) ? Verdict.SWITCH_ON", "return wish == Wish.ON && !Boolean.TRUE.equals(wifiOnNow) ? Verdict.SWITCH_ON"),
+ ("wififollow: switched at Sent for any wish", "TabletWifiRules.java", "return wish == Wish.ON && Boolean.FALSE.equals(wifiOnNow) ? Verdict.SWITCH_ON", "return wish != Wish.NONE && Boolean.FALSE.equals(wifiOnNow) ? Verdict.SWITCH_ON"),
 ]
 DEEP_FILES = ["SwitchWords.java", "DeepSleepRules.java"]
 DEEP_TEST = ROOT + "/tools/test/DeepSleepRulesTest.java"

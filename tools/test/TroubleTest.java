@@ -118,10 +118,41 @@ public final class TroubleTest {
         }
     }
 
+    /**
+     * The tablet's own Wi-Fi is off and the phone was not reached (the report of 2026-11-12: after Hotspot on there was no way on the
+     * Home tab to the tablet's Wi-Fi switch): the card leads with "Switch Wi-Fi on". Never for a phone that answered, never when the
+     * Wi-Fi is on or not known.
+     */
+    static void wifiOff() {
+        String link = "The Bluetooth link is switched off on this tablet.";
+        for (Trouble.Kind k : Trouble.Kind.values()) {
+            for (Boolean wifi : new Boolean[] {Boolean.TRUE, Boolean.FALSE, null}) {
+                boolean want = Boolean.FALSE.equals(wifi) && (k == Trouble.Kind.NO_ROUTE || k == Trouble.Kind.NO_ANSWER);
+                check(Trouble.wifiFirst(k, wifi) == want, "Switch Wi-Fi on leads only for a phone not reached with the Wi-Fi off: " + k + " " + wifi);
+            }
+            if (k != Trouble.Kind.NO_ROUTE && k != Trouble.Kind.NO_ANSWER) {
+                continue;
+            }
+            for (boolean btTried : new boolean[] {false, true}) {
+                for (String lw : new String[] {"", link}) {
+                    String t = Trouble.wifiOffText(k, btTried, lw);
+                    check(t.endsWith(".") && Character.isUpperCase(t.charAt(0)) && !t.contains("!") && !t.contains("  ") && !t.contains(" - ") && !t.contains(".."),
+                            "whole plain sentences: [" + t + "]");
+                    check(t.contains("Wi-Fi is off") && t.contains("Switch the Wi-Fi on"), "says why and what to do: " + t);
+                    check(!t.contains("is on.") || t.contains("once the hotspot is on."), "never claims the hotspot is on: " + t);
+                    check(t.contains("over Bluetooth either") == (k == Trouble.Kind.NO_ANSWER && btTried), "Bluetooth is named only when it was tried: " + t);
+                    check(t.contains(link) == (k == Trouble.Kind.NO_ROUTE && !lw.isEmpty()), "why there is no Bluetooth link, where that is the case: " + t);
+                }
+            }
+        }
+        check(Trouble.WIFI_OFF_TITLE.length() <= 40 && !Trouble.WIFI_OFF_TITLE.endsWith("."), "a short title");
+    }
+
     public static void main(String[] args) {
         kinds();
         cards();
         whenShown();
+        wifiOff();
         System.out.println(checks + " checks, " + failed + " failed");
         if (failed > 0) {
             System.exit(1);

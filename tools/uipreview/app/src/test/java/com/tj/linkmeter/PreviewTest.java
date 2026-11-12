@@ -331,10 +331,14 @@ public class PreviewTest {
         System.out.println("drew " + name);
     }
 
+    /** The activity {@link #tablet} built last: a test pauses and resumes it as Android does when another screen covers it. */
+    static org.robolectric.android.controller.ActivityController<MainActivity> lastTablet;
+
     static MainActivity tablet() {
         RuntimeEnvironment.setFontScale(1.2f);
         Cfg.setMode(RuntimeEnvironment.getApplication(), Cfg.TABLET);
-        return Robolectric.buildActivity(MainActivity.class).setup().get();
+        lastTablet = Robolectric.buildActivity(MainActivity.class).setup();
+        return lastTablet.get();
     }
 
     /** The Bluetooth link as it is after a Set up that worked: the phone's address stored, and a call to it answered. */

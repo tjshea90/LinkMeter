@@ -15,6 +15,7 @@ import static com.tj.linkmeter.WifiFollowPreviewTest.dropNetwork;
 import static com.tj.linkmeter.WifiFollowPreviewTest.mustNotShow;
 import static com.tj.linkmeter.WifiFollowPreviewTest.mustShow;
 import static com.tj.linkmeter.WifiFollowPreviewTest.noNetworks;
+import static com.tj.linkmeter.WifiFollowPreviewTest.nothingWasOpened;
 import static com.tj.linkmeter.WifiFollowPreviewTest.panelWasOpened;
 import static com.tj.linkmeter.WifiFollowPreviewTest.textContaining;
 import static com.tj.linkmeter.WifiFollowPreviewTest.wifiIs;
@@ -254,6 +255,9 @@ public class DeepSleepPreviewTest {
         settle();
         check(p.asked("/act?name=hotspot_on"), "the plain Hotspot on is sent (the phone ends airplane mode itself)");
         mustShow(a, "Sent. Looking at the phone's status");
+        // the tablet's Wi-Fi switch opens at the Sent already (Android refuses the app), not after the confirmation: the report of
+        // 2026-11-12 was that it never showed, because the confirmation could only come over the Bluetooth the phone disturbs
+        check(panelWasOpened(a), "the tablet's Wi-Fi switch opened at the phone's Sent");
         for (int i = 0; i < 14; i++) { // 14 x 3.1 s = 43 s: past the usual 40
             later(3100);
         }
@@ -262,7 +266,7 @@ public class DeepSleepPreviewTest {
         p.status = status(true, false, false, Boolean.FALSE, true);
         later(3100);
         mustShow(a, "The hotspot is on.");
-        check(panelWasOpened(a), "and the tablet's Wi-Fi switch was opened (Android refuses the app)");
+        check(nothingWasOpened(a), "and the switch is not opened a second time");
         shot(a, "state-home-woken");
     }
 

@@ -42,6 +42,8 @@ could be opened (for example the app was not in front: Android 10 lets an app op
 - Carried out only when the phone's switch is **confirmed** (`settleWifi`): a final "ok" answer (over Bluetooth the phone acts before it
   answers), or a follow-up outcome with ok (the phone's status showed it, or it no longer answers after a hotspot-off). A switch the phone
   refused, a "Sent" nobody confirmed, a follow-up that gave up and a Home screen that was left confirm nothing: the Wi-Fi is left alone.
+  **One exception, for ON only (since 2026-11-12, `TabletWifiRules.atSent`):** when the phone took "Hotspot on" and answered "Sent" (it
+  acts after the answer; a phone in airplane mode does so), the Wi-Fi switch opens right then. See the last section.
   (The phone can also answer ok with a hedge, "The phone was asked to switch the hotspot off. It does not say whether it is off." That counts
   as ok. It only arises over Bluetooth, where the tablet is not on the hotspot's own Wi-Fi: the usual Hotspot off while connected is answered
   "Sent" and then checked against the phone's status. Over Bluetooth the Wi-Fi it would switch off was carrying no hotspot, so nothing is lost.)
@@ -64,6 +66,9 @@ hotspot once the phone has switched it on.
   the phone's hotspot").
 - A hotspot that is **on** while the tablet's Wi-Fi is **off** gets its own card: "The hotspot is on, but the tablet's Wi-Fi is off" with a
   **Switch Wi-Fi on** button (the same steps as above). The old card said the tablet joins the hotspot by itself, which cannot happen then.
+- (2026-11-12) A phone that **cannot be reached** while the tablet's Wi-Fi is **off**: the card is "The tablet's Wi-Fi is off" with
+  **Switch Wi-Fi on** and Ask again (`Trouble.wifiFirst`; it had only Ask again). A hotspot that is on while the tablet's Wi-Fi is on but
+  has not joined it: the card has **Wi-Fi settings** next to Ask again (its text already sent the user there).
 
 ## Tests
 
@@ -89,3 +94,28 @@ hotspot once the phone has switched it on.
   Android's, not LinkMeter's, and has not been tried.
 - A card "Switch Wi-Fi on" for a tablet that cannot reach the phone at all because its Wi-Fi **and** the Bluetooth link are off (the
   meter says "Off" there now).
+
+## 2026-11-12: "the WiFi setting didn't show up" (the user's report, after v0.2.169)
+
+**Their words:** "When I pressed the turn phone hotspot on button, then turn tablet WiFi on the tablet button, the WiFi setting didn't
+show up. But before it was showing up."
+
+**What the code showed (read, not seen on a device).** Until v0.2.168 "Hotspot on" over Bluetooth was answered after the phone had acted,
+so the Wi-Fi switch opened within seconds. v0.2.169 made "Hotspot off" put the phone in airplane mode, and "Hotspot on" to a phone in
+airplane mode is answered "Sent" first (`RemoteRoutes.cutsLink`, because ending airplane mode disturbs Bluetooth). The tablet then followed
+the result for up to 90 seconds and opened the Wi-Fi switch only once a status showed the hotspot on. With the tablet's Wi-Fi off, that
+status can only come over Bluetooth, the very link the phone was disturbing; when it did not come, the switch never opened. Meanwhile the
+card's "Switch Wi-Fi on" was greyed out and ignored presses for as long as the follow-up ran, and when the phone could not be reached at
+all the card offered only "Ask again".
+
+**What changed.** (1) `TabletWifiRules.atSent`: the Wi-Fi switch opens at the phone's "Sent" for "Hotspot on" (ON only; the call is over,
+so the switch cannot cut anything, and a Wi-Fi that is on with no hotspot yet does no harm; OFF still waits for the confirmation). (2) The
+follow-up goes on behind Android's Wi-Fi switch: the pause that LinkMeter's own switch causes (within 3 seconds of opening it,
+`HomeTab.keepFollowUntil`) no longer ends it as "the screen was left"; any other pause still does. (3) "Switch Wi-Fi on" works while a
+follow-up runs (`HomeTab.wifiFree`: only a request on its way holds it back), and a press clears a pending automatic "Wi-Fi off". (4) The
+two cards above. Tests: `TabletWifiRulesTest.atSent` (3,243 checks in all), `TroubleTest.wifiOff`, seven new scenarios in
+`WifiFollowPreviewTest` (the report's case, a real leave, the button during a follow-up, the unreached card with the Wi-Fi off and on, the
+not-joined card, your own press wins) and the deep-sleep scenario updated; 10 more pure breakages (`python3 tools/mutate_link.py "Switch
+Wi-Fi" "at Sent" "Wi-Fi card"`) and 9 more glue breakages (`tools/mutate_wifi_glue.py`, run from a git worktree), all caught.
+NOT KNOWN until the devices try it: how long this phone takes to come out of airplane mode and start its hotspot, and whether the
+tablet then joins the hotspot by itself once its Wi-Fi is on (it should: the network is saved).

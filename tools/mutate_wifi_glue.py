@@ -2,8 +2,9 @@
 """Deliberate breakages of the tablet's Wi-Fi glue (HomeTab, TabletWifi, SettingsTab): each must make the NAMED scenario of
 tools/uipreview/app/src/test/java/com/tj/linkmeter/WifiFollowPreviewTest.java fail (the pure rules have their own: `python3
 tools/mutate_link.py wififollow`). Needs the preview project (tools/preview.sh, Robolectric); about 1 to 2 minutes per breakage.
-Run it after changing HomeTab's Wi-Fi code, TabletWifi or that test, WITH EVERYTHING COMMITTED: it restores each file with
-`git checkout -- <file>` after every run. Every line must say "caught". An argument limits it to the breakages whose name contains it:
+Run it after changing HomeTab's Wi-Fi code, TabletWifi or that test, WITH EVERYTHING COMMITTED, from a git worktree (it restores
+each file with `git checkout -- <file>` after every run, which would throw away uncommitted work in the main tree):
+    git worktree add --detach /tmp/wt HEAD && python3 /tmp/wt/tools/mutate_wifi_glue.py; git worktree remove --force /tmp/wt Every line must say "caught". An argument limits it to the breakages whose name contains it:
     python3 tools/mutate_wifi_glue.py [part-of-a-name]"""
 import subprocess, sys, os
 
@@ -27,8 +28,27 @@ M = [
  ("the Wi-Fi switch opens although the app is out of sight", J + "HomeTab.java",
   "TabletWifi.set(act, on, act::inFront, way -> {", "TabletWifi.set(act, on, () -> true, way -> {", "theWifiSwitchIsNotOpenedWhileTheAppIsOutOfSight"),
  ("the card's button is not held back by a switch on its way", J + "HomeTab.java",
-  "        if (bannerWifi) {\n            bannerMain.setEnabled(!busy && !wifiBusy);\n        }",
-  "        if (bannerWifi) {\n            bannerMain.setEnabled(!wifiBusy);\n        }", "theCardsButtonWaitsForASwitchOnItsWay"),
+  "return !wifiBusy && !(busy && !following);", "return !wifiBusy;", "theCardsButtonWaitsForASwitchOnItsWay"),
+ ("the card's button is held back by a follow-up again (the report of 2026-11-12)", J + "HomeTab.java",
+  "return !wifiBusy && !(busy && !following);", "return !wifiBusy && !busy;", "theCardsButtonWorksWhileAFollowUpRuns"),
+ ("the Wi-Fi waits for the confirmation at Sent again (the report of 2026-11-12)", J + "HomeTab.java",
+  "                wifiAtSent();\n", "", "hotspotOnFromAirplaneModeOpensTheSwitchAtSent"),
+ ("the pause of LinkMeter's own Wi-Fi switch ends the follow-up", J + "HomeTab.java",
+  "boolean ownPanel = SystemClock.elapsedRealtime() <= keepFollowUntil;", "boolean ownPanel = false;", "hotspotOnFromAirplaneModeOpensTheSwitchAtSent"),
+ ("the opened Wi-Fi switch is not marked as LinkMeter's own", J + "HomeTab.java",
+  "keepFollowUntil = SystemClock.elapsedRealtime() + PANEL_PAUSE_MS;", "keepFollowUntil = 0;", "hotspotOnFromAirplaneModeOpensTheSwitchAtSent"),
+ ("every pause keeps the follow-up", J + "HomeTab.java",
+  "boolean ownPanel = SystemClock.elapsedRealtime() <= keepFollowUntil;", "boolean ownPanel = true;", "leavingTheAppStillEndsTheFollowUp"),
+ ("the card for an unreached phone has no Wi-Fi switch", J + "HomeTab.java",
+  "if (Trouble.wifiFirst(k, TabletWifi.on(act))) {", "if (false) {", "theCardOffersTheWifiSwitchWhenThePhoneCannotBeReached"),
+ ("the card for an unreached phone offers the Wi-Fi switch with the Wi-Fi on", J + "HomeTab.java",
+  "if (Trouble.wifiFirst(k, TabletWifi.on(act))) {", "if (Trouble.wifiFirst(k, Boolean.FALSE)) {", "theUnreachedCardIsTheUsualOneWithTheWifiOn"),
+ ("the not-joined card has no Wi-Fi settings", J + "HomeTab.java",
+  "                bannerOther.setVisibility(View.VISIBLE);\n                bannerOther.setText(\"Wi-Fi settings\");",
+  "                bannerOther.setVisibility(View.GONE);\n                bannerOther.setText(\"Wi-Fi settings\");", "theNotJoinedCardOpensWifiSettings"),
+ ("a press of Switch Wi-Fi on leaves a pending Wi-Fi off", J + "HomeTab.java",
+  "        wifiWish = TabletWifiRules.Wish.NONE;\n        wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;\n        bannerMain.setEnabled(false);",
+  "        bannerMain.setEnabled(false);", "yourOwnWifiPressWinsOverAPendingWifiOff"),
  ("an opened panel is called done", J + "TabletWifi.java",
   "done.done(TabletWifiRules.Way.ASKED);", "done.done(TabletWifiRules.Way.DONE);", "hotspotOnOpensAndroidsSwitchWhenAndroidRefuses"),
  ("the switch in Settings stores nothing", J + "SettingsTab.java",

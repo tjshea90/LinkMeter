@@ -42,6 +42,7 @@ public final class TabletWifiRulesTest {
         result();
         scenarios();
         everything();
+        atSent();
         words();
         System.out.println(checks + " checks, " + fails + " failed");
         System.exit(fails == 0 ? 0 : 1);
@@ -155,6 +156,40 @@ public final class TabletWifiRulesTest {
         eq(Verdict.SWITCH_OFF, TabletWifiRules.atResult(w, true, Boolean.TRUE, HOTSPOT, NONE), "standby: Wi-Fi off");
         // The setting is off: the tablet's Wi-Fi is never touched.
         eq(Wish.NONE, TabletWifiRules.atPress(false, "hotspot_on", Boolean.FALSE), "setting off: nothing");
+    }
+
+    /**
+     * The phone answered "Sent" (it acts after the answer; "Hotspot on" to a phone in airplane mode, since v0.2.169). The report of
+     * 2026-11-12: the tablet's Wi-Fi switch no longer showed after Hotspot on, because it waited for a confirmation that could only come
+     * over the Bluetooth the phone was disturbing. ON may now come at once; OFF still waits for the confirmation.
+     */
+    private static void atSent() {
+        eq(Verdict.SWITCH_ON, TabletWifiRules.atSent(Wish.ON, Boolean.FALSE), "Hotspot on, Sent, Wi-Fi off: switch it on now");
+        eq(Verdict.NOTHING, TabletWifiRules.atSent(Wish.ON, Boolean.TRUE), "Hotspot on, Sent, Wi-Fi came on by itself: nothing");
+        eq(Verdict.NOTHING, TabletWifiRules.atSent(Wish.ON, null), "Hotspot on, Sent, state not known: nothing");
+        eq(Verdict.NOTHING, TabletWifiRules.atSent(Wish.OFF, Boolean.TRUE), "Hotspot off, Sent: OFF waits for the confirmation");
+        eq(Verdict.NOTHING, TabletWifiRules.atSent(Wish.OFF, Boolean.FALSE), "Hotspot off, Sent, already off: nothing");
+        eq(Verdict.NOTHING, TabletWifiRules.atSent(Wish.NONE, Boolean.FALSE), "no wish: nothing");
+        // the morning after a deep sleep: Wi-Fi off at the press, the phone in airplane mode answers Sent
+        Wish w = TabletWifiRules.atPress(true, "hotspot_on", Boolean.FALSE);
+        eq(Verdict.SWITCH_ON, TabletWifiRules.atSent(w, Boolean.FALSE), "deep sleep morning: the switch opens at Sent");
+        eq(Verdict.NOTHING, TabletWifiRules.atSent(TabletWifiRules.atPress(false, "hotspot_on", Boolean.FALSE), Boolean.FALSE),
+                "the setting off: nothing at Sent either");
+        // every combination, against the rule written the other way round: only ever ON, only for Hotspot on, only from a known off
+        String[] actions = {"hotspot_on", "hotspot_off", "hotspot_off_deep", "standby", "hotspot_restart", "wifi_on", "poweroff", "", null};
+        Boolean[] states = {Boolean.TRUE, Boolean.FALSE, null};
+        for (boolean enabled : new boolean[] {true, false}) {
+            for (String action : actions) {
+                for (Boolean atPressState : states) {
+                    for (Boolean nowState : states) {
+                        Verdict v = TabletWifiRules.atSent(TabletWifiRules.atPress(enabled, action, atPressState), nowState);
+                        boolean wanted = enabled && "hotspot_on".equals(action) && Boolean.FALSE.equals(atPressState) && Boolean.FALSE.equals(nowState);
+                        eq(wanted ? Verdict.SWITCH_ON : Verdict.NOTHING, v, "at Sent: enabled=" + enabled + " " + action + " press:" + atPressState + " now:" + nowState);
+                        yes(v != Verdict.SWITCH_OFF && v != Verdict.LEAVE_ON_OTHER_NETWORK, "never off or anything else at Sent: " + action);
+                    }
+                }
+            }
+        }
     }
 
     /** Every combination of what could be true at the press and at the result, against rules written the other way round. */

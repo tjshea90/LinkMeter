@@ -573,4 +573,183 @@ public class WifiFollowPreviewTest {
         Thread.sleep(3000);
         settle();
     }
+
+    // ------------------------------------------------------------------------------------------------ the report of 2026-11-12
+
+    /** A phone in airplane mode (after the deep Hotspot off), reached over Bluetooth, with the tablet's Wi-Fi off. */
+    static Pretend asleepOverBluetooth() {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(false, false).replace("\"air\":false", "\"air\":true");
+        p.actReply = LATER;
+        p.install();
+        linkProved();
+        noNetworks();
+        wifiIs(false);
+        return p;
+    }
+
+    /**
+     * THE REPORT: "the WiFi setting didn't show up". Hotspot on to a phone in airplane mode is answered "Sent" (since v0.2.169), and the
+     * tablet's Wi-Fi switch waited for a confirmation that only Bluetooth could bring, while the phone was disturbing Bluetooth. Now it
+     * opens at the "Sent"; the follow-up goes on behind it and ends as usual, and the switch is not opened a second time.
+     */
+    @Test
+    public void hotspotOnFromAirplaneModeOpensTheSwitchAtSent() throws Exception {
+        TabletWifi.refusedForTest = true;
+        Pretend p = asleepOverBluetooth();
+        MainActivity a = tablet();
+        settle();
+        press(a, "Turn the hotspot on");
+        settle();
+        check(panelWasOpened(a), "Android's Wi-Fi switch opened at the phone's Sent, before anything was confirmed");
+        mustShow(a, "Sent. Looking at the phone's status");
+        mustShow(a, "Switch the tablet's Wi-Fi on in the panel that opened");
+        shot(a, "state-home-wifi-at-sent");
+        // the switch covers LinkMeter, so Android pauses it; the user switches the Wi-Fi on there and comes back
+        PreviewTest.lastTablet.pause();
+        wifiIs(true);
+        PreviewTest.lastTablet.resume();
+        settle();
+        mustShow(a, "Sent. Looking at the phone's status"); // the follow-up went on behind the switch
+        mustNotShow(a, "stopped looking for the result");
+        p.status = Pretend.status(true, false);
+        later(3100);
+        mustShow(a, "The hotspot is on.");
+        check(nothingWasOpened(a), "the switch is not opened a second time when the hotspot is confirmed");
+    }
+
+    /** A pause that is not LinkMeter's own Wi-Fi switch (the user went to another app) still ends the follow-up, as before. */
+    @Test
+    public void leavingTheAppStillEndsTheFollowUp() throws Exception {
+        TabletWifi.refusedForTest = true;
+        asleepOverBluetooth();
+        MainActivity a = tablet();
+        settle();
+        press(a, "Turn the hotspot on");
+        settle();
+        check(panelWasOpened(a), "the switch opened at the Sent");
+        later(4000); // Android did not pause the app for the switch (the user closed it at once); much later the user leaves
+        PreviewTest.lastTablet.pause();
+        PreviewTest.lastTablet.resume();
+        settle();
+        mustShow(a, "stopped looking for the result");
+    }
+
+    /** The card's "Switch Wi-Fi on" works while a follow-up runs: that only reads the phone's status. Only a call on its way holds it back. */
+    @Test
+    public void theCardsButtonWorksWhileAFollowUpRuns() throws Exception {
+        TabletWifi.refusedForTest = true;
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(true, true);
+        p.actReply = LATER;
+        p.install();
+        linkProved();
+        noNetworks();
+        wifiIs(false);
+        MainActivity a = tablet();
+        settle();
+        mustShow(a, "The hotspot is on, but the tablet's Wi-Fi is off");
+        press(a, "Standby");
+        settle();
+        AlertDialog d = ShadowAlertDialog.getLatestAlertDialog();
+        check(d != null && d.isShowing(), "the question is open");
+        d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle();
+        mustShow(a, "Sent. Looking at the phone's status"); // Standby was answered "Sent": a follow-up runs
+        android.widget.Button b = PreviewTest.findButton(a.getWindow().getDecorView(), "Switch Wi-Fi on");
+        check(b != null && b.isEnabled(), "the card's button works while only the status is read");
+        press(a, "Switch Wi-Fi on");
+        settle();
+        check(panelWasOpened(a), "Android's Wi-Fi switch was opened");
+        mustShow(a, "Switch the tablet's Wi-Fi on in the panel that opened");
+    }
+
+    /** The phone cannot be reached at all and the tablet's Wi-Fi is off: the card leads with "Switch Wi-Fi on" (it had only "Ask again"). */
+    @Test
+    public void theCardOffersTheWifiSwitchWhenThePhoneCannotBeReached() throws Exception {
+        TabletWifi.refusedForTest = true;
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.btFails = true;
+        p.install();
+        linkProved();
+        noNetworks();
+        wifiIs(false);
+        MainActivity a = tablet();
+        settle();
+        mustShow(a, "The tablet's Wi-Fi is off");
+        mustShow(a, "and the phone did not answer over Bluetooth either");
+        mustNotShow(a, "Can't reach the phone");
+        shot(a, "state-home-wifi-off-unreached");
+        press(a, "Switch Wi-Fi on");
+        settle();
+        check(panelWasOpened(a), "Android's Wi-Fi switch was opened");
+        mustShow(a, "Switch the tablet's Wi-Fi on in the panel that opened");
+    }
+
+    /** With the Wi-Fi on the card is the usual one: no Wi-Fi switch, the phone's trouble as before. */
+    @Test
+    public void theUnreachedCardIsTheUsualOneWithTheWifiOn() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.btFails = true;
+        p.install();
+        linkProved();
+        noNetworks();
+        wifiIs(true);
+        MainActivity a = tablet();
+        settle();
+        mustShow(a, "Can't reach the phone");
+        mustNotShow(a, "The tablet's Wi-Fi is off");
+        check(PreviewTest.findButton(a.getWindow().getDecorView(), "Switch Wi-Fi on") == null, "no Wi-Fi switch on the card");
+    }
+
+    /** Wi-Fi on but the hotspot not joined: the card's text sends the user to Wi-Fi settings, and its second button opens them. */
+    @Test
+    public void theNotJoinedCardOpensWifiSettings() throws Exception {
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(true, true);
+        p.install();
+        linkProved();
+        noNetworks();
+        wifiIs(true);
+        MainActivity a = tablet();
+        settle();
+        mustShow(a, "The hotspot is on, the tablet has not joined it yet");
+        press(a, "Wi-Fi settings");
+        settle();
+        check(panelWasOpened(a), "Android's Wi-Fi switch and networks were opened");
+    }
+
+    /**
+     * Your own press wins: Hotspot off waits to switch the Wi-Fi off until the phone confirms; if you switch the Wi-Fi on meanwhile
+     * with the card's button, the confirmation does not switch it off again behind your back.
+     */
+    @Test
+    public void yourOwnWifiPressWinsOverAPendingWifiOff() throws Exception {
+        TabletWifi.refusedForTest = true;
+        Pretend p = onTheHotspot();
+        wifiIs(true);
+        Network hotspot = addWifiNetwork(100);
+        MainActivity a = tablet();
+        hotspotOffYes(a, "Hotspot off"); // Sent: the Wi-Fi off waits for the confirmation
+        // the hotspot is gone, the Wi-Fi was switched off by hand, and the phone does not answer over Bluetooth either
+        dropNetwork(hotspot);
+        noNetworks();
+        wifiIs(false);
+        p.via = "bt";
+        p.btFails = true;
+        later(3100);
+        mustShow(a, "The tablet's Wi-Fi is off");
+        press(a, "Switch Wi-Fi on");
+        settle();
+        check(panelWasOpened(a), "your press opened Android's Wi-Fi switch");
+        wifiIs(true); // you switched it on there
+        later(3100); // the second silent look: the follow-up of Hotspot off ends, as the phone going away looks
+        check(nothingWasOpened(a), "the end of Hotspot off does not open the switch to take your Wi-Fi away again");
+        check(wifiIsOn(), "your Wi-Fi stays on");
+    }
 }

@@ -39,12 +39,15 @@ always.
   **Location**. Read `docs/DEEP_SLEEP.md` for what is not known yet.
 - **The tablet's own Wi-Fi follows the hotspot** (Settings > This tablet > "Switch the tablet's Wi-Fi with the hotspot", on unless
   you switch it off). After **Hotspot on** the tablet's Wi-Fi is switched on, so that it can join the hotspot; after **Hotspot off**
-  or **Standby** it is switched off, so that it does not keep searching. It happens only after the phone has said the switch worked,
-  and the Wi-Fi is left alone when the tablet is on another Wi-Fi network (the one at home). **Android does not let an app switch
+  or **Standby** it is switched off, so that it does not keep searching. Switching it off happens only after the phone has said the
+  switch worked; switching it on happens as soon as the phone has taken "Hotspot on" (a phone asleep in airplane mode needs up to a minute
+  more to start the hotspot, and the tablet joins it by itself once it is up). The Wi-Fi is left alone when the tablet is on another
+  Wi-Fi network (the one at home). **Android does not let an app switch
   Wi-Fi by itself** (since Android 10): LinkMeter tries every way it has and then opens Android's own Wi-Fi switch, and the one tap
   on it is yours. The line under the buttons says which of the three happened ("The tablet's Wi-Fi is on" only after LinkMeter has
   checked it; "Switch the tablet's Wi-Fi on in the panel that opened" when it asked you). (Only if Shizuku runs on the tablet itself and LinkMeter is
-  allowed in it, no tap is needed; LinkMeter has no button on the tablet to ask Shizuku for that, so count on one tap.) When the phone's hotspot is on and the tablet's Wi-Fi is off, Home shows a card with **Switch Wi-Fi on**. (Android's own
+  allowed in it, no tap is needed; LinkMeter has no button on the tablet to ask Shizuku for that, so count on one tap.) When the tablet's Wi-Fi is off and the phone's hotspot is on, or the phone cannot be reached at all, Home shows a card with
+  **Switch Wi-Fi on**; when the Wi-Fi is on but has not joined the hotspot, the card has **Wi-Fi settings**. (Android's own
   Wi-Fi preferences also have "Turn on Wi-Fi automatically", which may bring the Wi-Fi on near a saved hotspot without any tap; that is
   Android's, not LinkMeter's, and not tried here.)
 - **Phone tab:** the battery saver (**Automatic** switches off background scanning and the always-on display and shortens the
