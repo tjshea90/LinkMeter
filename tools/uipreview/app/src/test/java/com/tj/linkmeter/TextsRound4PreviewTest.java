@@ -86,6 +86,12 @@ public class TextsRound4PreviewTest {
 
     /** A finger moves the list slowly from one height to another and lets go (no fling). */
     static void drag(View v, float fromY, float toY) {
+        long[] at = dragAndHold(v, fromY, toY);
+        letGo(v, at, toY);
+    }
+
+    /** A finger comes down and moves the list slowly; it stays on the glass. Returns {when it came down, the time now}. */
+    static long[] dragAndHold(View v, float fromY, float toY) {
         long t = SystemClock.uptimeMillis();
         float x = v.getWidth() / 2f;
         v.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, fromY, 0));
@@ -96,9 +102,15 @@ public class TextsRound4PreviewTest {
             float y = fromY + (toY - fromY) * i / steps;
             v.dispatchTouchEvent(MotionEvent.obtain(t, at, MotionEvent.ACTION_MOVE, x, y, 0));
         }
-        at += 400; // the finger rests before it lets go: no fling
-        v.dispatchTouchEvent(MotionEvent.obtain(t, at, MotionEvent.ACTION_MOVE, x, toY, 0));
-        v.dispatchTouchEvent(MotionEvent.obtain(t, at + 10, MotionEvent.ACTION_UP, x, toY, 0));
+        return new long[] {t, at};
+    }
+
+    /** The finger rests (no fling), then lets go. */
+    static void letGo(View v, long[] at, float y) {
+        float x = v.getWidth() / 2f;
+        long now = at[1] + 400;
+        v.dispatchTouchEvent(MotionEvent.obtain(at[0], now, MotionEvent.ACTION_MOVE, x, y, 0));
+        v.dispatchTouchEvent(MotionEvent.obtain(at[0], now + 10, MotionEvent.ACTION_UP, x, y, 0));
     }
 
     static MainActivity openAlex(PretendSms ph) throws Exception {
@@ -144,7 +156,11 @@ public class TextsRound4PreviewTest {
         ChatList l = findChat(decor(a));
         check(atEnd(l), "starts at the newest message: " + where(l));
 
-        drag(l, 200, 700); // the finger pulls the messages down: older ones come into sight
+        long[] down = dragAndHold(l, 200, 700); // the finger pulls the messages down: older ones come into sight
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();
+        check(!l.following(), "as soon as the finger moves the rows away from the end it stops following: " + where(l));
+        check(TextsPreviewTest.findIcon(decor(a), "Jump to the newest message") != null, "and the jump button shows while the finger is still down");
+        letGo(l, down, 700);
         settle();
         check(!l.following(), "scrolling up stops following: " + where(l));
         check(!atEnd(l), "the end is out of sight: " + where(l));
