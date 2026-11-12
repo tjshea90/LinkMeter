@@ -6,11 +6,13 @@ Run it after changing HomeTab's Wi-Fi code, TabletWifi or that test, WITH EVERYT
 each file with `git checkout -- <file>` after every run, which would throw away uncommitted work in the main tree):
     git worktree add --detach /tmp/wt HEAD && python3 /tmp/wt/tools/mutate_wifi_glue.py; git worktree remove --force /tmp/wt Every line must say "caught". An argument limits it to the breakages whose name contains it:
     python3 tools/mutate_wifi_glue.py [part-of-a-name]"""
-import subprocess, sys, os
+import subprocess, sys, os, shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 J = "app/src/main/java/com/tj/linkmeter/"
 T = "com.tj.linkmeter.WifiFollowPreviewTest."
+REPORT = os.path.join(ROOT, "tools/uipreview/app/build/test-results/testDebugUnitTest/TEST-com.tj.linkmeter.WifiFollowPreviewTest.xml")
+GRADLE = "gradle" if shutil.which("gradle") else "../../gradlew"
 M = [
  ("the phone's final answer does not settle the Wi-Fi", J + "HomeTab.java",
   "            settleWifi(ok && !sentOnly, text);\n", "            // (mutated away)\n", "hotspotOnSwitchesTheWifiOn"),
@@ -63,10 +65,15 @@ for name, f, old, new, test in M:
     t = open(path).read()
     assert old in t, "pattern not found for: " + name
     open(path, "w").write(t.replace(old, new, 1))
+    # The verdict comes from the test's own report, not from an exit code: tools/preview.sh ends with "ls out/*.png", which fails
+    # where nothing was drawn yet (a fresh worktree), and a breakage would then count as caught although the test passed.
+    if os.path.exists(REPORT):
+        os.remove(REPORT)
     try:
-        r = subprocess.run([ROOT + "/tools/preview.sh", "--tests", T + test], cwd=ROOT, capture_output=True, text=True, timeout=900)
-        failed = r.returncode != 0
-        compile_error = "error:" in (r.stdout + r.stderr) and "FAILED" not in (r.stdout + r.stderr) and r.returncode != 0 and "AssertionError" not in (r.stdout + r.stderr)
+        subprocess.run([GRADLE, "--no-daemon", "-q", ":app:testDebugUnitTest", "--tests", T + test], cwd=os.path.join(ROOT, "tools/uipreview"),
+                       capture_output=True, text=True, timeout=1200)
+        compile_error = not os.path.exists(REPORT)
+        failed = not compile_error and 'failures="0" errors="0"' not in open(REPORT).read()
     finally:
         subprocess.run(["git", "checkout", "--", f], cwd=ROOT)
     if compile_error:
