@@ -16,7 +16,9 @@ final class Icons {
         // the two ways to the phone
         BLUETOOTH, HOTSPOT,
         // the Texts screens
-        PLUS, SEARCH, TRASH, PIN, ARCHIVE, SEND, MORE, CHECK, MUTE
+        PLUS, SEARCH, TRASH, PIN, ARCHIVE, SEND, MORE, CHECK, MUTE,
+        // a conversation's "jump to the newest message" button, and the smiling face of the reactions
+        CHEVRON_DOWN, SMILE
     }
 
     /** The drawing operations the icons need. Angles are degrees, clockwise from 3 o'clock. */
@@ -286,6 +288,15 @@ final class Icons {
                 p.line(cx - 0.78f * r, cy + 0.52f * r, cx + 0.78f * r, cy + 0.52f * r);
                 p.dot(cx, cy + 0.82f * r, 0.12f * r);
                 p.line(cx - 0.82f * r, cy - 0.82f * r, cx + 0.82f * r, cy + 0.82f * r);
+                break;
+            case CHEVRON_DOWN:
+                p.poly(pts(cx, cy, r, -0.6f, -0.26f, 0f, 0.34f, 0.6f, -0.26f), false, false);
+                break;
+            case SMILE:
+                p.circle(cx, cy, 0.86f * r);
+                p.dot(cx - 0.3f * r, cy - 0.22f * r, 0.11f * r);
+                p.dot(cx + 0.3f * r, cy - 0.22f * r, 0.11f * r);
+                p.arc(cx - 0.46f * r, cy - 0.3f * r, cx + 0.46f * r, cy + 0.5f * r, 25f, 130f);
                 break;
             default:
                 break;

@@ -94,7 +94,12 @@ final class TextThread {
     private TextView avatar;
     private TextView selectCount;
     private TextView status;
-    private ListView list;
+    private ChatList list;
+    /** The round button over the newest end of the list that jumps back to the newest message, with the number of new ones. */
+    private FrameLayout jump;
+    private TextView jumpCount;
+    /** The newest time in sight when you scrolled away from the end (0 while the list follows the newest message). */
+    private long leftAt;
     private RowAdapter adapter;
     private EditText input;
     private IconButton sendBtn;
@@ -148,7 +153,7 @@ final class TextThread {
         status.setVisibility(View.GONE);
         root.addView(status, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        list = new ListView(act);
+        list = new ChatList(act);
         list.setDivider(null);
         list.setDividerHeight(0);
         list.setSelector(android.R.color.transparent);
@@ -156,20 +161,25 @@ final class TextThread {
         list.setPadding(0, Ui.dp(act, 6), 0, Ui.dp(act, 6));
         adapter = new RowAdapter();
         list.setAdapter(adapter);
-        list.setOnScrollListener(new AbsListView.OnScrollListener() {
+        list.setListener(new ChatList.Listener() {
             @Override
-            public void onScrollStateChanged(AbsListView view, int scrollState) {
-                // nothing
+            public void following(boolean on) {
+                // scrolled away from the newest message: the button that brings you back shows, with the number of new ones since
+                leftAt = on ? 0 : ChatFollow.newest(builtRows());
+                showJump();
             }
 
             @Override
-            public void onScroll(AbsListView view, int first, int visible, int total) {
-                if (first == 0 && more && !loadingMore && !firstLoad && total > 0) {
+            public void atTop() {
+                if (more && !loadingMore && !firstLoad) {
                     loadEarlier();
                 }
             }
         });
-        root.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        FrameLayout listFrame = new FrameLayout(act);
+        listFrame.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        listFrame.addView(buildJump(), jumpParams());
+        root.addView(listFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         replyScroll = new HorizontalScrollView(act);
         replyScroll.setHorizontalScrollBarEnabled(false);
@@ -259,6 +269,57 @@ final class TextThread {
         updateSend();
         showSaved();
         return root;
+    }
+
+    private View buildJump() {
+        jump = new FrameLayout(act);
+        IconButton arrow = new IconButton(act, Icons.Kind.CHEVRON_DOWN, Ui.FG, Ui.CARD_HI, "Jump to the newest message", v -> {
+            list.toEnd();
+            showJump();
+        });
+        arrow.setScale(0.5f);
+        arrow.setElevation(Ui.dp(act, 4));
+        jump.addView(arrow, new FrameLayout.LayoutParams(Ui.dp(act, 44), Ui.dp(act, 44), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
+        jumpCount = TextsViews.badge(act);
+        jumpCount.setElevation(Ui.dp(act, 5));
+        jump.addView(jumpCount, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(act, 20), Gravity.TOP | Gravity.END));
+        jump.setVisibility(View.GONE);
+        return jump;
+    }
+
+    private FrameLayout.LayoutParams jumpParams() {
+        FrameLayout.LayoutParams jp = new FrameLayout.LayoutParams(Ui.dp(act, 56), Ui.dp(act, 56), Gravity.BOTTOM | Gravity.END);
+        jp.rightMargin = Ui.dp(act, 12);
+        jp.bottomMargin = Ui.dp(act, 8);
+        return jp;
+    }
+
+    /** The message rows as drawn (without the "loading earlier" line). */
+    private List<ThreadRows.Row> builtRows() {
+        List<ThreadRows.Row> out = new ArrayList<>();
+        for (Object o : rows) {
+            if (o instanceof ThreadRows.Row) {
+                out.add((ThreadRows.Row) o);
+            }
+        }
+        return out;
+    }
+
+    /** The jump button: only while you are away from the newest message; its number counts what came from others since. */
+    private void showJump() {
+        if (jump == null) {
+            return;
+        }
+        boolean away = !list.following() && !rows.isEmpty();
+        jump.setVisibility(away ? View.VISIBLE : View.GONE);
+        if (away) {
+            int n = ChatFollow.newSince(builtRows(), leftAt);
+            TextsViews.bindBadge(jumpCount, n > 0 ? n : -1);
+            if (n > 0) {
+                jumpCount.setText(ChatFollow.badge(n));
+            }
+            jump.setContentDescription(n > 0 ? n + " new" : "Jump to the newest message");
+        }
     }
 
     private void buildBars() {
@@ -518,9 +579,11 @@ final class TextThread {
         });
     }
 
-    /** Works out the rows and draws them; stays at the bottom when asked to, or when it was at the bottom. */
+    /**
+     * Works out the rows and draws them. {@code toBottom} (opening, sending) goes to the newest message and follows it from then on;
+     * otherwise the list keeps following it by itself, unless you scrolled away (then the jump button counts what came).
+     */
     private void render(boolean toBottom) {
-        boolean atBottom = adapter.getCount() == 0 || list.getLastVisiblePosition() >= adapter.getCount() - 1;
         List<Sms.Msg> all = new ArrayList<>(msgs);
         all.addAll(temps);
         List<ThreadRows.Row> built = ThreadRows.build(all, tab.local(), key, group, seenAtOpen, System.currentTimeMillis(), env());
@@ -531,10 +594,11 @@ final class TextThread {
         rows.addAll(built);
         replies = SmartReply.suggest(visibleMessages(all), System.currentTimeMillis());
         adapter.notifyDataSetChanged();
-        if ((toBottom || atBottom) && !rows.isEmpty()) {
-            list.setSelection(rows.size() - 1);
+        if (toBottom) {
+            list.toEnd();
         }
         showReplies();
+        showJump();
     }
 
     private List<Sms.Msg> visibleMessages(List<Sms.Msg> all) {

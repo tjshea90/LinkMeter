@@ -418,6 +418,23 @@ final class PretendSms implements SmsApi.Backend {
         return bo.toByteArray();
     }
 
+    private int stampN = 1;
+
+    /** A text arrives now (unread), and the phone's stamp changes as the real phone's does: the tablet hears of it and asks. */
+    Sms.Msg arrives(String key, String address, String body) {
+        Sms.Msg m = add(key, address, false, body, now - System.currentTimeMillis(), true);
+        stamp = "p" + (++stampN);
+        return m;
+    }
+
+    /** A long talk in one conversation, older than its newest message: more than the screen holds. */
+    void longTalk(String key, String address, int n) {
+        for (int i = 0; i < n; i++) {
+            add(key, address, i % 3 == 0, "Message " + (i + 1) + " of the long talk", 3 * DAY + (n - i) * MIN, false);
+        }
+        stamp = "p" + (++stampN);
+    }
+
     /** A one-time code arrived two minutes ago from a short code (unread): the list and the conversation offer "Copy code". */
     void codeArrives() {
         add("22395", "22395", false, "G-583920 is your Google verification code.", 2 * MIN, true);
