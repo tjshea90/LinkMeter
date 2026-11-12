@@ -252,9 +252,112 @@ public final class TextsRound4Test {
         eq("99+", ChatFollow.badge(100), "more than 99");
     }
 
+    // ------------------------------------------------------------------ the number on the Texts button
+
+    /** Blobs in memory. */
+    static final class Mem implements BlobStore {
+        final Map<String, byte[]> m = new HashMap<>();
+
+        @Override
+        public synchronized byte[] read(String name) {
+            return m.get(name);
+        }
+
+        @Override
+        public synchronized void write(String name, byte[] data) {
+            m.put(name, data);
+        }
+
+        @Override
+        public synchronized void delete(String name) {
+            m.remove(name);
+        }
+
+        @Override
+        public synchronized List<String> names() {
+            return new ArrayList<>(m.keySet());
+        }
+    }
+
+    static Sms.Thread thread(String key, String snip, long time, boolean unread, int count) {
+        Sms.Thread t = new Sms.Thread();
+        t.key = key;
+        t.name = "N" + key;
+        t.snippet = snip;
+        t.time = time;
+        t.unread = unread;
+        t.count = count;
+        t.addresses.add("+1555000" + key);
+        return t;
+    }
+
+    static void badge() throws Exception {
+        TextsLocal l = new TextsLocal(new Mem());
+        List<Sms.Thread> ts = new ArrayList<>();
+        ts.add(thread("1", "dinner?", 5000, true, 6));
+        ts.add(thread("2", "ok", 9000, false, 3));
+        ts.add(thread("3", "call me", 7000, true, 9));
+        eq(2, ThreadListRules.badge(ts, l), "two unread conversations never opened here: one each");
+        eq(0, ThreadListRules.badge(new ArrayList<Sms.Thread>(), l), "no conversations");
+        // opened here: read, whatever the phone says
+        l.markSeen("1", 5000, 6);
+        eq(1, ThreadListRules.badge(ts, l), "the one opened here no longer counts");
+        // three more texts came in it since: it counts three
+        ts.get(0).time = 9500;
+        ts.get(0).count = 9;
+        eq(4, ThreadListRules.badge(ts, l), "three new since it was opened, plus one");
+        // muted, archived and deleted ones are left out
+        l.setMuted("3", true);
+        eq(3, ThreadListRules.badge(ts, l), "a muted conversation is not counted");
+        l.setMuted("3", false);
+        l.archive("3", 7000);
+        eq(3, ThreadListRules.badge(ts, l), "nor an archived one");
+        l.unarchive("3");
+        l.clear("3", 7000);
+        eq(3, ThreadListRules.badge(ts, l), "nor one deleted on this tablet");
+        // a new text brings an archived or deleted conversation back: it counts again
+        ts.get(2).time = 8000;
+        ts.get(2).count = 10;
+        eq(4, ThreadListRules.badge(ts, l), "a deleted conversation with a new text counts again");
+        // the same as the list: the sum over the unread, not muted rows of the main list
+        Random rnd = new Random(7);
+        for (int round = 0; round < 2000; round++) {
+            TextsLocal lr = new TextsLocal(new Mem());
+            List<Sms.Thread> tr = new ArrayList<>();
+            int n = rnd.nextInt(6);
+            for (int i = 0; i < n; i++) {
+                Sms.Thread t = thread("k" + i, "x", 1000 + rnd.nextInt(1000), rnd.nextBoolean(), rnd.nextInt(50));
+                tr.add(t);
+                switch (rnd.nextInt(5)) {
+                    case 0:
+                        lr.markSeen(t.key, t.time - rnd.nextInt(2) * 10, Math.max(0, t.count - rnd.nextInt(5)));
+                        break;
+                    case 1:
+                        lr.setMuted(t.key, true);
+                        break;
+                    case 2:
+                        lr.archive(t.key, t.time);
+                        break;
+                    default:
+                        break;
+                }
+            }
+            int want = 0;
+            for (ThreadListRules.Item it : ThreadListRules.build(tr, lr, "", false, false)) {
+                if (it.unread && !it.muted) {
+                    want += it.newCount > 0 ? it.newCount : 1;
+                }
+            }
+            eq(want, ThreadListRules.badge(tr, lr), "round " + round + ": the badge sums what the list marks as new");
+            yes(ThreadListRules.badge(tr, lr) >= ThreadListRules.unreadCount(ThreadListRules.build(tr, lr, "", false, false)),
+                    "at least one per unread conversation");
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         sentCopies();
         follow();
+        badge();
         System.out.println(checks + " checks, " + fails + " failed");
         System.exit(fails == 0 ? 0 : 1);
     }

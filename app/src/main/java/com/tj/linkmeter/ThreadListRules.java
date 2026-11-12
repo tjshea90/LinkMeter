@@ -83,6 +83,21 @@ final class ThreadListRules {
         return n;
     }
 
+    /**
+     * The number on the Texts tab in the bottom bar: the new texts of the conversations in the main list that are unread (the phone
+     * says so and they were not opened on this tablet since), muted ones left out. A conversation counts the texts that came since it
+     * was last opened here when that is known, else one.
+     */
+    static int badge(List<Sms.Thread> threads, TextsLocal local) {
+        int n = 0;
+        for (Item i : build(threads, local, "", false, false)) {
+            if (i.unread && !i.muted) {
+                n += Math.max(1, i.newCount);
+            }
+        }
+        return n;
+    }
+
     /** How many conversations are in the archived list. */
     static int archivedCount(List<Sms.Thread> threads, TextsLocal local) {
         int n = 0;

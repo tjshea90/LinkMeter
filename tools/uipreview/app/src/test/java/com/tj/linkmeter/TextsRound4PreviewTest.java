@@ -201,6 +201,47 @@ public class TextsRound4PreviewTest {
         shot(a, "texts4-sent-after-away");
     }
 
+    /** The number on the Texts button in the bottom bar: kept while another tab is in front, and following the list on the Texts tab. */
+    @Test
+    public void theTextsButtonCountsNewTexts() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet(); // Home is in front
+        settle();
+        settle();
+        check(a.badge(Tab.TEXTS) == 2, "two unread conversations (Alex, Mom), never opened here: " + a.badge(Tab.TEXTS));
+        shot(a, "texts4-badge-home");
+
+        ph.arrives("5551112222", "+15551112222", "Are you free on Sunday?"); // Taylor writes: a third conversation with news
+        settle();
+        settle();
+        check(a.badge(Tab.TEXTS) == 3, "a new text while on Home: " + a.badge(Tab.TEXTS));
+
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(a.badge(Tab.TEXTS) == 3, "the Texts tab keeps the same number: " + a.badge(Tab.TEXTS));
+        tapRow(a, 0); // Taylor's conversation is the newest
+        settle();
+        check(a.badge(Tab.TEXTS) == 2, "opening it reads it: " + a.badge(Tab.TEXTS));
+
+        a.openTab(Tab.HOME);
+        settle();
+        ph.arrives(ALEX, ALEX_NUMBER, "Hello? Still there?");
+        settle();
+        settle();
+        check(a.badge(Tab.TEXTS) == 2, "Alex was unread already: still one each for Alex and Mom: " + a.badge(Tab.TEXTS));
+
+        // the app goes to the background: no watch; back in front: it counts again
+        PreviewTest.lastTablet.pause();
+        settle();
+        ph.arrives("5552223333", "+15552223333", "Thanks again!");
+        settle();
+        check(a.badge(Tab.TEXTS) == 2, "nothing is asked while the app is in the background: " + a.badge(Tab.TEXTS));
+        PreviewTest.lastTablet.resume();
+        settle();
+        settle();
+        check(a.badge(Tab.TEXTS) == 3, "back in front it counts Sam's text too: " + a.badge(Tab.TEXTS));
+    }
+
     /** Two texts written quickly one after the other both go, in order, and each says what became of it. */
     @Test
     public void twoTextsInARow() throws Exception {

@@ -103,6 +103,26 @@ final class BarButton extends View {
         }
     }
 
+    private int badge;
+    private final Paint badgeText = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /**
+     * A number of new things on this screen (the Texts tab's unread texts), 0 for none: the icon lights up and a small red circle with
+     * the number sits on its corner, as in the messaging apps.
+     */
+    void setBadge(int n) {
+        int b = Math.max(0, n);
+        if (b != badge) {
+            badge = b;
+            setContentDescription((label.isEmpty() ? kind.name().toLowerCase() : label) + (b > 0 ? ", " + b + " new" : ""));
+            invalidate();
+        }
+    }
+
+    int badge() {
+        return badge;
+    }
+
     @Override
     public void setPressed(boolean p) {
         super.setPressed(p);
@@ -120,7 +140,8 @@ final class BarButton extends View {
             rect.set(3 * dp, 3 * dp, w - 3 * dp, h - 3 * dp);
             canvas.drawRoundRect(rect, 10 * dp, 10 * dp, fill);
         }
-        int color = !isEnabled() ? 0x55F2F4F7 : (active ? Ui.ACCENT : Ui.FG);
+        // lit when it is the screen on show, and when it has news
+        int color = !isEnabled() ? 0x55F2F4F7 : (active || badge > 0 ? Ui.ACCENT : Ui.FG);
         float labelH = label.isEmpty() ? 0 : text.getTextSize() + 3 * dp;
         float r = Math.min(w, h - labelH) * 0.30f;
         float cx = w / 2f;
@@ -131,7 +152,29 @@ final class BarButton extends View {
         Icons.draw(kind, pen, cx, cy, r);
         if (!label.isEmpty()) {
             text.setColor(color);
+            text.setFakeBoldText(badge > 0 && !active);
             canvas.drawText(label, cx, h - 5 * dp, text);
+        }
+        if (badge > 0) {
+            String s = badge > 99 ? "99+" : String.valueOf(badge);
+            badgeText.setTextAlign(Paint.Align.CENTER);
+            badgeText.setTypeface(Typeface.DEFAULT_BOLD);
+            badgeText.setTextSize(10.5f * dp);
+            badgeText.setColor(0xFFFFFFFF);
+            float bh = 17 * dp;
+            float bw = Math.max(bh, badgeText.measureText(s) + 9 * dp);
+            float bx = cx + r * 0.62f + bw / 2f - 6 * dp; // over the icon's top right corner
+            float by = cy - r * 0.78f;
+            bx = Math.min(bx, w - bw / 2f - 1 * dp);
+            // a ring in the bar's colour keeps the circle apart from the icon under it
+            fill.setColor(Ui.CARD);
+            rect.set(bx - bw / 2f - 2 * dp, by - bh / 2f - 2 * dp, bx + bw / 2f + 2 * dp, by + bh / 2f + 2 * dp);
+            canvas.drawRoundRect(rect, bh / 2f + 2 * dp, bh / 2f + 2 * dp, fill);
+            fill.setColor(Ui.RED);
+            rect.set(bx - bw / 2f, by - bh / 2f, bx + bw / 2f, by + bh / 2f);
+            canvas.drawRoundRect(rect, bh / 2f, bh / 2f, fill);
+            Paint.FontMetrics fm = badgeText.getFontMetrics();
+            canvas.drawText(s, bx, by - (fm.ascent + fm.descent) / 2f, badgeText);
         }
         cv = null;
     }

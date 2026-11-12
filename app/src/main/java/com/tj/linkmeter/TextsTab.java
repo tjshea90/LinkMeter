@@ -523,6 +523,109 @@ final class TextsTab extends Tab {
         }
     }
 
+    // ------------------------------------------------------------ the number on the Texts button while another tab is in front
+
+    private volatile long watchGen;
+    private boolean watching;
+
+    /**
+     * While the app is in front on another tab, the Texts button in the bottom bar shows how many new texts there are: the phone is
+     * asked to say when something changes (the same waiting request this tab uses, so the phone does next to nothing meanwhile), and
+     * only then is the list fetched and counted the way the list counts (what was opened on this tablet is read). Nothing runs when the
+     * app is in the background, and nothing at all when texts are switched off on the phone or not allowed there.
+     */
+    @Override
+    void watchWhileHidden(boolean on) {
+        if (on == watching) {
+            return;
+        }
+        watching = on;
+        final long gen = ++watchGen;
+        if (!on) {
+            return;
+        }
+        Thread t = new Thread(() -> watchLoop(gen), "linkmeter-texts-badge");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** How long the watch waits before it asks again after the phone could not be reached (it doubles up to a minute). */
+    static final long WATCH_RETRY_MS = 5_000;
+
+    private void watchLoop(final long gen) {
+        String since = "";
+        boolean v2Phone = false;
+        boolean checked = false;
+        long backoff = WATCH_RETRY_MS;
+        while (gen == watchGen) {
+            try {
+                RemoteSms r = remote();
+                if (!checked) {
+                    Sms.State st = r.state();
+                    if (!st.supported || !st.on || !st.read) {
+                        post(() -> {
+                            if (gen == watchGen) {
+                                act.setBadge(TEXTS, 0);
+                            }
+                        });
+                        return; // nothing to count until texts are set up (the Texts tab says what is missing)
+                    }
+                    v2Phone = st.version >= 2;
+                    checked = true;
+                }
+                String now = v2Phone && !since.isEmpty() ? r.stamp(since, POLL_WAIT_S) : r.stamp();
+                if (gen != watchGen) {
+                    return;
+                }
+                boolean changed = !now.equals(since);
+                if (changed) {
+                    since = now;
+                    final List<Sms.Thread> l = r.threads(100);
+                    post(() -> {
+                        if (gen == watchGen) {
+                            badgeFromWatch(l);
+                        }
+                    });
+                }
+                backoff = WATCH_RETRY_MS;
+                if (!v2Phone) {
+                    Thread.sleep(30_000); // an older phone cannot hold the request: a look now and then is enough for a number
+                } else if (!changed) {
+                    Thread.sleep(150);
+                }
+            } catch (RemoteSms.Off e) {
+                post(() -> {
+                    if (gen == watchGen) {
+                        act.setBadge(TEXTS, 0);
+                    }
+                });
+                return;
+            } catch (IOException e) {
+                try {
+                    Thread.sleep(backoff);
+                } catch (InterruptedException ie) {
+                    return;
+                }
+                backoff = Math.min(backoff * 2, 60_000);
+            } catch (InterruptedException e) {
+                return;
+            }
+        }
+    }
+
+    /** The watch fetched the list: the number on the button, and the saved copy (so that the tab opens with it). */
+    private void badgeFromWatch(final List<Sms.Thread> l) {
+        if (prefs == null) {
+            prefs = new TextsPrefs(act);
+        }
+        openStorage();
+        act.setBadge(TEXTS, ThreadListRules.badge(l, local));
+        final TextsCache c = cache();
+        if (c != null) {
+            out.execute(() -> c.saveThreads(l));
+        }
+    }
+
     private void hideKeyboard() {
         InputMethodManager im = (InputMethodManager) act.getSystemService(Context.INPUT_METHOD_SERVICE);
         if (im != null && root != null) {
@@ -614,6 +717,7 @@ final class TextsTab extends Tab {
         threads.clear();
         items = new ArrayList<>();
         fromCopy = false;
+        act.setBadge(TEXTS, 0);
         if (cache != null) {
             cache.clear();
         }
@@ -1117,6 +1221,7 @@ final class TextsTab extends Tab {
         }
         renderSubtitle();
         renderBanner();
+        act.setBadge(TEXTS, ThreadListRules.badge(threads, local)); // the number on the Texts button follows the list
     }
 
     // ------------------------------------------------------------ the rows

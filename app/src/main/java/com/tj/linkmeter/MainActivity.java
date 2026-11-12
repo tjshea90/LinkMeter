@@ -92,6 +92,7 @@ public class MainActivity extends Activity {
         super.onResume();
         resumed = true;
         afterShow();
+        updateWatches();
     }
 
     @Override
@@ -100,6 +101,7 @@ public class MainActivity extends Activity {
         if (cur != null) {
             cur.onHide();
         }
+        updateWatches();
         if (Cfg.TABLET.equals(Cfg.mode(this))) {
             // no Bluetooth connection is kept while the app is out of sight (a run that goes on in the background opens a new one)
             BtLink.closeSoon();
@@ -244,9 +246,49 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- screens
 
+    /** Every tab that is not on show keeps its small watch while the app is in front ({@link Tab#watchWhileHidden}); no other time. */
+    private void updateWatches() {
+        if (tabs == null) {
+            return;
+        }
+        for (Tab t : tabs) {
+            t.watchWhileHidden(resumed && t != cur);
+        }
+    }
+
+    /** The number of new things on a tab's button in the bottom bar (the Texts tab's new texts); 0 for none. */
+    void setBadge(String title, int n) {
+        if (tabs == null || bar == null) {
+            return;
+        }
+        for (int i = 0; i < tabs.length && i < bar.length; i++) {
+            if (tabs[i].title().equals(title)) {
+                bar[i].setBadge(n);
+            }
+        }
+    }
+
+    /** The number on a tab's button (for the pictures made by tools/uipreview). */
+    int badge(String title) {
+        if (tabs == null || bar == null) {
+            return 0;
+        }
+        for (int i = 0; i < tabs.length && i < bar.length; i++) {
+            if (tabs[i].title().equals(title)) {
+                return bar[i].badge();
+            }
+        }
+        return 0;
+    }
+
     private void render() {
         if (cur != null) {
             cur.onHide();
+        }
+        if (tabs != null) {
+            for (Tab t : tabs) {
+                t.watchWhileHidden(false); // these tabs are going: so is their watch
+            }
         }
         cur = null;
         tabs = null;
@@ -402,6 +444,7 @@ public class MainActivity extends Activity {
         if (start && resumed) {
             cur.onShow();
         }
+        updateWatches();
     }
 
     // ---------------------------------------------------------------- phone actions

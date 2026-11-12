@@ -40,6 +40,12 @@ abstract class Tab {
     /** The tab left the screen or the app went to the background. Stop all work here. */
     void onHide() {}
 
+    /**
+     * True while the app is in front but ANOTHER tab is on show; false as soon as that ends (this tab is shown, or the app went to the
+     * background). A tab may keep a small watch meanwhile: the Texts tab keeps the number of new texts on its button. Most do nothing.
+     */
+    void watchWhileHidden(boolean on) {}
+
     /** Keep this tab out of screenshots, screen recordings and the recent apps list while it is the one in front? */
     boolean secure() {
         return false;

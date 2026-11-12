@@ -145,7 +145,7 @@ javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/BlobStore.java $FM/Fil
   tools/test/TextsLogicTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.TextsLogicTest || fail=1
 echo "== Texts round 4 (a sent text gives way to the phone's copy at the right moment and never twice; the conversation that keeps its newest message in sight, the jump button's number)"
-javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/SentCopies.java $FM/ChatFollow.java tools/test/TextsRound4Test.java || fail=1
+javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/SentCopies.java $FM/ChatFollow.java $FM/ThreadListRules.java tools/test/TextsRound4Test.java || fail=1
 java -cp "$out" com.tj.linkmeter.TextsRound4Test || fail=1
 echo "== Translating texts (Translation: cut for the services and put back exactly, MyMemory's and Google's real answers and their 'used up' and picture-puzzle replies, texting shorthand, Spanish made right for Mexico: coger, chaqueta, zapatillas and the rest; TranslateFlow: what Send does while a conversation is translated)"
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/Translation.java $FM/TranslateFlow.java tools/test/TranslationTest.java || fail=1
