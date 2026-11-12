@@ -1,6 +1,6 @@
 # Wi-Fi panel did not show after Hotspot on (the user's report, 2026-11-12) — progress notes
 
-STATUS: CLOSING (everything verified; the closing plain checkpoint is being pushed; then check the run + release and record the number in HANDOFF.md with tools/save-only.sh)
+STATUS: DONE (released as v0.2.171, commit 714e62e = main, run #171 green; HANDOFF.md has the number). Nothing left; wait for the user's report from the tablet.
 
 THE USER'S WORDS: "When I pressed the turn phone hotspot on button, then turn tablet WiFi on the tablet button, the WiFi setting didn't show up.
 But before it was showing up"
