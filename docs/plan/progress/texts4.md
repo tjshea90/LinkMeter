@@ -1,6 +1,6 @@
 # Texts round 4 (the user's request of 2026-11-12) — progress notes
 
-STATUS: WORKING (A-E done; F docs/release left) (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
+STATUS: WORKING (A-E done; F: release left) (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
 
 THE USER'S WORDS (2026-11-12): "Improve the text feature in this app. When the keyboard comes up, the text window scrolls up so I can't see the
 last messages. When I open a text message, it is scrolled up. I want to always see the end of the chat for the most recent messages unless I
@@ -66,5 +66,8 @@ DONE SO FAR:
   'You:' NOT built (needs the direction of the newest message from the phone for every row: a protocol change and more phone work).
   TextsPreviewTest.listWhenThePhoneSendsNoWords updated (rows now show the words), hiddenPreviewsStayHidden new; quickEmojiReply updated to
   the reaction behaviour; TextsRound4PreviewTest.theListShowsTheNewestText; 43 Texts screen tests pass; TextsRound4Test 17,566 checks.
-NEXT: F: review pass of the whole diff, docs (TEXTS_OVERHAUL Round 4, HANDOFF bullet, USER_GUIDE, APP_REFERENCE), whole preview suite, a
-  mutate script for the new pure rules (tools/mutate_texts4.py), closing plain tools/checkpoint.sh (release), check run + release.
+- F: review pass done (fixed: the badge watch kept a change it failed to fetch as handled; removed unused isPaused; askResend tidies its maps);
+  docs written (TEXTS_OVERHAUL Round 4, USER_GUIDE, APP_REFERENCE, HANDOFF bullet "TEXTS ROUND 4" + FIRST COMMANDS branch); tools/mutate_texts4.py
+  pure: 27/27 caught; screen (9, git worktree of b9ad278) RUNNING in the background (log in scratchpad mut-screen.log).
+NEXT: screen breakage results; the whole preview suite (tools/preview.sh, ~160 tests); closing plain tools/checkpoint.sh (release); check the
+  run and the release; a note: commit with the release number in HANDOFF; tell the user (releases page).
