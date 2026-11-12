@@ -150,7 +150,10 @@ final class ChatList extends ListView {
      * for a frame or more.
      */
     private void pin() {
-        int page = Math.max(1, getHeight() - getListPaddingTop() - getListPaddingBottom() - 1);
+        int room = getHeight() - getListPaddingTop() - getListPaddingBottom();
+        if (room <= 1) {
+            return; // no room to show anything (a list squeezed to nothing): nothing to keep in sight
+        }
         for (int guard = 0; guard < 200; guard++) {
             int kids = getChildCount();
             int n = getCount();
@@ -159,16 +162,21 @@ final class ChatList extends ListView {
             }
             int by = ChatFollow.pinBy(getFirstVisiblePosition() + kids - 1, n, getChildAt(kids - 1).getBottom(), getHeight() - getListPaddingBottom());
             if (by == 0) {
+                slowWay = false;
                 return;
             }
             long before = rowsAt();
-            scrollListBy(by == ChatFollow.JUMP ? page : by); // the last row is not even laid out: a page at a time until it is
+            scrollListBy(by == ChatFollow.JUMP ? room - 1 : by); // the last row is not even laid out: a page at a time until it is
             if (rowsAt() == before) {
                 break; // the list did not move (it always should): the slow way below
             }
         }
-        if (getCount() > 0) {
+        if (!slowWay && getCount() > 0) { // once, not at every frame if even that does not help
+            slowWay = true;
             setSelection(getCount() - 1);
         }
     }
+
+    /** {@link #pin} fell back on a jump that waits for the next layout; it does not ask again until the end has been reached once. */
+    private boolean slowWay;
 }

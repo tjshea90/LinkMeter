@@ -78,7 +78,7 @@ SCREEN = [
   "        if (follow && !moving()) {\n            pin();", "        if (false) {\n            pin();",
   "TextsRound4PreviewTest", "opensAtTheNewestAndTheKeyboardKeepsIt"),
  ("a jump is put off to the next layout", J + "ChatList.java",
-  "scrollListBy(by == ChatFollow.JUMP ? page : by);", "if (by == ChatFollow.JUMP) { break; } scrollListBy(by);",
+  "scrollListBy(by == ChatFollow.JUMP ? room - 1 : by);", "if (by == ChatFollow.JUMP) { break; } scrollListBy(by);",
   "TextsRound4PreviewTest", "opensAtTheNewestAndTheKeyboardKeepsIt"),
  ("your own scrolling does not stop following", J + "ChatList.java",
   "            dragged = true;\n            setFollow(atEnd());", "            dragged = true;",
