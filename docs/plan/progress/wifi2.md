@@ -22,3 +22,12 @@ PLAN:
 5. "has not joined it yet" card: "Wi-Fi settings" button.
 6. tests: TabletWifiRulesTest, TroubleTest, Robolectric WifiFollowPreviewTest/DeepSleepPreviewTest scenarios, mutate_link.py + mutate_wifi_glue.py
    patterns; tools/test.sh, assembleRelease, pictures; docs WIFI_FOLLOWS_HOTSPOT.md, HANDOFF, USER_GUIDE; release.
+
+DONE (2026-11-12, wip commits up to 081adde): code (TabletWifiRules.atSent, Trouble.wifiFirst/wifiOffText/WIFI_OFF_TITLE, HomeTab wifiAtSent/wifiFree/
+panelOpened/keepFollowUntil/openWifiSettings, the two cards); tests: TabletWifiRulesTest 3,243 + TroubleTest 2,365 pass; tools/test.sh exit 0;
+WifiFollowPreviewTest 28/28 (7 new) + DeepSleepPreviewTest 13/13; 10 new pure breakages caught (mutate_link.py); pictures state-home-wifi-at-sent(-2),
+state-home-wifi-off-unreached LOOKED AT; release build OK; docs WIFI_FOLLOWS_HOTSPOT (last section), USER_GUIDE, APP_REFERENCE, HANDOFF bullet.
+The two glue runners (mutate_wifi_glue.py, mutate_deep_glue.py) now judge by the JUnit report: preview.sh's final "ls out/*.png" fails in a fresh
+worktree, which made a PASSING test look "caught".
+RUNNING: glue breakages in worktree scratchpad/wt-glue (19 Wi-Fi + deep "patience"), log scratchpad/glue.log.
+NEXT: their result; whole preview (tools/preview.sh, ~140 tests); closing plain checkpoint (release); check run + release; note: commit with the number.
