@@ -844,9 +844,6 @@ final class Translation {
             String ending = ec[0];
             String clitic = ec[1];
             String pe = plain(ending);
-            if ((oldStem.equals("aparqu") && !pe.startsWith("e")) || (oldStem.equals("aparc") && pe.startsWith("e"))) {
-                return null; // aparqu- only before e (aparqué, aparque), aparc- never before e
-            }
             if (!clitic.isEmpty() && !takesPronoun(pe)) {
                 return null;
             }

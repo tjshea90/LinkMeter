@@ -40,6 +40,7 @@ public final class TranslationTest {
         for (String s : p) {
             check(Translation.bytes(s) <= 40, "no piece is longer than allowed: " + s);
         }
+        eq("[a b\n, c d e f]", Translation.pieces("a b\nc d e f", 9).toString(), "a line break is where it is cut, even without a full stop");
         String sentences = "This is one sentence. This is another one! And a third? Yes.";
         List<String> q = Translation.pieces(sentences, 25);
         check(String.join("", q).equals(sentences), "sentences give the text back");
@@ -150,6 +151,7 @@ public final class TranslationTest {
         eq("dinner with mom, without dad", Translation.expandShorthand("dinner w/ mom, w/o dad"), "w/ and w/o");
         eq("With you", Translation.expandShorthand("W/ u"), "W/ at the start");
         eq("bus run umbrella", Translation.expandShorthand("bus run umbrella"), "only whole words: u inside a word stays");
+        eq("type 'u' or 'k'", Translation.expandShorthand("type 'u' or 'k'"), "a letter in quotes is a letter");
         eq("Thanks!! 😀 see you at 7:30", Translation.expandShorthand("Thx!! 😀 cya at 7:30"), "punctuation, emoji and times stay");
         eq("", Translation.expandShorthand(""), "nothing");
         eq("", Translation.expandShorthand(null), "null");
