@@ -53,6 +53,11 @@ final class TextsTab extends Tab {
     private final ExecutorService net = Executors.newFixedThreadPool(3, daemon("linkmeter-texts"));
     /** Things that change something (mark read, delete, grant, saving the copy): one at a time, in the order they were asked. */
     private final ExecutorService out = Executors.newSingleThreadExecutor(daemon("linkmeter-texts-out"));
+    /**
+     * The texts being sent, one after the other in the order they were written (a picture's upload can take a while: it holds up the next
+     * text, as in any messaging app, but nothing else).
+     */
+    private final ExecutorService send = Executors.newSingleThreadExecutor(daemon("linkmeter-texts-send"));
 
     private static java.util.concurrent.ThreadFactory daemon(final String name) {
         return r -> {
@@ -182,6 +187,10 @@ final class TextsTab extends Tab {
 
     ExecutorService out() {
         return out;
+    }
+
+    ExecutorService sendQueue() {
+        return send;
     }
 
     long session() {
@@ -483,6 +492,9 @@ final class TextsTab extends Tab {
                 askUnlock();
             }
             return;
+        }
+        if (open != null) {
+            open.resume(); // paused while the app was away (the screen went off, a photo was picked): it asks the phone what changed
         }
         startWork();
     }

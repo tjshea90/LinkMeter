@@ -63,7 +63,13 @@ final class TextThread {
     private final List<Sms.Msg> msgs = new ArrayList<>();
     /** Messages this tablet just sent, shown at once before the phone has them in its record. */
     private final List<Sms.Msg> temps = new ArrayList<>();
-    private boolean dropTemps;
+    /** A sent message's ids on screen when it was sent: the phone's copy of it is the new one with the same words ({@link SentCopies}). */
+    private final Map<String, Set<String>> shownWhenSent = new HashMap<>();
+    /** A sent message the phone has recorded -> the first answer asked for after that: it holds the phone's copy, so this one goes. */
+    private final Map<String, Long> recordedAt = new HashMap<>();
+    /** Every request for the newest page has a number; an answer older than the one on screen is not used (it could say "Sending…" again). */
+    private long reloadGen;
+    private long appliedGen;
     private final List<Object> rows = new ArrayList<>();
     private final Set<String> tapped = new HashSet<>();
     private final Set<String> selected = new LinkedHashSet<>();
@@ -72,7 +78,7 @@ final class TextThread {
     private boolean loadingMore;
     private boolean firstLoad = true;
     private boolean scrollNext;
-    private boolean sending;
+    /** The tab or the app is away (the screen went off, a picker or another app is in front): answers wait for {@link #resume}. */
     private boolean paused;
     private List<String> replies = new ArrayList<>();
     /** The names of the people in a group, by number key. */
@@ -324,10 +330,28 @@ final class TextThread {
     /** The tab was left or this conversation closed: the draft is written down. */
     void pause() {
         paused = true;
+        act.ui.removeCallbacks(recheck);
         if (input != null) {
             tab.local().setDraft(key, input.getText().toString());
         }
         tab.local().flush();
+    }
+
+    /**
+     * The app is in front again with this conversation open (the screen came back on, a photo was picked, another app was left): what
+     * changed meanwhile is asked for. Without this the conversation stayed as it was for good, and a text sent after a photo was picked
+     * said "Sending…" for ever.
+     */
+    void resume() {
+        if (!paused) {
+            return;
+        }
+        paused = false;
+        reload();
+    }
+
+    boolean isPaused() {
+        return paused;
     }
 
     /** Text to put in the box (a forwarded message). */
@@ -343,7 +367,8 @@ final class TextThread {
             return;
         }
         String text = input.getText().toString();
-        boolean can = !sending && !flow.translating() && (text.trim().length() > 0 || !pending.isEmpty());
+        // a text on its way does not hold up the next one: they go to the phone one after the other, in order
+        boolean can = !flow.translating() && (text.trim().length() > 0 || !pending.isEmpty());
         sendBtn.set(Icons.Kind.SEND, can ? Ui.ON_ACCENT : Ui.DIM, can ? Ui.ACCENT : Ui.CARD_HI);
         sendBtn.setEnabled(can);
         // the length: shown when it matters (a long text is more than one message; pictures make it a picture message)
@@ -387,6 +412,7 @@ final class TextThread {
     /** Asks the phone for the newest page and joins it with what is shown. */
     void reload() {
         final long my = tab.session();
+        final long gen = ++reloadGen;
         final int size = pageSize();
         if (firstLoad && msgs.isEmpty() && temps.isEmpty()) {
             showStatus("Loading messages…", Ui.DIM); // a slow phone: say that something is happening
@@ -396,13 +422,15 @@ final class TextThread {
                 final Sms.Convo c = tab.remote().thread(key, size);
                 TextsCache cache = tab.cache();
                 act.ui.post(() -> {
-                    if (my == tab.session() && !paused) {
-                        apply(c, cache);
+                    // three requests can be on their way at once: a slow older answer must not undo a newer one ("Sent" back to "Sending…")
+                    if (my == tab.session() && !paused && gen > appliedGen) {
+                        appliedGen = gen;
+                        apply(c, cache, gen);
                     }
                 });
             } catch (final IOException e) {
                 act.ui.post(() -> {
-                    if (my == tab.session() && !paused) {
+                    if (my == tab.session() && !paused && gen > appliedGen) {
                         showStatus(TextsTab.explain(e));
                     }
                 });
@@ -410,7 +438,7 @@ final class TextThread {
         });
     }
 
-    private void apply(Sms.Convo c, TextsCache cache) {
+    private void apply(Sms.Convo c, TextsCache cache, long gen) {
         showStatus(null);
         if (!c.head.name.isEmpty()) {
             setDisplayName(tab.shownName(key, c.head.name)); // this tablet's own name for the person, if it has one
@@ -429,10 +457,8 @@ final class TextThread {
                 more = c.more;
             }
         }
-        if (dropTemps) {
-            temps.clear();
-            dropTemps = false;
-        }
+        dropSentCopies(c.msgs, gen);
+        recheckWhileSending();
         if (cache != null) {
             Sms.Convo save = new Sms.Convo();
             save.head.name = name;
@@ -853,7 +879,7 @@ final class TextThread {
 
     private void send() {
         final String text = input.getText().toString();
-        if (sending || (text.trim().isEmpty() && pending.isEmpty())) {
+        if (text.trim().isEmpty() && pending.isEmpty()) {
             return;
         }
         if (!text.trim().isEmpty()) {
@@ -880,9 +906,75 @@ final class TextThread {
         sendMessage(text, items);
     }
 
-    /** Puts a message in the conversation at once, as "Sending...", and sends it to the phone in the background. */
+    /** How often, and for how long, a text that still says "Sending…" makes the conversation ask the phone again by itself. */
+    static final long RECHECK_MS = 5_000;
+    static final long RECHECK_FOR_MS = 3 * 60_000;
+    private long sendingSince;
+    private final Runnable recheck = new Runnable() {
+        @Override
+        public void run() {
+            if (!paused && tab.current() == TextThread.this) {
+                reload();
+            }
+        }
+    };
+
+    /**
+     * The phone says when a text has gone (its stamp changes and the tablet asks at once), but a signal can be missed: while a recent
+     * text of mine still says "Sending…" the phone is asked again every few seconds, for a few minutes at most.
+     */
+    private void recheckWhileSending() {
+        act.ui.removeCallbacks(recheck);
+        long now = System.currentTimeMillis();
+        boolean waiting = false;
+        for (Sms.Msg m : msgs) {
+            if (m.mine && m.state == Sms.STATE_SENDING && now - m.time < 15 * 60_000L) {
+                waiting = true;
+                break;
+            }
+        }
+        if (!waiting) {
+            sendingSince = 0;
+            return;
+        }
+        if (sendingSince == 0) {
+            sendingSince = now;
+        }
+        if (now - sendingSince < RECHECK_FOR_MS) {
+            act.ui.postDelayed(recheck, RECHECK_MS);
+        }
+    }
+
+    /** The ids of the messages on screen now (the phone's and this tablet's own). */
+    private Set<String> idsOnScreen() {
+        Set<String> ids = new HashSet<>();
+        for (Sms.Msg m : msgs) {
+            ids.add(m.id);
+        }
+        for (Sms.Msg m : temps) {
+            ids.add(m.id);
+        }
+        return ids;
+    }
+
+    /** The phone's copies of what this tablet sent take the place of the bubbles drawn at once ({@link SentCopies}). */
+    private void dropSentCopies(List<Sms.Msg> page, long gen) {
+        Set<String> gone = SentCopies.replaced(temps, shownWhenSent, recordedAt, page, gen);
+        for (java.util.Iterator<Sms.Msg> it = temps.iterator(); it.hasNext();) {
+            Sms.Msg t = it.next();
+            if (gone.contains(t.id)) {
+                it.remove();
+                shownWhenSent.remove(t.id);
+                recordedAt.remove(t.id);
+            }
+        }
+    }
+
+    /**
+     * Puts a message in the conversation at once, as "Sending...", and gives it to the phone in the background. Several can be on their
+     * way at once: they go to the phone one after the other, in the order they were written.
+     */
     private void sendMessage(final String text, final List<Attach.Item> items) {
-        sending = true;
         // the message is in the conversation at once, as "Sending..."
         final Sms.Msg temp = new Sms.Msg();
         temp.id = "t" + System.nanoTime();
@@ -898,13 +990,15 @@ final class TextThread {
             p.type = FileKind.mime(it.name);
             temp.parts.add(p);
         }
+        shownWhenSent.put(temp.id, idsOnScreen());
         temps.add(temp);
         updateSend();
         scrollNext = true;
         render(true);
-        showStatus(items.isEmpty() ? null : "Sending " + items.size() + (items.size() == 1 ? " file" : " files") + " to the phone…");
-        final long my = tab.session();
-        Thread t = new Thread(() -> {
+        if (!items.isEmpty()) {
+            showStatus("Sending " + items.size() + (items.size() == 1 ? " file" : " files") + " to the phone…", Ui.DIM);
+        }
+        tab.sendQueue().execute(() -> {
             String error = null;
             boolean recorded = false;
             try {
@@ -923,25 +1017,31 @@ final class TextThread {
             }
             final String fe = error;
             final boolean rec = recorded;
-            act.ui.post(() -> {
-                sending = false;
-                if (my != tab.session()) {
-                    return;
-                }
-                if (rec) { // the phone has it in its record now (as sent, or as failed with its reason): the real one replaces this one
-                    dropTemps = true;
-                    reload();
-                } else {
-                    temp.state = Sms.STATE_FAILED;
-                    temp.error = fe == null ? "the phone could not be reached" : fe;
-                    render(false);
-                }
-                showStatus(rec ? fe : null);
-                updateSend();
-            });
-        }, "linkmeter-texts-send");
-        t.setDaemon(true);
-        t.start();
+            act.ui.post(() -> sent(temp, rec, fe));
+        });
+    }
+
+    /**
+     * The phone answered a send, or could not be reached. The bubble's own record is updated whatever happened meanwhile (the app may have
+     * been away: then {@link #resume} asks the phone again and its copy replaces the bubble).
+     */
+    private void sent(Sms.Msg temp, boolean recorded, String error) {
+        if (recorded) { // the phone has it in its record now (as sent, or as failed with its reason): the next page shows its copy
+            recordedAt.put(temp.id, reloadGen + 1);
+        } else {
+            temp.state = Sms.STATE_FAILED;
+            temp.error = error == null ? "the phone could not be reached" : error;
+        }
+        if (paused || tab.current() != this) {
+            return;
+        }
+        if (recorded) {
+            reload();
+        } else {
+            render(false);
+        }
+        showStatus(recorded ? error : null);
+        updateSend();
     }
 
     // ------------------------------------------------------------ translating into Spanish (Mexico) and into English
@@ -1055,9 +1155,6 @@ final class TextThread {
 
     /** "Send my English": your words as you wrote them, not the Spanish. */
     private void sendEnglish() {
-        if (sending) {
-            return;
-        }
         String english = flow.sendEnglish(input.getText().toString());
         if (english != null && !english.trim().isEmpty()) {
             sendNow(english);
@@ -1091,11 +1188,10 @@ final class TextThread {
         }
         TextsViews.show(new AlertDialog.Builder(act).setTitle("Send again?").setMessage(m.body)
                 .setPositiveButton("Send again", (d, w) -> {
-                    temps.remove(m);
-                    input.setText(m.body);
-                    if (!sending) {
-                        sendNow(m.body); // as it was written the first time: a Spanish text is not translated again
+                    if (!temps.remove(m)) { // the phone's record of the failed one: hidden here, the new one takes its place
+                        tab.local().hide(java.util.Collections.singletonList(m.id));
                     }
+                    sendMessage(m.body, new ArrayList<Attach.Item>()); // as it was written the first time: not translated again
                 }).setNeutralButton("Delete", (d, w) -> doDelete(java.util.Collections.singletonList(m)))
                 .setNegativeButton("Cancel", null));
     }
@@ -1217,10 +1313,6 @@ final class TextThread {
 
     /** Sends one emoji as a text of its own (the box and what is attached stay as they are). */
     private void quickReply(String emoji) {
-        if (sending) {
-            Toast.makeText(act, "Wait a moment: a message is still being sent.", Toast.LENGTH_SHORT).show();
-            return;
-        }
         sendMessage(emoji, new ArrayList<Attach.Item>());
     }
 
