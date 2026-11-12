@@ -147,6 +147,9 @@ java -cp "$out" com.tj.linkmeter.TextsLogicTest || fail=1
 echo "== Translating texts (Translation: cut for the services and put back exactly, MyMemory's and Google's real answers and their 'used up' and picture-puzzle replies, texting shorthand, Spanish made right for Mexico: coger, chaqueta, zapatillas and the rest; TranslateFlow: what Send does while a conversation is translated)"
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/Translation.java $FM/TranslateFlow.java tools/test/TranslationTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.TranslationTest || fail=1
+echo "== Fast Wi-Fi packets and relay protocol (Ip4: IPv4/TCP/UDP/ICMP read and written with checksums checked by a plain reference sum, a real Linux SYN's options; FastProto: the key from the pairing secret, the relay's hello, UDP headers, the relay never reaches a private address, the VPN's 46 routes cover exactly the public addresses, never the mobile data interface)"
+javac -proc:none -encoding UTF-8 -d "$out" $FM/Ip4.java $FM/FastProto.java tools/test/FastCodecTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.FastCodecTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"
