@@ -88,6 +88,14 @@ final class FastRelay {
         return core != null && core.running();
     }
 
+    /** The phone screen's line about the relay. */
+    static synchronized String line(Context c) {
+        FastRelayCore k = core;
+        boolean on = k != null && k.running();
+        return FastRules.phoneLine(Cfg.fastAllowed(c), on, problem, on ? k.pairs : 0, on ? k.bytesDown + k.bytesUp : 0,
+                on && k.lastTabletAt > 0 ? System.currentTimeMillis() - k.lastTabletAt : -1);
+    }
+
     /** The status's "fast" part: what a tablet needs to know (and what the phone's screen shows). */
     static synchronized JSONObject status(Context c) throws JSONException {
         JSONObject o = new JSONObject();

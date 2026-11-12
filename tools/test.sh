@@ -150,6 +150,9 @@ java -cp "$out" com.tj.linkmeter.TranslationTest || fail=1
 echo "== Fast Wi-Fi packets and relay protocol (Ip4: IPv4/TCP/UDP/ICMP read and written with checksums checked by a plain reference sum, a real Linux SYN's options; FastProto: the key from the pairing secret, the relay's hello, UDP headers, the relay never reaches a private address, the VPN's 46 routes cover exactly the public addresses, never the mobile data interface)"
 javac -proc:none -encoding UTF-8 -d "$out" $FM/Ip4.java $FM/FastProto.java tools/test/FastCodecTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.FastCodecTest || fail=1
+echo "== Fast Wi-Fi card and checks (FastRules: never 'on' unless the VPN is up, the one thing to do first, nothing claimed about a phone that was not heard, what a check of the phone's relay means, the speed words; every combination)"
+javac -proc:none -encoding UTF-8 -d "$out" $FM/Ip4.java $FM/FastProto.java $FM/FastRules.java tools/test/FastRulesTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.FastRulesTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

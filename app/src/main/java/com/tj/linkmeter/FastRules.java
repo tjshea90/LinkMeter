@@ -135,6 +135,40 @@ final class FastRules {
         return "The phone does not answer" + (m.isEmpty() ? "." : " (" + m + ").");
     }
 
+    /**
+     * The phone's own screen: what its relay is doing. sinceMs: how long ago the tablet last opened a connection (-1: never since the
+     * service started).
+     */
+    static String phoneLine(boolean allowed, boolean running, String problem, int conns, long bytes, long sinceMs) {
+        if (!allowed) {
+            return "Off. The tablet uses the normal hotspot.";
+        }
+        if (!running) {
+            return problem == null || problem.isEmpty() ? "Not running: start LinkMeter's service (Status card)." : dot(problem);
+        }
+        if (sinceMs < 0) {
+            return "Ready. The tablet has not used it since LinkMeter started.";
+        }
+        if (conns > 0) {
+            return "In use by the tablet: " + conns + (conns == 1 ? " connection" : " connections") + ", " + size(bytes)
+                    + " carried so far.";
+        }
+        return "Ready. Last used " + ago(sinceMs) + "; " + size(bytes) + " carried so far.";
+    }
+
+    static String ago(long ms) {
+        long s = ms / 1000;
+        if (s < 60) {
+            return "less than a minute ago";
+        }
+        long m = s / 60;
+        if (m < 60) {
+            return m + (m == 1 ? " minute ago" : " minutes ago");
+        }
+        long h = m / 60;
+        return h + (h == 1 ? " hour ago" : " hours ago");
+    }
+
     /** "12.3 Mbit/s down, 1.4 up" from bytes that went each way in ms; "" when ms is too short to say. */
     static String speed(long downBytes, long upBytes, long ms) {
         if (ms < 500 || downBytes < 0 || upBytes < 0) {

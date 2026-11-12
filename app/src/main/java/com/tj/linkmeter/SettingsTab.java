@@ -54,6 +54,7 @@ final class SettingsTab extends Tab {
         buildLink(col);
         buildConnection(col);
         buildTablet(col);
+        buildFast(col);
         buildPairing(col);
         return Ui.scroll(act, col);
     }
@@ -358,6 +359,27 @@ final class SettingsTab extends Tab {
                     }
                 });
         card.addView(share.view, Ui.lp(act, 6));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    // ------------------------------------------------------------------------------------------------ Fast Wi-Fi
+
+    /** Fast Wi-Fi's one option (docs/FAST_WIFI.md); the switch itself is on Home and in the quick settings tile. */
+    private void buildFast(LinearLayout col) {
+        LinearLayout card = Ui.card(act, "Fast Wi-Fi", "Switched on and off on " + HOME + " (\"Internet for this tablet\") or with the "
+                + "Fast Wi-Fi tile: swipe down twice from the top of the screen, press the pencil and drag the tile in.");
+        Ui.Toggle quic = new Ui.Toggle(act, "Steer apps to their faster way (recommended)",
+                "Chrome, YouTube and other apps try QUIC first, a way that LinkMeter has to pass on packet by packet. When it is "
+                + "turned away at once they use their usual TCP way straight away, which costs both devices far less work: more "
+                + "speed on this tablet and less battery. Switch it off only if an app does not connect.",
+                Cfg.fastBlockQuic(act), (b, on) -> {
+                    Cfg.setFastBlockQuic(act, on);
+                    TunStack e = FastVpn.engine;
+                    if (e != null) {
+                        e.blockQuic(on);
+                    }
+                });
+        card.addView(quic.view, Ui.lp(act, 6));
         col.addView(card, Ui.lp(act, 12));
     }
 

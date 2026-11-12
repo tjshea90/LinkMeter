@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fast Wi-Fi's quick settings tile: a lightning bolt. Android tints it, so it is drawn in one colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M13.5,2L4,13.5h6.5L9.5,22L20,10h-6.6z" />
+</vector>

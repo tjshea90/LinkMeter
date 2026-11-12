@@ -142,11 +142,18 @@ public final class FastE2E {
             public void relayFine() {
                 // fine
             }
+
+            @Override
+            public void stopped() {
+                trouble.add("the engine stopped by itself");
+            }
         }, FastProto.key(SECRET));
         engine.start();
         Thread.sleep(300);
 
         try {
+            ping(FastProto.key(SECRET), FastProto.OK, "the relay answers a ping with a known key: OK");
+            ping(FastProto.key("not paired"), FastProto.DENIED, "and an unknown key: refused");
             small();
             bigDownload();
             bigUpload();
@@ -346,6 +353,18 @@ public final class FastE2E {
                 return new long[] {-1, 0, got};
             }
             return new long[] {crc.getValue(), (System.nanoTime() - t0) / 1_000_000, got};
+        }
+    }
+
+    /** What the tablet does before it puts its VPN up: a ping straight to the relay. */
+    private static void ping(byte[] key, int want, String what) throws IOException {
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), RELAY), 3000);
+            s.setSoTimeout(3000);
+            s.getOutputStream().write(FastProto.ping(key));
+            int got = s.getInputStream().read();
+            int after = s.getInputStream().read();
+            yes(got == want && after == -1, what + " (" + got + ", then closed: " + (after == -1) + ")");
         }
     }
 

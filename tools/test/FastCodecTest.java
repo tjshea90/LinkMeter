@@ -40,6 +40,7 @@ public final class FastCodecTest {
         checksumMatchesReference();
         key();
         hello();
+        servfail();
         udpHeaders();
         addresses();
         routes();
@@ -342,6 +343,64 @@ public final class FastCodecTest {
         eq(FastProto.DENIED, FastProto.readHello(junk, keys, t), "something that is not a hello");
         eq(FastProto.DENIED, FastProto.readHello(new byte[5], keys, t), "too short");
         eq(FastProto.DENIED, FastProto.readHello(h, new ArrayList<byte[]>(), t), "no tablet paired");
+        // the ping: a known key is OK with no target, an unknown one is denied
+        t[0] = 9;
+        t[1] = 9;
+        eq(FastProto.OK, FastProto.readHello(FastProto.ping(keys.get(0)), keys, t), "a ping with a known key");
+        eq(0, t[1], "a ping asks for no connection (port 0)");
+        eq(FastProto.DENIED, FastProto.readHello(FastProto.ping(FastProto.key("other")), keys, t), "a ping with an unknown key");
+        byte[] cmd9 = FastProto.ping(keys.get(0));
+        cmd9[20] = 9;
+        eq(FastProto.DENIED, FastProto.readHello(cmd9, keys, t), "an unknown command");
+    }
+
+    private static void servfail() {
+        byte[] q = FastE2EQuery.query(0x1234, "www.example.com");
+        byte[] a = FastProto.servfail(q);
+        eq(q.length, a.length, "SERVFAIL keeps the question and nothing else");
+        eq(0x1234, Ip4.u16(a, 0), "the question's number");
+        eq(0x81, a[2] & 0xFF, "a response, recursion desired kept");
+        eq(2, a[3] & 0x0F, "rcode SERVFAIL");
+        eq(1, Ip4.u16(a, 4), "one question");
+        eq(0, Ip4.u16(a, 6) + Ip4.u16(a, 8) + Ip4.u16(a, 10), "no answers, no other records");
+        // a question with an EDNS record after it: the record is left out
+        byte[] edns = new byte[q.length + 11];
+        System.arraycopy(q, 0, edns, 0, q.length);
+        Ip4.w16(edns, 10, 1);
+        byte[] b = FastProto.servfail(edns);
+        eq(q.length, b.length, "the EDNS record after the question is cut off");
+        eq(0, Ip4.u16(b, 10), "and not counted");
+        byte[] junk = FastProto.servfail(new byte[] {1, 2, 3});
+        eq(12, junk.length, "something too short still gives a header");
+        byte[] loop = q.clone();
+        loop[12] = (byte) 0x80; // a label length that is not one
+        eq(12, FastProto.servfail(loop).length, "an unreadable name gives the header alone");
+    }
+
+    /** The same DNS question builder as the end-to-end test, kept here so this test stands alone. */
+    static final class FastE2EQuery {
+        static byte[] query(int id, String name) {
+            java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+            b.write(id >>> 8);
+            b.write(id);
+            b.write(1);
+            b.write(0);
+            b.write(0);
+            b.write(1);
+            for (int i = 0; i < 6; i++) {
+                b.write(0);
+            }
+            for (String label : name.split("\\.")) {
+                b.write(label.length());
+                b.write(label.getBytes(java.nio.charset.StandardCharsets.US_ASCII), 0, label.length());
+            }
+            b.write(0);
+            b.write(0);
+            b.write(1);
+            b.write(0);
+            b.write(1);
+            return b.toByteArray();
+        }
     }
 
     private static void udpHeaders() {

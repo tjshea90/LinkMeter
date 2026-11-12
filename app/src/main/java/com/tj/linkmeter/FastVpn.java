@@ -160,6 +160,7 @@ public class FastVpn extends VpnService {
         if (worker != null) {
             worker.quitSafely();
         }
+        FastTile.refresh(this);
         super.onDestroy();
     }
 
@@ -259,6 +260,7 @@ public class FastVpn extends VpnService {
         state = State.ON;
         detail = "";
         foreground("Fast Wi-Fi is on", "The tablet's internet goes through LinkMeter on the phone, without the hotspot's speed limit.");
+        FastTile.refresh(this);
     }
 
     /** Takes the VPN down (if it is up) and says why. */
@@ -269,6 +271,7 @@ public class FastVpn extends VpnService {
         if (wanted) {
             foreground(s == State.PERMISSION ? "Fast Wi-Fi needs your OK" : "Fast Wi-Fi is waiting for the phone", why);
         }
+        FastTile.refresh(this);
     }
 
     private void tearDown() {

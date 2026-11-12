@@ -83,6 +83,15 @@ final class PhoneTab extends Tab {
 
     // Texts
     private Ui.Toggle tgTexts;
+    /** Fast Wi-Fi (docs/FAST_WIFI.md): may the tablet use the relay, and what it does now. */
+    private Ui.Toggle tgFast;
+    private TextView tFast;
+    private final CompoundButton.OnCheckedChangeListener fastListener = (v, on) -> {
+        FastRelay.setAllowed(act, on);
+        if (tFast != null) {
+            tFast.setText(FastRelay.line(act));
+        }
+    };
     private TextView tTexts;
     private Button bTexts;
 
@@ -209,6 +218,7 @@ final class PhoneTab extends Tab {
         buildStatus();
         buildBreaks();
         buildTabletLink();
+        buildFast();
         buildPermissions();
         buildTexts();
         buildBattery();
@@ -319,6 +329,18 @@ final class PhoneTab extends Tab {
         itemButtons.setOrientation(LinearLayout.VERTICAL);
         card.addView(itemButtons, Ui.lp(act, 2));
         card.addView(Ui.hint(act, PhoneScreenRules.PERMISSIONS_HINT), Ui.lp(act, 8));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildFast() {
+        LinearLayout card = Ui.card(act, "Fast Wi-Fi", null);
+        tgFast = new Ui.Toggle(act, "Let the tablet use Fast Wi-Fi",
+                "The tablet's internet goes through LinkMeter on this phone instead of the hotspot's tethering, so the carrier's "
+                + "hotspot speed limit does not apply to it. Only the paired tablet can use it. Switch it on and off on the tablet.",
+                Cfg.fastAllowed(act), fastListener);
+        card.addView(tgFast.view, Ui.lp(act, 6));
+        tFast = Ui.body(act, FastRelay.line(act));
+        card.addView(tFast, Ui.lp(act, 4));
         col.addView(card, Ui.lp(act, 12));
     }
 
@@ -464,6 +486,10 @@ final class PhoneTab extends Tab {
         }
         facts = f;
         paints++;
+        if (tFast != null) {
+            tFast.setText(FastRelay.line(act));
+            tgFast.show(Cfg.fastAllowed(act), fastListener);
+        }
         PhoneScreenRules.Chip c = PhoneScreenRules.chip(f);
         Ui.paintChip(chip, PhoneScreenRules.chipText(c), factColor(PhoneScreenRules.chipTone(c)));
         summary.setText(PhoneScreenRules.summary(f));

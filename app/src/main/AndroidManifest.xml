@@ -112,6 +112,18 @@
                 android:value="Carries the user's own tablet's internet traffic over Wi-Fi to the user's own phone, which relays it" />
         </service>
 
+        <!-- Tablet: the quick settings tile that switches Fast Wi-Fi on and off. Only the system may bind it. -->
+        <service
+            android:name=".FastTile"
+            android:exported="true"
+            android:icon="@drawable/ic_fast"
+            android:label="Fast Wi-Fi"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- specialUse has no time limit (dataSync services are cut off after
              6 hours on Android 15+), which is why it is used here. -->
         <service

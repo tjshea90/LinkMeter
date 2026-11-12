@@ -64,10 +64,27 @@ public class MainActivity extends Activity {
         return resumed;
     }
 
+    /** Set by the Fast Wi-Fi tile when Android's VPN question still has to be asked (it needs a screen). */
+    static final String EXTRA_FAST = "fast";
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         render();
+        fastFromTile(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        fastFromTile(i);
+    }
+
+    private void fastFromTile(Intent i) {
+        if (i != null && i.getBooleanExtra(EXTRA_FAST, false) && Cfg.TABLET.equals(Cfg.mode(this))) {
+            i.removeExtra(EXTRA_FAST); // once: not again when the screen is turned
+            ui.post(this::startFastWifi);
+        }
     }
 
     @Override
