@@ -19,6 +19,15 @@ final class TextsPrefs {
         Cfg.setBool(c, "textsKeep", v);
     }
 
+    /** The first reaction sent said how it reaches a phone that does not show reactions (said once). */
+    boolean reactionExplained() {
+        return Cfg.getBool(c, "textsReactSaid", false);
+    }
+
+    void setReactionExplained(boolean v) {
+        Cfg.setBool(c, "textsReactSaid", v);
+    }
+
     /** Show "New message" instead of the words of a text in the list. */
     boolean hidePreviews() {
         return Cfg.getBool(c, "textsHide", false);

@@ -53,6 +53,37 @@ final class ThreadRows {
         }
     }
 
+    /**
+     * The small pill on a message's corner: each emoji once, in the order they came, with how many people put it when more than one
+     * ("❤️ 2 👍"), as the messaging apps draw it.
+     */
+    static String pill(List<Applied> list) {
+        java.util.LinkedHashMap<String, Integer> n = new java.util.LinkedHashMap<>();
+        for (Applied a : list) {
+            String e = SmsReactions.same(a.emoji);
+            Integer c = n.get(e);
+            n.put(e, c == null ? 1 : c + 1);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<String, Integer> e : n.entrySet()) {
+            sb.append(sb.length() > 0 ? "  " : "").append(e.getKey());
+            if (e.getValue() > 1) {
+                sb.append(' ').append(e.getValue());
+            }
+        }
+        return sb.toString();
+    }
+
+    /** The emoji I put on this message, or null. */
+    static String mine(List<Applied> list) {
+        for (Applied a : list) {
+            if (a.mine) {
+                return a.emoji;
+            }
+        }
+        return null;
+    }
+
     private static boolean sameSender(Sms.Msg a, Sms.Msg b, boolean group) {
         return a.mine == b.mine && (a.mine || !group || a.address.equals(b.address));
     }

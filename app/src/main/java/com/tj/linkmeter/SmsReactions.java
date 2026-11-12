@@ -3,9 +3,11 @@ package com.tj.linkmeter;
 import java.util.Locale;
 
 /**
- * No Android in here (tested in tools/test/TextsLogicTest.java). An iPhone sends its "tapbacks" to a phone that is not on iMessage as
- * ordinary texts (Loved "see you at 7"), and Google Messages does it with Reacted [emoji] to "...". Shown as they arrive they look like
- * noise; this finds them, so that the conversation can show the reaction on the message it is about instead.
+ * No Android in here (tested in tools/test/TextsLogicTest.java and TextsRound4Test.java). An iPhone sends its "tapbacks" to a phone that
+ * is not on iMessage as ordinary texts (Loved "see you at 7"; in Spanish Le encantó "..."), and Google Messages and newer iPhones do it
+ * with Reacted [emoji] to "...". Shown as they arrive they look like noise; this finds them, so that the conversation can show the
+ * reaction on the message it is about instead. It also writes this tablet's own reactions the same way ({@link #textFor}): Google
+ * Messages turns such a text back into a small emoji on the message, an iPhone shows the words, and this tablet folds it like any other.
  */
 final class SmsReactions {
     private SmsReactions() {}
@@ -36,7 +38,10 @@ final class SmsReactions {
     }
 
     private static final String[][] VERBS = {{"Loved ", HEART}, {"Liked ", LIKE}, {"Disliked ", DISLIKE}, {"Laughed at ", LAUGH},
-        {"Emphasized ", EMPHASIS}, {"Questioned ", QUESTION}};
+        {"Emphasized ", EMPHASIS}, {"Questioned ", QUESTION},
+        // an iPhone set to Spanish (the longer "No le gustó" before "Le gustó" is not needed: they start differently)
+        {"Le encantó ", HEART}, {"Le gustó ", LIKE}, {"No le gustó ", DISLIKE}, {"Se rió de ", LAUGH}, {"Se rio de ", LAUGH},
+        {"Enfatizó ", EMPHASIS}, {"Cuestionó ", QUESTION}};
     private static final String[][] REMOVALS = {{"a heart", HEART}, {"a like", LIKE}, {"a dislike", DISLIKE}, {"a laugh", LAUGH},
         {"an exclamation", EMPHASIS}, {"an exclamation mark", EMPHASIS}, {"an emphasis", EMPHASIS}, {"a question mark", QUESTION},
         {"a question", QUESTION}};
@@ -66,7 +71,7 @@ final class SmsReactions {
     }
 
     private static boolean emojiOnly(String s) {
-        if (s.isEmpty() || s.length() > 16) {
+        if (s.isEmpty() || s.length() > 16 || EmojiText.count(s) < 1) {
             return false;
         }
         for (int i = 0; i < s.length(); i++) {
@@ -115,25 +120,104 @@ final class SmsReactions {
                     return null;
                 }
             }
-            return null;
+            // any other emoji taken back: Removed 😮 from "..."
+            return emojiTo(b, "Removed ", " from ", true);
         }
         if (b.startsWith("Reacted ")) {
-            int to = b.indexOf(" to ", 8);
-            if (to > 8) {
-                String emoji = b.substring(8, to);
-                String rest = b.substring(to + 4);
-                if (emojiOnly(emoji)) {
-                    String q = quoted(rest);
-                    if (q != null) {
-                        return new Reaction(emoji, q, false, false);
-                    }
-                    if (mediaWords(rest)) {
-                        return new Reaction(emoji, "", true, false);
-                    }
-                }
-            }
+            return emojiTo(b, "Reacted ", " to ", false);
+        }
+        // the emoji first: 😮 to "..."
+        return emojiTo(b, "", " to ", false);
+    }
+
+    /** {@code head} + emoji + {@code join} + a quotation (or a picture's words), or null. */
+    private static Reaction emojiTo(String b, String head, String join, boolean remove) {
+        if (!b.startsWith(head)) {
+            return null;
+        }
+        int at = b.indexOf(join, head.length());
+        if (at <= head.length()) {
+            return null;
+        }
+        String emoji = b.substring(head.length(), at);
+        String rest = b.substring(at + join.length());
+        if (!emojiOnly(emoji) || EmojiText.count(emoji) != 1) {
+            return null;
+        }
+        String q = quoted(rest);
+        if (q != null) {
+            return new Reaction(emoji, q, false, remove);
+        }
+        if (mediaWords(rest)) {
+            return new Reaction(emoji, "", true, remove);
         }
         return null;
+    }
+
+    // ------------------------------------------------------------ this tablet's own reactions
+
+    /** The most of a text that a reaction quotes; a longer one is cut with "…" (the receiving apps match the start). */
+    static final int QUOTE_MAX = 100;
+
+    /** The words an iPhone uses for its six reactions, which every app that shows reactions knows. */
+    private static final String[][] CLASSIC = {{HEART, "Loved", "a heart"}, {"♥️", "Loved", "a heart"}, {LIKE, "Liked", "a like"},
+        {DISLIKE, "Disliked", "a dislike"}, {LAUGH, "Laughed at", "a laugh"}, {EMPHASIS, "Emphasized", "an exclamation"},
+        {QUESTION, "Questioned", "a question mark"}};
+
+    /** What a reaction quotes: the text on one line (cut when long), or the words for a picture, a video or a file. */
+    static String quote(Sms.Msg m) {
+        String words = m.body == null ? "" : m.body.replaceAll("\\s+", " ").trim();
+        if (words.isEmpty()) {
+            for (Sms.Part p : m.parts) {
+                if (p.type.startsWith("image/")) {
+                    return "an image";
+                }
+                if (p.type.startsWith("video/")) {
+                    return "a video";
+                }
+            }
+            return "an attachment";
+        }
+        if (words.codePointCount(0, words.length()) > QUOTE_MAX) {
+            int end = words.offsetByCodePoints(0, QUOTE_MAX - 1);
+            words = words.substring(0, end).trim() + "…";
+        }
+        return "“" + words + "”";
+    }
+
+    /** Is this the words for a picture, a video or a file (not a quotation)? */
+    private static boolean isMediaQuote(String q) {
+        return !q.startsWith("“");
+    }
+
+    /**
+     * The text that sends a reaction to {@code target}, the way Google Messages and iPhones send them to a phone that is not on their
+     * chat service: the six iPhone reactions in their words (Loved “...”), any other emoji as Reacted 😮 to “...”. With {@code remove},
+     * the text that takes it back (Removed a heart from “...”, Removed 😮 from “...”).
+     */
+    static String textFor(String emoji, Sms.Msg target, boolean remove) {
+        String q = quote(target);
+        for (String[] c : CLASSIC) {
+            if (c[0].equals(emoji)) {
+                return remove ? "Removed " + c[2] + " from " + q : c[1] + " " + q;
+            }
+        }
+        return (remove ? "Removed " + emoji + " from " : "Reacted " + emoji + " to ") + q;
+    }
+
+    /** The line for the list of conversations when the newest text is a reaction ("Reacted 👍 to “see you at 7”"), else null. */
+    static String previewOf(String body) {
+        Reaction r = parse(body);
+        if (r == null) {
+            return null;
+        }
+        String what = r.media ? "a picture" : "“" + r.quote + "”";
+        return (r.remove ? "Took back " + r.emoji + " from " : "Reacted " + r.emoji + " to ") + what;
+    }
+
+    /** One emoji that is a reaction drawn the same way (the iPhone's heart is sent as ❤️, a phone may send ♥️). */
+    static String same(String emoji) {
+        return "♥️".equals(emoji) || "♥".equals(emoji) ? HEART : emoji;
     }
 
     private static String norm(String s) {

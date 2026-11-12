@@ -7,8 +7,13 @@ package com.tj.linkmeter;
 final class EmojiText {
     private EmojiText() {}
 
-    /** The emoji a long press on a message offers, in this order. */
+    /** The emoji a long press on a message offers to react with, in this order. */
     static final String[] QUICK = {"👍", "❤️", "😂", "😮", "😢", "🙏"};
+
+    /** More emoji to react with (the "+" of a message's menu). */
+    static final String[] MORE = {"😀", "😁", "🤣", "😊", "😍", "🥰", "😘", "😎", "🤩", "🥳", "🤗", "🤔", "😏", "🙄", "😬", "😴", "😳",
+        "🥺", "😭", "😱", "😡", "🤯", "😇", "🤤", "👏", "🙌", "👌", "✌️", "🤞", "💪", "👋", "👀", "🔥", "✨", "🎉", "💯", "✅", "❌",
+        "💔", "💙", "💚", "💜", "🤦", "🤷", "👎", "‼️", "❓", "😅", "😉"};
 
     private static boolean isModifier(int cp) {
         return cp == 0x200D || cp == 0xFE0F || cp == 0xFE0E || cp == 0x20E3 || (cp >= 0x1F3FB && cp <= 0x1F3FF) || (cp >= 0xE0020 && cp <= 0xE007F);

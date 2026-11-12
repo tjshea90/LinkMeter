@@ -153,7 +153,8 @@ final class ThreadListRules {
         }
         String s = SmsPreview.line(t.snippet, t.attachment);
         if (!s.isEmpty()) {
-            return s;
+            String reaction = t.attachment ? null : SmsReactions.previewOf(t.snippet); // "Reacted 👍 to “see you at 7”"
+            return reaction != null ? reaction : s;
         }
         return t.unread ? "New message" : t.count > 0 ? "Message" : "No messages";
     }

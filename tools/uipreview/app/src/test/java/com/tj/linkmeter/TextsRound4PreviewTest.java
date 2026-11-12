@@ -242,6 +242,92 @@ public class TextsRound4PreviewTest {
         check(a.badge(Tab.TEXTS) == 3, "back in front it counts Sam's text too: " + a.badge(Tab.TEXTS));
     }
 
+    static android.app.AlertDialog openDialog() throws Exception {
+        settle();
+        android.app.AlertDialog d = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+        check(d != null && d.isShowing(), "a menu is open");
+        return d;
+    }
+
+    /** Taps the emoji (exactly these characters) in the open menu. */
+    static void tapEmoji(String emoji) throws Exception {
+        android.app.AlertDialog d = openDialog();
+        android.widget.TextView t = findExact(d.getWindow().getDecorView(), emoji);
+        check(t != null, "the menu offers " + emoji);
+        t.performClick();
+        settle();
+    }
+
+    static android.widget.TextView findExact(View v, String text) {
+        if (v instanceof android.widget.TextView && v.isShown() && text.contentEquals(((android.widget.TextView) v).getText())) {
+            return (android.widget.TextView) v;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.widget.TextView t = findExact(g.getChildAt(i), text);
+                if (t != null) {
+                    return t;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The report: an emoji reply should sit on the message's corner, both ways, like the messaging apps. */
+    @Test
+    public void reactionsSitOnTheirMessage() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = openAlex(ph);
+        // press and hold Alex's text, tap the thumbs up
+        findText(decor(a), "Are you still up for pizza after?").performLongClick();
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();
+        TextsPreviewTest.dialog("texts4-reaction-menu");
+        tapEmoji("👍");
+        settle();
+        check(ph.outbox.size() == 1 && ph.outbox.all().get(0).body.equals("Liked “Are you still up for pizza after?”"),
+                "the phone sends the reaction text the messaging apps understand: " + (ph.outbox.size() > 0 ? ph.outbox.all().get(0).body : "nothing"));
+        check(findText(decor(a), "Liked “") == null, "no bubble with the words: it is folded onto the message");
+        check(findExact(decor(a), "👍") != null, "the thumbs up sits on Alex's text");
+
+        // Alex reacts to my text, the way Google Messages and newer iPhones send it; and in Spanish, the way an iPhone in Spanish does
+        ph.arrives(ALEX, ALEX_NUMBER, "Reacted 😂 to “Yes! What time should I be there?”");
+        settle();
+        settle();
+        check(findText(decor(a), "Reacted 😂") == null, "their reaction is not a bubble of its own");
+        check(findExact(decor(a), "😂") != null, "it sits on my text");
+        shot(a, "texts4-reactions");
+
+        // the same emoji again takes mine back
+        findText(decor(a), "Are you still up for pizza after?").performLongClick();
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();
+        tapEmoji("👍");
+        settle();
+        settle();
+        check(ph.outbox.size() == 2 && ph.outbox.all().get(1).body.equals("Removed a like from “Are you still up for pizza after?”"),
+                "taking it back sends the words for that: " + ph.outbox.all().get(ph.outbox.size() - 1).body);
+        check(findExact(decor(a), "👍") == null, "and the thumbs up is gone");
+        check(findText(decor(a), "Removed a like") == null, "without a bubble for it either");
+    }
+
+    @Test
+    public void spanishIphoneReactions() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = openAlex(ph);
+        ph.arrives(ALEX, ALEX_NUMBER, "Le encantó “Sounds good, see you at 7”"); // replaces Alex's heart there: one reaction per person
+        ph.arrives(ALEX, ALEX_NUMBER, "Se rió de “Yes! What time should I be there?”");
+        settle();
+        settle();
+        check(findText(decor(a), "Le encantó") == null && findText(decor(a), "Se rió de") == null, "no bubbles with the Spanish words");
+        check(findExact(decor(a), "😂") != null && findExact(decor(a), "❤️") != null, "the laugh and the heart sit on my texts");
+        // the list's newest line says what happened in plain words
+        a.openTab(Tab.HOME);
+        a.openTab(Tab.TEXTS);
+        settle();
+        check(findText(decor(a), "Reacted 😂 to “Yes! What time") != null, "the list says Reacted 😂 to …");
+        shot(a, "texts4-list-reaction");
+    }
+
     /** Two texts written quickly one after the other both go, in order, and each says what became of it. */
     @Test
     public void twoTextsInARow() throws Exception {

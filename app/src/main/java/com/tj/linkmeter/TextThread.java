@@ -50,6 +50,8 @@ final class TextThread {
     private static final int PAGE = 40;
     private static final int BUBBLE_ME = 0xFF2F6FE0;
     private static final int BUBBLE_FAILED = 0xFF8A2F2F;
+    /** The reaction pill when one of its reactions is mine. */
+    private static final int REACTION_MINE = 0xFF243A63;
 
     private final TextsTab tab;
     private final MainActivity act;
@@ -605,7 +607,8 @@ final class TextThread {
         List<Sms.Msg> out = new ArrayList<>();
         long cleared = tab.local().clearedAt(key);
         for (Sms.Msg m : all) {
-            if (m.time > cleared && !tab.local().isHidden(m.id)) {
+            // a reaction is drawn on its message, not answered: the quick replies are about the texts
+            if (m.time > cleared && !tab.local().isHidden(m.id) && (!m.parts.isEmpty() || SmsReactions.parse(m.body) == null)) {
                 out.add(m);
             }
         }
@@ -1370,14 +1373,55 @@ final class TextThread {
         acts.add(() -> deleteMessages(java.util.Collections.singletonList(m)));
         labels.add("Details");
         acts.add(() -> showDetails(m));
-        // a message that was sent to me can be answered with one tap on an emoji
-        TextsViews.messageMenu(act, m.mine ? null : EmojiText.QUICK, this::quickReply, labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
+        // any message can get a reaction: one tap on an emoji puts it on the message's corner (the same one again takes it back)
+        final String mineNow = ThreadRows.mine(reactionsOf(m));
+        boolean canReact = !(m.mine && m.state == Sms.STATE_FAILED); // a text that never left has nobody to react to
+        TextsViews.messageMenu(act, canReact ? EmojiText.QUICK : null, mineNow, e -> react(m, e, mineNow),
+                () -> TextsViews.emojiGrid(act, "React with", EmojiText.MORE, e -> react(m, e, mineNow)),
+                labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
         return true;
     }
 
-    /** Sends one emoji as a text of its own (the box and what is attached stay as they are). */
-    private void quickReply(String emoji) {
-        sendMessage(emoji, new ArrayList<Attach.Item>());
+    /** The reactions drawn on this message now. */
+    private List<ThreadRows.Applied> reactionsOf(Sms.Msg m) {
+        for (Object o : rows) {
+            if (o instanceof ThreadRows.Row && ((ThreadRows.Row) o).msg != null && ((ThreadRows.Row) o).msg.id.equals(m.id)) {
+                return ((ThreadRows.Row) o).reactions;
+            }
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * A reaction of mine on a message. It goes as the reaction text that Google Messages and iPhones send to a phone that is not on their
+     * chat service (Liked “see you at 7”, Reacted 😮 to “...”): Google Messages shows it as a small emoji on the message, an iPhone shows
+     * the words, and here it is folded onto the message at once. The emoji already there again takes it back.
+     */
+    private void react(Sms.Msg target, String emoji, String mineNow) {
+        boolean takeBack = mineNow != null && SmsReactions.same(mineNow).equals(SmsReactions.same(emoji));
+        sendMessage(SmsReactions.textFor(takeBack ? mineNow : emoji, target, takeBack), new ArrayList<Attach.Item>());
+        TextsPrefs p = tab.prefs();
+        if (p != null && !p.reactionExplained()) {
+            p.setReactionExplained(true);
+            Toast.makeText(act, "Sent as a reaction. Phones that do not show reactions get it as a text, like: "
+                    + SmsReactions.textFor(emoji, target, false), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Who put which reaction on a message, with a button to take mine back. */
+    private void showReactions(final ThreadRows.Row r) {
+        StringBuilder sb = new StringBuilder();
+        for (ThreadRows.Applied a : r.reactions) {
+            String who = a.mine ? "You" : a.who.equals("them") ? name : people.containsKey(PhoneNumbers.key(a.who))
+                    ? people.get(PhoneNumbers.key(a.who)) : PhoneNumbers.pretty(a.who);
+            sb.append(sb.length() > 0 ? "\n" : "").append(a.emoji).append("   ").append(who);
+        }
+        final String mineNow = ThreadRows.mine(r.reactions);
+        AlertDialog.Builder b = new AlertDialog.Builder(act).setTitle("Reactions").setMessage(sb.toString()).setPositiveButton("Close", null);
+        if (mineNow != null) {
+            b.setNeutralButton("Take mine back", (d, w) -> react(r.msg, mineNow, mineNow));
+        }
+        TextsViews.show(b);
     }
 
     private final class RowAdapter extends BaseAdapter {
@@ -1478,13 +1522,14 @@ final class TextThread {
             body = Ui.text(act, "", 15.5f, Ui.FG, false);
             bubble.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             column.addView(bubble, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            reactions = Ui.text(act, "", 13, Ui.FG, false);
-            reactions.setBackground(roundStroke(Ui.CARD_HI, Ui.BG, 12));
-            reactions.setPadding(Ui.dp(act, 8), Ui.dp(act, 2), Ui.dp(act, 8), Ui.dp(act, 2));
+            reactions = Ui.text(act, "", 14, Ui.FG, true);
+            reactions.setBackground(roundStroke(Ui.CARD_HI, Ui.BG, 14));
+            reactions.setPadding(Ui.dp(act, 8), Ui.dp(act, 2), Ui.dp(act, 8), Ui.dp(act, 3));
+            reactions.setElevation(Ui.dp(act, 2));
             LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rp.topMargin = -Ui.dp(act, 8);
-            rp.leftMargin = Ui.dp(act, 10);
-            rp.rightMargin = Ui.dp(act, 10);
+            rp.topMargin = -Ui.dp(act, 10); // over the bubble's lower edge: it belongs to the message
+            rp.leftMargin = Ui.dp(act, 12);
+            rp.rightMargin = Ui.dp(act, 12);
             column.addView(reactions, rp);
             copyCode = TextsViews.pill(act);
             LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1615,11 +1660,12 @@ final class TextThread {
             if (r.reactions.isEmpty()) {
                 reactions.setVisibility(View.GONE);
             } else {
-                StringBuilder sb = new StringBuilder();
-                for (ThreadRows.Applied a : r.reactions) {
-                    sb.append(sb.length() > 0 ? " " : "").append(a.emoji);
-                }
-                reactions.setText(sb.toString());
+                // the small pill on the message's corner; mine is tinted, as in the messaging apps; a tap says who
+                boolean mineIn = ThreadRows.mine(r.reactions) != null;
+                reactions.setText(ThreadRows.pill(r.reactions));
+                reactions.setBackground(roundStroke(mineIn ? REACTION_MINE : Ui.CARD_HI, Ui.BG, 14));
+                reactions.setContentDescription("Reactions: " + ThreadRows.pill(r.reactions));
+                reactions.setOnClickListener(v -> showReactions(r));
                 reactions.setVisibility(View.VISIBLE);
             }
 

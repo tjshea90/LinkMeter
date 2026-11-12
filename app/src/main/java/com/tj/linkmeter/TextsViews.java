@@ -120,10 +120,11 @@ final class TextsViews {
     }
 
     /**
-     * The menu of a message: a row of emoji for a quick reply (when {@code emojis} is not null), then the actions as lines. One tap on
-     * an emoji or a line closes the menu and does it.
+     * The menu of a message: a row of emoji to react with (when {@code emojis} is not null; the one you already put on the message is
+     * ringed, and tapping it takes it back), a "+" for more emoji, then the actions as lines. One tap closes the menu and does it.
      */
-    static void messageMenu(final Context c, String[] emojis, final PickText onEmoji, String[] labels, final Runnable[] actions) {
+    static void messageMenu(final Context c, String[] emojis, String chosen, final PickText onEmoji, final Runnable onMore, String[] labels,
+            final Runnable[] actions) {
         final AlertDialog[] box = new AlertDialog[1];
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -135,14 +136,30 @@ final class TextsViews {
             row.setBackground(shape(Ui.CARD_HI, Ui.dp(c, 30)));
             row.setPadding(Ui.dp(c, 6), Ui.dp(c, 4), Ui.dp(c, 6), Ui.dp(c, 4));
             for (final String e : emojis) {
-                TextView t = Ui.text(c, e, 28, Ui.FG, false);
+                boolean mine = chosen != null && SmsReactions.same(chosen).equals(SmsReactions.same(e));
+                TextView t = Ui.text(c, e, 26, Ui.FG, false);
                 t.setGravity(Gravity.CENTER);
-                t.setContentDescription("Reply " + e);
+                t.setContentDescription(mine ? "Take back " + e : "React " + e);
+                if (mine) {
+                    t.setBackground(shape(0x664C8DFF, Ui.dp(c, 24)));
+                }
                 t.setOnClickListener(v -> {
                     box[0].dismiss();
                     onEmoji.picked(e);
                 });
-                row.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(c, 52), 1f));
+                LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0, Ui.dp(c, 48), 1f);
+                ep.setMargins(Ui.dp(c, 1), Ui.dp(c, 2), Ui.dp(c, 1), Ui.dp(c, 2));
+                row.addView(t, ep);
+            }
+            if (onMore != null) {
+                IconButton more = new IconButton(c, Icons.Kind.PLUS, Ui.FG, Ui.BG, "More emoji", v -> {
+                    box[0].dismiss();
+                    onMore.run();
+                });
+                more.setScale(0.42f);
+                LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(Ui.dp(c, 40), Ui.dp(c, 40));
+                mp.leftMargin = Ui.dp(c, 4);
+                row.addView(more, mp);
             }
             LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             rp.bottomMargin = Ui.dp(c, 6);
@@ -161,6 +178,37 @@ final class TextsViews {
             col.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
         box[0] = new AlertDialog.Builder(c).setView(Ui.scroll(c, col)).create();
+        show(box[0]);
+    }
+
+    /** A grid of emoji to pick one from (the "+" of a message's menu). */
+    static void emojiGrid(final Context c, String title, String[] emojis, final PickText onEmoji) {
+        final AlertDialog[] box = new AlertDialog[1];
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(Ui.dp(c, 10), Ui.dp(c, 8), Ui.dp(c, 10), Ui.dp(c, 8));
+        int perRow = 7;
+        LinearLayout row = null;
+        for (int i = 0; i < emojis.length; i++) {
+            if (i % perRow == 0) {
+                row = new LinearLayout(c);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                col.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
+            final String e = emojis[i];
+            TextView t = Ui.text(c, e, 26, Ui.FG, false);
+            t.setGravity(Gravity.CENTER);
+            t.setContentDescription("React " + e);
+            t.setOnClickListener(v -> {
+                box[0].dismiss();
+                onEmoji.picked(e);
+            });
+            row.addView(t, new LinearLayout.LayoutParams(0, Ui.dp(c, 50), 1f));
+        }
+        while (row != null && row.getChildCount() < perRow) { // the last row keeps the same widths
+            row.addView(new View(c), new LinearLayout.LayoutParams(0, Ui.dp(c, 50), 1f));
+        }
+        box[0] = new AlertDialog.Builder(c).setTitle(title).setView(Ui.scroll(c, col)).setNegativeButton("Cancel", null).create();
         show(box[0]);
     }
 

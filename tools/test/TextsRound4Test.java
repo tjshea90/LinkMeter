@@ -354,10 +354,119 @@ public final class TextsRound4Test {
         }
     }
 
+    // ------------------------------------------------------------------ reactions
+
+    static void reactionTexts() {
+        Sms.Msg t = msg("s1", false, "Are you still up for pizza after?", 100);
+        eq("Liked “Are you still up for pizza after?”", SmsReactions.textFor("👍", t, false), "a like, in the iPhone's words");
+        eq("Loved “Are you still up for pizza after?”", SmsReactions.textFor("❤️", t, false), "a heart");
+        eq("Loved “Are you still up for pizza after?”", SmsReactions.textFor("♥️", t, false), "the other heart is the same heart");
+        eq("Laughed at “Are you still up for pizza after?”", SmsReactions.textFor("😂", t, false), "a laugh");
+        eq("Emphasized “Are you still up for pizza after?”", SmsReactions.textFor("‼️", t, false), "an emphasis");
+        eq("Questioned “Are you still up for pizza after?”", SmsReactions.textFor("❓", t, false), "a question");
+        eq("Disliked “Are you still up for pizza after?”", SmsReactions.textFor("👎", t, false), "a dislike");
+        eq("Reacted 😮 to “Are you still up for pizza after?”", SmsReactions.textFor("😮", t, false), "any other emoji");
+        eq("Removed a like from “Are you still up for pizza after?”", SmsReactions.textFor("👍", t, true), "a like taken back");
+        eq("Removed 🙏 from “Are you still up for pizza after?”", SmsReactions.textFor("🙏", t, true), "another emoji taken back");
+        eq("Liked “two lines here”", SmsReactions.textFor("👍", msg("s2", false, "two\nlines   here ", 1), false), "one line, single spaces");
+        StringBuilder longText = new StringBuilder();
+        for (int i = 0; i < 30; i++) {
+            longText.append("word").append(i).append(' ');
+        }
+        String cut = SmsReactions.textFor("❤️", msg("s3", true, longText.toString(), 1), false);
+        yes(cut.startsWith("Loved “word0 word1") && cut.endsWith("…”") && cut.codePointCount(0, cut.length()) <= "Loved “”".length() + 100,
+                "a long text is quoted cut short: " + cut);
+        yes(SmsReactions.about(SmsReactions.parse(cut), msg("s3", true, longText.toString(), 1)), "and still finds its message");
+        eq("Loved an image", SmsReactions.textFor("❤️", withFile(msg("s4", false, "", 1)), false), "a picture");
+        Sms.Msg video = msg("s5", false, "", 1);
+        Sms.Part vp = new Sms.Part();
+        vp.type = "video/mp4";
+        video.parts.add(vp);
+        video.mms = true;
+        eq("Reacted 😮 to a video", SmsReactions.textFor("😮", video, false), "a video");
+        Sms.Msg file = msg("s6", false, "", 1);
+        Sms.Part fp = new Sms.Part();
+        fp.type = "application/pdf";
+        file.parts.add(fp);
+        file.mms = true;
+        eq("Liked an attachment", SmsReactions.textFor("👍", file, false), "a file");
+
+        // every emoji the menu offers, on texts and pictures, reads back as the same reaction on the same message
+        List<String> all = new ArrayList<>(Arrays.asList(EmojiText.QUICK));
+        all.addAll(Arrays.asList(EmojiText.MORE));
+        Sms.Msg[] targets = {t, msg("s7", true, "I'm here “inside” the door", 1), msg("s8", false, "ok", 1), withFile(msg("s9", false, "", 1)),
+            withFile(msg("s10", false, "Look at this", 1))};
+        for (String e : all) {
+            for (Sms.Msg m : targets) {
+                for (boolean remove : new boolean[] {false, true}) {
+                    String text = SmsReactions.textFor(e, m, remove);
+                    SmsReactions.Reaction r = SmsReactions.parse(text);
+                    yes(r != null, "reads back: " + text);
+                    if (r != null) {
+                        eq(SmsReactions.same(e), SmsReactions.same(r.emoji), "the same emoji: " + text);
+                        eq(remove, r.remove, "taken back or not: " + text);
+                        yes(SmsReactions.about(r, m), "about its message: " + text);
+                        yes(SmsReactions.previewOf(text) != null, "the list has words for it: " + text);
+                    }
+                }
+            }
+        }
+
+        // what other phones send
+        SmsReactions.Reaction r = SmsReactions.parse("Le encantó “Nos vemos a las 7”");
+        yes(r != null && r.emoji.equals(SmsReactions.HEART) && r.quote.equals("Nos vemos a las 7"), "an iPhone in Spanish: a heart");
+        eq(SmsReactions.LIKE, SmsReactions.parse("Le gustó “ok”").emoji, "Le gustó");
+        eq(SmsReactions.DISLIKE, SmsReactions.parse("No le gustó “ok”").emoji, "No le gustó");
+        eq(SmsReactions.LAUGH, SmsReactions.parse("Se rió de “jaja”").emoji, "Se rió de");
+        eq(SmsReactions.LAUGH, SmsReactions.parse("Se rio de “jaja”").emoji, "Se rio de, without the accent");
+        eq(SmsReactions.EMPHASIS, SmsReactions.parse("Enfatizó “mañana”").emoji, "Enfatizó");
+        eq(SmsReactions.QUESTION, SmsReactions.parse("Cuestionó “mañana”").emoji, "Cuestionó");
+        r = SmsReactions.parse("😮 to “See you there”");
+        yes(r != null && r.emoji.equals("😮") && r.quote.equals("See you there") && !r.remove, "the emoji first: 😮 to “...”");
+        r = SmsReactions.parse("Removed 🙏 from “thanks”");
+        yes(r != null && r.remove && r.emoji.equals("🙏"), "any emoji taken back");
+        r = SmsReactions.parse("Reacted 👍🏽 to “ok then”");
+        yes(r != null && r.emoji.equals("👍🏽"), "an emoji with a skin tone is one emoji");
+        // and what is an ordinary text
+        yes(SmsReactions.parse("Reacted well to “the news here”") == null, "words are not an emoji");
+        yes(SmsReactions.parse("😂😂 to “that joke”") == null, "two emoji are not one reaction");
+        yes(SmsReactions.parse("I to “x and y”") == null, "a letter is not an emoji");
+        yes(SmsReactions.parse("Le gustó mucho la cena") == null, "Spanish words without a quotation");
+        yes(SmsReactions.parse("Se rió de mí todo el día") == null, "another sentence");
+        yes(SmsReactions.parse("👍 to me") == null, "no quotation");
+        yes(SmsReactions.parse("Removed the dog from “the couch”") == null, "a sentence that starts with Removed");
+
+        eq("Reacted 👍 to “see you at 7”", SmsReactions.previewOf("Liked “see you at 7”"), "the list's line for a reaction");
+        eq("Reacted 😮 to a picture", SmsReactions.previewOf("Reacted 😮 to an image"), "for a picture");
+        eq("Took back 👍 from “ok”", SmsReactions.previewOf("Removed a like from “ok”"), "for one taken back");
+        yes(SmsReactions.previewOf("See you at 7") == null, "an ordinary text has none");
+
+        // the pill on the corner
+        List<ThreadRows.Applied> ap = new ArrayList<>();
+        eq("", ThreadRows.pill(ap), "no reactions");
+        eq(null, ThreadRows.mine(ap), "none of mine");
+        ap.add(new ThreadRows.Applied("❤️", false, "+15550001"));
+        ap.add(new ThreadRows.Applied("👍", true, "me"));
+        ap.add(new ThreadRows.Applied("♥️", false, "+15550002"));
+        eq("❤️ 2  👍", ThreadRows.pill(ap), "each emoji once, in order, counted (the two hearts are one)");
+        eq("👍", ThreadRows.mine(ap), "mine");
+    }
+
+    /** The list's line for a reaction text: in plain words, but never instead of words when previews are hidden. */
+    static void reactionPreview() {
+        Sms.Thread t = thread("1", "Liked “see you at 7”", 5000, false, 4);
+        eq("Reacted 👍 to “see you at 7”", ThreadListRules.preview(t, false), "a reaction in plain words");
+        eq("Message", ThreadListRules.preview(t, true), "previews hidden: no words");
+        t.snippet = "See you at 7";
+        eq("See you at 7", ThreadListRules.preview(t, false), "an ordinary text as it is");
+    }
+
     public static void main(String[] args) throws Exception {
         sentCopies();
         follow();
         badge();
+        reactionTexts();
+        reactionPreview();
         System.out.println(checks + " checks, " + fails + " failed");
         System.exit(fails == 0 ? 0 : 1);
     }
