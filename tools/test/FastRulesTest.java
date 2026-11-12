@@ -31,6 +31,7 @@ public final class FastRulesTest {
         offCard();
         onCard();
         blockers();
+        directLink();
         everything();
         probe();
         speed();
@@ -104,6 +105,50 @@ public final class FastRulesTest {
         eq("Fast Wi-Fi is waiting for the phone.", waitingNoWord.line, "waiting without a reason");
     }
 
+    private static FastRules.Phone directPhone(Boolean direct, boolean up, String err) {
+        FastRules.Phone p = phone(true, true, true, "", Boolean.FALSE);
+        p.direct = direct;
+        p.directUp = up;
+        p.directErr = err;
+        return p;
+    }
+
+    /** Fast Wi-Fi over the phone's own Wi-Fi Direct network (stage 2): the hotspot is off on purpose there. */
+    private static void directLink() {
+        String D = FastRules.LINK_DIRECT;
+        FastRules.Card old = FastRules.card(true, D, FastRules.WAITING, "", directPhone(null, false, ""), "");
+        yes(old.line.contains("has no Wi-Fi network of its own"), "a phone app without the network: update it, or use the hotspot");
+        eq(FastRules.Action.NONE, old.action, "nothing to press for an old app");
+
+        FastRules.Card off = FastRules.card(true, D, FastRules.WAITING, "", directPhone(Boolean.FALSE, false, ""), "");
+        eq(FastRules.Action.DIRECT_ON, off.action, "the phone's network is off: a button switches it on");
+        eq("Switch it on", off.actionLabel, "its label");
+        yes(!off.line.contains("hotspot is off."), "never the hotspot complaint over this link");
+
+        FastRules.Card up = FastRules.card(true, D, FastRules.WAITING, "", directPhone(Boolean.TRUE, true, ""), "");
+        eq(FastRules.Action.WIFI_SETTINGS, up.action, "the network is up, the tablet not on it yet: Wi-Fi settings at hand");
+        yes(up.line.contains(FastRules.FAST_NET) && up.line.contains("Allow suggested Wi-Fi networks"), "names the network and Android's question");
+
+        FastRules.Card notUp = FastRules.card(true, D, FastRules.WAITING, "", directPhone(Boolean.TRUE, false, "Wi-Fi Direct is busy"), "");
+        eq(FastRules.Action.DIRECT_ON, notUp.action, "the mode is on but the network is not up: try again");
+        yes(notUp.line.endsWith("Wi-Fi Direct is busy."), "with the phone's reason");
+
+        FastRules.Card on = FastRules.card(true, D, FastRules.ON, "", directPhone(Boolean.TRUE, true, ""), "Now 30.0 Mbit/s down, 2.0 up.");
+        eq(FastRules.GREEN, on.tone, "on over its own network: green");
+        eq(FastRules.Action.NONE, on.action, "and nothing to press");
+
+        FastRules.Card overHotspot = FastRules.card(true, D, FastRules.ON, "", directPhone(Boolean.FALSE, false, ""), "");
+        eq(FastRules.GREEN, overHotspot.tone, "on, but over the hotspot (its network was ended): still on");
+        eq(FastRules.Action.DIRECT_ON, overHotspot.action, "with a button back to its own network");
+        yes(overHotspot.line.contains("over the phone's hotspot now"), "and says which Wi-Fi carries it");
+
+        // the hotspot link never shows the Direct words, the Direct link never the hotspot button
+        FastRules.Card hs = FastRules.card(true, FastRules.LINK_HOTSPOT, FastRules.WAITING, "", directPhone(Boolean.TRUE, true, ""), "");
+        eq(FastRules.Action.HOTSPOT_ON, hs.action, "hotspot link with the phone in its own-network mode: Turn the hotspot on");
+        FastRules.Card notWanted = FastRules.card(false, D, FastRules.OFF, "", directPhone(Boolean.TRUE, true, ""), "");
+        eq(FastRules.Action.NONE, notWanted.action, "not wanted: nothing to press, whatever the link");
+    }
+
     /** Every combination: never green unless ON, a button only with its label, the pick always follows the wish. */
     private static void everything() {
         String[] states = {FastRules.OFF, FastRules.WAITING, FastRules.ON, FastRules.PERMISSION};
@@ -116,8 +161,20 @@ public final class FastRulesTest {
                         for (boolean allowed : new boolean[] {false, true}) {
                             for (String err : new String[] {"", "e"}) {
                                 for (Boolean h : hs) {
-                                    FastRules.Card c = FastRules.card(wanted, st, "d", phone(known, hasFast, allowed, err, h), "s");
+                                  for (String link : new String[] {FastRules.LINK_HOTSPOT, FastRules.LINK_DIRECT}) {
+                                   for (Boolean dir : new Boolean[] {null, Boolean.FALSE, Boolean.TRUE}) {
+                                    FastRules.Phone ph = phone(known, hasFast, allowed, err, h);
+                                    ph.direct = dir;
+                                    ph.directUp = Boolean.TRUE.equals(dir);
+                                    FastRules.Card c = FastRules.card(wanted, link, st, "d", ph, "s");
                                     n++;
+                                    if (FastRules.LINK_DIRECT.equals(link) && c.action == FastRules.Action.HOTSPOT_ON) {
+                                        yes(false, "the Direct link never offers to turn the hotspot on");
+                                    }
+                                    if (FastRules.LINK_HOTSPOT.equals(link)) {
+                                        yes(c.action != FastRules.Action.DIRECT_ON && c.action != FastRules.Action.WIFI_SETTINGS,
+                                                "the hotspot link never offers the phone's own network");
+                                    }
                                     eq(wanted ? 1 : 0, c.pick, "pick follows the wish");
                                     if (c.tone == FastRules.GREEN) {
                                         yes(wanted && FastRules.ON.equals(st), "green only when on");
@@ -133,6 +190,8 @@ public final class FastRulesTest {
                                     if (c.line.contains("Fast Wi-Fi is on")) {
                                         yes(FastRules.ON.equals(st), "never says on unless on");
                                     }
+                                   }
+                                  }
                                 }
                             }
                         }
@@ -140,7 +199,7 @@ public final class FastRulesTest {
                 }
             }
         }
-        yes(n == 2 * 4 * 2 * 2 * 2 * 2 * 3, "all combinations seen");
+        yes(n == 2 * 4 * 2 * 2 * 2 * 2 * 3 * 2 * 3, "all combinations seen");
     }
 
     private static void probe() {

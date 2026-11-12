@@ -313,6 +313,7 @@ public final class FastCodecTest {
         keys.add(FastProto.key("b"));
         byte[] k = FastProto.key("b");
         yes(FastProto.knownKey(keys, k, 0, 16), "a paired tablet's key is known");
+        yes(FastProto.knownKey(keys, FastProto.key("a"), 0, 16), "the first paired tablet's key is known too (not only the last)");
         yes(FastProto.knownKey(keys, k, 0, 8), "its first 8 bytes are known (UDP)");
         k[15] ^= 1;
         yes(!FastProto.knownKey(keys, k, 0, 16), "one bit wrong is unknown");
@@ -372,6 +373,10 @@ public final class FastCodecTest {
         eq(0, Ip4.u16(b, 10), "and not counted");
         byte[] junk = FastProto.servfail(new byte[] {1, 2, 3});
         eq(12, junk.length, "something too short still gives a header");
+        // a name given as a compression pointer ends there (2 bytes), then type and class
+        byte[] ptr = new byte[] {0x12, 0x34, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, (byte) 0xC0, 0x0C, 0, 1, 0, 1};
+        eq(18, FastProto.questionEnd(ptr), "a pointer name is two bytes long");
+        eq(18, FastProto.servfail(ptr).length, "and the SERVFAIL keeps exactly that question");
         byte[] loop = q.clone();
         loop[12] = (byte) 0x80; // a label length that is not one
         eq(12, FastProto.servfail(loop).length, "an unreadable name gives the header alone");

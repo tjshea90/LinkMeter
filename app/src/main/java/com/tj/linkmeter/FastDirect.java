@@ -34,8 +34,8 @@ final class FastDirect {
 
     private static HandlerThread thread;
     private static Handler h;
-    private static WifiP2pManager p2p;
-    private static WifiP2pManager.Channel channel;
+    private static volatile WifiP2pManager p2p;
+    private static volatile WifiP2pManager.Channel channel;
     private static BroadcastReceiver watcher;
     /** The group is up now (as Android last said). */
     static volatile boolean up;
@@ -296,7 +296,12 @@ final class FastDirect {
             }
         };
         try {
-            c.getApplicationContext().registerReceiver(watcher, new IntentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION));
+            IntentFilter f = new IntentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
+            if (Build.VERSION.SDK_INT >= 33) {
+                c.getApplicationContext().registerReceiver(watcher, f, Context.RECEIVER_NOT_EXPORTED); // the system's own still arrive
+            } else {
+                c.getApplicationContext().registerReceiver(watcher, f);
+            }
         } catch (RuntimeException e) {
             watcher = null;
         }

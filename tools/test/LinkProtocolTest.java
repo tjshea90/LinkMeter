@@ -304,7 +304,8 @@ public final class LinkProtocolTest {
                 check(RemoteRoutes.cutsLink(a, (m & 1) != 0, (m & 2) != 0), a + " always takes the link away");
             }
         }
-        for (String a : new String[] {"hotspot_off", "hotspot_restart", "radio_cycle", "standby", "hotspot_on", "boot_hotspot_on", "wifi_on"}) {
+        for (String a : new String[] {"hotspot_off", "hotspot_restart", "radio_cycle", "standby", "hotspot_on", "boot_hotspot_on", "wifi_on",
+            "fast_direct_on", "fast_direct_off"}) {
             check(RemoteRoutes.cutsLink(a, false, true) && RemoteRoutes.cutsLink(a, false, false), a + " cuts the hotspot route");
             check(!RemoteRoutes.cutsLink(a, true, true) && !RemoteRoutes.cutsLink(a, true, false), a + " leaves Bluetooth up: the real result comes back");
         }
@@ -313,9 +314,15 @@ public final class LinkProtocolTest {
         check(!RemoteRoutes.cutsLink("wifi_off", true, true) && !RemoteRoutes.cutsLink("wifi_off", true, false), "Wi-Fi off over Bluetooth");
         check(RemoteRoutes.cutsLink("wifi_off", false, null), "Wi-Fi off, and the phone cannot tell whether its hotspot is on: answer first, the safe side");
         check(!RemoteRoutes.cutsLink("wifi_off", true, null), "Wi-Fi off over Bluetooth stays act-then-answer whatever the hotspot does");
-        for (String a : new String[] {"poweroff", "reboot", "airplane_on", "hotspot_off", "hotspot_restart", "radio_cycle", "standby", "hotspot_on", "wifi_on"}) {
+        for (String a : new String[] {"poweroff", "reboot", "airplane_on", "hotspot_off", "hotspot_restart", "radio_cycle", "standby", "hotspot_on", "wifi_on",
+            "fast_direct_on", "fast_direct_off"}) {
             check(RemoteRoutes.cutsLink(a, false, null), a + " over the network, hotspot not known: answered first as before");
         }
+        // Fast Wi-Fi's own network (docs/FAST_WIFI.md): switching it on ends the hotspot the request came over, switching it off ends
+        // the network the request came over; over Bluetooth both act first and answer with the real result
+        check(!RemoteRoutes.cutsLink("fast_direct_on", true, true, true), "fast_direct_on over Bluetooth: the real result comes back");
+        check(!RemoteRoutes.cutsLink("fast_direct_off", true, false, false), "fast_direct_off over Bluetooth: the real result comes back");
+        check(!RemoteRoutes.cutsLink("fast_allow", false, true), "fast_allow cuts nothing: answered after it is done");
         // "Hotspot off" in its deep form (hotspot, location, airplane mode, screen): airplane mode can restart Bluetooth under the
         // request, so it is answered first on EVERY route, whatever the phone says about its hotspot or airplane mode
         for (int m = 0; m < 8; m++) {

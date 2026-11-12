@@ -32,6 +32,7 @@ public class FastPreviewTest {
         FastVpn.state = FastVpn.State.OFF;
         FastVpn.detail = "";
         Cfg.setFastWanted(RuntimeEnvironment.getApplication(), false);
+        Cfg.setFastLink(RuntimeEnvironment.getApplication(), FastRules.LINK_HOTSPOT);
     }
 
     /** The pretend phone's status with Fast Wi-Fi's part (null: an older phone app without it). */
@@ -162,6 +163,71 @@ public class FastPreviewTest {
         check(shows(root(a), "uses the phone's hotspot as usual"), "and the card says so at once");
     }
 
+    // ------------------------------------------------------------------------------------------------ stage 2: the phone's own network
+
+    static final String DIRECT_OFF = "{\"v\":1,\"port\":8767,\"allowed\":true,\"on\":true,\"direct\":false,\"dup\":false,"
+            + "\"ssid\":\"DIRECT-LM-LinkMeter\",\"pass\":\"abcdefgh2345mnpq\"}";
+    static final String DIRECT_UP = DIRECT_OFF.replace("\"direct\":false,\"dup\":false", "\"direct\":true,\"dup\":true");
+
+    @Test
+    public void directLinkSwitchesThePhone() throws Exception {
+        Pretend p = phone(true, DIRECT_OFF);
+        Cfg.setFastLink(RuntimeEnvironment.getApplication(), FastRules.LINK_DIRECT);
+        MainActivity a = tablet();
+        settle();
+        check(Cfg.fastSsid(RuntimeEnvironment.getApplication()).equals("DIRECT-LM-LinkMeter"), "the tablet keeps the network's name");
+        check(Cfg.fastPass(RuntimeEnvironment.getApplication()).equals("abcdefgh2345mnpq"), "and its password");
+        press(a, "Fast Wi-Fi");
+        settle();
+        check(Cfg.fastWanted(RuntimeEnvironment.getApplication()), "Fast Wi-Fi is wanted");
+        check(p.asked("/act?name=fast_direct_on"), "the phone is asked to switch its hotspot off and its own network on");
+        shot(a, "fast-direct-switching");
+    }
+
+    @Test
+    public void directNetworkUpTabletJoining() throws Exception {
+        phone(false, DIRECT_UP);
+        Cfg.setFastLink(RuntimeEnvironment.getApplication(), FastRules.LINK_DIRECT);
+        Cfg.setFastWanted(RuntimeEnvironment.getApplication(), true);
+        FastVpn.state = FastVpn.State.WAITING;
+        MainActivity a = tablet();
+        settle();
+        check(shows(root(a), "The phone's own Wi-Fi network (DIRECT-LM-LinkMeter) is on"), "the card names the network");
+        check(PreviewTest.findButton(root(a), "Wi-Fi settings") != null, "with Wi-Fi settings at hand");
+        check(!shows(root(a), "Fast Wi-Fi runs over the phone's hotspot, and the hotspot is off"), "no hotspot complaint over this link");
+        shot(a, "fast-direct-joining");
+    }
+
+    @Test
+    public void hotspotChoiceEndsTheOwnNetwork() throws Exception {
+        Pretend p = phone(false, DIRECT_UP);
+        Cfg.setFastLink(RuntimeEnvironment.getApplication(), FastRules.LINK_DIRECT);
+        Cfg.setFastWanted(RuntimeEnvironment.getApplication(), true);
+        FastVpn.state = FastVpn.State.ON;
+        MainActivity a = tablet();
+        settle();
+        press(a, "Hotspot");
+        settle();
+        check(!Cfg.fastWanted(RuntimeEnvironment.getApplication()), "Fast Wi-Fi is off");
+        check(p.asked("/act?name=fast_direct_off"), "the phone is asked to switch its own network off and the hotspot on");
+    }
+
+    @Test
+    public void joiningBannerOverBluetooth() throws Exception {
+        Pretend p = phone(false, DIRECT_UP);
+        p.via = "bt";
+        PreviewTest.linkProved();
+        Cfg.setFastLink(RuntimeEnvironment.getApplication(), FastRules.LINK_DIRECT);
+        Cfg.setFastWanted(RuntimeEnvironment.getApplication(), true);
+        FastVpn.state = FastVpn.State.WAITING;
+        MainActivity a = tablet();
+        settle();
+        check(shows(root(a), "The tablet is joining Fast Wi-Fi's network"), "over Bluetooth: the banner says the hotspot is off on purpose");
+        check(findText(root(a), "The phone's hotspot is off") == null, "and not the old title that calls the hotspot off a problem");
+        check(PreviewTest.findButton(root(a), "Turn the hotspot on") == null, "nor its button");
+        shot(a, "fast-direct-banner");
+    }
+
     @Test
     public void settingsCard() throws Exception {
         phone(true, READY);
@@ -169,6 +235,7 @@ public class FastPreviewTest {
         a.openTab(Tab.SETTINGS);
         settle();
         check(findText(root(a), "Steer apps to their faster way (recommended)") != null, "the QUIC choice is in Settings");
+        check(PreviewTest.findButton(root(a), "Its own Wi-Fi") != null, "and the choice of Fast Wi-Fi's Wi-Fi");
         PreviewTest.shot(a, "fast-settings");
     }
 }
