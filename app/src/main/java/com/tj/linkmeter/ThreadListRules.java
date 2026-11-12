@@ -127,16 +127,20 @@ final class ThreadListRules {
         return false;
     }
 
-    /** The grey line under the name: the last text on one line, or what is in it that is not text; nothing readable when previews are hidden. */
+    /**
+     * The grey line under the name: the last text on one line, or what is in it that is not text; nothing readable when previews are
+     * hidden. "No messages" is only for a conversation that really has none: when the phone says there are messages but gives no words
+     * (an older phone app, or a message with nothing to read in it) the line says so and does not say there is nothing.
+     */
     static String preview(Sms.Thread t, boolean hide) {
         if (hide) {
             return t.unread ? "New message" : "Message";
         }
-        String s = t.snippet == null ? "" : t.snippet.replaceAll("\\s+", " ").trim();
-        if (s.isEmpty()) {
-            return t.attachment ? "Attachment" : "No messages";
+        String s = SmsPreview.line(t.snippet, t.attachment);
+        if (!s.isEmpty()) {
+            return s;
         }
-        return s;
+        return t.unread ? "New message" : t.count > 0 ? "Message" : "No messages";
     }
 
     /** The name to show: the contact's name, or the number written nicely. */

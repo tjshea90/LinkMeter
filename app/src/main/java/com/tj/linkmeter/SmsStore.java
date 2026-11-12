@@ -17,12 +17,15 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -46,6 +49,10 @@ final class SmsStore {
     private static final long SAFETY_MS = 30_000;
     /** Without a working observer a scan is reused this long. */
     private static final long UNWATCHED_MS = 2_000;
+    /** How many conversations get their grey line read from the messages themselves in one scan (the newest ones; the tablet shows 100). */
+    private static final int PREVIEW_BATCH = 150;
+    /** How many times the messages are asked for again, without the busy conversations that used up an answer. */
+    private static final int PREVIEW_ROUNDS = 4;
 
     private static final String[] THREAD_COLS = {"_id", "date", "message_count", "recipient_ids", "snippet", "read", "has_attachment"};
     private static final String[] SMS_COLS = {"_id", "address", "body", "date", "type", "read", "status", "thread_id"};
@@ -531,8 +538,7 @@ final class SmsStore {
                     if (fresh || date > t.time) {
                         t.time = date;
                         t.providerId = id;
-                        String snip = str(c, "snippet");
-                        t.snippet = snip.isEmpty() && lng(c, "has_attachment", 0) == 1 ? "Attachment" : snip;
+                        t.snippet = str(c, "snippet"); // empty for a picture message without a subject: fillPreviews reads the message itself
                     }
                 }
             } catch (RuntimeException e) {
@@ -541,6 +547,7 @@ final class SmsStore {
             if (byKey.isEmpty()) {
                 fromMessages(byKey, ids, max);
             }
+            fillPreviews(byKey.values());
             idsByKey.putAll(ids); // not cleared: a short look at the newest conversations must not forget the older ones
             List<Sms.Thread> out = new ArrayList<>(byKey.values());
             Collections.sort(out, new Comparator<Sms.Thread>() {
@@ -585,6 +592,119 @@ final class SmsStore {
         } catch (RuntimeException e) {
             // nothing readable at all
         }
+    }
+
+    private static String idList(Collection<Long> ids) {
+        StringBuilder sb = new StringBuilder();
+        for (Long id : ids) {
+            sb.append(sb.length() > 0 ? "," : "").append(id.longValue());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * The grey line of a conversation is the database's snippet, and Android fills that from the SUBJECT of a picture message, so a
+     * picture message without a subject (every group text, a picture with a caption) leaves it empty although the conversation is
+     * unread. For those conversations the newest message itself is read, for all of them together: a few queries, never one per
+     * conversation. Nothing is kept between scans: the parts of a picture message are written after its row, so a kept answer could
+     * stay empty for good, while the next change of the database always makes a new scan.
+     */
+    private void fillPreviews(Collection<Sms.Thread> all) {
+        Map<Long, Sms.Thread> blank = new LinkedHashMap<>(); // database thread id -> conversation, newest first
+        for (Sms.Thread t : all) {
+            if (blank.size() < PREVIEW_BATCH && t.providerId > 0 && SmsPreview.blank(t.snippet)) {
+                blank.put(t.providerId, t);
+            }
+        }
+        if (!blank.isEmpty()) {
+            Map<Long, Sms.Msg> texts = newestTexts(blank.keySet());
+            Map<Long, Sms.Msg> pictures = newestPictures(blank.keySet());
+            for (Map.Entry<Long, Sms.Thread> e : blank.entrySet()) {
+                Sms.Msg m = SmsPreview.newer(texts.get(e.getKey()), pictures.get(e.getKey()));
+                String line = SmsPreview.line(m);
+                if (!line.isEmpty()) {
+                    e.getValue().snippet = line;
+                    e.getValue().attachment |= !m.parts.isEmpty();
+                }
+            }
+        }
+        for (Sms.Thread t : all) { // what could not be read keeps the old rule: only files in it
+            if (t.attachment && SmsPreview.blank(t.snippet)) {
+                t.snippet = SmsPreview.ATTACHMENT;
+            }
+        }
+    }
+
+    /**
+     * The newest text of each of the given conversations. The rows come newest first, so the first one seen of a conversation is its
+     * newest. A very busy conversation can use up the whole answer; the ones that did not show up are then asked for again without it.
+     */
+    private Map<Long, Sms.Msg> newestTexts(Set<Long> threadIds) {
+        Map<Long, Sms.Msg> out = new HashMap<>();
+        Set<Long> left = new LinkedHashSet<>(threadIds);
+        for (int round = 0; round < PREVIEW_ROUNDS && !left.isEmpty(); round++) {
+            int limit = Math.min(300, left.size() * 4 + 20);
+            int rows = 0;
+            try (Cursor c = query(SMS, SMS_COLS, "thread_id IN (" + idList(left) + ")", null, "date DESC", limit)) {
+                while (c != null && rows < limit && c.moveToNext()) {
+                    rows++;
+                    long tid = lng(c, "thread_id", -1);
+                    if (left.contains(tid) && !out.containsKey(tid)) {
+                        out.put(tid, textFrom(c, ""));
+                    }
+                }
+            } catch (RuntimeException e) {
+                break; // unreadable: those conversations keep what the database says
+            }
+            if (rows < limit) {
+                break; // the answer was not cut short, so the conversations that did not show up have no text
+            }
+            left.removeAll(out.keySet());
+        }
+        return out;
+    }
+
+    /**
+     * The newest picture message of each of the given conversations, with its words and files, as {@link #newestTexts} finds the texts.
+     * The notices that a picture message is waiting are not messages and are passed over, as in a conversation.
+     */
+    private Map<Long, Sms.Msg> newestPictures(Set<Long> threadIds) {
+        Map<Long, Sms.Msg> byThread = new HashMap<>();
+        Map<Long, Sms.Msg> byMid = new LinkedHashMap<>();
+        Map<Long, String> subjects = new HashMap<>();
+        Set<Long> left = new LinkedHashSet<>(threadIds);
+        for (int round = 0; round < PREVIEW_ROUNDS && !left.isEmpty(); round++) {
+            int limit = Math.min(300, left.size() * 4 + 20);
+            int rows = 0;
+            try (Cursor c = query(MMS, MMS_COLS, "thread_id IN (" + idList(left) + ")", null, "date DESC", limit)) {
+                while (c != null && rows < limit && c.moveToNext()) {
+                    rows++;
+                    long tid = lng(c, "thread_id", -1);
+                    int mtype = (int) lng(c, "m_type", 132);
+                    if (!left.contains(tid) || byThread.containsKey(tid) || mtype == 130 || mtype == 131) {
+                        continue;
+                    }
+                    long mid = lng(c, "_id", 0);
+                    Sms.Msg m = new Sms.Msg();
+                    m.id = "m" + mid;
+                    m.mms = true;
+                    m.time = lng(c, "date", 0) * 1000L; // this table counts in seconds
+                    byThread.put(tid, m);
+                    byMid.put(mid, m);
+                    subjects.put(mid, str(c, "sub"));
+                }
+            } catch (RuntimeException e) {
+                break;
+            }
+            if (rows < limit) {
+                break;
+            }
+            left.removeAll(byThread.keySet());
+        }
+        if (!byMid.isEmpty()) {
+            loadParts(byMid, subjects);
+        }
+        return byThread;
     }
 
     List<Sms.Thread> threads(int limit) {

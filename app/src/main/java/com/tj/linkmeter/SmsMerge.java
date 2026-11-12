@@ -88,7 +88,7 @@ final class SmsMerge {
             }
             if (m.time >= t.time) {
                 t.time = m.time;
-                t.snippet = m.body.isEmpty() && !m.parts.isEmpty() ? "Attachment" : m.body;
+                t.snippet = SmsPreview.line(m);
                 t.attachment |= !m.parts.isEmpty();
             }
         }

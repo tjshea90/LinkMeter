@@ -1206,7 +1206,94 @@ public final class TextsLogicTest {
         eq("", c.nameOf("5553334444"), "forgetting everything forgets the names too");
     }
 
+    // ------------------------------------------------------------------ the grey line of the list
+
+    static Sms.Msg picture(long time, String body, String... fileTypes) {
+        Sms.Msg m = msg("m" + time, false, body, time);
+        m.mms = true;
+        for (String type : fileTypes) {
+            Sms.Part p = new Sms.Part();
+            p.type = type;
+            m.parts.add(p);
+        }
+        return m;
+    }
+
+    /** The line, worked out a second way (no helper of the app used), for the exhaustive check below. */
+    static String wantedLine(String snippet, boolean files, boolean unread, int count, boolean hide) {
+        if (hide) {
+            return unread ? "New message" : "Message";
+        }
+        String words = snippet == null ? "" : snippet.replace('\n', ' ').replace('\t', ' ').trim();
+        while (words.contains("  ")) {
+            words = words.replace("  ", " ");
+        }
+        if (!words.isEmpty()) {
+            return words;
+        }
+        if (files) {
+            return "Attachment";
+        }
+        return unread ? "New message" : count > 0 ? "Message" : "No messages";
+    }
+
+    static void previewLines() {
+        // the rule itself
+        eq("", SmsPreview.clean(null), "no text at all is empty");
+        eq("a b c", SmsPreview.clean("  a\n\n b\t c \r\n"), "line breaks and runs of spaces become one space");
+        yes(SmsPreview.blank(null) && SmsPreview.blank("") && SmsPreview.blank(" \n\t "), "nothing to read is blank");
+        yes(!SmsPreview.blank(" . "), "a dot is something to read");
+        eq("see you at 5", SmsPreview.line("see you at 5", false), "the words");
+        eq("see you at 5", SmsPreview.line("see you at 5", true), "words win over files: a picture with a caption shows the caption");
+        eq("Attachment", SmsPreview.line("  \n", true), "only files");
+        eq("", SmsPreview.line("", false), "nothing at all gives no line");
+        eq("", SmsPreview.line((Sms.Msg) null), "no message gives no line");
+        eq("group text", SmsPreview.line(picture(5000, "group text")), "a picture message that is only words (the case that showed 'No messages')");
+        eq("Attachment", SmsPreview.line(picture(5000, "", "image/jpeg")), "a picture message with only a picture");
+        eq("look!", SmsPreview.line(picture(5000, "look!", "image/jpeg")), "a picture message with a caption");
+        // which of the newest text and the newest picture message is the last message
+        Sms.Msg text = msg("s1", false, "text", 5000);
+        Sms.Msg pic = picture(6000, "pic");
+        yes(SmsPreview.newer(text, pic) == pic, "the picture message is newer");
+        yes(SmsPreview.newer(pic, text) == pic, "whatever the order they are given in");
+        yes(SmsPreview.newer(msg("s2", false, "text", 7000), pic).body.equals("text"), "the text is newer");
+        yes(SmsPreview.newer(text, picture(5000, "pic")) == text, "at the same moment the text wins");
+        yes(SmsPreview.newer(text, null) == text && SmsPreview.newer(null, pic) == pic && SmsPreview.newer(null, null) == null, "either may be missing");
+        // the list row: the words of the last message, as in every messaging app
+        eq("dinner? yes", ThreadListRules.preview(thread("9", "x", "dinner?\n  yes", 1, true, 3), false), "unread, words");
+        // THE BUG OF 2026-11-12: a lit-up conversation said "No messages" because the phone sent no words
+        eq("New message", ThreadListRules.preview(thread("9", "x", "", 1, true, 3), false), "unread, the phone sent no words: not 'No messages'");
+        eq("Message", ThreadListRules.preview(thread("9", "x", "", 1, false, 3), false), "read, the phone sent no words: not 'No messages'");
+        eq("Message", ThreadListRules.preview(thread("9", "x", "  \n ", 1, false, 1), false), "only blanks are no words");
+        eq("No messages", ThreadListRules.preview(thread("9", "x", "", 1, false, 0), false), "a conversation with nothing in it");
+        Sms.Thread files = thread("9", "x", "", 1, true, 2);
+        files.attachment = true;
+        eq("Attachment", ThreadListRules.preview(files, false), "files and no words");
+        files.snippet = "the photo";
+        eq("the photo", ThreadListRules.preview(files, false), "files and words: the words");
+        eq("New message", ThreadListRules.preview(files, true), "hidden previews stay hidden");
+        // every combination against the second way of working it out
+        String[] snippets = {null, "", " ", "\n \t", "hi", "  hi  there\n", "a\nb\nc", "code 123456", "😀"};
+        for (String s : snippets) {
+            for (int bits = 0; bits < 8; bits++) {
+                boolean files2 = (bits & 1) != 0;
+                boolean unread = (bits & 2) != 0;
+                boolean hide = (bits & 4) != 0;
+                for (int count : new int[] {0, 1, 40}) {
+                    Sms.Thread t = thread("9", "x", s, 1, unread, count);
+                    t.attachment = files2;
+                    String want = wantedLine(s, files2, unread, count, hide);
+                    eq(want, ThreadListRules.preview(t, hide), "line for '" + s + "' files=" + files2 + " unread=" + unread + " count=" + count + " hide=" + hide);
+                    if (!hide && count > 0) {
+                        yes(!ThreadListRules.preview(t, false).equals("No messages"), "never 'No messages' for a conversation that has messages: '" + s + "'");
+                    }
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) throws Exception {
+        previewLines();
         names();
         emoji();
         contactBook();

@@ -141,6 +141,10 @@ public final class SmsPureTest {
         Sms.Msg photo = msg("o4", "888", true, "", 6000);
         photo.parts.add(new Sms.Part());
         check(SmsMerge.threads(Arrays.asList(p2), Arrays.asList(photo)).get(0).snippet.equals("Attachment"), "a message with only a picture is called Attachment");
+        Sms.Msg caption = msg("o5", "888", true, "look at this\n  one", 6500);
+        caption.parts.add(new Sms.Part());
+        check(SmsMerge.threads(Arrays.asList(p2), Arrays.asList(caption)).get(0).snippet.equals("look at this one"), "a picture with words gives the words, on one line");
+        check(SmsMerge.threads(Arrays.asList(p2), Arrays.asList(msg("o6", "888", true, "  ", 6600))).get(0).snippet.isEmpty(), "a message of blanks gives no words");
         // random: the result is always sorted and never has two copies of one logged id
         Random rnd = new Random(2);
         for (int round = 0; round < 500; round++) {
