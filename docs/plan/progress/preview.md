@@ -22,4 +22,12 @@ PLAN (small):
    deliberate breakages, `tools/test.sh`, `./gradlew --no-daemon assembleRelease`, picture of the list row (TextsPreviewTest).
 6. docs: HANDOFF.md RESUME block line, docs/TEXTS_OVERHAUL.md "Round 3" short section. Closing save = plain `tools/checkpoint.sh` (release).
 COMMIT TRAILER for this session (no model name in pushed text): "Co-Authored-By: Claude <noreply@anthropic.com>" + "Claude-Session: https://claude.ai/code/session_01UWi8Zxsa9YkVLv6J9L7899"
-DONE SO FAR: read the code, designed (above). Nothing changed in app/ yet.
+DONE SO FAR (2026-11-12, wip commits d100b85, 2145dac on the branch):
+- code: app SmsPreview.java (new, pure), SmsStore.fillPreviews/newestTexts/newestPictures (+ PREVIEW_BATCH 150, PREVIEW_ROUNDS 4), ThreadListRules.preview,
+  SmsMerge uses SmsPreview.line; tools/test.sh compiles SmsPreview in the two Texts steps.
+- tests: tools/test.sh passes (TextsLogicTest 312,002 checks); NEW tools/uipreview/.../SmsStoreListTest (16 cases, real SmsStore over SQLite, all pass, 14 s);
+  PretendSms.noWordsWhenUnread + TextsPreviewTest.listWhenThePhoneSendsNoWords (picture texts-list-no-words, NOT RUN YET).
+- breakages: tools/mutate_preview.py: pure 13/13 caught; store 11 running in a git worktree (log in scratchpad mut-store.log, first 3 caught).
+- docs: docs/TEXTS_OVERHAUL.md 'Round 3', docs/APP_REFERENCE.md line. HANDOFF.md RESUME bullet NOT written yet.
+TO DO: store breakages result; ./gradlew --no-daemon assembleRelease; tools/preview.sh --tests "com.tj.linkmeter.TextsPreviewTest" and LOOK at texts-list*.png;
+HANDOFF.md bullet (after 'TEXTS ROUND 2'); closing save = plain tools/checkpoint.sh (release); check the run + release; give the releases page.
