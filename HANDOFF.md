@@ -66,8 +66,9 @@ session's transcript.
     Messages and iPhones use, folded onto the bubble here, pill with counts, tap = who; Spanish iPhone words read; `SmsReactions.textFor`);
     the list's newest line from what the tablet knows and by asking for rows without words (`ThreadListRules.Known`, `askForWords`). NOT
     BUILT: "You: " before my own last message (needs the phone to say who sent each row's newest message). Tests: `tools/test.sh`
-    (`TextsRound4Test`, 17,566 checks), `tools/preview.sh --tests "com.tj.linkmeter.TextsRound4PreviewTest"` (10 scenarios) and
-    `TextsPreviewTest` (43 Texts screen tests pass), `python3 tools/mutate_texts4.py` (27 pure + 9 screen breakages). ASK THE USER: does a
+    (`TextsRound4Test`, 17,566 checks), `tools/preview.sh --tests "com.tj.linkmeter.TextsRound4PreviewTest"` (8 scenarios) and
+    `TextsPreviewTest` (35; the whole preview: 182 tests, 0 failed), `python3 tools/mutate_texts4.py` (27 pure + 9 screen
+    breakages, all caught; the one first missed was a gap in the test, closed). ASK THE USER: does a
     conversation now open at its end and stay there with the keyboard; does "Sending…" turn into "Sent" by itself (also after attaching a
     photo); is the number on the Texts button right; how do the reactions look on the friend's phone (Google Messages: an emoji on the
     message; iPhone: the words); do Spanish reactions from an iPhone still arrive as texts of their own (then: their exact words)?
