@@ -1,12 +1,14 @@
 STATUS: WORKING
 TASK: Fast Wi-Fi (docs/FAST_WIFI.md), started from commit 94cf07e on branch ccr-2d14c7bc-moxme2
-DONE SO FAR: stage 1 complete in code: Ip4, FastProto (hello, ping, servfail, routes), TunStack, FastRelayCore, FastRelay (phone),
-  FastVpn (tablet VpnService, AndroidTun poll+pipe, probe=ping, fallback to normal hotspot, retry backoff 30s..5min), FastRules,
-  FastCard (Home), FastTile (QS tile, ic_fast.xml), PhoneTab.buildFast, SettingsTab.buildFast, MainActivity.startFastWifi/REQ_VPN/
-  EXTRA_FAST, BootReceiver auto start, Actions fast_allow, Status "fast", Net.wifi skips VPN. Tests: FastCodecTest 278, FastRulesTest
-  1517 (in tools/test.sh), tools/fast_e2e.sh 21/21, FastPreviewTest 8/8 (pictures looked at). Docs: FAST_WIFI.md, USER_GUIDE,
-  SAFETY section 11, APP_REFERENCE, HANDOFF entry.
-IN PROGRESS NOW: full tools/test.sh + assembleRelease, then closing save (plain tools/checkpoint.sh = release), check run + release.
-NEXT: stage 2 Wi-Fi Direct (phone: WifiP2pManager group 2.4 GHz, NEARBY_WIFI_DEVICES, Wi-Fi on via Shizuku, hotspot off; tablet:
-  WifiNetworkSuggestion for DIRECT-LM network; automation hotspot <-> Wi-Fi Direct; relay unchanged).
-LEARNED: Pretend in uipreview answers non-hotspot actions "Done."; preview single class: tools/preview.sh --tests "com.tj.linkmeter.FastPreviewTest".
+DONE SO FAR: stage 1 RELEASED v0.2.173 (commit 40ea7bc, run 173 green). Stage 2 code done + compiles: phone FastDirect (group
+  DIRECT-LM-LinkMeter 2.4 GHz, Cfg.fastDirect, resume at service start, watcher recreates), actions fast_direct_on/off (RemoteRoutes
+  cutsLink), Actions.perform: hotspot buttons call FastDirect.end first; status fast.direct/dup/ssid/pass/derr; NEARBY_WIFI_DEVICES
+  (manifest neverForLocation, Allow everything grants); tablet Cfg.fastLink/fastSsid/fastPass, TabletDirect (suggestion+scan),
+  FastCard sendDirect, FastRules direct words (Action DIRECT_ON, WIFI_SETTINGS), Settings choice, HomeTab joining banner.
+  Tests: FastRulesTest 10005, FastCodecTest 281, LinkProtocolTest 1927, FastPreviewTest 12/12; mutate_fast.py pure 26/26 caught.
+  Docs: FAST_WIFI.md Stage 2 section + status, USER_GUIDE, SAFETY 11, HANDOFF.
+IN PROGRESS NOW: python3 tools/mutate_fast.py e2e (11 engine/relay breakages on the real tun; log in scratchpad mutate_e2e.log).
+NEXT: full tools/preview.sh (all scenarios, check nothing old broke), tools/test.sh, assembleRelease, closing save (release),
+  check run + release, note commit with the number; final message to the user.
+LEARNED: FastPreviewTest shows() uses contains: check old titles with findText (exact). mutate e2e uses tun lmfast0: never run
+  fast_e2e.sh at the same time.
