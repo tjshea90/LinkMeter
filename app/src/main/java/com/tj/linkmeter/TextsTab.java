@@ -1222,6 +1222,86 @@ final class TextsTab extends Tab {
         renderSubtitle();
         renderBanner();
         act.setBadge(TEXTS, ThreadListRules.badge(threads, local)); // the number on the Texts button follows the list
+        askForWords();
+    }
+
+    // ------------------------------------------------------------ the newest line of every row
+
+    /** Conversations whose newest message this tablet knows itself, by key ({@link ThreadListRules.Known}). */
+    private final java.util.Map<String, ThreadListRules.Known> known = new java.util.HashMap<>();
+    /** Conversations whose newest messages were asked for, with the list's time then: each is asked once per new message. */
+    private final java.util.Map<String, Long> askedWords = new java.util.HashMap<>();
+    private boolean askingWords;
+
+    /** A conversation's newest message as this tablet has it (open here, or just sent from here): its row says it at once. */
+    void noteNewest(String key, Sms.Msg m) {
+        if (m == null) {
+            return;
+        }
+        ThreadListRules.Known k = known.get(key);
+        if (k == null || m.time >= k.time) {
+            known.put(key, ThreadListRules.Known.of(m));
+        }
+    }
+
+    /**
+     * The phone's list gave no words for some conversations (an older phone app, a picture message): their newest messages are asked
+     * for, a few at a time and one after the other (the conversation you open does not wait for them), so that every row shows its last
+     * message as the messaging apps do.
+     */
+    private void askForWords() {
+        if (askingWords || fromCopy || searching) {
+            return;
+        }
+        final List<Sms.Thread> want = new ArrayList<>();
+        for (int i = 0; i < items.size() && i < 40 && want.size() < 6; i++) {
+            Sms.Thread t = items.get(i).t;
+            Long at = askedWords.get(t.key);
+            if (ThreadListRules.needsWords(t, known.get(t.key)) && (at == null || at < t.time)) {
+                want.add(t);
+                askedWords.put(t.key, t.time);
+            }
+        }
+        if (want.isEmpty()) {
+            return;
+        }
+        askingWords = true;
+        final long my = session;
+        net.execute(() -> {
+            final java.util.Map<String, Sms.Msg> got = new java.util.HashMap<>();
+            final List<String> notAsked = new ArrayList<>();
+            boolean down = false;
+            for (Sms.Thread t : want) {
+                if (down) {
+                    notAsked.add(t.key);
+                    continue;
+                }
+                try {
+                    Sms.Convo c = remote().thread(t.key, 3);
+                    if (!c.msgs.isEmpty()) {
+                        got.put(t.key, c.msgs.get(c.msgs.size() - 1));
+                    }
+                } catch (IOException e) {
+                    down = true; // the phone is not answering: the rest are asked at the next change
+                    notAsked.add(t.key);
+                }
+            }
+            post(() -> {
+                askingWords = false;
+                for (String k : notAsked) {
+                    askedWords.remove(k);
+                }
+                if (my != session) {
+                    return;
+                }
+                for (java.util.Map.Entry<String, Sms.Msg> e : got.entrySet()) {
+                    noteNewest(e.getKey(), e.getValue());
+                }
+                if (!got.isEmpty()) {
+                    renderList();
+                }
+            });
+        });
     }
 
     // ------------------------------------------------------------ the rows
@@ -1428,7 +1508,7 @@ final class TextsTab extends Tab {
             TextsViews.bindAvatar(avatar, ThreadListRules.title(t), t.key, sel);
             name.setText(ThreadListRules.title(t));
             name.setTypeface(null, it.unread ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-            preview.setText(ThreadListRules.preview(t, prefs.hidePreviews()));
+            preview.setText(ThreadListRules.preview(t, prefs.hidePreviews(), known.get(t.key)));
             preview.setTextColor(it.unread ? Ui.FG : Ui.DIM);
             time.setText(TextTime.stamp(t.time, System.currentTimeMillis(), env()));
             time.setTextColor(it.unread && !it.muted ? Ui.ACCENT : Ui.DIM);

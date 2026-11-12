@@ -184,7 +184,11 @@ public class TextsPreviewTest {
         }
     }
 
-    /** The report of 2026-11-12: a lit-up conversation said "No messages". With no words from the phone the row says there is a new message. */
+    /**
+     * The reports of 2026-11-12: a lit-up conversation said "No messages", then: "always show the most recent message in the preview".
+     * With no words from the phone (an older phone app, a picture message) the tablet asks for the newest messages itself and the row
+     * shows the last one.
+     */
     @Test
     public void listWhenThePhoneSendsNoWords() throws Exception {
         PretendSms ph = phone();
@@ -192,12 +196,29 @@ public class TextsPreviewTest {
         MainActivity a = tablet();
         a.openTab(Tab.TEXTS);
         settle();
+        settle();
         shot(a, "texts-list-no-words");
-        // the two unread demo conversations (Alex, Mom) say so; the round button of the same name is not a text
-        check(countExact(decor(a), "New message") == 2, "both unread conversations say 'New message': " + countExact(decor(a), "New message"));
+        check(findText(decor(a), "Let me know if 7 still works for you?") != null, "Alex's row shows his newest text, asked for by the tablet");
+        check(findText(decor(a), "Great! Love you. Call me") != null, "and Mom's");
+        check(countExact(decor(a), "New message") == 0, "no row is left saying only 'New message': " + countExact(decor(a), "New message"));
         check(findText(decor(a), "No messages") == null, "and nothing says that there are no messages");
         check(findText(decor(a), "Sam Patel") != null, "the other conversations are still in the list");
         check(findText(decor(a), "Count me in") != null, "and keep their words (the weekend crew's newest message)");
+    }
+
+    /** Previews hidden (Texts settings): no words in the list, whatever the tablet knows. */
+    @Test
+    public void hiddenPreviewsStayHidden() throws Exception {
+        PretendSms ph = phone();
+        ph.noWordsWhenUnread = true;
+        new TextsPrefs(org.robolectric.RuntimeEnvironment.getApplication()).setHidePreviews(true);
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        settle();
+        check(findText(decor(a), "Let me know if 7") == null && findText(decor(a), "Great! Love you") == null, "no words in the list");
+        check(countExact(decor(a), "New message") == 2, "the two unread conversations say 'New message': " + countExact(decor(a), "New message"));
+        new TextsPrefs(org.robolectric.RuntimeEnvironment.getApplication()).setHidePreviews(false);
     }
 
     /** How many texts on the screen are exactly this. */
@@ -573,17 +594,20 @@ public class TextsPreviewTest {
         laugh.performClick();
         later(500);
         check(!menu.isShowing(), "the menu closed with the tap");
-        check(ph.outbox.size() == 1, "the phone has the reply in its record: " + ph.outbox.size());
-        check(findText(decor(a), "😂") != null, "the reply is in the conversation");
+        // since 2026-11-12 (the user's wish): a reaction on the message's corner, sent the way the messaging apps send one
+        check(ph.outbox.size() == 1 && ph.outbox.all().get(0).body.equals("Laughed at “Let me know if 7 still works for you?”"),
+                "the phone sends the reaction: " + (ph.outbox.size() > 0 ? ph.outbox.all().get(0).body : "nothing"));
+        check(findTextRaw(decor(a), "😂") != null, "the laugh sits on the message");
+        check(findText(decor(a), "Laughed at") == null, "not as a text of its own");
         check(findEdit(decor(a), "Text message").getText().length() == 0, "the box was not touched");
         shot(a, "texts-emoji-sent");
-        // my own message does not offer the row
-        findText(decor(a), "😂").performLongClick();
+        // my own message can get a reaction too (any message can, as in the messaging apps)
+        findText(decor(a), "Yes! What time should I be there?").performLongClick();
         settle();
         AlertDialog mine = ShadowAlertDialog.getLatestAlertDialog();
         check(mine != null && mine.isShowing() && mine != menu, "the menu of my own message is open");
-        check(findTextRaw(mine.getWindow().getDecorView(), "👍") == null, "my own message offers no emoji row");
-        check(findTextRaw(mine.getWindow().getDecorView(), "Details") != null, "but the usual things");
+        check(findTextRaw(mine.getWindow().getDecorView(), "👍") != null, "my own message offers the emoji row too");
+        check(findTextRaw(mine.getWindow().getDecorView(), "Details") != null, "and the usual things");
         mine.dismiss();
     }
 

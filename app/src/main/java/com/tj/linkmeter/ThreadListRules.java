@@ -159,6 +159,49 @@ final class ThreadListRules {
         return t.unread ? "New message" : t.count > 0 ? "Message" : "No messages";
     }
 
+    /**
+     * What this tablet itself knows of a conversation's newest message: it is open here, a text was just sent from here, or its newest
+     * messages were asked for because the phone's list gave no words for it (an older phone app, a picture message).
+     */
+    static final class Known {
+        final long time;
+        final String body;
+        final boolean files;
+
+        Known(long time, String body, boolean files) {
+            this.time = time;
+            this.body = body == null ? "" : body;
+            this.files = files;
+        }
+
+        static Known of(Sms.Msg m) {
+            return new Known(m.time, m.body, !m.parts.isEmpty());
+        }
+    }
+
+    /**
+     * The grey line with what the tablet knows: its newest message wins when it is at least as new as the phone's list says and has
+     * something to show (a text sent a moment ago, a conversation that is open, words the phone's list did not give).
+     */
+    static String preview(Sms.Thread t, boolean hide, Known k) {
+        if (!hide && k != null && k.time >= t.time) {
+            String s = SmsPreview.line(k.body, k.files);
+            if (!s.isEmpty()) {
+                String reaction = k.files ? null : SmsReactions.previewOf(k.body);
+                return reaction != null ? reaction : s;
+            }
+        }
+        return preview(t, hide);
+    }
+
+    /**
+     * Should the tablet ask the phone for this conversation's newest messages? The phone's list has no words for it, it has messages, and
+     * nothing the tablet knows is as new.
+     */
+    static boolean needsWords(Sms.Thread t, Known k) {
+        return SmsPreview.line(t.snippet, t.attachment).isEmpty() && (t.count > 0 || t.unread) && (k == null || k.time < t.time);
+    }
+
     /** The name to show: the contact's name, or the number written nicely. */
     static String title(Sms.Thread t) {
         if (!t.name.isEmpty()) {

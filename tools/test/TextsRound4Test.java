@@ -461,12 +461,41 @@ public final class TextsRound4Test {
         eq("See you at 7", ThreadListRules.preview(t, false), "an ordinary text as it is");
     }
 
+    /** The newest line of a row with what the tablet itself knows (the conversation is open, a text was just sent, words were asked for). */
+    static void knownPreview() {
+        Sms.Thread t = thread("1", "", 5000, true, 4); // the phone gave no words
+        eq("New message", ThreadListRules.preview(t, false, null), "nothing known: the phone's line");
+        ThreadListRules.Known k = new ThreadListRules.Known(5000, "See you at 7", false);
+        eq("See you at 7", ThreadListRules.preview(t, false, k), "known and as new: its words");
+        eq("New message", ThreadListRules.preview(t, true, k), "previews hidden: never words");
+        eq("New message", ThreadListRules.preview(t, false, new ThreadListRules.Known(4000, "older", false)), "known but older: not used");
+        eq("See you at 7", ThreadListRules.preview(t, false, new ThreadListRules.Known(6000, "See you at 7", false)), "newer than the list");
+        eq("Attachment", ThreadListRules.preview(t, false, new ThreadListRules.Known(5000, "", true)), "a picture without words");
+        eq("New message", ThreadListRules.preview(t, false, new ThreadListRules.Known(5000, "  ", false)), "nothing to show: the phone's line");
+        eq("Reacted 👍 to “ok”", ThreadListRules.preview(t, false, new ThreadListRules.Known(5000, "Liked “ok”", false)), "a reaction in words");
+        t.snippet = "older words";
+        eq("See you at 7", ThreadListRules.preview(t, false, k), "the tablet's newest wins over the phone's words of the same moment");
+
+        // asked for when the phone gave no words, once per new message
+        Sms.Thread none = thread("2", "", 5000, false, 3);
+        yes(ThreadListRules.needsWords(none, null), "no words and messages: ask");
+        yes(!ThreadListRules.needsWords(none, new ThreadListRules.Known(5000, "x", false)), "known as new: do not ask");
+        yes(ThreadListRules.needsWords(none, new ThreadListRules.Known(4000, "x", false)), "known but older: ask");
+        yes(!ThreadListRules.needsWords(thread("3", "words", 5000, false, 3), null), "the phone gave words: do not ask");
+        yes(!ThreadListRules.needsWords(thread("4", "", 5000, false, 0), null), "no messages at all: do not ask");
+        yes(ThreadListRules.needsWords(thread("5", "", 5000, true, 0), null), "unread with no count: ask");
+        Sms.Thread pic = thread("6", "", 5000, false, 2);
+        pic.attachment = true;
+        yes(!ThreadListRules.needsWords(pic, null), "a picture: 'Attachment' is the phone's line already");
+    }
+
     public static void main(String[] args) throws Exception {
         sentCopies();
         follow();
         badge();
         reactionTexts();
         reactionPreview();
+        knownPreview();
         System.out.println(checks + " checks, " + fails + " failed");
         System.exit(fails == 0 ? 0 : 1);
     }

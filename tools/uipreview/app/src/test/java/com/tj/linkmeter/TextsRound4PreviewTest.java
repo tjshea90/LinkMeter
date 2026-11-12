@@ -328,6 +328,25 @@ public class TextsRound4PreviewTest {
         shot(a, "texts4-list-reaction");
     }
 
+    /** A text sent from the tablet is the newest line of its row at once, and a text that arrives is too. */
+    @Test
+    public void theListShowsTheNewestText() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = openAlex(ph);
+        EditText box = findEdit(decor(a), "Text message");
+        box.setText("On my way, 10 minutes");
+        click(a, "Send");
+        settle();
+        click(a, "Back");
+        settle();
+        check(findText(decor(a), "On my way, 10 minutes") != null, "Alex's row shows what I just sent");
+        ph.arrives("5552223333", "+15552223333", "See you at the game tonight");
+        settle();
+        settle();
+        check(findText(decor(a), "See you at the game tonight") != null, "Sam's row shows the text that just came");
+        shot(a, "texts4-list-newest");
+    }
+
     /** Two texts written quickly one after the other both go, in order, and each says what became of it. */
     @Test
     public void twoTextsInARow() throws Exception {

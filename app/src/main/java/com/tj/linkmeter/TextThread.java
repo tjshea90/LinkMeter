@@ -535,6 +535,7 @@ final class TextThread {
         render(firstLoad || scrollNext);
         firstLoad = false;
         scrollNext = false;
+        tellListNewest();
         long newest = 0;
         for (Sms.Msg m : msgs) {
             newest = Math.max(newest, m.time);
@@ -601,6 +602,18 @@ final class TextThread {
         }
         showReplies();
         showJump();
+    }
+
+    /** The messages not deleted on this tablet (reactions included). */
+    private List<Sms.Msg> visibleAll(List<Sms.Msg> all) {
+        List<Sms.Msg> out = new ArrayList<>();
+        long cleared = tab.local().clearedAt(key);
+        for (Sms.Msg m : all) {
+            if (m.time > cleared && !tab.local().isHidden(m.id)) {
+                out.add(m);
+            }
+        }
+        return out;
     }
 
     private List<Sms.Msg> visibleMessages(List<Sms.Msg> all) {
@@ -1012,6 +1025,23 @@ final class TextThread {
         }
     }
 
+    /** The conversation's newest message as shown here goes to its row in the list (which may not have heard of it yet). */
+    private void tellListNewest() {
+        List<Sms.Msg> all = new ArrayList<>(msgs);
+        all.addAll(temps);
+        List<Sms.Msg> shown = visibleAll(all);
+        Sms.Msg newest = null;
+        for (Sms.Msg m : shown) {
+            if (newest == null || m.time >= newest.time) {
+                newest = m;
+            }
+        }
+        if (newest != null) {
+            tab.noteNewest(key, newest);
+            tab.refreshList();
+        }
+    }
+
     /** The ids of the messages on screen now (the phone's and this tablet's own). */
     private Set<String> idsOnScreen() {
         Set<String> ids = new HashSet<>();
@@ -1062,6 +1092,7 @@ final class TextThread {
         updateSend();
         scrollNext = true;
         render(true);
+        tellListNewest(); // its row in the list says it at once
         if (!items.isEmpty()) {
             showStatus("Sending " + items.size() + (items.size() == 1 ? " file" : " files") + " to the phone…", Ui.DIM);
         }
