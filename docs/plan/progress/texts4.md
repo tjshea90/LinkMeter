@@ -68,6 +68,8 @@ DONE SO FAR:
   the reaction behaviour; TextsRound4PreviewTest.theListShowsTheNewestText; 43 Texts screen tests pass; TextsRound4Test 17,566 checks.
 - F: review pass done (fixed: the badge watch kept a change it failed to fetch as handled; removed unused isPaused; askResend tidies its maps);
   docs written (TEXTS_OVERHAUL Round 4, USER_GUIDE, APP_REFERENCE, HANDOFF bullet "TEXTS ROUND 4" + FIRST COMMANDS branch); tools/mutate_texts4.py
-  pure: 27/27 caught; screen (9, git worktree of b9ad278) RUNNING in the background (log in scratchpad mut-screen.log).
-NEXT: screen breakage results; the whole preview suite (tools/preview.sh, ~160 tests); closing plain tools/checkpoint.sh (release); check the
-  run and the release; a note: commit with the release number in HANDOFF; tell the user (releases page).
+  pure: 27/27 caught; screen 9: 8 caught + 1 missed ("your own scrolling does not stop following": letting go decides the same) -> the test
+  now checks DURING the drag (dragAndHold/letGo) and the re-run says caught. ChatList.pin: guard for a list with no room, the jump fallback
+  only once (slowWay). TextsRound4PreviewTest 8/8 pass on the final code.
+NEXT: the whole preview suite (running in the background, >10 min); tools/test.sh + assembleRelease; closing plain tools/checkpoint.sh
+  (release); check the run and the release; a note: commit with the release number in HANDOFF; tell the user (releases page).
