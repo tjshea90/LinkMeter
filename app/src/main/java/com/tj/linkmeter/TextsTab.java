@@ -579,8 +579,8 @@ final class TextsTab extends Tab {
                 }
                 boolean changed = !now.equals(since);
                 if (changed) {
-                    since = now;
                     final List<Sms.Thread> l = r.threads(100);
+                    since = now; // counted: only now is the next change waited for (a failed fetch is asked again)
                     post(() -> {
                         if (gen == watchGen) {
                             badgeFromWatch(l);

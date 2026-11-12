@@ -499,7 +499,25 @@ pure `Translation` (pieces under MyMemory's 500 bytes, MyMemory `es-MX` with `on
 fallback, their answers, shorthand, the Mexican safety layer `toMexican`) and `TranslateFlow` (Send translates, the Spanish goes into the
 box to be checked, the next Send sends it); `Translator` (HTTPS, one thread, logged without the words), `TextsLocal.isTranslated`, the strip
 and the menu entries in `TextThread`; `TranslationTest`, `TextsPreviewTest` (pretend translator `Translator.testEngine`),
-`python3 tools/mutate_translate.py`. Why no encrypted channel for `/sms/*`: see
+`python3 tools/mutate_translate.py`. Round 4 (the user's report of 2026-11-12, `docs/TEXTS_OVERHAUL.md` "Round 4"): `TextThread.resume`
+(called by `TextsTab.onShow`: `pause` set `paused` when the app went away and nothing cleared it, so the open conversation ignored every
+answer after the screen went off or a photo was picked, and "Sending…" stayed); the send result updates its bubble whatever happened;
+`SentCopies` (pure: a just-sent bubble gives way to the phone's copy, found as a new message of mine with the same words or by the page
+asked for after the phone recorded it); `reloadGen`/`appliedGen` (an older answer never undoes a newer one); `TextsTab.sendQueue` (texts
+go one after the other, Send never waits); a recent text that says "Sending…" makes the conversation ask again every 5 s for up to 3
+minutes. `ChatList` (a ListView that follows its newest message: stack from the bottom, the last row pinned after every layout by moving
+the rows in the same layout; your own finger, seen in `dispatchTouchEvent`, stops it: Robolectric's `ShadowAbsListView` swallows
+`setOnScrollListener`, so the touch is watched too) with the pure `ChatFollow` and the jump button (`Icons.CHEVRON_DOWN`, a count of new
+texts). The Texts button's number: `BarButton.setBadge` (lit icon, red number), `MainActivity.setBadge`/`updateWatches`,
+`Tab.watchWhileHidden` (true while the app is in front and another tab is shown), `TextsTab.watchLoop` (state once, the stamp's waiting
+request, the list on a change; counted by the pure `ThreadListRules.badge`). Reactions: `SmsReactions.textFor`/`quote`/`previewOf`/`same`
+(mine sent as the iPhone's words for the six classic ones, "Reacted X to" for the rest, "Removed ... from" to take back; Spanish iPhone
+words, "X to “…”" and "Removed X from" read), the reaction row on any message (`TextsViews.messageMenu`, `emojiGrid`, `EmojiText.MORE`),
+`ThreadRows.pill`/`mine` and `TextThread.showReactions`. The list's newest line: `ThreadListRules.Known`/`preview(t, hide, k)`/`needsWords`,
+`TextsTab.noteNewest`/`askForWords` (rows without words get their newest messages asked for, 6 at a time). Tests:
+`tools/test/TextsRound4Test.java` (in `tools/test.sh`), `TextsRound4PreviewTest` in `tools/uipreview` (open, keyboard, scroll up, jump,
+send after the app was away, two in a row, the badge, reactions both ways, the list's newest line), `python3 tools/mutate_texts4.py`.
+Why no encrypted channel for `/sms/*`: see
 `docs/SAFETY.md` section 10 ("What is NOT encrypted"). The pictures: `tools/preview.sh --tests
 "com.tj.linkmeter.TextsPreviewTest"` (`PretendSms` puts the real `SmsApi` behind a fake database; `TextsTab.testLink` is the seam).
 

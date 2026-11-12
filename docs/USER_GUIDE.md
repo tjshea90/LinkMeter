@@ -61,12 +61,17 @@ always.
   better for codes, web addresses and passwords. "Incognito" (off) asks the keyboard not to learn what you type; some keyboards then
   also switch glide typing off. The phone never types `*` or `#`.
 - **Texts:** off until you switch them on at the phone (card "Texts"). The list opens at once and keeps itself up to date (a new text
-  appears within a second or two, no need to open the conversation). Under each name the list shows the start of the last message,
-  also for a group text or a picture message (a picture alone reads "Attachment"; "New message" means the phone gave no words, update
-  the phone's app too). Tap a conversation to read it, hold one to select several (pin,
-  mark read, archive, delete), tap the magnifier to search names and texts, tap + to write. In a conversation: hold a message to copy,
-  forward, delete or see its details; quick replies appear when the last text is a question; a text you are typing is kept until you
-  send it; reactions from iPhones ("Loved ...") show on the message they are about. **Delete** removes it on the tablet and asks the phone
+  appears within a second or two, no need to open the conversation). Under each name the list shows the last message, also for a group
+  text or a picture message (a picture alone reads "Attachment"; when the phone's list has no words for one, the tablet asks for that
+  conversation's newest messages itself). **The Texts button in the bottom bar lights up with a small red number of new texts**, also
+  while you are on another tab (only while LinkMeter is in front; opening a conversation here counts it as read; muted and archived
+  ones do not count). Tap a conversation to read it, hold one to select several (pin,
+  mark read, archive, delete), tap the magnifier to search names and texts, tap + to write. **A conversation opens at its newest
+  message and stays there**, also when the keyboard opens and when new texts come; scroll up to read older ones and it stays where you
+  are: a round button at the bottom right then shows how many new texts came and takes you back to the newest. Hold a message to react,
+  copy, forward, delete or see its details; quick replies appear when the last text is a question; a text you are typing is kept until
+  you send it; several texts can be sent one after the other without waiting, and each one's "Sending…" turns into "Sent" or
+  "Delivered" by itself. **Delete** removes it on the tablet and asks the phone
   to delete it too; most phones only let their own Messages app do that, then the texts stay on the phone and the strip says so (Undo
   brings them back here). On a wide tablet screen the list stays on the left. The menu (the three dots) has unread only, archived,
   mark all read, refresh and Texts settings. A fresh verification code gets a **Copy code** button (in the list and under the text).
@@ -79,8 +84,11 @@ always.
   list, **lock Texts with the tablet's screen lock** (asks again after 2 minutes away; needs a PIN, pattern or password set in
   Android), hide Texts from screenshots and the recent apps picture, erase everything saved here. Pairing again erases it too. Texts
   themselves (SMS/MMS) cannot be end-to-end encrypted by any app, and chats that Google Messages sends as RCS are not shown.
-  **Quick reply:** press and hold a text sent to you and tap an emoji (thumbs up, heart, laughing, surprised, sad, thanks): it is sent at
-  once as a text of its own; a text of only emoji is drawn big. **Attachments:** the paperclip puts large cards above the box (a photo's
+  **Reactions:** press and hold any message and tap an emoji (thumbs up, heart, laughing, surprised, sad, thanks, or + for many more):
+  it sits as a small emoji on the corner of that message. It reaches the other person the way Google Messages and iPhones send
+  reactions by text (Liked “…”, Reacted 😮 to “…”): Google Messages shows it on their message too, an iPhone shows those words. The
+  same emoji again takes it back; tap the small emoji to see who reacted. Their reactions (also from an iPhone set to Spanish) sit on
+  your message the same way. A text of only emoji that you type is drawn big. **Attachments:** the paperclip puts large cards above the box (a photo's
   picture, a PDF's first page, the name and size); tap a card to see it full screen before sending (pinch or double-tap to zoom a photo,
   Previous/Next for a PDF, the start of a text file; Remove there or the cross on the card takes it off). **Contacts:** a conversation's
   menu has Add to contacts or Rename contact; Texts menu > Contacts lists the phone's contacts (search, + for a new one, tap one to send a
@@ -139,8 +147,13 @@ Tell me what happened, in your own words, for any of these:
   With Texts settings > "Lock Texts with the screen lock" on: does it ask after 2 minutes away, and not before? Does a fresh code text
   show Copy code, and does it copy only the digits? Is the list quicker to load than before (install the newest release on the PHONE too:
   that is where the speed fix is)? If it still says "slow to answer" often, open Texts menu > Connection details and send me the lines.
-  Press and hold a received text: does the emoji row appear and does a tap send it? Attach a photo and a PDF: are the cards large and does a
+  Press and hold a text: does the emoji row appear, does the emoji sit on the message's corner, and does the other person's phone show it
+  on their message (Google Messages) or as "Liked “…”" (iPhone)? Attach a photo and a PDF: are the cards large and does a
   tap show them full screen? Add a number to your contacts: does the phone's Contacts app have it afterwards?
+  Texts round 4 (2026-11-12): does a conversation open at its newest message and stay there when the keyboard opens? Scroll up, then let
+  a text come: does the round button at the bottom right count it, and does a tap take you back? Send a text, turn the tablet's screen off
+  and on (or attach a photo first): does "Sending…" turn into "Sent" by itself? Is the Texts button lit with the right number while you are
+  on Home? Does every row of the list show its last message?
 - Glide typing (SwiftKey): Screen tab > Options > Keyboard > "Test the keyboard". In box 1 (a plain text box) and in box 2 (the Type
   button's field, with what it would send written underneath): does a glided word work? Tell me which of the two glides, and what the
   last lines of the test say (version, keyboard, counts).

@@ -413,10 +413,6 @@ final class TextThread {
         reload();
     }
 
-    boolean isPaused() {
-        return paused;
-    }
-
     /** Text to put in the box (a forwarded message). */
     void prefill(String text) {
         if (input != null && input.getText().length() == 0) {
@@ -1286,7 +1282,10 @@ final class TextThread {
         }
         TextsViews.show(new AlertDialog.Builder(act).setTitle("Send again?").setMessage(m.body)
                 .setPositiveButton("Send again", (d, w) -> {
-                    if (!temps.remove(m)) { // the phone's record of the failed one: hidden here, the new one takes its place
+                    if (temps.remove(m)) {
+                        shownWhenSent.remove(m.id);
+                        recordedAt.remove(m.id);
+                    } else { // the phone's record of the failed one: hidden here, the new one takes its place
                         tab.local().hide(java.util.Collections.singletonList(m.id));
                     }
                     sendMessage(m.body, new ArrayList<Attach.Item>()); // as it was written the first time: not translated again

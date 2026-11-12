@@ -126,3 +126,61 @@ NOT KNOWN UNTIL THE PHONE TRIES: that the user's phone really leaves `snippet` e
 provider fills it; Samsung's is built on it), and that `thread_id IN (...)` on `content://sms` and `content://mms` is quick on it. If a
 conversation still shows "New message" / "Message" with the newest phone app, the newest message has no text part and no file in the phone's
 database (for example an RCS chat, which lives inside Google Messages and cannot be read by another app).
+
+## Round 4: scrolling, "Sending…", a number on the tab, the list's newest line, reactions (the user's report, 2026-11-12)
+Their words: "When the keyboard comes up, the text window scrolls up so I can't see the last messages. When I open a text message, it is
+scrolled up. I want to always see the end of the chat for the most recent messages unless I scroll up myself. The status of texts takes
+long, it says sending for a long time even though it already sent. When I get new text messages, light up the mail icon tab on the bottom
+and put a small number of how many new unread texts there are, like real messaging apps. In the text message list, always show the most
+recent message in the preview before I press on the chat. Look for ways to improve the texting feature. Compare it to popular messaging
+apps and revamp it. Also, if someone replies to my texts with an emoji, put it as a small emoji connected to the message bubble like real
+apps do, and the same for if I reply to them with an emoji".
+What the code showed (read, then reproduced on the real screens in Robolectric; not measured on the devices):
+1. "SENDING…" FOR EVER, A REAL BUG: Android pauses the app when the tablet's screen goes off, when the photo or file picker opens (Attach),
+   when another app or the screen-lock question comes in front. `TextsTab.onHide` then called `TextThread.pause()`, which set `paused`, and
+   NOTHING ever cleared it: from then on the open conversation threw every answer away (`apply` needed `!paused`), so a text sent after a
+   photo was picked stayed "Sending…" and new texts did not appear in it until it was closed and opened again. Also a send whose answer came
+   after such a pause left its bubble "Sending…" (`my != tab.session()`), and with three reads on their way at once an older answer could put
+   "Sending…" back over "Sent". FIXED: `resume()` (from `TextsTab.onShow`), the send result always updates its bubble, `SentCopies` (pure)
+   says when a bubble gives way to the phone's copy, older answers are ignored (`reloadGen`), texts go through one ordered queue (Send never
+   waits for the one before), and a recent "Sending…" makes the conversation ask again every 5 s for up to 3 minutes (a missed signal).
+2. SCROLLED UP: a ListView keeps its FIRST row where it is when its height changes, and the conversation's height changes all the time: the
+   keyboard (the window is resized), the tab bar hiding while typing, the quick replies, the "Loading messages…" line. FIXED: `ChatList`
+   follows the newest message as the messaging apps do: it stacks from the bottom (a short conversation sits next to the box) and after every
+   layout puts the last row back against the bottom edge, in the same layout; your own scrolling (a finger that moves the rows) stops it and
+   a round button with a down arrow appears at the bottom right, with the number of texts that came since; back at the end (by scrolling or
+   the button) it follows again. Opening and sending go to the newest message.
+3. THE NUMBER ON THE TAB: `ThreadListRules.unreadCount` existed but nothing showed it, and the Texts tab works only while it is shown.
+   BUILT: the Texts button lights up (blue) with a red round number (the new texts of the unread conversations: those that came since a
+   conversation was last opened here when that is known, else one each; muted and archived ones do not count). While another tab is in front
+   a small watch asks the phone to say when something changes (the stamp's waiting request, the same as the tab's own) and counts the list
+   again; nothing runs while the app is in the background.
+4. THE LIST'S NEWEST LINE: the phone fills the words since v0.2.170 (round 3); a phone with an older app, or a conversation whose newest
+   message the phone's list has no words for, showed "New message" / "Message". BUILT on the tablet: such rows get their newest messages
+   asked for (6 at a time, one request after the other, once per new message), a text sent from the tablet is in its row at once, and an open
+   conversation keeps its row up to date. NOT BUILT: "You: " before my own last message (the phone would have to say, for every row, who sent
+   the newest message: a protocol change and more work for the phone, whose speed was the problem of round 2).
+5. REACTIONS: tapback texts (Loved "...", Reacted 😮 to "...") were already folded onto their message, but the long-press "quick reply" sent
+   the emoji as a text of its own (a big emoji bubble), which is what the user saw. BUILT: a long press on ANY message (not on a text that
+   never left) offers a row of six emoji and + for 49 more; the one already there is ringed and taps back. Mine goes as the reaction text the
+   messaging apps send to a phone that is not on their chat service: the iPhone's words for its six (Loved, Liked, Disliked, Laughed at,
+   Emphasized, Questioned), "Reacted X to “...”" for any other emoji, "Removed a like from “...”" / "Removed X from “...”" to take back; the
+   quote is the text on one line, cut at 100 characters with "…", or "an image" / "a video" / "an attachment". Google Messages shows those as
+   a small emoji on the message (its setting "Show iPhone reactions as emoji"); an iPhone shows the words. Here the text is folded onto its
+   message at once (it goes through the same queue as any text). Read as well now: an iPhone set to Spanish (Le encantó, Le gustó, No le
+   gustó, Se rió de, Enfatizó, Cuestionó), "X to “...”" and "Removed X from “...”". The pill on the bubble's corner groups and counts
+   ("❤️ 2  👍"), is tinted when one is mine, and a tap says who reacted, with "Take mine back". The list says "Reacted 👍 to “...”". The quick
+   replies ignore reaction texts. A lone emoji typed as a text stays a big emoji bubble (as in every messaging app).
+   Sources (2026-11-12): https://9to5google.com/2022/09/29/google-messages-sms-reactions/ ,
+   https://www.macrumors.com/2021/11/22/imessage-reactions-android-emojis ,
+   https://androidcentral.com/apps-software/google-messages-imessage-sms-reactions . The exact Spanish iPhone words were not confirmed by a
+   source: if a Spanish reaction still arrives as a text of its own, the user can send its words and they are added to `SmsReactions.VERBS`.
+Tests: `tools/test/TextsRound4Test.java` (in `tools/test.sh`; `SentCopies`, `ChatFollow`, the badge, every offered emoji written and read
+back on texts and pictures, Spanish, removals, what is NOT a reaction, the pill, the list's line), `TextsRound4PreviewTest` in
+`tools/uipreview` (`tools/preview.sh --tests "com.tj.linkmeter.TextsRound4PreviewTest"`: a long conversation opens at its end and keeps it
+with the keyboard; scrolling up is respected and the button counts and jumps; a text sent after the app was paused goes to "Sent"; two texts
+in a row; the number on the Texts button on Home, after a new text, after opening, while the app is in the background; reactions both ways
+and taking one back; Spanish reactions; the list's newest line), the updated `TextsPreviewTest` (43 Texts screen tests in all), and
+`python3 tools/mutate_texts4.py` (deliberate breakages of the new rules: every one must be caught).
+NOT KNOWN UNTIL THE DEVICES TRY: how the reaction texts look on the friend's phone (Google Messages should show them as emoji; an iPhone shows
+the words), the exact Spanish words of an iPhone, and whether the tablet's keyboard resizes the window as Robolectric does (`adjustResize`).
