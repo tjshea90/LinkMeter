@@ -1,6 +1,6 @@
 # Texts round 4 (the user's request of 2026-11-12) — progress notes
 
-STATUS: WORKING (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
+STATUS: WORKING (A+B done) (branch ccr-a8e3fc17-ngp6l5; started from main = 2bad619 + the note/progress commits of ccr-2d14c7bc-moxme2 = 4764d32)
 
 THE USER'S WORDS (2026-11-12): "Improve the text feature in this app. When the keyboard comes up, the text window scrolls up so I can't see the
 last messages. When I open a text message, it is scrolled up. I want to always see the end of the chat for the most recent messages unless I
@@ -40,4 +40,13 @@ F. Tests (TextsLogicTest + new pure tests), mutate script, TextsPreviewTest pict
 COMMIT TRAILER (as the session's attribution reminder gives it): COMMIT_TRAILER="Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01UWi8ZxL9XwVAJWsLrSdb8y"
 
-DONE SO FAR: nothing yet (reading done, plan written).
+DONE SO FAR:
+- A (Sending) and B (scroll) DONE, saved as a finished step (NO_RELEASE): TextThread.resume() (TextsTab.onShow), sent() updates the temp
+  whatever happened, SentCopies (pure; ids on screen at send + 'recorded' page number), reloadGen/appliedGen (older answers ignored),
+  ordered send queue TextsTab.sendQueue(), recheck every 5 s for 3 min while a recent text of mine says Sending; ChatList (stackFromBottom,
+  follow mode pins after every layout by scrolling in the same pass, touch tracking in dispatchTouchEvent because Robolectric's
+  ShadowAbsListView swallows setOnScrollListener), ChatFollow (pure), jump button (CHEVRON_DOWN + badge), Icons CHEVRON_DOWN + SMILE.
+- tests: tools/test/TextsRound4Test.java (10,748 checks, in tools/test.sh), tools/uipreview TextsRound4PreviewTest (4 scenarios: open long
+  + keyboard, scroll up + new text + jump, send after pause -> Sent, two in a row) all pass; TextsPreviewTest 34/34 still pass; pictures
+  texts4-*.png looked at.
+NEXT: C badge (BarButton.setBadge, TextsStore shared storage, TextsBadge watcher), D reactions, E preview, F docs/release.
