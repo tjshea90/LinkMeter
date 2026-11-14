@@ -230,7 +230,7 @@ public class PreviewTest {
                 return r;
             }
             if (target.startsWith("/act?name=hotspot") || target.startsWith("/act?name=standby") || target.startsWith("/act?name=wifi_")
-                    || target.startsWith("/act?name=reboot") || target.startsWith("/act?name=poweroff")) {
+                    || target.startsWith("/act?name=reboot") || target.startsWith("/act?name=poweroff") || target.startsWith("/act?name=eco_android_")) {
                 Client.Resp r = new Client.Resp();
                 r.code = actCode;
                 r.body = actReply;
@@ -1427,6 +1427,7 @@ public class PreviewTest {
         f.hotspotAddress = "192.168.43.1";
         f.saverAuto = true;
         f.saverOn = true;
+        f.androidOn = Boolean.FALSE; // Android's own Battery saver is off: LinkMeter's saver is something else
         f.screenControl = true;
         f.autoStart = true;
         f.bootAssist = true;

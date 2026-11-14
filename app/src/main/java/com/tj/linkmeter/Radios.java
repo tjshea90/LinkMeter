@@ -121,6 +121,36 @@ final class Radios {
         }
     }
 
+    /**
+     * Android's own Battery saver ("Power saving" on Samsung): TRUE or FALSE as Android itself says, or null when this phone will
+     * not say. Public, no permission and no Shizuku; it is what the quick settings tile shows. LinkMeter's own saver is something
+     * else (see Eco): it never touches this.
+     */
+    static Boolean powerSave(Context c) {
+        try {
+            PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+            return pm == null ? null : Boolean.valueOf(pm.isPowerSaveMode());
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Waits until Android's own Battery saver is as wanted, or ms have passed (it follows the setting a moment later); returns the last answer. */
+    static Boolean waitPowerSave(Context c, boolean wantOn, long ms) {
+        long end = System.currentTimeMillis() + ms;
+        Boolean now = powerSave(c);
+        while (now != null && now.booleanValue() != wantOn && System.currentTimeMillis() < end) {
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return powerSave(c);
+            }
+            now = powerSave(c);
+        }
+        return now;
+    }
+
     static boolean airplane(Context c) {
         try {
             return Settings.Global.getInt(c.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1;

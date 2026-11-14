@@ -175,17 +175,17 @@ final class Eco {
                 if (on) {
                     arm(app, lastSeen + SaverPlan.IDLE_MS);
                     watchScreen(app);
-                    return SaverPlan.ALREADY_ON + note;
+                    return withSystemLocked(app, SaverPlan.ALREADY_ON) + note;
                 }
                 if (!Priv.ready()) {
                     return SaverPlan.ON_STORED_WAITING;
                 }
                 return applyLocked(app) + note;
             }
-            if (!on) {
+            if (!on && !systemOn(app)) {
                 return SaverPlan.ALREADY_OFF + note;
             }
-            if (!Priv.ready() && restorePlan(app).count > 0) {
+            if (!Priv.ready() && (restorePlan(app).count > 0 || systemOn(app))) {
                 return SaverPlan.OFF_STORED_WAITING + note;
             }
             return restoreLocked(app) + note;
@@ -239,7 +239,7 @@ final class Eco {
             }
             arm(app, elapsed() + SaverPlan.IDLE_MS);
             watchScreen(app);
-            return said;
+            return withSystemLocked(app, said); // the saver IS on: only the extra can fail, and the answer then says both
         } catch (IOException e) {
             failedAt = elapsed();
             throw e;
@@ -262,8 +262,11 @@ final class Eco {
     }
 
     private static String restoreLocked(Context app) throws IOException {
+        // Android's own Battery saver goes first, and only when LinkMeter switched it on. When its line cannot run (Shizuku is down)
+        // this throws and everything stays as it is, so the next try does both.
+        String sys = SystemSaver.restore(systemEnv(app)).text;
         if (!isOn(app)) {
-            return SaverPlan.ALREADY_OFF;
+            return sys.isEmpty() ? SaverPlan.ALREADY_OFF : SaverPlan.ALREADY_OFF + " " + sys;
         }
         SaverPlan.Restore r = restorePlan(app);
         try {
@@ -279,10 +282,132 @@ final class Eco {
             clearStored(app); // only now: a failed restore leaves the saver on, so it is tried again
             disarm(app);
             unwatchScreen(app);
-            return SaverPlan.restoredSentence(r);
+            return SaverPlan.restoredSentence(r) + (sys.isEmpty() ? "" : " " + sys);
         } catch (IOException e) {
             failedAt = elapsed();
             throw e;
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------ Android's own Battery saver (the option)
+
+    /** True while LinkMeter has switched Android's own Battery saver on and holds the setting's original, to put back. */
+    static boolean systemOn(Context c) {
+        return prefs(c).getString("sys", null) != null;
+    }
+
+    /** The real phone behind {@link SystemSaver}'s sequence (the same one the offline test runs against a fake phone). */
+    private static SystemSaver.Env systemEnv(final Context app) {
+        return new SystemSaver.Env() {
+            @Override
+            public String shell(String cmd, int seconds) throws IOException {
+                return Priv.run(cmd, seconds).out;
+            }
+
+            @Override
+            public Boolean osOn() {
+                return Radios.powerSave(app);
+            }
+
+            @Override
+            public Boolean waitOs(boolean wantOn, long ms) {
+                return Radios.waitPowerSave(app, wantOn, ms);
+            }
+
+            @Override
+            public Boolean hotspot() {
+                return Radios.hotspot(app);
+            }
+
+            @Override
+            public void pause(long ms) {
+                try {
+                    Thread.sleep(ms);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            @Override
+            public String stored() {
+                return prefs(app).getString("sys", null);
+            }
+
+            @Override
+            public boolean store(String original) {
+                return prefs(app).edit().putString("sys", original).commit();
+            }
+
+            @Override
+            public void forget() {
+                prefs(app).edit().remove("sys").commit();
+            }
+        };
+    }
+
+    /**
+     * Under the lock. Brings Android's own Battery saver in line with the option while the saver is on: switched on when the option
+     * is on and LinkMeter has not done it yet, put back when the option is off and LinkMeter did it. Returns what to tell the user
+     * ("" = nothing to say). A switch that did not move is an error answer; the option is given up when the hotspot went with it.
+     */
+    private static String systemInLineLocked(Context app) throws IOException {
+        boolean want = Cfg.ecoSystem(app);
+        if (want && isOn(app)) {
+            SystemSaver.Outcome o = SystemSaver.apply(systemEnv(app));
+            if (!o.ok) {
+                if (o.giveUp) {
+                    Cfg.setEcoSystem(app, false);
+                }
+                throw new Actions.NotDone(o.text);
+            }
+            return o.text;
+        }
+        if (!want && systemOn(app)) {
+            SystemSaver.Outcome o = SystemSaver.restore(systemEnv(app));
+            if (!o.ok) {
+                throw new Actions.NotDone(o.text);
+            }
+            return o.text;
+        }
+        return "";
+    }
+
+    /** The saver's own answer with the option's added; when the option fails the saver stays as it is and the error names both. */
+    private static String withSystemLocked(Context app, String base) throws IOException {
+        try {
+            String sys = systemInLineLocked(app);
+            return sys.isEmpty() ? base : base + " " + sys;
+        } catch (Actions.NotDone e) {
+            throw new Actions.NotDone(base + " " + e.getMessage());
+        }
+    }
+
+    /**
+     * The option's own switch (the tablet's "also Android's Battery saver", and the phone's own switch): stored first, then carried
+     * out at once when the saver is on. When the saver is not on the option waits for it. Nothing here runs on its own later: a
+     * switch that fails is not tried again until it is pressed again (a loop of failing shell lines would only cost battery).
+     */
+    static String setSystem(Context c, boolean want) throws IOException {
+        Context app = c.getApplicationContext();
+        appCtx = app;
+        Cfg.setEcoSystem(app, want);
+        synchronized (Eco.class) {
+            if (want) {
+                if (!isOn(app)) {
+                    return Cfg.ecoAuto(app) ? SystemSaver.STORED_WAITING : SystemSaver.STORED_SAVER_OFF;
+                }
+                if (!Priv.ready()) {
+                    return SystemSaver.STORED_NEEDS_SHIZUKU;
+                }
+                return systemInLineLocked(app);
+            }
+            if (!systemOn(app)) {
+                return SystemSaver.STORED_LEFT_ALONE;
+            }
+            if (!Priv.ready()) {
+                return SystemSaver.STORED_BACK_WAITING;
+            }
+            return systemInLineLocked(app);
         }
     }
 

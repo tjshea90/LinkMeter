@@ -522,7 +522,7 @@ SR = [
  ("search: giving up claims success", "SearchFollow.java", 'return new Outcome(false, "The phone did not say that the restart ended.', 'return new Outcome(true, "The phone did not say that the restart ended.'),
  ("search: giving up says it searched", "SearchFollow.java", '"The phone did not say that the restart ended. Scan to see where it is now."', '"The phone searched for a network again."'),
 ]
-PHONESCREEN_FILES = ["PhoneScreenFacts.java", "PhoneScreenRules.java"]
+PHONESCREEN_FILES = ["PhoneScreenFacts.java", "PhoneScreenRules.java", "SystemSaver.java", "SaverPlan.java"]
 PHONESCREEN_TEST = ROOT + "/tools/test/PhoneScreenRulesTest.java"
 PS = [
  ('phonescreen: a phone that has not allowed LinkMeter in Shizuku is called ready', 'PhoneScreenRules.java', 'if (f.shizuku == PhoneScreenFacts.Shizuku.NOT_ALLOWED) {\n            return Attention.SHIZUKU_NOT_ALLOWED;\n        }', 'if (false) {\n            return Attention.SHIZUKU_NOT_ALLOWED;\n        }'),

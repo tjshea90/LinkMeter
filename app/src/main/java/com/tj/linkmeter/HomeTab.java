@@ -45,6 +45,7 @@ final class HomeTab extends Tab {
     private Ui.Fact fAirplane;
     private Ui.Fact fLocation;
     private Ui.Fact fSaver;
+    private Ui.Fact fAndroid;
     private Button bHotspot;
     private Button bHotspotOff;
     private LinearLayout unknownRow;
@@ -240,12 +241,14 @@ final class HomeTab extends Tab {
         fScreen = new Ui.Fact(act, "Phone's screen");
         fAirplane = new Ui.Fact(act, "Airplane mode");
         fLocation = new Ui.Fact(act, "Location");
-        fSaver = new Ui.Fact(act, "Battery saver");
+        fSaver = new Ui.Fact(act, "LinkMeter's saver");
+        fAndroid = new Ui.Fact(act, "Android's Battery saver");
         sw.addView(fHotspot.view, Ui.lp(act, 8));
         sw.addView(fScreen.view, Ui.lp(act, 6));
         sw.addView(fAirplane.view, Ui.lp(act, 6));
         sw.addView(fLocation.view, Ui.lp(act, 6));
         sw.addView(fSaver.view, Ui.lp(act, 6));
+        sw.addView(fAndroid.view, Ui.lp(act, 6));
         bHotspot = Ui.button(act, "Hotspot", v -> hotspotPressed());
         bScreen = Ui.button(act, "Screen", v -> screenPressed());
         bStandby = Ui.button(act, "Standby", v -> confirmOff(true));
@@ -717,6 +720,7 @@ final class HomeTab extends Tab {
             fAirplane.set("--", Ui.DIM);
             fLocation.set("--", Ui.DIM);
             fSaver.set("--", Ui.DIM);
+            fAndroid.set("--", Ui.DIM);
         } else {
             // (values from a phone that no longer answers are the last ones seen: shown, but not lit)
             if (hs != null) {
@@ -739,6 +743,15 @@ final class HomeTab extends Tab {
             }
             fSaver.set(SaverPlan.homeFact(p.optBoolean("eco", false), p.optBoolean("ecoAuto", true), p.optInt("priv", -1)),
                     reachable ? Ui.FG : Ui.DIM);
+            // Android's own Battery saver is another thing than LinkMeter's saver: what ANDROID says, said apart
+            Boolean option = Call.flag(p, "ecoSys");
+            if (option == null) {
+                fAndroid.set(PhoneTabRules.ANDROID_SAVER_OLD_APP, reachable ? Ui.AMBER : Ui.DIM);
+            } else {
+                SystemSaver.Line l = SystemSaver.fact(Call.flag(p, "psm"), option.booleanValue(), p.optBoolean("esys", false),
+                        p.optBoolean("eco", false));
+                fAndroid.set(l.text, Ui.tone(l.tone, reachable));
+            }
         }
         // Not known (a newer phone app that cannot tell): both hotspot buttons. An older app: the old guess, on when the
         // phone is reached through a network.

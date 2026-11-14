@@ -62,6 +62,13 @@ final class PhoneScreenFacts {
     boolean saverAuto;
     /** The saver's settings are in force on the phone right now. */
     boolean saverOn;
+    /**
+     * Android's OWN Battery saver, which LinkMeter's saver is not: what Android says (null = this phone does not say), whether the
+     * saver is asked to switch it on, and whether LinkMeter did switch it on and will put it back.
+     */
+    Boolean androidOn;
+    boolean androidWanted;
+    boolean androidOurs;
     boolean screenControl;
     boolean autoStart;
     boolean bootAssist;

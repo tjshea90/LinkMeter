@@ -59,6 +59,21 @@ final class PhoneTabRules {
         return "The phone's battery current is 0 mA.";
     }
 
+    /** The Battery card's text: what LinkMeter's own saver is, and that it is not Android's. */
+    static final String SAVER_CARD_HINT = "LinkMeter's saver: while the tablet uses the phone's hotspot it turns off background scanning and "
+            + "the always-on display and shortens the phone's screen timeout, and puts everything back when the tablet is gone. Mobile data "
+            + "and the hotspot's speed are not touched. It is not Android's own Battery saver (below), which LinkMeter leaves alone unless "
+            + "you ask.";
+    static final String ANDROID_SAVER_HINT = "Android's own Battery saver (Samsung: Power saving) is the phone's, not LinkMeter's. "
+            + "\"Also switch on\" turns it on with LinkMeter's saver and off with it. Not tried on this phone yet: it may slow the phone or "
+            + "its wake from Standby. If the hotspot goes off with it, LinkMeter puts it back and stops asking.";
+    static final String ANDROID_SAVER_OLD_APP = "update the phone's app";
+
+    /** Which end of the "Android's Battery saver" choice shows: 0 = also switch on, 1 = leave alone, -1 = the phone's app has no such option. */
+    static int androidSaverChoice(Boolean option) {
+        return option == null ? -1 : option.booleanValue() ? 0 : 1;
+    }
+
     /** One of the phone's switches as a fact line: on, off, or not known. */
     static String switchFact(Boolean on) {
         return on == null ? "not known" : on.booleanValue() ? "on" : "off";

@@ -31,6 +31,8 @@ final class SafetyReport {
         boolean hotspotBandChanged;
         /** The battery saver's settings are in place (Eco.isOn). */
         boolean batterySaver;
+        /** LinkMeter switched Android's OWN Battery saver on and has not put it back (Eco.systemOn). */
+        boolean androidSaver;
         boolean guardWatching;
         /** "Start the phone after a restart": LinkMeter holds WRITE_SECURE_SETTINGS (given once through Shizuku). */
         boolean secureGranted;
@@ -93,6 +95,9 @@ final class SafetyReport {
             l.add("the battery saver is on: it turned off background scanning and the always-on display and shortened the screen timeout, "
                     + "and puts them back by itself (it never touches mobile data)");
         }
+        if (f.androidSaver) {
+            l.add("Android's own Battery saver is on because LinkMeter switched it on with its saver, and LinkMeter puts it back by itself");
+        }
         return l;
     }
 
@@ -104,7 +109,7 @@ final class SafetyReport {
     /** Is anything in place that is NOT one of the boot items (so that Restore everything has something to put back)? */
     static boolean otherChanged(Facts f) {
         return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged || f.menuRecent
-                || f.batterySaver;
+                || f.batterySaver || f.androidSaver;
     }
 
     /** Does the safety net have anything it could put back by itself? (The hotspot band and battery saver do not affect mobile data.) */

@@ -58,6 +58,14 @@ final class Status {
             o.put("priv", Priv.state());
             o.put("eco", Eco.isOn(c));
             o.put("ecoAuto", Cfg.ecoAuto(c));
+            // Android's OWN Battery saver, which LinkMeter's saver is not: what Android says ("psm"; left out when this phone does
+            // not say), whether the saver is asked to switch it on ("ecoSys"), and whether LinkMeter did switch it on ("esys")
+            Boolean psm = Radios.powerSave(c);
+            if (psm != null) {
+                o.put("psm", psm.booleanValue());
+            }
+            o.put("ecoSys", Cfg.ecoSystem(c));
+            o.put("esys", Eco.systemOn(c));
             // the switches the tablet can move (docs/REMOTE_LINK.md), read the cheap way
             Boolean hotspot = Radios.hotspot(c);
             if (hotspot != null) {

@@ -337,4 +337,16 @@ final class Cfg {
     static void setEcoAuto(Context c, boolean on) {
         sp(c).edit().putBoolean("ecoAuto", on).apply();
     }
+
+    /**
+     * Phone: the saver also switches on Android's OWN Battery saver (Samsung: Power saving) and puts it back with the saver. Off
+     * until the user asks: what it does to the hotspot and to the wake from Standby on this phone is not known (SystemSaver).
+     */
+    static boolean ecoSystem(Context c) {
+        return sp(c).getBoolean("ecoSystem", false);
+    }
+
+    static void setEcoSystem(Context c, boolean on) {
+        sp(c).edit().putBoolean("ecoSystem", on).apply();
+    }
 }

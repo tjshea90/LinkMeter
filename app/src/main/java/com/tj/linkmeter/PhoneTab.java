@@ -98,6 +98,8 @@ final class PhoneTab extends Tab {
     // Battery
     private Ui.Toggle tgSaver;
     private Ui.Fact fSaver;
+    private Ui.Toggle tgAndroid;
+    private Ui.Fact fAndroid;
     private LinearLayout batteryLimit;
 
     // After a restart
@@ -138,6 +140,7 @@ final class PhoneTab extends Tab {
         refresh();
     };
     private final CompoundButton.OnCheckedChangeListener saverListener = (v, on) -> setSaver(on);
+    private final CompoundButton.OnCheckedChangeListener androidListener = (v, on) -> setAndroidSaver(on);
     private final CompoundButton.OnCheckedChangeListener autoStartListener = (v, on) -> {
         Cfg.setAutoStart(act, on);
         refresh(); // Boot assist depends on it
@@ -361,8 +364,13 @@ final class PhoneTab extends Tab {
         LinearLayout card = Ui.card(act, "Battery", null);
         tgSaver = new Ui.Toggle(act, PhoneScreenRules.SAVER_SWITCH, PhoneScreenRules.SAVER_EXPLAIN, Cfg.ecoAuto(act), saverListener);
         card.addView(tgSaver.view, Ui.lp(act, 6));
-        fSaver = new Ui.Fact(act, "The saver right now");
+        fSaver = new Ui.Fact(act, "LinkMeter's saver right now");
         card.addView(fSaver.view, Ui.lp(act, 6));
+        tgAndroid = new Ui.Toggle(act, PhoneScreenRules.ANDROID_SAVER_SWITCH, PhoneScreenRules.ANDROID_SAVER_EXPLAIN, Cfg.ecoSystem(act),
+                androidListener);
+        card.addView(tgAndroid.view, Ui.lp(act, 6));
+        fAndroid = new Ui.Fact(act, "Android's Battery saver right now");
+        card.addView(fAndroid.view, Ui.lp(act, 6));
         // only while Android limits LinkMeter in the background
         batteryLimit = new LinearLayout(act);
         batteryLimit.setOrientation(LinearLayout.VERTICAL);
@@ -550,6 +558,8 @@ final class PhoneTab extends Tab {
         // Battery
         toggle(tgSaver, f.saverAuto, saverListener);
         fact(fSaver, PhoneScreenRules.saverFact(f));
+        toggle(tgAndroid, f.androidWanted, androidListener);
+        fact(fAndroid, PhoneScreenRules.androidSaverFact(f));
         visible(batteryLimit, PhoneScreenRules.batteryButton(f));
 
         // After a restart
@@ -799,8 +809,14 @@ final class PhoneTab extends Tab {
     /** The same switch the tablet's buttons move ({@link Eco#setAuto}): the choice is stored at once, the shell work is off the screen's thread. */
     private void setSaver(final boolean on) {
         Cfg.setEcoAuto(act, on);
-        working(on ? "Switching the battery saver to Automatic" : "Switching the battery saver off");
+        working(on ? "Switching LinkMeter's saver to Automatic" : "Switching LinkMeter's saver off");
         off("linkmeter-eco-switch", "", "The battery saver could not be changed.", app -> result(Eco.setAuto(app, on), true));
+    }
+
+    /** The option: also switch on Android's OWN Battery saver with the saver. The same switch the tablet's choice moves ({@link Eco#setSystem}). */
+    private void setAndroidSaver(final boolean on) {
+        working(on ? "Switching Android's own Battery saver on with LinkMeter's saver" : "Leaving Android's own Battery saver alone");
+        off("linkmeter-eco-android", "", "Android's own Battery saver could not be changed.", app -> result(Eco.setSystem(app, on), true));
     }
 
     // ------------------------------------------------------------------------------------------------------ the facts
@@ -841,6 +857,9 @@ final class PhoneTab extends Tab {
         f.textsMissing = SmsAccess.missing(a);
         f.saverAuto = Cfg.ecoAuto(a);
         f.saverOn = Eco.isOn(a);
+        f.androidOn = Radios.powerSave(a);
+        f.androidWanted = Cfg.ecoSystem(a);
+        f.androidOurs = Eco.systemOn(a);
         f.screenControl = Cfg.screenControl(a);
         f.autoStart = Cfg.autoStart(a);
         f.bootAssist = Boot.assist(a);

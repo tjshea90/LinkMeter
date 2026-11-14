@@ -66,6 +66,21 @@ public final class PhoneTabRulesTest {
         eq(PhoneTabRules.Banner.NONE, PhoneTabRules.banner(true, null, null, null, -1, 141), "an older phone that says nothing: no banner, nothing is guessed");
         eq(PhoneTabRules.Banner.NONE, PhoneTabRules.banner(true, null, null, null, 141, -1), "a tablet that does not know its own version: no banner");
 
+        // Android's own Battery saver: the choice and the words that keep it apart from LinkMeter's saver
+        eq(-1, PhoneTabRules.androidSaverChoice(null), "an older phone app has no such option: nothing is selected");
+        eq(0, PhoneTabRules.androidSaverChoice(Boolean.TRUE), "the option on: 'Also switch on'");
+        eq(1, PhoneTabRules.androidSaverChoice(Boolean.FALSE), "the option off: 'Leave alone'");
+        for (String t : new String[] {PhoneTabRules.SAVER_CARD_HINT, PhoneTabRules.ANDROID_SAVER_HINT, PhoneTabRules.ANDROID_SAVER_OLD_APP}) {
+            yes(!t.contains("!") && !t.contains(" - ") && !t.contains("\u2014") && !t.contains("\u2013"), "plain words: " + t);
+            yes(!t.contains("Eco") && !t.contains("Priv") && !t.contains("low_power"), "no class names or settings: " + t);
+        }
+        yes(PhoneTabRules.SAVER_CARD_HINT.contains("not Android's own Battery saver"), "the card says LinkMeter's saver is not Android's");
+        yes(PhoneTabRules.SAVER_CARD_HINT.contains("leaves alone unless you ask"), "...and that Android's is left alone unless asked");
+        yes(PhoneTabRules.ANDROID_SAVER_HINT.contains("Samsung: Power saving"), "the option's hint gives Samsung's name for it");
+        yes(PhoneTabRules.ANDROID_SAVER_HINT.contains("Not tried on this phone yet"), "...says it is untried");
+        yes(PhoneTabRules.ANDROID_SAVER_HINT.contains("Standby") && PhoneTabRules.ANDROID_SAVER_HINT.contains("hotspot goes off"), "...and names the two risks");
+        eq("update the phone's app", PhoneTabRules.ANDROID_SAVER_OLD_APP, "an older phone app is told to update");
+
         // the battery current
         eq(null, PhoneTabRules.currentWords(null), "no cur: no line");
         eq("The phone is using about 312 mA.", PhoneTabRules.currentWords(-312), "discharging");

@@ -267,6 +267,11 @@ final class Actions {
             case "eco_auto_off":
             case "eco_off":
                 return Eco.setAuto(c, false);
+            case SystemSaver.ACTION_ON:
+                // the option: also switch on Android's OWN Battery saver with the saver (off until asked; see SystemSaver)
+                return Eco.setSystem(c, true);
+            case SystemSaver.ACTION_OFF:
+                return Eco.setSystem(c, false);
             case "boot_wadb":
                 return Boot.enableWadb(c);
             case "boot_notify":
@@ -546,6 +551,7 @@ final class Actions {
         f.menuRecent = Saved.menuRecent(c);
         f.hotspotBandChanged = Saved.hotspotBand(c) > 0;
         f.batterySaver = Eco.isOn(c);
+        f.androidSaver = Eco.systemOn(c);
         f.guardWatching = Guard.watching();
         f.secureGranted = Boot.canWriteSecure(c);
         f.pairingKept = Boot.pairingKept(c);
@@ -943,6 +949,9 @@ final class Actions {
                     + "| grep -viE 'imei|imsi|iccid|serial|msisdn|number' | head -40",
             // the battery saver: what the display switches say now (the stock one and Samsung's), and the battery's own current
             "settings get secure doze_always_on; settings get system aod_mode; settings get system screen_off_timeout",
+            // Android's own Battery saver (the option): the switch, its sticky flag, Samsung's own switch if there is one, and what the system says
+            "settings get global low_power; settings get global low_power_sticky; settings get system psm_switch; "
+                    + "dumpsys power 2>&1 | grep -iE 'mBatterySaver|PowerSaveMode|low.?power' | head -12",
             "cat /sys/class/power_supply/battery/current_now 2>&1; dumpsys battery 2>&1 | head -30",
         };
         StringBuilder sb = new StringBuilder();

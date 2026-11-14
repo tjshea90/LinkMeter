@@ -55,6 +55,21 @@ final class Ui {
                 c.getResources().getDisplayMetrics());
     }
 
+    /** The colour of a line about Android's own Battery saver ({@link SystemSaver.Line}); dim while the phone is not answering. */
+    static int tone(SystemSaver.Tone t, boolean live) {
+        if (!live || t == SystemSaver.Tone.DIM) {
+            return DIM;
+        }
+        switch (t) {
+            case GOOD:
+                return GREEN;
+            case WARN:
+                return AMBER;
+            default:
+                return FG;
+        }
+    }
+
     static TextView text(Context c, String s, float sp, int color, boolean bold) {
         TextView t = new TextView(c);
         t.setText(s);

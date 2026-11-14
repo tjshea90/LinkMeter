@@ -258,9 +258,11 @@ final class SystemSaver {
     /** For an answer to the option's own switch. */
     static final String STORED_WAITING = "Stored. Android's own Battery saver switches on with LinkMeter's saver.";
     static final String STORED_SAVER_OFF = "Stored. Android's own Battery saver switches on with LinkMeter's saver, which is off now. Choose Automatic.";
-    static final String STORED_NEEDS_SHIZUKU = "Stored. Android's own Battery saver switches on as soon as Shizuku runs.";
+    static final String STORED_NEEDS_SHIZUKU = "Stored. Shizuku is not running, so Android's own Battery saver is not switched on yet. "
+            + "Press this again once it runs.";
     static final String STORED_LEFT_ALONE = "Stored. LinkMeter leaves Android's own Battery saver alone.";
-    static final String STORED_BACK_WAITING = "Stored. Android's own Battery saver goes back off as soon as Shizuku runs.";
+    static final String STORED_BACK_WAITING = "Stored. Shizuku is not running, so Android's own Battery saver goes back off when LinkMeter's "
+            + "saver ends, or when you press this again once it runs.";
 
     enum Tone { GOOD, PLAIN, WARN, DIM }
 

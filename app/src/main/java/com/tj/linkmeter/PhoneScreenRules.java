@@ -419,6 +419,12 @@ final class PhoneScreenRules {
         return f.saverOn ? new Line("on", Tone.GOOD) : new Line("off", Tone.QUIET);
     }
 
+    /** Android's own Battery saver, as Android says it (the words are SystemSaver's, shared with the tablet's screens). */
+    static Line androidSaverFact(PhoneScreenFacts f) {
+        SystemSaver.Line l = SystemSaver.fact(f.androidOn, f.androidWanted, f.androidOurs, f.saverOn);
+        return new Line(l.text, l.tone == SystemSaver.Tone.GOOD ? Tone.GOOD : l.tone == SystemSaver.Tone.WARN ? Tone.WARN : Tone.QUIET);
+    }
+
     /** The button that opens Android's battery list: only while Android limits LinkMeter. */
     static boolean batteryButton(PhoneScreenFacts f) {
         return !f.batteryUnrestricted;
@@ -505,9 +511,14 @@ final class PhoneScreenRules {
             + "texts and pictures through this phone.";
     static final String TEXTS_RCS = "Chats that use RCS (\"chat features\" in Google Messages) are kept inside that app and cannot be "
             + "seen here; turn chat features off there to see those conversations as plain texts.";
-    static final String SAVER_SWITCH = "Battery saver while the tablet is connected";
+    static final String SAVER_SWITCH = "LinkMeter's saver while the tablet is connected";
     static final String SAVER_EXPLAIN = "Switches off background scanning and the always-on display and shortens the screen timeout; "
-            + "all of it is put back 10 minutes after the tablet is gone. Mobile data, the hotspot's speed and Bluetooth are not touched.";
+            + "all of it is put back 10 minutes after the tablet is gone. Mobile data, the hotspot's speed and Bluetooth are not touched. "
+            + "This is not Android's own Battery saver: that one has its own switch below.";
+    static final String ANDROID_SAVER_SWITCH = "Also switch on Android's own Battery saver";
+    static final String ANDROID_SAVER_EXPLAIN = "Android's own Battery saver (Samsung: Power saving) goes on when LinkMeter's saver starts and "
+            + "off when that ends. Not tried on this phone yet: it may slow the phone down or make it slower to wake from Standby. If the "
+            + "hotspot goes off with it, LinkMeter puts it back and stops asking.";
     static final String AUTOSTART_SWITCH = "Start LinkMeter when the phone starts";
     static final String AUTOSTART_EXPLAIN = "It starts once the phone has been unlocked for the first time. After an app update it "
             + "always starts.";
@@ -517,8 +528,8 @@ final class PhoneScreenRules {
     static final String PERMISSIONS_HINT = "Shizuku lets LinkMeter do what the tablet asks: hotspot, Wi-Fi, screen, restart, restore. "
             + "It stops when the phone restarts and has to be started again.";
     static final String BATTERY_TIP = "Set LinkMeter to Unrestricted battery use, so Android never stops it while the screen is off.";
-    static final String RESTORE_HINT = "Restore puts the network types, the hotspot band and the battery saver back as they were (the "
-            + "saver is then switched off), switches airplane mode off and mobile data on. The Restore button on LinkMeter's "
+    static final String RESTORE_HINT = "Restore puts the network types, the hotspot band and LinkMeter's saver back as they were (the "
+            + "saver is then switched off, and so is Android's own Battery saver if LinkMeter had switched it on), switches airplane mode off and mobile data on. The Restore button on LinkMeter's "
             + "notification does the same.";
     static final String BREAKS_HINT = "Works on the phone alone: no tablet and no internet needed.";
     static final String PAIR_HINT = "Pair once, with the tablet on this phone's hotspot (the window stays open for 2 minutes). "

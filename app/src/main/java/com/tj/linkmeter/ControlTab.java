@@ -73,6 +73,8 @@ final class ControlTab extends Tab {
     private PhoneTabRules.Banner bannerKind = PhoneTabRules.Banner.NONE;
     private Ui.Fact fSaver;
     private Ui.Choice saver;
+    private Ui.Fact fAndroid;
+    private Ui.Choice androidSaver;
     private TextView tCurrent;
     private Ui.Fact fWifi;
     private Button bWifiOn;
@@ -143,14 +145,19 @@ final class ControlTab extends Tab {
         banner.setVisibility(View.GONE);
         col.addView(banner, Ui.lp(act, 10));
 
-        LinearLayout bat = Ui.card(act, "Battery", "While the tablet uses the phone's hotspot, the saver turns off background "
-                + "scanning and the always-on display and shortens the phone's screen timeout. It puts everything back when the "
-                + "tablet is gone. It never touches mobile data or the hotspot's speed.");
-        fSaver = new Ui.Fact(act, "Battery saver");
+        LinearLayout bat = Ui.card(act, "Battery", PhoneTabRules.SAVER_CARD_HINT);
+        fSaver = new Ui.Fact(act, "LinkMeter's saver");
         bat.addView(fSaver.view, Ui.lp(act, 8));
         saver = new Ui.Choice(act, new String[] {"Automatic", "Off"}, -1, i -> send(i == 0 ? "eco_auto_on" : "eco_auto_off",
-                i == 0 ? "Switching the battery saver to Automatic" : "Switching the battery saver off", 45000));
+                i == 0 ? "Switching LinkMeter's saver to Automatic" : "Switching LinkMeter's saver off", 45000));
         bat.addView(saver.view, Ui.lp(act, 8));
+        fAndroid = new Ui.Fact(act, "Android's Battery saver");
+        bat.addView(fAndroid.view, Ui.lp(act, 8));
+        androidSaver = new Ui.Choice(act, new String[] {"Also switch on", "Leave alone"}, -1, i -> send(
+                i == 0 ? SystemSaver.ACTION_ON : SystemSaver.ACTION_OFF,
+                i == 0 ? "Switching Android's own Battery saver on with LinkMeter's saver" : "Leaving Android's own Battery saver alone", 60000));
+        bat.addView(androidSaver.view, Ui.lp(act, 8));
+        bat.addView(Ui.hint(act, PhoneTabRules.ANDROID_SAVER_HINT), Ui.lp(act, 8));
         tCurrent = Ui.text(act, "", 13, Ui.FG, false);
         tCurrent.setVisibility(View.GONE);
         bat.addView(tCurrent, Ui.lp(act, 8));
@@ -487,6 +494,8 @@ final class ControlTab extends Tab {
         if (lastPhone == null) {
             fSaver.set("not known", Ui.DIM);
             saver.select(-1);
+            fAndroid.set("not known", Ui.DIM);
+            androidSaver.select(-1);
             tCurrent.setVisibility(View.GONE);
             return;
         }
@@ -494,6 +503,15 @@ final class ControlTab extends Tab {
         boolean auto = lastPhone.optBoolean("ecoAuto", true);
         fSaver.set(SaverPlan.homeFact(on, auto, lastPhone.optInt("priv", -1)), reachable ? Ui.FG : Ui.DIM);
         saver.select(lastPhone.has("ecoAuto") ? (auto ? 0 : 1) : -1);
+        // Android's own Battery saver: what ANDROID says ("psm"), never LinkMeter's own saver being on
+        Boolean option = Call.flag(lastPhone, "ecoSys");
+        if (option == null) {
+            fAndroid.set(PhoneTabRules.ANDROID_SAVER_OLD_APP, reachable ? Ui.AMBER : Ui.DIM);
+        } else {
+            SystemSaver.Line l = SystemSaver.fact(Call.flag(lastPhone, "psm"), option.booleanValue(), lastPhone.optBoolean("esys", false), on);
+            fAndroid.set(l.text, Ui.tone(l.tone, reachable));
+        }
+        androidSaver.select(PhoneTabRules.androidSaverChoice(option));
         String cur = PhoneTabRules.currentWords(lastPhone.has("cur") ? Integer.valueOf(lastPhone.optInt("cur")) : null);
         tCurrent.setVisibility(cur == null ? View.GONE : View.VISIBLE);
         if (cur != null) {
@@ -540,6 +558,7 @@ final class ControlTab extends Tab {
         bLocOn.setEnabled(locationKnown);
         bLocOff.setEnabled(locationKnown);
         saver.setEnabled(can);
+        androidSaver.setEnabled(can && lastPhone != null && lastPhone.has("ecoSys"));
         band.setEnabled(can);
         boolean canUpdate = can && PhoneTabRules.updateBlocked(reachable, overBluetooth()).isEmpty();
         bUpdate.setEnabled(canUpdate);

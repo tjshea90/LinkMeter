@@ -137,6 +137,11 @@ is on." After an answer-first action nobody is left to tell; the next status sho
 - `eco_auto_on` / `eco_auto_off` (an older tablet app sends `eco_on` / `eco_off`: the same two): the battery saver's ONE switch,
   Automatic or Off, stored on the phone. Storing never fails; with Shizuku down the answer is a plain "Stored..." sentence, not an
   error. See "Battery saver changes" below.
+- `eco_android_on` / `eco_android_off` (`SystemSaver.ACTION_ON|OFF`; added 2026-11-14): the OPTION "also switch on Android's own
+  Battery saver with the saver" (`Cfg.ecoSystem`, OFF by default). Stored first; carried out at once when the saver is on, else it
+  waits for the saver. An older phone app answers "unknown action" (the tablet says "update the phone's app"). `/s` says `psm`
+  (what ANDROID says, `PowerManager.isPowerSaveMode`, left out when the phone will not say), `ecoSys` (the option) and `esys`
+  (LinkMeter switched it on and holds the original). See "Android's own Battery saver" below.
 - `/s` additionally reports: `hs` (hotspot on; LEFT OUT when the phone cannot tell, so "not known" never reads as "off":
   `Radios.hotspot` asks the Wi-Fi manager's hidden answer, then the last hotspot announcement the service heard, then looks
   for a hotspot interface), `wifi` (phone's Wi-Fi switch), `scr` (screen on), `air` (airplane mode), `bt` (the link's state
@@ -231,6 +236,23 @@ Nothing here has run on the devices, so the tablet is written to claim only what
   read back; a write the phone did not take is an error answer (409) that names it, and the saver is left so that switching it
   off puts back what did change. A profile applied by the version before this one (`o0..o4` and a Bluetooth note) is put back
   by the same restore.
+- LinkMeter's saver is NOT Android's own Battery saver (Samsung: "Power saving"). The first report from a device (2026-11-14: "I
+  pressed automatic for the phone battery saver, but battery saver was not turned on. The phone control for linkmeter said battery
+  saver was on, but it wasn't") was exactly that: the tablet said "Battery saver: on" for LinkMeter's own profile while Android's was
+  off. So the screens now say two things apart ("LinkMeter's saver" and "Android's Battery saver", the second from `psm`, what
+  Android itself says), and the Phone tab and the phone's own screen have the option below.
+- Android's own Battery saver (`SystemSaver`, tested in `tools/test/SystemSaverTest.java`, 40 breakages `syssaver:`): only when the
+  option is on, never by default (nothing is known about what it does to the hotspot or to the phone's wake from Standby on this
+  phone). `settings put global low_power 1`, believed only when the phone reads it back as 1 AND Android itself says its Battery
+  saver is on (waited for up to 3 s: the state machine follows the setting a moment later; a phone that will not say is not
+  believed), and the hotspot is still on 2 s later (otherwise it is put back, the option is switched off and the answer says so).
+  The setting's original is saved BEFORE the write and put back by the saver's own restore (the Leave alone choice, Restore
+  everything, the saver ending by itself); a Battery saver that was already on is left alone and never switched off by LinkMeter.
+  A write that did not take, or an Android that did not follow, is an error answer (409) and the setting is put back at once.
+  Nothing retries by itself (a loop of failing shell lines would only cost battery): pressing the choice again does. NOT KNOWN
+  until the phone tries: whether One UI 8 follows `low_power` (Samsung may use its own `psm_switch`: Probe phone prints
+  `low_power`, `low_power_sticky`, `psm_switch` and the system's own lines), whether it keeps the hotspot and the Bluetooth wake from
+  Standby alive. The ONE stored switch of decision 2 is unchanged: this is a second option, not a second saver state.
 - When it ends by itself: ten minutes after the tablet was last heard over Wi-Fi, an alarm decides whether the tablet is gone
   (`SaverPlan.idle`). It is an `ELAPSED_REALTIME` alarm: it needs no permission and never wakes the phone, it goes off at the
   first wake after it was due (the old timer counted awake time only, so after Standby the values stayed on a phone carried

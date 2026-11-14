@@ -518,6 +518,37 @@ public final class PhoneScreenRulesTest {
         eq(Tone.GOOD, PhoneScreenRules.saverFact(f).tone, "saver on is green");
         f.saverOn = false;
         eq("off", PhoneScreenRules.saverFact(f).text, "saver off");
+        // Android's own Battery saver is told apart from LinkMeter's: its line is Android's word, never the saver's
+        for (Boolean os : new Boolean[] {Boolean.TRUE, Boolean.FALSE, null}) {
+            for (int mask = 0; mask < 8; mask++) {
+                f = ready();
+                f.androidOn = os;
+                f.androidWanted = (mask & 1) != 0;
+                f.androidOurs = (mask & 2) != 0;
+                f.saverOn = (mask & 4) != 0;
+                String ctx = " (android " + os + ", wanted " + f.androidWanted + ", ours " + f.androidOurs + ", saver " + f.saverOn + ")";
+                PhoneScreenRules.Line l = PhoneScreenRules.androidSaverFact(f);
+                SystemSaver.Line w = SystemSaver.fact(os, f.androidWanted, f.androidOurs, f.saverOn);
+                eq(w.text, l.text, "the phone's own screen says what the tablet says" + ctx);
+                eq(w.tone == SystemSaver.Tone.GOOD ? Tone.GOOD : w.tone == SystemSaver.Tone.WARN ? Tone.WARN : Tone.QUIET, l.tone, "the tone follows" + ctx);
+                yes(os != null && os.booleanValue() == l.text.startsWith("on") || os == null && l.text.equals("not known"),
+                        "'on' only when Android says on" + ctx);
+                say(l.text);
+            }
+        }
+        f = ready();
+        f.saverOn = true;
+        f.androidOn = Boolean.FALSE;
+        eq("on", PhoneScreenRules.saverFact(f).text, "LinkMeter's saver is on");
+        yes(PhoneScreenRules.androidSaverFact(f).text.startsWith("off"), "...and that says nothing about Android's own Battery saver (the user's report)");
+        yes(PhoneScreenRules.SAVER_EXPLAIN.contains("not Android's own Battery saver"), "the saver's explanation says it is not Android's");
+        yes(PhoneScreenRules.ANDROID_SAVER_EXPLAIN.contains("Samsung: Power saving") && PhoneScreenRules.ANDROID_SAVER_EXPLAIN.contains("Not tried on this phone yet"),
+                "the option's explanation names Samsung's word and says it is untried");
+        yes(PhoneScreenRules.SAVER_SWITCH.startsWith("LinkMeter's saver"), "the switch names whose saver it is");
+        say(PhoneScreenRules.ANDROID_SAVER_SWITCH);
+        say(PhoneScreenRules.ANDROID_SAVER_EXPLAIN);
+        say(PhoneScreenRules.SAVER_SWITCH);
+        say(PhoneScreenRules.SAVER_EXPLAIN);
         // Boot assist depends on the start after a restart
         for (boolean auto : new boolean[] {true, false}) {
             for (boolean perm : new boolean[] {true, false}) {

@@ -51,7 +51,10 @@ always.
   Wi-Fi preferences also have "Turn on Wi-Fi automatically", which may bring the Wi-Fi on near a saved hotspot without any tap; that is
   Android's, not LinkMeter's, and not tried here.)
 - **Phone tab:** the battery saver (**Automatic** switches off background scanning and the always-on display and shortens the
-  screen timeout while the tablet uses the hotspot, and puts everything back by itself), the phone's **Wi-Fi**, **Restart** and
+  screen timeout while the tablet uses the hotspot, and puts everything back by itself; this is LinkMeter's own saver, it is NOT
+  Android's Battery saver, and the tab shows both lines apart: "LinkMeter's saver" and "Android's Battery saver", the second as
+  Android itself says it; **Also switch on** under it makes LinkMeter turn Android's own Battery saver on with its saver and back
+  off with it: off until you choose it, not tried on this phone yet), the phone's **Wi-Fi**, **Restart** and
   **Power off** (they ask first: after them someone has to touch the phone), and **If something breaks**.
 - **Signal tab:** what the phone is on now (**Scan**), **4G only** or **5G allowed**, and **Compare the two** (measures the upload
   speed of both in random order; about 5 minutes, uses mobile data; the phone is put back as it was). **Search for a network
@@ -138,7 +141,10 @@ Tell me what happened, in your own words, for any of these:
 - The tablet's Wi-Fi with the hotspot: after Hotspot on, did the panel with the Wi-Fi switch open, and did one tap on it join the
   hotspot? After Hotspot off, did the Wi-Fi go off (after your tap)? Was one tap fine for you, or would you rather have it with no tap
   at all (that needs a second, tiny app on the tablet that Android still allows to switch Wi-Fi: tell me and I build it)?
-- The battery saver: Automatic, then Off, and the "Battery saver" line on Home.
+- The battery saver: Automatic, then Off, and the "LinkMeter's saver" and "Android's Battery saver" lines on Home. Then **Also switch on**
+  (Phone tab): does the phone's own Battery saver (Power saving) really come on, and go off again when the saver ends? Does the
+  hotspot stay up, is the tablet as fast, and does Standby still wake from the tablet? If the phone does not follow, Probe phone
+  prints what its settings say (`low_power`, `psm_switch`): send me those lines.
 - The Screen tab left open while the phone sleeps (the tablet is meant to rest after a while, and wake when you touch it).
 - The phone's own screen: does the first card name the right thing? Do Stop, Forget all tablets and Switch role ask first?
 - The Signal tab: Scan, the comparison, Search for a network again, Phone info screen.

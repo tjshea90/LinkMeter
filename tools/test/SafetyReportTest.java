@@ -164,7 +164,7 @@ public final class SafetyReportTest {
 
         // ---- every combination of the change flags: never 'nothing' with a change, never a change from nothing
         int combos = 0;
-        for (int m = 0; m < (1 << 11); m++) {
+        for (int m = 0; m < (1 << 12); m++) {
             SafetyReport.Facts f = base();
             f.typesChanged = (m & 1) != 0;
             f.legChanged = (m & 2) != 0;
@@ -177,6 +177,7 @@ public final class SafetyReportTest {
             f.secureGranted = (m & 256) != 0;
             f.pairingKept = (m & 512) != 0;
             f.bootAssist = (m & 1024) != 0;
+            f.androidSaver = (m & 2048) != 0;
             f.guardWatching = (m & 1) != 0;
             // the switches change with the mask as well: whatever they are, they are never a change, and every equality below must still hold
             Boolean[] tri3 = {null, Boolean.TRUE, Boolean.FALSE};
@@ -196,12 +197,14 @@ public final class SafetyReportTest {
             check(r.contains("the battery saver is on") == ((m & 128) != 0), "the battery saver is a change exactly when it is on [mask " + m + "]");
             check(r.contains("switches the battery saver's Automatic choice off") == ((m & 128) != 0),
                     "Restore everything says it also switches the saver's Automatic choice off, exactly when the saver is on [mask " + m + "]");
+            check(r.contains("Android's own Battery saver is on because LinkMeter switched it on") == ((m & 2048) != 0),
+                    "Android's own Battery saver is a change exactly when LinkMeter switched it on [mask " + m + "]");
             boolean boot = (m & (256 | 512 | 1024)) != 0;
-            boolean other = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128)) != 0;
+            boolean other = (m & (1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 2048)) != 0;
             check(boot == r.contains("Undo the setup"), "the boot setup is mentioned exactly when one of its items is in place [mask " + m + "]");
             check(other == r.contains("Restore everything puts it back"), "Restore everything is promised exactly when there is something it puts back [mask " + m + "]");
         }
-        check(combos == 2048, "all combinations tried");
+        check(combos == 4096, "all combinations tried");
 
         System.out.println(checks + " checks, " + failed + " failed");
         System.exit(failed == 0 ? 0 : 1);
