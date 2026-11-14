@@ -92,7 +92,7 @@ final class SafetyReport {
             l.add("Boot assist is on: after a restart the phone switches wireless debugging on by itself and shows a notification that opens Shizuku");
         }
         if (f.batterySaver) {
-            l.add("the battery saver is on: it turned off background scanning and the always-on display and shortened the screen timeout, "
+            l.add("LinkMeter's saver is on: it turned off background scanning and the always-on display and shortened the screen timeout, "
                     + "and puts them back by itself (it never touches mobile data)");
         }
         if (f.androidSaver) {
@@ -150,7 +150,7 @@ final class SafetyReport {
                 sb.append("Restore everything puts it back (the Phone tab on the tablet, LinkMeter open on the phone itself, or the Restore button in the notification).");
                 if (f.batterySaver) {
                     // Restore everything stores Off for the saver too (Eco.setAuto): left on Automatic, the tablet's next request would switch it on again
-                    sb.append(" It also switches the battery saver's Automatic choice off. Switch it on again in the Phone tab.");
+                    sb.append(" It also switches the saver's Automatic choice off. Switch it on again in the Phone tab.");
                 }
             }
             if (bootChanged(f)) {

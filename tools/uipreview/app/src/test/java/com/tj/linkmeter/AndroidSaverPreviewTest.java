@@ -62,6 +62,15 @@ public class AndroidSaverPreviewTest {
         throw new AssertionError("no value next to " + label);
     }
 
+    /** Is this choice button the selected one? A selected button has the dark text on the accent colour ({@link Ui.Choice#select}). */
+    static boolean selected(MainActivity a, String label) {
+        android.widget.Button b = findButton(a.getWindow().getDecorView(), label);
+        if (b == null) {
+            throw new AssertionError("no button " + label);
+        }
+        return b.getCurrentTextColor() == Ui.ON_ACCENT;
+    }
+
     // ------------------------------------------------------------------------------------------------ the tablet's Phone tab
 
     /** The user's own situation: LinkMeter's saver is on, Android's own Battery saver is off, and the screen says both, apart. */
@@ -72,6 +81,8 @@ public class AndroidSaverPreviewTest {
         check(valueOf(a, "LinkMeter's saver").equals("on"), "LinkMeter's saver is on: " + valueOf(a, "LinkMeter's saver"));
         check(valueOf(a, "Android's Battery saver").equals("off (LinkMeter leaves it alone)"),
                 "Android's own Battery saver is off, and says LinkMeter leaves it alone: " + valueOf(a, "Android's Battery saver"));
+        check(selected(a, "Leave alone") && !selected(a, "Also switch on"), "the option is off: 'Leave alone' is the selected button");
+        check(selected(a, "Automatic") && !selected(a, "Off"), "LinkMeter's saver is Automatic: that button is the selected one");
         mustShow(a, "It is not Android's own Battery saver");
         mustShow(a, "Samsung: Power saving");
         mustShow(a, "Not tried on this phone yet");
@@ -87,6 +98,7 @@ public class AndroidSaverPreviewTest {
         MainActivity a = phoneTab(p);
         check(valueOf(a, "Android's Battery saver").equals("on (LinkMeter switched it on, and puts it back)"),
                 "says it is on and whose it is: " + valueOf(a, "Android's Battery saver"));
+        check(selected(a, "Also switch on") && !selected(a, "Leave alone"), "the option is on: 'Also switch on' is the selected button");
         shot(a, "state-android-saver-on");
     }
 

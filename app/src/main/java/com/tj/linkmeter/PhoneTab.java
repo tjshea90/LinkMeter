@@ -810,7 +810,7 @@ final class PhoneTab extends Tab {
     private void setSaver(final boolean on) {
         Cfg.setEcoAuto(act, on);
         working(on ? "Switching LinkMeter's saver to Automatic" : "Switching LinkMeter's saver off");
-        off("linkmeter-eco-switch", "", "The battery saver could not be changed.", app -> result(Eco.setAuto(app, on), true));
+        off("linkmeter-eco-switch", "", "LinkMeter's saver could not be changed.", app -> result(Eco.setAuto(app, on), true));
     }
 
     /** The option: also switch on Android's OWN Battery saver with the saver. The same switch the tablet's choice moves ({@link Eco#setSystem}). */

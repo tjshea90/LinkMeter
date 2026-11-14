@@ -194,8 +194,8 @@ public final class SafetyReportTest {
             check(any == r.contains("Still changed by LinkMeter"), "a change is reported exactly when there is one [mask " + m + "]");
             check(any != r.contains("nothing changed on this phone"), "'nothing changed' exactly when there is nothing [mask " + m + "]");
             check(SafetyReport.changes(f).size() == Integer.bitCount(m), "one line per change [mask " + m + "]");
-            check(r.contains("the battery saver is on") == ((m & 128) != 0), "the battery saver is a change exactly when it is on [mask " + m + "]");
-            check(r.contains("switches the battery saver's Automatic choice off") == ((m & 128) != 0),
+            check(r.contains("LinkMeter's saver is on") == ((m & 128) != 0), "LinkMeter's saver is a change exactly when it is on [mask " + m + "]");
+            check(r.contains("switches the saver's Automatic choice off") == ((m & 128) != 0),
                     "Restore everything says it also switches the saver's Automatic choice off, exactly when the saver is on [mask " + m + "]");
             check(r.contains("Android's own Battery saver is on because LinkMeter switched it on") == ((m & 2048) != 0),
                     "Android's own Battery saver is a change exactly when LinkMeter switched it on [mask " + m + "]");

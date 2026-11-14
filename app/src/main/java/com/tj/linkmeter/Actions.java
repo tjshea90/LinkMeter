@@ -845,9 +845,9 @@ final class Actions {
         }
         try {
             // the saver's settings go back AND the choice is stored as Off: otherwise the tablet's next request would switch it on again
-            sb.append("Battery saver: ").append(Eco.setAuto(c, false, SaverPlan.RESTORE_ALL_NOTE)).append('\n');
+            sb.append("LinkMeter's saver: ").append(Eco.setAuto(c, false, SaverPlan.RESTORE_ALL_NOTE)).append('\n');
         } catch (IOException e) {
-            sb.append("Battery saver: ").append(e.getMessage()).append('\n');
+            sb.append("LinkMeter's saver: ").append(e.getMessage()).append('\n');
         }
         try {
             Priv.run("cmd connectivity airplane-mode disable; svc data enable", 20);

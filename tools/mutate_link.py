@@ -318,7 +318,7 @@ V = [
  ("saver: an unreadable setting is not mentioned", "SaverPlan.java", "if (!run.unreadable.isEmpty()) {", "if (false) {"),
  ("saver: a failure is worded as success", "SaverPlan.java", "if (!a.failed.isEmpty()) {\n            sb.append(a.changed.isEmpty()", "if (false) {\n            sb.append(a.changed.isEmpty()"),
  ("saver: the same feature is named twice", "SaverPlan.java", "String s = phrase(e.key, e.target);\n            if (!l.contains(s)) {", "String s = phrase(e.key, e.target);\n            if (true) {"),
- ("saver: Restore everything does not say the saver is off", "SaverPlan.java", "\" The battery saver is now switched off. Switch it on again in the Phone tab.\"", "\" Done.\""),
+ ("saver: Restore everything does not say the saver is off", "SaverPlan.java", "\" LinkMeter's saver is now switched off. Switch it on again in the Phone tab.\"", "\" Done.\""),
  ("saver: Home says on for a saver that is off", "SaverPlan.java", "        if (!auto) {\n            return \"off\";\n        }\n        return priv >= 0", "        if (!auto) {\n            return \"on\";\n        }\n        return priv >= 0"),
  ("saver: Home says on from the choice alone", "SaverPlan.java", "return priv >= 0 && priv != 2 ? \"automatic, needs Shizuku\" : \"automatic: starts when the tablet is on the hotspot\";", "return \"on\";"),
  ("saver: Home ignores that Shizuku is down", "SaverPlan.java", "return priv >= 0 && priv != 2 ? \"automatic, needs Shizuku\" :", "return false ? \"automatic, needs Shizuku\" :"),
@@ -333,7 +333,7 @@ V = [
 SAFETYREPORT_FILES = ["SafetyReport.java"]
 SAFETYREPORT_TEST = ROOT + "/tools/test/SafetyReportTest.java"
 Y = [
- ("safety: the battery saver is not a change", "SafetyReport.java", "if (f.batterySaver) {\n            l.add(\"the battery saver is on:", "if (false) {\n            l.add(\"the battery saver is on:"),
+ ("safety: the battery saver is not a change", "SafetyReport.java", "if (f.batterySaver) {\n            l.add(\"LinkMeter's saver is on:", "if (false) {\n            l.add(\"LinkMeter's saver is on:"),
  ("safety: Restore everything is not promised for the saver", "SafetyReport.java", "f.menuRecent\n                || f.batterySaver || f.androidSaver;", "f.menuRecent || f.androidSaver;"),
  ("safety: the Automatic choice is not mentioned", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (false) {\n                    // Restore everything stores Off"),
  ("safety: the Automatic choice is mentioned when the saver is off", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (true) {\n                    // Restore everything stores Off"),
@@ -342,7 +342,7 @@ Y = [
  ("safety: a band lock note is no radio change", "SafetyReport.java", "return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.menuRecent;", "return f.typesChanged || f.legChanged || f.radioBlip || f.airplaneTimer || f.menuRecent;"),
  ("safety: a 5G leg note is not put back by Restore everything", "SafetyReport.java", "return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged", "return f.typesChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged"),
  ("safety: the report lists a leg line again", "SafetyReport.java", 'sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append(\'\\n\');', 'sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append(\'\\n\');\n        sb.append("5G leg: on (normal)\\n");'),
- ('safety: a hotspot that is on counts as a change', 'SafetyReport.java', '        if (f.batterySaver) {\n            l.add("the battery saver is on:', '        if (Boolean.TRUE.equals(f.hotspotOn)) {\n            l.add("the hotspot is on");\n        }\n        if (f.batterySaver) {\n            l.add("the battery saver is on:'),
+ ('safety: a hotspot that is on counts as a change', 'SafetyReport.java', '        if (f.batterySaver) {\n            l.add("LinkMeter\'s saver is on:', '        if (Boolean.TRUE.equals(f.hotspotOn)) {\n            l.add("the hotspot is on");\n        }\n        if (f.batterySaver) {\n            l.add("LinkMeter\'s saver is on:'),
  ('safety: Wi-Fi on counts for Restore everything', 'SafetyReport.java', '|| f.menuRecent\n                || f.batterySaver || f.androidSaver;', '|| f.menuRecent\n                || f.batterySaver || f.androidSaver || Boolean.TRUE.equals(f.wifiOn);'),
  ('safety: the Bluetooth link counts as a boot item', 'SafetyReport.java', 'return f.secureGranted || f.pairingKept || f.bootAssist;', 'return f.secureGranted || f.pairingKept || f.bootAssist || f.btLink.startsWith("on");'),
  ('safety: a switch that is not known is printed as off', 'SafetyReport.java', 'return on == null ? "cannot tell" : on.booleanValue() ? "on" : "off";', 'return on != null && on.booleanValue() ? "on" : "off";'),
@@ -562,7 +562,7 @@ PS = [
  ('phonescreen: the pairing window never reads as closed', 'PhoneScreenRules.java', 'if (f.pairingLeftSec <= 0) {\n            return "";', 'if (f.pairingLeftSec < 0) {\n            return "";'),
  ('phonescreen: Stop does not say what is lost', 'PhoneScreenRules.java', '"The tablet can then not reach this phone, over the hotspot or over Bluetooth, until you "', '"The tablet can then not reach this phone until you "'),
  ('phonescreen: Stop promises that a restart brings it back though the start after a restart is off', 'PhoneScreenRules.java', '(f.autoStart ? " or the phone restarts." : ".")', '" or the phone restarts."'),
- ("phonescreen: the saver's changes are mentioned when it is off", 'PhoneScreenRules.java', 'return f.saverOn ? " The battery saver\'s changes', 'return !f.saverOn ? " The battery saver\'s changes'),
+ ("phonescreen: the saver's changes are mentioned when it is off", 'PhoneScreenRules.java', 'return f.saverOn ? " The saver\'s changes', 'return !f.saverOn ? " The saver\'s changes'),
  ('phonescreen: a word of the listener it does not know claims an error', 'PhoneScreenFacts.java', '        return Bt.NONE;\n    }\n\n    /** {@code Priv.OFF', '        return Bt.ERROR;\n    }\n\n    /** {@code Priv.OFF'),
  ('phonescreen: a Shizuku state that is not known reads as ready', 'PhoneScreenFacts.java', 'return state == 2 ? Shizuku.READY : state == 1 ? Shizuku.NOT_ALLOWED : Shizuku.OFF;', 'return state == 0 ? Shizuku.OFF : state == 1 ? Shizuku.NOT_ALLOWED : Shizuku.READY;'),
  ('phonescreen: the number of paired tablets is not shown', 'PhoneScreenRules.java', 'new Line(f.tablets + " paired", Tone.GOOD);', 'new Line("1 paired", Tone.GOOD);'),

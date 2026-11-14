@@ -242,7 +242,7 @@ final class SignalTab extends Tab {
         tools.addView(Ui.hint(act, "Shows what LinkMeter has changed on the phone and not put back."), Ui.lp(act, 2));
         bRestore = Ui.quiet(act, "Restore everything", v -> ControlTab.restoreDialog(act));
         tools.addView(bRestore, Ui.lp(act, 10));
-        tools.addView(Ui.hint(act, "Puts the phone back as it was: network types, hotspot band, battery saver."), Ui.lp(act, 2));
+        tools.addView(Ui.hint(act, "Puts the phone back as it was: network types, hotspot band and LinkMeter's saver."), Ui.lp(act, 2));
         col.addView(tools, Ui.lp(act, 12));
 
         View root = Ui.withResultBar(act, col, bar);

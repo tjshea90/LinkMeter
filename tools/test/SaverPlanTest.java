@@ -371,16 +371,16 @@ public final class SaverPlanTest {
     private static void sentences() {
         SaverPlan.Run run = SaverPlan.plan(s("1", "1", "1", "1", "30000"), false, "null");
         SaverPlan.Applied a = SaverPlan.check(run, "R0=0\nR1=0\nR2=0\nR3=0\nR4=15000");
-        eq("Battery saver is on: background Wi-Fi scanning off, background Bluetooth scanning off, always-on display off, screen timeout 15 seconds.",
+        eq("LinkMeter's saver is on: background Wi-Fi scanning off, background Bluetooth scanning off, always-on display off, screen timeout 15 seconds.",
                 SaverPlan.appliedSentence(run, a), "the sentence names what changed, once each");
         run = SaverPlan.plan(s("1", "0", "0", "null", "15000"), false, "null");
         a = SaverPlan.check(run, "R0=0");
-        eq("Battery saver is on: background Wi-Fi scanning off.", SaverPlan.appliedSentence(run, a), "one change");
+        eq("LinkMeter's saver is on: background Wi-Fi scanning off.", SaverPlan.appliedSentence(run, a), "one change");
         run = SaverPlan.plan(s("0", "0", "0", "null", "15000"), false, "null");
-        eq("Battery saver is on. Nothing had to be changed.", SaverPlan.appliedSentence(run, SaverPlan.check(run, "")), "nothing to change");
+        eq("LinkMeter's saver is on. Nothing had to be changed.", SaverPlan.appliedSentence(run, SaverPlan.check(run, "")), "nothing to change");
         run = SaverPlan.plan(s("1", "", "0", "null", "15000"), false, "null");
         a = SaverPlan.check(run, "R0=0");
-        eq("Battery saver is on: background Wi-Fi scanning off. Not changed, because the phone did not say what it is now: background Bluetooth scanning.",
+        eq("LinkMeter's saver is on: background Wi-Fi scanning off. Not changed, because the phone did not say what it is now: background Bluetooth scanning.",
                 SaverPlan.appliedSentence(run, a), "an unreadable setting is named");
         run = SaverPlan.plan(s("1", "", "", "null", "15000"), false, "null");
         yes(SaverPlan.appliedSentence(run, SaverPlan.check(run, "R0=0")).contains("what they are now: background Bluetooth scanning, the always-on display."),
@@ -391,16 +391,16 @@ public final class SaverPlanTest {
         // failures
         run = SaverPlan.plan(s("1", "1", "1", "1", "30000"), false, "null");
         a = SaverPlan.check(run, "R0=0\nR1=0\nR2=1\nR3=0\nR4=15000");
-        eq("The battery saver is only partly on. The phone did not take: the always-on display. It did change: background Wi-Fi scanning off, background Bluetooth "
+        eq("LinkMeter's saver is only partly on. The phone did not take: the always-on display. It did change: background Wi-Fi scanning off, background Bluetooth "
                 + "scanning off, always-on display off, screen timeout 15 seconds. Switching the saver off puts those back.", SaverPlan.appliedSentence(run, a),
                 "a partly failed write is an error sentence that names both");
         a = SaverPlan.check(run, "");
-        eq("The battery saver could not be switched on. The phone did not take: background Wi-Fi scanning, background Bluetooth scanning, the always-on display, the screen timeout.",
+        eq("LinkMeter's saver could not be switched on. The phone did not take: background Wi-Fi scanning, background Bluetooth scanning, the always-on display, the screen timeout.",
                 SaverPlan.appliedSentence(run, a), "nothing took");
         // restore words
         SaverPlan.Restore r = SaverPlan.restore(SaverPlan.parse("global wifi_scan_always_enabled 1\n"), false, false);
-        eq("Battery saver is off. Settings are back as they were.", SaverPlan.restoredSentence(r), "restored");
-        eq("Battery saver is off. Nothing had to be put back.", SaverPlan.restoredSentence(SaverPlan.restore(SaverPlan.parse(""), false, false)), "nothing to put back");
+        eq("LinkMeter's saver is off. Settings are back as they were.", SaverPlan.restoredSentence(r), "restored");
+        eq("LinkMeter's saver is off. Nothing had to be put back.", SaverPlan.restoredSentence(SaverPlan.restore(SaverPlan.parse(""), false, false)), "nothing to put back");
         r = SaverPlan.restore(SaverPlan.parse("system screen_off_timeout 30000\n"), false, true);
         yes(SaverPlan.restoredSentence(r).contains("The screen timeout goes back when the remote screen session ends."), "the session gets the timeout");
         r = SaverPlan.restore(SaverPlan.parseOld(s("1", "x", "0", "0", "30000")), false, false);
@@ -845,11 +845,11 @@ public final class SaverPlanTest {
         w.touch(true);
         eq(true, w.on, "the first request from the tablet switches the saver on");
         eq("[0, 0, 0, 0, 15000]", Arrays.toString(ph.profile()), "the phone has the saver's values (an unset setting is written too)");
-        eq("Battery saver is on: background Wi-Fi scanning off, background Bluetooth scanning off, always-on display off, screen timeout 15 seconds.",
+        eq("LinkMeter's saver is on: background Wi-Fi scanning off, background Bluetooth scanning off, always-on display off, screen timeout 15 seconds.",
                 w.said, "the sentence is what really changed");
         w.setAuto(false);
         eq("[1, null, 1, 1, 30000]", Arrays.toString(ph.profile()), "turning it off puts everything back, the unset setting is deleted again");
-        yes(w.said.startsWith("Battery saver is off. Settings are back as they were."), "restored sentence");
+        yes(w.said.startsWith("LinkMeter's saver is off. Settings are back as they were."), "restored sentence");
         yes(!w.on && !w.armed && !w.watchingScreen, "no alarm and no receiver left behind");
         for (String line : ph.writes()) {
             yes(line.matches("(global|secure|system)\\.[a-z_]+=(\\d{1,10}|DELETE)"), "only numbers and deletes were ever sent: " + line);
@@ -986,7 +986,7 @@ public final class SaverPlanTest {
         ph.ignorePuts = "system.aod_mode";
         w = new World(ph);
         w.setAuto(true);
-        yes(w.errored && w.said.startsWith("The battery saver is only partly on. The phone did not take: the always-on display."),
+        yes(w.errored && w.said.startsWith("LinkMeter's saver is only partly on. The phone did not take: the always-on display."),
                 "STORY a write the phone ignores: an explicit switch-on answers an error that names it");
         yes(w.on, "...and the saver is left in a state that can be undone");
         ph.ignorePuts = "";

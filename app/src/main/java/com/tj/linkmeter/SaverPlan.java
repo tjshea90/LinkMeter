@@ -476,16 +476,16 @@ final class SaverPlan {
 
     // ------------------------------------------------------------------------------------------ the words the user reads
 
-    static final String ALREADY_ON = "Battery saver was already on.";
-    static final String ALREADY_OFF = "Battery saver was off.";
+    static final String ALREADY_ON = "LinkMeter's saver was already on.";
+    static final String ALREADY_OFF = "LinkMeter's saver was off.";
     /** The choice is Off but Shizuku is not running, so the settings cannot be put back yet (the choice itself is stored). */
     static final String OFF_STORED_WAITING = "Stored. The phone's settings go back as soon as Shizuku runs.";
-    static final String ON_STORED_WAITING = "Stored. The battery saver switches on by itself once Shizuku runs and the tablet is connected.";
+    static final String ON_STORED_WAITING = "Stored. LinkMeter's saver switches on by itself once Shizuku runs and the tablet is connected.";
     static final String AUTOMATIC_NOTE = " It switches on by itself when the tablet connects.";
     static final String OFF_NOTE = " It stays off until you switch it on.";
     /** Restore everything also stores Off, or the next request from the tablet would switch the saver on again. */
-    static final String RESTORE_ALL_NOTE = " The battery saver is now switched off. Switch it on again in the Phone tab.";
-    static final String COULD_NOT_READ = "Couldn't read the phone's settings, so the battery saver was not switched on.";
+    static final String RESTORE_ALL_NOTE = " LinkMeter's saver is now switched off. Switch it on again in the Phone tab.";
+    static final String COULD_NOT_READ = "Couldn't read the phone's settings, so LinkMeter's saver was not switched on.";
 
     private static String join(List<String> l) {
         return String.join(", ", l);
@@ -537,7 +537,7 @@ final class SaverPlan {
     static String appliedSentence(Run run, Applied a) {
         StringBuilder sb = new StringBuilder();
         if (!a.failed.isEmpty()) {
-            sb.append(a.changed.isEmpty() ? "The battery saver could not be switched on." : "The battery saver is only partly on.")
+            sb.append(a.changed.isEmpty() ? "LinkMeter's saver could not be switched on." : "LinkMeter's saver is only partly on.")
                     .append(" The phone did not take: ").append(join(subjects(a.failed))).append('.');
             if (!a.changed.isEmpty()) {
                 sb.append(" It did change: ").append(join(phrases(a.changed))).append(". Switching the saver off puts those back.");
@@ -545,9 +545,9 @@ final class SaverPlan {
             return sb.toString();
         }
         if (a.changed.isEmpty()) {
-            sb.append("Battery saver is on. Nothing had to be changed.");
+            sb.append("LinkMeter's saver is on. Nothing had to be changed.");
         } else {
-            sb.append("Battery saver is on: ").append(join(phrases(a.changed))).append('.');
+            sb.append("LinkMeter's saver is on: ").append(join(phrases(a.changed))).append('.');
         }
         if (run.timeoutWaits()) {
             sb.append(" The screen timeout changes when the remote screen session ends.");
@@ -561,8 +561,8 @@ final class SaverPlan {
 
     /** The answer to a switch-off. */
     static String restoredSentence(Restore r) {
-        StringBuilder sb = new StringBuilder(r.count == 0 ? "Battery saver is off. Nothing had to be put back."
-                : "Battery saver is off. Settings are back as they were.");
+        StringBuilder sb = new StringBuilder(r.count == 0 ? "LinkMeter's saver is off. Nothing had to be put back."
+                : "LinkMeter's saver is off. Settings are back as they were.");
         if (r.sessionTimeout != null) {
             sb.append(" The screen timeout goes back when the remote screen session ends.");
         }

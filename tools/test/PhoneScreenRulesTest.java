@@ -611,9 +611,9 @@ public final class PhoneScreenRulesTest {
             eq("Switch role", role.yes, "Switch role's yes");
             eq("Forget all tablets?", forget.title, "Forget's title names the button");
             // the saver's changes stay while the service is stopped: said when they are in force, not otherwise
-            eq(saver, stop.message.contains("battery saver's changes stay"), "Stop mentions the saver only when it is on" + ctx);
-            eq(saver, role.message.contains("battery saver's changes stay"), "Switch role mentions the saver only when it is on" + ctx);
-            yes(!forget.message.contains("battery saver"), "Forget has nothing to say about the saver" + ctx);
+            eq(saver, stop.message.contains("saver's changes stay"), "Stop mentions the saver only when it is on" + ctx);
+            eq(saver, role.message.contains("saver's changes stay"), "Switch role mentions the saver only when it is on" + ctx);
+            yes(!forget.message.contains("saver"), "Forget has nothing to say about the saver" + ctx);
         }
     }
 

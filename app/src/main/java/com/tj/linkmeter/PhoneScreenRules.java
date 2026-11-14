@@ -475,7 +475,7 @@ final class PhoneScreenRules {
 
     /** The battery saver's changes stay while the service is stopped: say so when they are in force. */
     private static String saverNote(PhoneScreenFacts f) {
-        return f.saverOn ? " The battery saver's changes stay until LinkMeter starts again; Restore everything puts them back." : "";
+        return f.saverOn ? " The saver's changes stay until LinkMeter starts again; Restore everything puts them back." : "";
     }
 
     static Question stopQuestion(PhoneScreenFacts f) {

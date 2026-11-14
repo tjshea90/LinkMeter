@@ -224,7 +224,7 @@ final class Eco {
                 e.remove("o" + i);
             }
             if (!e.commit()) {
-                throw new Actions.NotDone("Couldn't save the phone's settings first, so the battery saver was not switched on.");
+                throw new Actions.NotDone("Couldn't save the phone's settings first, so LinkMeter's saver was not switched on.");
             }
             SaverPlan.Applied a = new SaverPlan.Applied();
             if (!run.writes().isEmpty()) {
