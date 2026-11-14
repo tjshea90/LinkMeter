@@ -1,4 +1,4 @@
-STATUS: WORKING  (session branch claude/trusting-knuth-uwdl8r; started 2026-11-14 from main 002e6ef + notes of ccr-a8e3fc17-ngp6l5)
+STATUS: DONE (closing save f6f2719; GitHub's own run #181 of that commit, started by hand, was green: tests, build, APK kept as an artifact; no merge and no release, because the branch is claude/* and the pipeline only knows ccr-*)  (session branch claude/trusting-knuth-uwdl8r; started 2026-11-14 from main 002e6ef + notes of ccr-a8e3fc17-ngp6l5)
 TASK (the user's field report, 2026-11-14): "I pressed automatic for the phone battery saver, but battery saver was not turned on. The phone
 control for linkmeter said battery saver was on, but it wasn't."
 
@@ -15,6 +15,6 @@ DONE (all in the tree, pushed as wip/progress commits):
  - Tests: SystemSaverTest, PhoneTabRulesTest, PhoneScreenRulesTest, SafetyReportTest (4096 masks) extended; tools/uipreview AndroidSaverPreviewTest (14 scenarios, pictures looked at: state-android-saver-*.png, phone-android-saver-*.png).
  - Offline tests all green (64 suites), release build green.
  - Docs: REMOTE_LINK.md, SAFETY.md, USER_GUIDE.md updated.
-NEXT: breakages for PhoneTabRules/PhoneScreenRules/SafetyReport rules + a few for the screen glue; run the WHOLE preview (tools/preview.sh) for regressions; final tools/test.sh + assembleRelease;
+NEXT (all done in the closing save; kept as the record): breakages for PhoneTabRules/PhoneScreenRules/SafetyReport rules + a few for the screen glue; run the WHOLE preview (tools/preview.sh) for regressions; final tools/test.sh + assembleRelease;
  HANDOFF.md block (short); closing save. BRANCH NOTE: this branch is claude/*, so a push starts NO GitHub run (the pipeline knows ccr-* only; tools/pending/claude-branches.patch waits for the user's yes). TELL THE USER at the end: for an APK they need a ccr-* branch push (ask) or the pending patch.
 NOT KNOWN UNTIL THE PHONE TRIES: whether One UI 8 follows settings put global low_power (Samsung may use psm_switch), whether the hotspot and the Bluetooth wake from Standby survive Android's Battery saver.
