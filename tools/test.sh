@@ -13,6 +13,9 @@ java -cp "$out" com.tj.linkmeter.ProfilePlanTest || fail=1
 echo "== Battery saver (SaverPlan: switches on only while the tablet is here, an Off choice always wins, the saver follows the tablet's real use of the hotspot, only numbers and known names reach the shell, a profile of the older version is still put back, the Screen tab's timeout is never overwritten; the real shell lines against a fake phone)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/SaverPlan.java app/src/main/java/com/tj/linkmeter/ProfilePlan.java tools/test/SaverPlanTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.SaverPlanTest || fail=1
+echo "== Android's own Battery saver as an option of the saver (SystemSaver: off unless asked, believed only when Android itself says it is on, the original stored before anything is written, put back at once when the hotspot went away, only numbers and null reach the shell; the real sequence against a fake phone)"
+javac -proc:none -encoding UTF-8 -d "$out" app/src/main/java/com/tj/linkmeter/SaverPlan.java app/src/main/java/com/tj/linkmeter/SystemSaver.java tools/test/SystemSaverTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.SystemSaverTest || fail=1
 echo "== The Screen tab at rest (ScreenPace: once the phone's screen has been off two minutes or nobody touched the tab for half an hour the tablet may sleep and the tab asks every 15 s; a touch or the phone's screen coming on ends the rest at once)"
 javac -proc:none -d "$out" app/src/main/java/com/tj/linkmeter/ScreenPace.java tools/test/ScreenPaceTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.ScreenPaceTest || fail=1

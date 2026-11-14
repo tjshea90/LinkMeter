@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java; for "texts:", tools/test/TextsLogicTest.java; for "wififollow:", tools/test/TabletWifiRulesTest.java; for "deep:", tools/test/DeepSleepRulesTest.java) fail.
+"""Deliberate breakages of the Bluetooth link's rules: each must make tools/test/LinkProtocolTest.java (or, for the names that start with "reach:", tools/test/ReachTest.java; for "holds:", tools/test/HoldsTest.java; for "words:", tools/test/SwitchWordsTest.java; for "state:", tools/test/LinkStateTest.java; for "pace:", tools/test/PollPaceTest.java; for "follow:", tools/test/FollowUpTest.java; for "trouble:", tools/test/TroubleTest.java; for "saver:", tools/test/SaverPlanTest.java; for "safety:", tools/test/SafetyReportTest.java; for "pace2:", tools/test/ScreenPaceTest.java; for "power:", tools/test/PhonePowerTest.java; for "quality:", tools/test/QualityPresetsTest.java; for "address:", tools/test/PhoneAddressTest.java; for "phonetab:", tools/test/PhoneTabRulesTest.java; for "leg:", tools/test/NrLegTest.java; for "types:", tools/test/TypesFlagTest.java; for "lever:", tools/test/LeverRunTest.java; for "signal:", tools/test/SignalRulesTest.java; for "search:", tools/test/SearchFollowTest.java; for "phonescreen:", tools/test/PhoneScreenRulesTest.java; for "typing:", tools/test/TypingMirrorTest.java; for "sms2:", tools/test/SmsV2Test.java; for "texts:", tools/test/TextsLogicTest.java; for "wififollow:", tools/test/TabletWifiRulesTest.java; for "deep:", tools/test/DeepSleepRulesTest.java; for "syssaver:", tools/test/SystemSaverTest.java) fail.
 
 Run it after changing LinkAuth, RemoteRoutes, LinkServer, LinkClient, BtAddr, Reach, Holds, SwitchWords, LinkState, PollPace, FollowUp, Trouble, SaverPlan, SafetyReport, ScreenPace, PhonePower, QualityPresets, PhoneAddress, PhoneTabRules, NrLeg, TypesFlag, LeverRun, SignalRules, SearchFollow, PhoneScreenRules, TypingMirror, ChangeGate, SmsApi (the version 2 routes), SmsLength, SmsReactions, SmartReply, TextsLocal, TextsCache, ThreadListRules, ThreadRows, FileBlobStore, TabletWifiRules, DeepSleepRules or their tests: `python3 tools/mutate_link.py` (about 4 minutes).
 Every line must say "caught". Not part of tools/test.sh (it is a test of the test). An argument limits it to the breakages whose name contains it.
@@ -749,6 +749,50 @@ DP = [
  ("deep: waking ends airplane mode that is not on", "DeepSleepRules.java", "if (p.airplaneIsOn()) {", "if (true) {"),
  ("deep: waking does not say airplane mode was ended", "DeepSleepRules.java", "lead = \"Airplane mode is off. \";", "lead = \"\";"),
 ]
+SYSSAVER_FILES = ["SaverPlan.java", "SystemSaver.java"]
+SYSSAVER_TEST = ROOT + "/tools/test/SystemSaverTest.java"
+YS = [
+ ("syssaver: the original is never stored", "SystemSaver.java", "            if (!env.store(p.original)) {\n                return new Outcome(false, false, NOT_SAVED);\n            }\n", ""),
+ ("syssaver: a failed save is ignored", "SystemSaver.java", "if (!env.store(p.original)) {", "if (env.store(p.original) && false) {"),
+ ("syssaver: somebody else's saver is taken over", "SystemSaver.java", "        if (Boolean.TRUE.equals(osOn)) {\n            return new Plan(Step.ALREADY_ON, null);", "        if (false) {\n            return new Plan(Step.ALREADY_ON, null);"),
+ ("syssaver: an unreadable setting is touched", "SystemSaver.java", "        if (!SaverPlan.valueOk(read)) {\n            return new Plan(Step.UNKNOWN, null);", "        if (false) {\n            return new Plan(Step.UNKNOWN, null);"),
+ ("syssaver: the setting alone is believed", "SystemSaver.java", "return Boolean.TRUE.equals(osOnAfter) ? Result.ON : Result.STAYED_OFF;", "return Result.ON;"),
+ ("syssaver: a phone that will not say is believed", "SystemSaver.java", "return Boolean.TRUE.equals(osOnAfter) ? Result.ON : Result.STAYED_OFF;", "return !Boolean.FALSE.equals(osOnAfter) ? Result.ON : Result.STAYED_OFF;"),
+ ("syssaver: a write the phone ignored is not told apart", "SystemSaver.java", "        if (!TARGET.equals(parseRead(writeOut))) {\n            return Result.NOT_TAKEN;", "        if (false) {\n            return Result.NOT_TAKEN;"),
+ ("syssaver: a hotspot that goes is not noticed", "SystemSaver.java", "return Boolean.TRUE.equals(before) && Boolean.FALSE.equals(after);", "return false;"),
+ ("syssaver: a hotspot that is not known now is called lost", "SystemSaver.java", "return Boolean.TRUE.equals(before) && Boolean.FALSE.equals(after);", "return Boolean.TRUE.equals(before) && !Boolean.TRUE.equals(after);"),
+ ("syssaver: a hotspot that was not known is called lost", "SystemSaver.java", "return Boolean.TRUE.equals(before) && Boolean.FALSE.equals(after);", "return !Boolean.FALSE.equals(before) && Boolean.FALSE.equals(after);"),
+ ("syssaver: the hotspot is not looked at", "SystemSaver.java", "lost = hotspotLost(hotspotBefore, env.hotspot());", "lost = false;"),
+ ("syssaver: the hotspot is looked at at once", "SystemSaver.java", "            env.pause(HOTSPOT_LOOK_MS);\n", ""),
+ ("syssaver: the hotspot before is never known", "SystemSaver.java", "Boolean hotspotBefore = env.hotspot();", "Boolean hotspotBefore = Boolean.FALSE;"),
+ ("syssaver: the option is kept although the hotspot went", "SystemSaver.java", "return new Outcome(false, lost, why);", "return new Outcome(false, false, why);"),
+ ("syssaver: a failed switch-on is not put back", "SystemSaver.java", "            Outcome back = restore(env);", "            Outcome back = false ? restore(env) : new Outcome(true, false, \"\");"),
+ ("syssaver: a write that may have gone through is not put back", "SystemSaver.java", "                restore(env); // the write may have gone through: put it back, whatever the line said\n", "                if (false) {\n                    restore(env);\n                }\n"),
+ ("syssaver: the original is forgotten before it is put back", "SystemSaver.java", "        env.shell(cmd, 20);\n        Boolean os = env.waitOs(false, SETTLE_MS);", "        env.forget();\n        env.shell(cmd, 20);\n        Boolean os = env.waitOs(false, SETTLE_MS);"),
+ ("syssaver: the original is never forgotten after it is put back", "SystemSaver.java", "        Boolean os = env.waitOs(false, SETTLE_MS);\n        env.forget();\n", "        Boolean os = env.waitOs(false, SETTLE_MS);\n"),
+ ("syssaver: somebody else's saver is switched off", "SystemSaver.java", "        if (original == null) {\n            return new Outcome(true, false, \"\");", "        if (false) {\n            return new Outcome(true, false, \"\");"),
+ ("syssaver: an untrusted stored value reaches the shell", "SystemSaver.java", "        if (!SaverPlan.valueOk(original)) {\n            return null;", "        if (original == null) {\n            return null;"),
+ ("syssaver: an untrusted stored value is kept", "SystemSaver.java", "            env.forget();\n            return new Outcome(true, false, UNUSABLE);", "            return new Outcome(true, false, UNUSABLE);"),
+ ("syssaver: 'not set' is put back as a word", "SystemSaver.java", 'return original.equals("null") ? "settings delete " + NS + " " + KEY + "; true" : "settings put "', 'return false ? "settings delete " + NS + " " + KEY + "; true" : "settings put "'),
+ ("syssaver: a saver that stays on is called fine", "SystemSaver.java", "return Boolean.TRUE.equals(os) ? new Outcome(false, false, BACK_BUT_ON) : new Outcome(true, false, BACK);", "return new Outcome(true, false, BACK);"),
+ ("syssaver: Android's answer is not waited for", "SystemSaver.java", "check(out, env.waitOs(true, SETTLE_MS))", "check(out, env.osOn())"),
+ ("syssaver: the putting back does not wait for Android", "SystemSaver.java", "Boolean os = env.waitOs(false, SETTLE_MS);", "Boolean os = env.osOn();"),
+ ("syssaver: ours and still on is written again", "SystemSaver.java", "        } else if (Boolean.TRUE.equals(env.osOn())) {\n            return new Outcome(true, false, ON);", "        } else if (false) {\n            return new Outcome(true, false, ON);"),
+ ("syssaver: ours but gone is not switched on again", "SystemSaver.java", "        } else if (Boolean.TRUE.equals(env.osOn())) {\n            return new Outcome(true, false, ON);", "        } else if (true) {\n            return new Outcome(true, false, ON);"),
+ ("syssaver: the original is read again when it is ours", "SystemSaver.java", "        if (env.stored() == null) {\n            Plan p", "        if (true) {\n            Plan p"),
+ ("syssaver: an error text is believed", "SystemSaver.java", "return SaverPlan.valueOk(v) ? v : null;", "return v;"),
+ ("syssaver: the first answer wins", "SystemSaver.java", "                v = l.substring(2).trim();", "                if (v == null) {\n                    v = l.substring(2).trim();\n                }"),
+ ("syssaver: the write is not read back", "SystemSaver.java", 'TARGET + "; echo L=$(settings get " + NS + " " + KEY + "); true";', 'TARGET + "; true";'),
+ ("syssaver: another number is written", "SystemSaver.java", 'static final String TARGET = "1";', 'static final String TARGET = "2";'),
+ ("syssaver: another setting is written", "SystemSaver.java", 'static final String KEY = "low_power";', 'static final String KEY = "low_power_sticky";'),
+ ("syssaver: a saver that is off is said to be on", "SystemSaver.java", "        if (osOn.booleanValue()) {\n            return new Line(ours", "        if (osOn.booleanValue() || wanted && saverOn) {\n            return new Line(ours"),
+ ("syssaver: an unknown state is guessed", "SystemSaver.java", '            return new Line("not known", Tone.DIM);', '            return new Line("off (LinkMeter leaves it alone)", Tone.PLAIN);'),
+ ("syssaver: a switch-on that did not happen is not flagged", "SystemSaver.java", 'return new Line(ours ? "off (it went off again)" : "off (it did not switch on)", Tone.WARN);', 'return new Line(ours ? "off (it went off again)" : "off (it did not switch on)", Tone.PLAIN);'),
+ ("syssaver: somebody else's saver is called LinkMeter's", "SystemSaver.java", 'new Line(ours ? "on (LinkMeter switched it on, and puts it back)" : "on (not by LinkMeter: it stays as it is)", Tone.GOOD)', 'new Line(!ours ? "on (LinkMeter switched it on, and puts it back)" : "on (not by LinkMeter: it stays as it is)", Tone.GOOD)'),
+ ("syssaver: the hotspot sentence does not say how to get it back", "SystemSaver.java", " Hotspot on, from the tablet, brings the hotspot back.", ""),
+ ("syssaver: a sentence names the setting", "SystemSaver.java", 'static final String BACK = "Android\'s own Battery saver is off again.";', 'static final String BACK = "Android\'s own Battery saver is off again (low_power 0).";'),
+ ("syssaver: a sentence is about the wrong saver", "SystemSaver.java", 'static final String ON = "Android\'s own Battery saver is on.";', 'static final String ON = "Battery saver is on.";'),
+]
 SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, REACH_TEST, "com.tj.linkmeter.ReachTest", R),
           (HOLDS_FILES, HOLDS_TEST, "com.tj.linkmeter.HoldsTest", H), (WORDS_FILES, WORDS_TEST, "com.tj.linkmeter.SwitchWordsTest", W),
           (STATE_FILES, STATE_TEST, "com.tj.linkmeter.LinkStateTest", S), (PACE_FILES, PACE_TEST, "com.tj.linkmeter.PollPaceTest", P),
@@ -766,7 +810,8 @@ SUITES = [(FILES, TEST, "com.tj.linkmeter.LinkProtocolTest", M), (REACH_FILES, R
           (SMS2_FILES, SMS2_TEST, "com.tj.linkmeter.SmsV2Test", S2, SMS2_JAVAC),
           (TEXTS_FILES, TEXTS_TEST, "com.tj.linkmeter.TextsLogicTest", TX, TEXTS_JAVAC),
           (WIFI_FILES, WIFI_TEST, "com.tj.linkmeter.TabletWifiRulesTest", WF),
-          (DEEP_FILES, DEEP_TEST, "com.tj.linkmeter.DeepSleepRulesTest", DP)]
+          (DEEP_FILES, DEEP_TEST, "com.tj.linkmeter.DeepSleepRulesTest", DP),
+          (SYSSAVER_FILES, SYSSAVER_TEST, "com.tj.linkmeter.SystemSaverTest", YS)]
 only = sys.argv[1:]
 caught = missed = 0
 for suite in SUITES:
