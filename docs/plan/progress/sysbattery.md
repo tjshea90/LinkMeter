@@ -1,19 +1,20 @@
-STATUS: WORKING  (session branch claude/trusting-knuth-uwdl8r, started 2026-11-14 from main 002e6ef + notes of ccr-a8e3fc17-ngp6l5)
+STATUS: WORKING  (session branch claude/trusting-knuth-uwdl8r; started 2026-11-14 from main 002e6ef + notes of ccr-a8e3fc17-ngp6l5)
 TASK (the user's field report, 2026-11-14): "I pressed automatic for the phone battery saver, but battery saver was not turned on. The phone
 control for linkmeter said battery saver was on, but it wasn't."
 
-DIAGNOSIS (read in the code, NOT seen on a device):
-- LinkMeter's "Battery saver" (Eco + SaverPlan) is its OWN profile: background Wi-Fi/BLE scanning off, always-on display off, screen timeout 15 s.
-  It NEVER touches Android's / Samsung's own Battery saver ("Power saving"): decision of 2026-11-10 (docs/audit/2026-11-10/battery.decisions.md,
-  docs/REMOTE_LINK.md "Battery saver changes"), reasons: Data Saver blocks tethering, Samsung side effects unverified.
-- The tablet's "on" (Phone tab fact, Home line) is only Eco.isOn() = the stored flag; nothing reads the phone's real Battery saver.
-  So the label "Battery saver: on" reads as Android's Battery saver and is false for it. THE USER'S EXPECTATION = Android's own saver.
-- Nothing visible on the phone shows LinkMeter's profile except the 15 s screen timeout.
+DIAGNOSIS (read in the code, NOT seen on a device): LinkMeter's "Battery saver" (Eco + SaverPlan) is its OWN profile (background scanning off, always-on display off,
+15 s screen timeout). It never touched Android's / Samsung's Battery saver ("Power saving") (decision 2026-11-10, docs/audit/2026-11-10/battery.decisions.md).
+The tablet's "on" was only Eco.isOn() = the stored flag, labelled "Battery saver": it read as Android's and was false for it.
 
-PLAN (small steps, each saved):
- 1. DONE reading. 2. Pure rules in SaverPlan: system entry (global low_power 1) as PROFILE index 5, only when Cfg.ecoSystem; sentences; homeFact with Android's state.
- 3. Phone: Radios.powerSave() (PowerManager.isPowerSaveMode, no permission), /s fields psm + ecoSys, Eco apply/restore + OS check + hotspot fail-safe, actions eco_sys_on/off.
- 4. Tablet: Phone tab Battery card (two facts + toggle), Home line; phone's own screen toggle. 5. Probe lines. 6. Tests + mutate_link saver: breakages + preview pictures.
- 7. Docs (REMOTE_LINK, SAFETY, USER_GUIDE), HANDOFF, closing save.
-DEFAULT for the Android part = OFF (opt-in): Standby's wake over Bluetooth is unverified and Battery saver makes doze stricter; say so in the hint.
-BRANCH NOTE: this branch is claude/*, so a push starts NO GitHub run (pipeline knows ccr-* only; tools/pending/claude-branches.patch waits for the user's yes). Tell the user at the end.
+DONE (all in the tree, pushed as wip/progress commits):
+ - SystemSaver.java (pure): the whole sequence for Android's OWN Battery saver as an OPTION (Cfg.ecoSystem, default OFF): read, plan, store original BEFORE the write,
+   `settings put global low_power 1`, believed only when the setting reads back 1 AND Android itself says on (PowerManager.isPowerSaveMode, waited up to 3 s),
+   hotspot checked 2 s later (lost -> put back, option given up), restore only when LinkMeter switched it on. SystemSaverTest (717 checks), 40 breakages `syssaver:` in tools/mutate_link.py, all caught.
+ - Phone: Radios.powerSave/waitPowerSave, Cfg.ecoSystem, Eco.systemOn/setSystem + glue (systemEnv), actions eco_android_on/off, /s fields psm + ecoSys + esys, Probe lines (low_power, low_power_sticky, psm_switch, dumpsys power), SafetyReport row.
+ - Screens: tablet Phone tab Battery card (two facts + choice "Also switch on | Leave alone"), Home (two lines), phone's own screen (toggle + fact); words in PhoneTabRules / PhoneScreenRules / SystemSaver.fact.
+ - Tests: SystemSaverTest, PhoneTabRulesTest, PhoneScreenRulesTest, SafetyReportTest (4096 masks) extended; tools/uipreview AndroidSaverPreviewTest (14 scenarios, pictures looked at: state-android-saver-*.png, phone-android-saver-*.png).
+ - Offline tests all green (64 suites), release build green.
+ - Docs: REMOTE_LINK.md, SAFETY.md, USER_GUIDE.md updated.
+NEXT: breakages for PhoneTabRules/PhoneScreenRules/SafetyReport rules + a few for the screen glue; run the WHOLE preview (tools/preview.sh) for regressions; final tools/test.sh + assembleRelease;
+ HANDOFF.md block (short); closing save. BRANCH NOTE: this branch is claude/*, so a push starts NO GitHub run (the pipeline knows ccr-* only; tools/pending/claude-branches.patch waits for the user's yes). TELL THE USER at the end: for an APK they need a ccr-* branch push (ask) or the pending patch.
+NOT KNOWN UNTIL THE PHONE TRIES: whether One UI 8 follows settings put global low_power (Samsung may use psm_switch), whether the hotspot and the Bluetooth wake from Standby survive Android's Battery saver.
