@@ -334,7 +334,7 @@ SAFETYREPORT_FILES = ["SafetyReport.java"]
 SAFETYREPORT_TEST = ROOT + "/tools/test/SafetyReportTest.java"
 Y = [
  ("safety: the battery saver is not a change", "SafetyReport.java", "if (f.batterySaver) {\n            l.add(\"the battery saver is on:", "if (false) {\n            l.add(\"the battery saver is on:"),
- ("safety: Restore everything is not promised for the saver", "SafetyReport.java", "f.menuRecent\n                || f.batterySaver;", "f.menuRecent;"),
+ ("safety: Restore everything is not promised for the saver", "SafetyReport.java", "f.menuRecent\n                || f.batterySaver || f.androidSaver;", "f.menuRecent || f.androidSaver;"),
  ("safety: the Automatic choice is not mentioned", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (false) {\n                    // Restore everything stores Off"),
  ("safety: the Automatic choice is mentioned when the saver is off", "SafetyReport.java", "if (f.batterySaver) {\n                    // Restore everything stores Off", "if (true) {\n                    // Restore everything stores Off"),
  ("safety: the 5G leg note does not name the older version", "SafetyReport.java", 'l.add("the 5G leg was switched off by an older version of LinkMeter");', 'l.add("the 5G leg was switched off");'),
@@ -343,7 +343,7 @@ Y = [
  ("safety: a 5G leg note is not put back by Restore everything", "SafetyReport.java", "return f.typesChanged || f.legChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged", "return f.typesChanged || f.lockFlag || f.radioBlip || f.airplaneTimer || f.hotspotBandChanged"),
  ("safety: the report lists a leg line again", "SafetyReport.java", 'sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append(\'\\n\');', 'sb.append("Network types: ").append(f.types < 0 ? "cannot read" : f.typesText).append(\'\\n\');\n        sb.append("5G leg: on (normal)\\n");'),
  ('safety: a hotspot that is on counts as a change', 'SafetyReport.java', '        if (f.batterySaver) {\n            l.add("the battery saver is on:', '        if (Boolean.TRUE.equals(f.hotspotOn)) {\n            l.add("the hotspot is on");\n        }\n        if (f.batterySaver) {\n            l.add("the battery saver is on:'),
- ('safety: Wi-Fi on counts for Restore everything', 'SafetyReport.java', '|| f.menuRecent\n                || f.batterySaver;', '|| f.menuRecent\n                || f.batterySaver || Boolean.TRUE.equals(f.wifiOn);'),
+ ('safety: Wi-Fi on counts for Restore everything', 'SafetyReport.java', '|| f.menuRecent\n                || f.batterySaver || f.androidSaver;', '|| f.menuRecent\n                || f.batterySaver || f.androidSaver || Boolean.TRUE.equals(f.wifiOn);'),
  ('safety: the Bluetooth link counts as a boot item', 'SafetyReport.java', 'return f.secureGranted || f.pairingKept || f.bootAssist;', 'return f.secureGranted || f.pairingKept || f.bootAssist || f.btLink.startsWith("on");'),
  ('safety: a switch that is not known is printed as off', 'SafetyReport.java', 'return on == null ? "cannot tell" : on.booleanValue() ? "on" : "off";', 'return on != null && on.booleanValue() ? "on" : "off";'),
  ('safety: a hotspot that is on is printed as off', 'SafetyReport.java', 'return on == null ? "cannot tell" : on.booleanValue() ? "on" : "off";', 'return on == null ? "cannot tell" : on.booleanValue() ? "off" : "on";'),
@@ -352,6 +352,8 @@ Y = [
  ('safety: the switches are not in the report', 'SafetyReport.java', '        out.append("Hotspot: ").append(onOff(f.hotspotOn)).append(\'\\n\');\n        out.append("Wi-Fi: ").append(onOff(f.wifiOn)).append(\'\\n\');\n', ''),
  ('safety: the Bluetooth line is not in the report', 'SafetyReport.java', '        out.append("Bluetooth link: ").append(f.btLink.isEmpty() ? "cannot tell" : f.btLink);\n', ''),
  ('safety: the sentence promises Restore everything puts the switches back', 'SafetyReport.java', 'Restore everything does not change them):', 'Restore everything puts them back):'),
+ ("safety: Android's own Battery saver is not reported as a change", "SafetyReport.java", "        if (f.androidSaver) {\n            l.add(", "        if (false) {\n            l.add("),
+ ("safety: Android's own Battery saver is not something Restore everything puts back", "SafetyReport.java", "|| f.batterySaver || f.androidSaver;", "|| f.batterySaver;"),
 ]
 PACE2_FILES = ["ScreenPace.java"]
 PACE2_TEST = ROOT + "/tools/test/ScreenPaceTest.java"
@@ -423,6 +425,12 @@ B = [
  ("phonetab: the update is allowed with no phone", "PhoneTabRules.java", "if (!reachable) {\n            return \"The phone cannot be reached.\";\n        }", "if (false) {\n            return \"The phone cannot be reached.\";\n        }"),
  ("phonetab: any error means an older phone", "PhoneTabRules.java", "return answer != null && answer.contains(\"unknown action\");", "return answer != null;"),
  ("phonetab: a phone app that is not known has a version", "PhoneTabRules.java", "return code >= 0 ? (name", "return code >= -1 ? (name"),
+ ("phonetab: the option's choice is the wrong way round", "PhoneTabRules.java", "return option == null ? -1 : option.booleanValue() ? 0 : 1;", "return option == null ? -1 : option.booleanValue() ? 1 : 0;"),
+ ("phonetab: an older phone app's option is shown as off", "PhoneTabRules.java", "return option == null ? -1 : option.booleanValue() ? 0 : 1;", "return option == null ? 1 : option.booleanValue() ? 0 : 1;"),
+ ("phonetab: the card forgets to say it is not Android's saver", "PhoneTabRules.java", "It is not Android's own Battery saver (below), which LinkMeter leaves alone unless \"\n            + \"you ask.", ""),
+ ("phonetab: the option does not say it is untried", "PhoneTabRules.java", "Not tried on this phone yet: it may slow the phone or \"\n            + \"its wake from Standby. If the hotspot goes off with it, LinkMeter puts it back and stops asking.", "\"\n            + \"If the hotspot goes off with it, LinkMeter puts it back and stops asking."),
+ ("phonetab: the option does not give Samsung's name", "PhoneTabRules.java", "(Samsung: Power saving)", ""),
+ ("phonetab: an older phone app is not told to update", "PhoneTabRules.java", 'static final String ANDROID_SAVER_OLD_APP = "update the phone\'s app";', 'static final String ANDROID_SAVER_OLD_APP = "off";'),
 ]
 LEG_FILES = ["NrLeg.java"]
 LEG_TEST = ROOT + "/tools/test/NrLegTest.java"
@@ -561,7 +569,14 @@ PS = [
  ('phonescreen: the Pair button is renamed', 'PhoneScreenRules.java', 'static final String PAIR_BUTTON = "Pair tablet";', 'static final String PAIR_BUTTON = "Pair a tablet";'),
  ('phonescreen: the Bluetooth switch is renamed', 'PhoneScreenRules.java', 'static final String BT_SWITCH = "Let the tablet reach this phone over Bluetooth";', 'static final String BT_SWITCH = "Let the tablet use Bluetooth";'),
  ('phonescreen: a stale tab name comes back', 'PhoneScreenRules.java', 'static final String BREAKS_HINT = "Works on the phone alone: no tablet and no internet needed.";', 'static final String BREAKS_HINT = "Works on the phone alone. The tablet\'s Control tab does the same.";'),
- ('phonescreen: the hotspot of an older name stays in the restore hint', 'PhoneScreenRules.java', 'Restore puts the network types, the hotspot band and the battery saver back', 'Restore puts the network types, the band lock, the hotspot band and the battery saver back'),
+ ('phonescreen: the hotspot of an older name stays in the restore hint', 'PhoneScreenRules.java', 'Restore puts the network types, the hotspot band and LinkMeter\'s saver back', 'Restore puts the network types, the band lock, the hotspot band and LinkMeter\'s saver back'),
+ ("phonescreen: Android's saver is said to be on when LinkMeter's is", "PhoneScreenRules.java", "SystemSaver.fact(f.androidOn, f.androidWanted, f.androidOurs, f.saverOn);", "SystemSaver.fact(Boolean.valueOf(f.saverOn), f.androidWanted, f.androidOurs, f.saverOn);"),
+ ("phonescreen: Android's saver is told as wanted when it is not", "PhoneScreenRules.java", "SystemSaver.fact(f.androidOn, f.androidWanted, f.androidOurs, f.saverOn);", "SystemSaver.fact(f.androidOn, true, f.androidOurs, f.saverOn);"),
+ ("phonescreen: Android's saver is always called LinkMeter's", "PhoneScreenRules.java", "SystemSaver.fact(f.androidOn, f.androidWanted, f.androidOurs, f.saverOn);", "SystemSaver.fact(f.androidOn, f.androidWanted, true, f.saverOn);"),
+ ("phonescreen: a warning is shown as quiet", "PhoneScreenRules.java", "l.tone == SystemSaver.Tone.WARN ? Tone.WARN : Tone.QUIET", "l.tone == SystemSaver.Tone.WARN ? Tone.QUIET : Tone.QUIET"),
+ ("phonescreen: a good line is shown as quiet", "PhoneScreenRules.java", "l.tone == SystemSaver.Tone.GOOD ? Tone.GOOD :", "l.tone == SystemSaver.Tone.GOOD ? Tone.QUIET :"),
+ ("phonescreen: the saver's switch does not say whose it is", "PhoneScreenRules.java", 'static final String SAVER_SWITCH = "LinkMeter\'s saver while the tablet is connected";', 'static final String SAVER_SWITCH = "Battery saver while the tablet is connected";'),
+ ("phonescreen: the saver's explanation forgets it is not Android's", "PhoneScreenRules.java", "This is not Android's own Battery saver: that one has its own switch below.", ""),
 ]
 TYPING_FILES = ["TypingMirror.java"]
 TYPING_TEST = ROOT + "/tools/test/TypingMirrorTest.java"
