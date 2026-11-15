@@ -34,9 +34,12 @@ public class FastPreviewTest {
     @org.robolectric.annotation.Implements(android.net.VpnService.class)
     public static class ShadowVpn extends org.robolectric.shadows.ShadowService {
         static volatile boolean allowed;
+        /** How often LinkMeter asked Android (every real prepare() call takes the VPN slot from another VPN app, so a paused LinkMeter must not ask). */
+        static volatile int prepares;
 
         @org.robolectric.annotation.Implementation
         public static android.content.Intent prepare(android.content.Context c) {
+            prepares++;
             return allowed ? null : new android.content.Intent("pretend.vpn.question");
         }
     }
@@ -49,7 +52,49 @@ public class FastPreviewTest {
         Cfg.setFastLink(RuntimeEnvironment.getApplication(), FastRules.LINK_HOTSPOT);
         Cfg.setFastLog(RuntimeEnvironment.getApplication(), "");
         ShadowVpn.allowed = false;
+        ShadowVpn.prepares = 0;
         FastVpn.startedAt = 0;
+        openGate();
+    }
+
+    // ------------------------------------------------------------------------------------------------ the gate (paused while locked / in the custom launcher)
+
+    /** The tablet as it is in an unlocked Quickstep session: screen on, no lock screen, and the launcher says nothing (or "quickstep"). */
+    static void openGate() {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        org.robolectric.Shadows.shadowOf((android.os.PowerManager) app.getSystemService(android.content.Context.POWER_SERVICE)).turnScreenOn(true);
+        org.robolectric.Shadows.shadowOf((android.app.KeyguardManager) app.getSystemService(android.content.Context.KEYGUARD_SERVICE)).setKeyguardLocked(false);
+        android.provider.Settings.Global.putString(app.getContentResolver(), FastRules.WORLD_KEY, null);
+    }
+
+    static void lockScreen() {
+        org.robolectric.Shadows.shadowOf((android.app.KeyguardManager) RuntimeEnvironment.getApplication()
+                .getSystemService(android.content.Context.KEYGUARD_SERVICE)).setKeyguardLocked(true);
+    }
+
+    static void screenOff() {
+        org.robolectric.Shadows.shadowOf((android.os.PowerManager) RuntimeEnvironment.getApplication()
+                .getSystemService(android.content.Context.POWER_SERVICE)).turnScreenOn(false);
+    }
+
+    static void launcherSays(String word) {
+        android.provider.Settings.Global.putString(RuntimeEnvironment.getApplication().getContentResolver(), FastRules.WORLD_KEY, word);
+    }
+
+    /** Waits until the state is {@code want}, at most 8 s. */
+    private static void awaitIs(FastVpn.State want) throws InterruptedException {
+        long end = System.currentTimeMillis() + 8000;
+        while (FastVpn.state != want && System.currentTimeMillis() < end) {
+            Thread.sleep(20);
+        }
+    }
+
+    /** Lets the service thread's clock run (Robolectric's clock is a pretend one). */
+    private static void passTime(FastVpn svc, int seconds) throws Exception {
+        java.lang.reflect.Field worker = FastVpn.class.getDeclaredField("worker");
+        worker.setAccessible(true);
+        android.os.Looper looper = ((android.os.HandlerThread) worker.get(svc)).getLooper();
+        org.robolectric.Shadows.shadowOf(looper).idleFor(java.time.Duration.ofSeconds(seconds));
     }
 
     /** The pretend phone's status with Fast Wi-Fi's part (null: an older phone app without it). */
@@ -459,5 +504,223 @@ public class FastPreviewTest {
         check(findText(root(a), "Steer apps to their faster way (recommended)") != null, "the QUIC choice is in Settings");
         check(PreviewTest.findButton(root(a), "Its own Wi-Fi") != null, "and the choice of Fast Wi-Fi's Wi-Fi");
         PreviewTest.shot(a, "fast-settings");
+    }
+
+    // ------------------------------------------------------------------------------------------------ paused while locked / in the custom launcher (CE1)
+
+    /**
+     * The launcher turned the VPN off at the lock screen (it does that for any VPN app): the REAL service gets onRevoke. It must NOT put the VPN back (that was what
+     * made the "Device connected to ..." row stay on the lock screen): the choice stays, the state is PAUSED, nothing asked Android, no try is used up.
+     */
+    @Test
+    public void revokeOnTheLockScreenStaysPaused() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        lockScreen();
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.PAUSED);
+        svc.onRevoke();
+        passTime(svc, 3);
+        Thread.sleep(300);
+        boolean wanted = Cfg.fastWanted(app);
+        FastVpn.State st = FastVpn.state;
+        String detail = FastVpn.detail;
+        String log = Cfg.fastLog(app);
+        int asked = ShadowVpn.prepares;
+        svc.onDestroy();
+        check(wanted, "the choice is still on");
+        check(st == FastVpn.State.PAUSED, "after the revoke on the lock screen it stays paused (not putting it back, not asking): " + st);
+        check(detail.contains("the lock screen is up") && detail.contains("comes back by itself"), "and says why and that it comes back: " + detail);
+        check(!detail.contains("putting it back") && !log.contains("putting it back"), "nothing says it is putting the VPN back: " + log);
+        check(asked == 0, "it did not ask Android for the VPN slot while paused (prepare calls: " + asked + ")");
+    }
+
+    /** A revoke that arrives when the gate is closed is not counted: three locks must not use up the tries kept for another VPN app. */
+    @Test
+    public void lockRevokesDoNotUseUpTheTries() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        lockScreen();
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.PAUSED);
+        for (int i = 0; i < FastRules.REVOKE_TRIES + 3; i++) {
+            svc.onRevoke();
+        }
+        passTime(svc, 1);
+        Thread.sleep(300);
+        FastVpn.State afterLocks = FastVpn.state;
+        openGate();   // unlocked in Quickstep: ONE revoke by another VPN app is answered by putting the VPN back, as before
+        svc.onRevoke();
+        long end = System.currentTimeMillis() + 5000;
+        while (!FastVpn.detail.contains("putting it back") && System.currentTimeMillis() < end) {
+            Thread.sleep(20);
+        }
+        String detail = FastVpn.detail;
+        FastVpn.State st = FastVpn.state;
+        svc.onDestroy();
+        check(afterLocks == FastVpn.State.PAUSED, "six revokes on the lock screen: still just paused: " + afterLocks);
+        check(st != FastVpn.State.PERMISSION && detail.contains("putting it back"),
+                "the first revoke in Quickstep is still answered by putting the VPN back (the six on the lock screen were not counted): " + st + " / " + detail);
+    }
+
+    /** The launcher's word: in the custom launcher (screen on, unlocked) Fast Wi-Fi pauses; the Home card says so and keeps the choice. */
+    @Test
+    public void customLauncherWordPausesIt() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        launcherSays("quiet:custom launcher");
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.PAUSED);
+        FastVpn.State st = FastVpn.state;
+        String detail = FastVpn.detail;
+        int asked = ShadowVpn.prepares;
+        svc.onDestroy();
+        check(st == FastVpn.State.PAUSED, "the launcher says custom launcher: paused: " + st);
+        check(detail.contains("the custom launcher is in front"), "and says why: " + detail);
+        check(asked == 0, "no question to Android while paused: " + asked);
+        phone(true, READY);
+        Cfg.setFastWanted(app, true);
+        FastVpn.state = FastVpn.State.PAUSED;
+        FastVpn.detail = FastRules.pausedWords("the custom launcher is in front");
+        MainActivity a = tablet();
+        settle();
+        check(shows(root(a), "Fast Wi-Fi is paused"), "the Home card says it is paused");
+        check(shows(root(a), "the custom launcher is in front"), "and why");
+        check(shows(root(a), "comes back by itself"), "and that it comes back by itself");
+        check(!shows(root(a), "uses the phone's hotspot as usual"), "it does not pretend Hotspot was chosen");
+        check(Cfg.fastWanted(app), "the choice is still on");
+        shot(a, "fast-paused");
+    }
+
+    /** The way back: the launcher's word changes to Quickstep (or the tablet is unlocked): the service looks at once and goes on to put the VPN up. */
+    @Test
+    public void unlockedInQuickstepItComesBack() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        lockScreen();
+        launcherSays("quiet:lock screen");
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.PAUSED);
+        check(FastVpn.state == FastVpn.State.PAUSED, "locked: paused");
+        // the PIN is typed, the launcher decides Quickstep
+        org.robolectric.Shadows.shadowOf((android.app.KeyguardManager) app.getSystemService(android.content.Context.KEYGUARD_SERVICE)).setKeyguardLocked(false);
+        launcherSays("quiet:unlock not decided yet");
+        app.sendBroadcast(new android.content.Intent(android.content.Intent.ACTION_USER_PRESENT));
+        passTime(svc, 1);
+        Thread.sleep(300);
+        FastVpn.State undecided = FastVpn.state;
+        launcherSays(FastRules.WORLD_QUICKSTEP);
+        app.sendBroadcast(new android.content.Intent(android.content.Intent.ACTION_USER_PRESENT));
+        long end = System.currentTimeMillis() + 5000;
+        while (FastVpn.state == FastVpn.State.PAUSED && System.currentTimeMillis() < end) {
+            passTime(svc, 1);
+            Thread.sleep(50);
+        }
+        FastVpn.State st = FastVpn.state;
+        String detail = FastVpn.detail;
+        svc.onDestroy();
+        check(undecided == FastVpn.State.PAUSED, "a PIN typed but the launcher not decided yet: still paused (it may be the custom launcher): " + undecided);
+        check(st != FastVpn.State.PAUSED, "unlocked in Quickstep: it is no longer paused, it went on to put the VPN up: " + st + " / " + detail);
+        check(detail.contains("Wi-Fi"), "(here there is no Wi-Fi to put it on, so it says it waits for the phone's Wi-Fi: it really tried): " + detail);
+    }
+
+    /** The launcher changes its word (custom launcher -> Quickstep) while the screen stays on and unlocked: no screen event comes, the observer of the word wakes the service. */
+    @Test
+    public void theLaunchersWordWakesTheService() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        launcherSays("quiet:custom launcher");
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.PAUSED);
+        check(FastVpn.state == FastVpn.State.PAUSED, "the custom launcher: paused");
+        launcherSays(FastRules.WORLD_QUICKSTEP);
+        app.getContentResolver().notifyChange(android.provider.Settings.Global.getUriFor(FastRules.WORLD_KEY), null);
+        long end = System.currentTimeMillis() + 5000;
+        while (FastVpn.state == FastVpn.State.PAUSED && System.currentTimeMillis() < end) {
+            passTime(svc, 1);
+            Thread.sleep(50);
+        }
+        FastVpn.State st = FastVpn.state;
+        svc.onDestroy();
+        check(st != FastVpn.State.PAUSED, "the word turned to Quickstep: the service looked at once and went on: " + st);
+    }
+
+    /** A screen / unlock event that was missed must not keep Fast Wi-Fi down: the service looks at the gate by itself every half minute while paused (level-triggered). */
+    @Test
+    public void aMissedEventIsHealedByTheLook() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        lockScreen();
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.PAUSED);
+        openGate(); // unlocked in Quickstep, and no broadcast and no observer call reaches the service
+        passTime(svc, (int) (FastVpn.PAUSE_LOOK_MS / 1000) + 2);
+        long end = System.currentTimeMillis() + 5000;
+        while (FastVpn.state == FastVpn.State.PAUSED && System.currentTimeMillis() < end) {
+            passTime(svc, 1);
+            Thread.sleep(50);
+        }
+        FastVpn.State st = FastVpn.state;
+        svc.onDestroy();
+        check(st != FastVpn.State.PAUSED, "the half-minute look found the gate open and went on: " + st);
+    }
+
+    /** No word from the launcher (not installed, switch off, no adb permission): LinkMeter goes by its own look: unlocked and screen on = it runs, as before. */
+    @Test
+    public void withoutTheLaunchersWordItRunsWhenUnlocked() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        openGate();
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.OFF);
+        awaitIs(FastVpn.State.WAITING);
+        FastVpn.State st = FastVpn.state;
+        svc.onDestroy();
+        check(st != FastVpn.State.PAUSED, "no word, unlocked, screen on: not paused: " + st);
+        // and the screen going off pauses it with no word at all
+        FastVpn.state = FastVpn.State.OFF;
+        screenOff();
+        FastVpn svc2 = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc2.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.OFF);
+        awaitIs(FastVpn.State.WAITING);
+        FastVpn.State dark = FastVpn.state;
+        String detail = FastVpn.detail;
+        svc2.onDestroy();
+        check(dark == FastVpn.State.PAUSED, "screen off, no word: paused (LinkMeter's own look): " + dark);
+        check(detail.contains("the screen is off"), "and says why: " + detail);
+    }
+
+    /** The service is gone while the choice is on and the tablet is locked: opening the app must not ask Android for the VPN slot (it would take it from another VPN app). */
+    @Test
+    public void resumeWhileLockedDoesNotAskAndroid() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = false;   // asking would give "PERMISSION"
+        Cfg.setMode(app, Cfg.TABLET);   // resumeIfWanted is the tablet's
+        Cfg.setFastWanted(app, true);
+        lockScreen();
+        FastVpn.state = FastVpn.State.OFF;
+        FastVpn.startedAt = 0;
+        FastVpn.resumeIfWanted(app);
+        FastVpn.State st = FastVpn.state;
+        int asked = ShadowVpn.prepares;
+        String log = Cfg.fastLog(app);
+        check(asked == 0, "locked: resume did not ask Android (prepare calls: " + asked + ")");
+        check(st != FastVpn.State.PERMISSION, "and did not claim the OK is missing: " + st);
+        check(log.contains("started again, paused (the lock screen is up)"), "the history says it was started again, paused: " + log);
     }
 }

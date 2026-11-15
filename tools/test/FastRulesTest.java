@@ -32,6 +32,7 @@ public final class FastRulesTest {
         onCard();
         blockers();
         staysOn();
+        pausedWorld();
         directLink();
         everything();
         probe();
@@ -237,18 +238,78 @@ public final class FastRulesTest {
         yes(FastRules.PERMISSION_LINE.contains("asks once"), "the first-time question");
         eq(0, FastRules.card(false, FastRules.PERMISSION, "x", GOOD, "").pick, "not wanted: Hotspot stays chosen");
 
-        // the history: newest first, six at most, nothing blank
+        // the history: newest first, HISTORY at most (ten: pauses and comebacks write lines too), nothing blank
         eq("1 a", FastRules.remember(null, "1", "a"), "first line");
         eq("1 a", FastRules.remember("", "1", "a"), "empty history");
         eq("2 b\n1 a", FastRules.remember("1 a", "2", "b"), "newest first");
         String h = null;
-        for (int i = 1; i <= 10; i++) {
+        for (int i = 1; i <= 14; i++) {
             h = FastRules.remember(h, "t" + i, "w");
         }
         eq(FastRules.HISTORY, h.split("\n").length, "only the newest lines are kept");
-        yes(h.startsWith("t10 w") && h.endsWith("t5 w"), "the newest ten minus the oldest four");
+        yes(h.startsWith("t14 w") && h.endsWith("t5 w"), "the newest fourteen minus the oldest four");
         eq("3 c\n2 b", FastRules.remember("\n2 b\n  \n", "3", "c"), "blank lines dropped");
-        eq(6, FastRules.HISTORY, "six lines");
+        eq(10, FastRules.HISTORY, "ten lines");
+    }
+
+    /**
+     * The user, 2026-11-15: the VPN row must never show on a lock screen or in the custom launcher, Fast Wi-Fi must never be switched off by anything but the
+     * user, and it comes back by itself in Quickstep. So: the choice stays, the VPN is PAUSED (held down by LinkMeter) while the screen is off, the lock screen is up
+     * or the launcher's word says no VPN now, and it may run in every other case (also when the launcher says nothing, or something unknown).
+     */
+    private static void pausedWorld() {
+        // the contract with the Launcher app (VpnOffRules.WORLD_*): the same literal words
+        eq("tj_launcher_world", FastRules.WORLD_KEY, "the word's key (the Launcher writes it)");
+        eq("quickstep", FastRules.WORLD_QUICKSTEP, "the open word");
+        eq("quiet", FastRules.WORLD_QUIET, "the closed word");
+
+        // the gate: screen on, no lock screen, an unlocked Quickstep session (or no word): may run
+        eq(null, FastRules.pauseWhy(true, false, null), "no word from the launcher, unlocked, screen on: may run (works without the launcher)");
+        eq(null, FastRules.pauseWhy(true, false, "quickstep"), "the launcher says Quickstep: may run");
+        eq(null, FastRules.pauseWhy(true, false, ""), "an empty word: may run");
+        eq(null, FastRules.pauseWhy(true, false, "something new"), "a word it does not know: may run (never stay down for it)");
+        eq(null, FastRules.pauseWhy(true, false, "quietly"), "'quietly' is not 'quiet'");
+        eq(null, FastRules.pauseWhy(true, false, "Quiet:custom launcher"), "exact words only");
+        // LinkMeter's own look closes the gate whatever the launcher says
+        eq("the screen is off", FastRules.pauseWhy(false, false, null), "screen off, no word: paused");
+        eq("the screen is off", FastRules.pauseWhy(false, true, "quickstep"), "screen off: paused even if the word says Quickstep");
+        eq("the lock screen is up", FastRules.pauseWhy(true, true, null), "lock screen up, no word: paused");
+        eq("the lock screen is up", FastRules.pauseWhy(true, true, "quickstep"), "lock screen up: paused even if the word says Quickstep (a stale word)");
+        // the launcher's word closes it for what LinkMeter cannot see
+        eq("the custom launcher is in front", FastRules.pauseWhy(true, false, "quiet:custom launcher"), "the custom launcher: paused");
+        eq("the unlock is still being decided", FastRules.pauseWhy(true, false, "quiet:unlock not decided yet"), "a PIN typed, the launcher not decided: paused");
+        eq("the screen is off", FastRules.pauseWhy(true, false, "quiet:screen off"), "the launcher says the screen is off: paused");
+        eq("the lock screen is up", FastRules.pauseWhy(true, false, "quiet:lock screen"), "the launcher says lock screen: paused");
+        eq("the launcher says no VPN now", FastRules.pauseWhy(true, false, "quiet:something else"), "an unknown quiet reason is still quiet");
+        eq("the launcher says no VPN now", FastRules.pauseWhy(true, false, "quiet"), "the bare closed word is quiet");
+        eq("the launcher says no VPN now", FastRules.pauseWhy(true, false, "quiet:"), "a closed word with an empty reason is quiet");
+        yes(FastRules.worldIsQuiet("quiet:custom launcher") && FastRules.worldIsQuiet("quiet") && !FastRules.worldIsQuiet(null)
+                && !FastRules.worldIsQuiet("quickstep"), "worldIsQuiet");
+        // every one of the eight screen / lock / word combinations for the two words
+        for (boolean screenOn : new boolean[] {false, true}) {
+            for (boolean locked : new boolean[] {false, true}) {
+                for (String world : new String[] {null, "quickstep", "quiet:custom launcher"}) {
+                    boolean mayRun = screenOn && !locked && !"quiet:custom launcher".equals(world);
+                    eq(mayRun, FastRules.pauseWhy(screenOn, locked, world) == null, "may run: screen " + screenOn + ", locked " + locked + ", word " + world);
+                }
+            }
+        }
+
+        // the card while paused: the choice is kept (Fast Wi-Fi stays picked), calm (grey), no button, the reason in words, and the phone's state does not matter
+        String why = FastRules.pausedWords("the lock screen is up");
+        FastRules.Card c = FastRules.card(true, FastRules.PAUSED, why, GOOD, "");
+        eq(1, c.pick, "paused: Fast Wi-Fi is still the chosen one");
+        eq(FastRules.GREY, c.tone, "paused: grey, nothing is wrong");
+        eq(FastRules.Action.NONE, c.action, "paused: no button (it comes back by itself)");
+        eq(why, c.line, "paused: the card says why");
+        yes(why.contains("the lock screen is up") && why.contains("Your choice is kept") && why.contains("comes back by itself") && why.contains("Quickstep"),
+                "the words: the reason, the choice is kept, it comes back by itself in Quickstep");
+        eq(FastRules.pausedWords(""), FastRules.card(true, FastRules.PAUSED, "", GOOD, "").line, "paused with no detail: the general words");
+        FastRules.Phone bad = phone(true, true, false, "", Boolean.FALSE); // a phone that would say 'allow it' / 'hotspot off' when it is not paused
+        eq(why, FastRules.card(true, FastRules.PAUSED, why, bad, "").line, "paused: the phone's problems are not shown while it waits");
+        eq(FastRules.Action.NONE, FastRules.card(true, FastRules.PAUSED, why, bad, "").action, "paused: no phone button either");
+        eq(0, FastRules.card(false, FastRules.PAUSED, why, GOOD, "").pick, "not wanted: the card is the off card, whatever the state says");
+        yes(FastRules.card(false, FastRules.PAUSED, why, GOOD, "").line.contains("hotspot as usual"), "not wanted: the off words");
     }
 
     private static void probe() {

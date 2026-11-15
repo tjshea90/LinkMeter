@@ -59,6 +59,23 @@ RULES = [
  ("history: blank lines kept", FR, "if (!line.trim().isEmpty() && kept < HISTORY) {", "if (kept < HISTORY) {"),
  ("history: the oldest kept instead of the newest", FR, "StringBuilder b = new StringBuilder(when).append(' ').append(what);\n        int kept = 1;",
   "StringBuilder b = new StringBuilder();\n        int kept = 0;"),
+ # CE1: paused while locked / in the custom launcher (the launcher's word and LinkMeter's own look at the screen and the lock)
+ ("pause: the screen going off does not pause", FR, "        if (!screenOn) {\n            return \"the screen is off\";\n        }\n", ""),
+ ("pause: the lock screen does not pause", FR, "        if (keyguardLocked) {\n            return \"the lock screen is up\";\n        }\n", ""),
+ ("pause: the launcher's closed word does not pause (custom launcher shows the VPN row)", FR, "        if (worldIsQuiet(world)) {", "        if (false) {"),
+ ("pause: a word it does not know keeps it down", FR, "return world != null && (world.equals(WORLD_QUIET) || world.startsWith(WORLD_QUIET + \":\"));", "return world != null && !world.equals(WORLD_QUICKSTEP);"),
+ ("pause: any word starting with quiet keeps it down", FR, "return world != null && (world.equals(WORLD_QUIET) || world.startsWith(WORLD_QUIET + \":\"));", "return world != null && world.startsWith(WORLD_QUIET);"),
+ ("pause: a missing word keeps it down (no launcher = never runs)", FR, "return world != null && (world.equals(WORLD_QUIET) || world.startsWith(WORLD_QUIET + \":\"));", "return world == null || world.equals(WORLD_QUIET) || world.startsWith(WORLD_QUIET + \":\");"),
+ ("pause: the key renamed (the launcher writes another one)", FR, "WORLD_KEY = \"tj_launcher_world\";", "WORLD_KEY = \"tj_world\";"),
+ ("pause: the closed word renamed", FR, "WORLD_QUIET = \"quiet\";", "WORLD_QUIET = \"closed\";"),
+ ("pause: the custom launcher reason not said", FR, "                case \"custom launcher\":\n                    return \"the custom launcher is in front\";\n", ""),
+ ("pause: the PIN-not-decided reason not said", FR, "                case \"unlock not decided yet\":\n                    return \"the unlock is still being decided\";\n", ""),
+ ("pause card: shows the phone's problems while paused", FR, "        if (PAUSED.equals(state)) {\n            c.tone = GREY;", "        if (false) {\n            c.tone = GREY;"),
+ ("pause card: offers a button", FR, "            c.line = detail.isEmpty() ? pausedWords(\"\") : detail;\n            return c;", "            c.line = detail.isEmpty() ? pausedWords(\"\") : detail;\n            c.action = Action.CONSENT;\n            return c;"),
+ ("pause card: calls the choice off", FR, "        if (PAUSED.equals(state)) {\n            c.tone = GREY;", "        if (PAUSED.equals(state)) {\n            c.pick = 0;\n            c.tone = GREY;"),
+ ("pause words: the choice not said kept", FR, "Your choice is kept, and it comes back by itself ", "It comes back by itself "),
+ ("pause words: no way back promised", FR, "when you are in Quickstep, unlocked.", "when you ask."),
+ ("pause: the history too short for lock cycles", FR, "static final int HISTORY = 10;", "static final int HISTORY = 6;"),
 ]
 E2E = [
  ("engine: no FIN after the server closed", TS, "if (c.relayEof && unsent == 0 && !c.finSent) {", "if (false) {"),
