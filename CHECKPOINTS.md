@@ -237,3 +237,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-15T21:45:20Z WORK IN PROGRESS (not finished, not built): CE1b docs written (FAST_WIFI, USER_GUIDE, HANDOFF block); glue breakages still running, then release build + closing save
 - 2026-11-15T21:50:02Z WORK IN PROGRESS (not finished, not built): CE1b: 3 masked glue tests fixed (pretend clock was healing them): idleNow helper, userPresentAloneWakesIt; 32 preview scenarios green; rerun of the 3 breakages next
 - 2026-11-15T22:00:15Z Fast Wi-Fi pauses on the lock screen / screen off / custom launcher (launcher word) and comes back by itself in Quickstep
+- 2026-11-15T22:05:11Z HANDOFF: v0.2.184 released (CE1), release line filled in
