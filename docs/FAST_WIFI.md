@@ -133,7 +133,7 @@ brought it back, and with the service gone but the choice on the card read "star
   switched it off (Home, the tile, the notification), what Android did to the VPN, a service started again. IF THE USER SAYS IT TURNED OFF AGAIN: ask for
   those lines first.
 - Tests: `FastRulesTest` (`staysOn`), `FastPreviewTest` (the real `FastVpn` service gets `onRevoke`; the notification's Turn off; answering No; the service gone;
-  the Settings lines), `python3 tools/mutate_fast.py pure revoke` (+ "history", "card: the") and `python3 tools/mutate_fast_keep_glue.py` (glue; run it in a git worktree).
+  the Settings lines), `python3 tools/mutate_fast.py pure revoke` (+ "history", "card: the") and `python3 tools/mutate_fast_keep_glue.py` (12 breakages of the glue, all caught; run it in a git worktree). The pretend answer of Android's VPN question is `FastPreviewTest.ShadowVpn`.
 - NOT KNOWN UNTIL THE TABLET TRIES: which of these really switched it off by itself on the user's tablet (the history will say).
 
 ## Stage 2: the phone's own Wi-Fi (hotspot off), as NetShare does it

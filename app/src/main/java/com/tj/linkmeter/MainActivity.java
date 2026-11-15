@@ -585,6 +585,9 @@ public class MainActivity extends Activity {
             FastVpn.detail = "Android refused LinkMeter's VPN: " + e.getMessage();
             return;
         }
+        if (!Cfg.fastWanted(this)) {
+            FastVpn.record(this, "Switched on by you.");
+        }
         Cfg.setFastWanted(this, true);
         if (ask == null) {
             FastVpn.start(this);

@@ -92,6 +92,9 @@ public class FastVpn extends VpnService {
     /** Starts it (the caller has made sure Android's VPN question was answered: {@link VpnService#prepare} gave null). */
     static void start(Context c) {
         startedAt = SystemClock.elapsedRealtime();
+        if (!Cfg.fastWanted(c)) {
+            record(c, "Switched on by you."); // not when it only comes back after a restart or an app stop (the choice was already on)
+        }
         Cfg.setFastWanted(c, true);
         try {
             c.startForegroundService(new Intent(c, FastVpn.class).setAction(START));
