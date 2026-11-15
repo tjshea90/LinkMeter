@@ -17,6 +17,7 @@ import android.service.quicksettings.TileService;
 public class FastTile extends TileService {
     @Override
     public void onStartListening() {
+        FastVpn.resumeIfWanted(this);
         paint();
     }
 
@@ -26,9 +27,9 @@ public class FastTile extends TileService {
             paint();
             return;
         }
-        if (Cfg.fastWanted(this)) {
-            FastVpn.stop(this);
-        } else {
+        if (Cfg.fastWanted(this) && FastVpn.state != FastVpn.State.PERMISSION) {
+            FastVpn.stop(this, "the quick settings tile");
+        } else { // off, or on but waiting for Android's OK ("Needs your OK"): the tap gives it
             Intent ask = null;
             try {
                 ask = VpnService.prepare(this);
@@ -58,7 +59,8 @@ public class FastTile extends TileService {
         t.setState(!tablet ? Tile.STATE_UNAVAILABLE : wanted ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         if (Build.VERSION.SDK_INT >= 29) {
             t.setSubtitle(!tablet ? "On the tablet" : !wanted ? "Off: normal hotspot"
-                    : FastVpn.state == FastVpn.State.ON ? "On" : "Waiting for the phone");
+                    : FastVpn.state == FastVpn.State.ON ? "On"
+                    : FastVpn.state == FastVpn.State.PERMISSION ? "Needs your OK" : "Waiting for the phone");
         }
         t.updateTile();
     }

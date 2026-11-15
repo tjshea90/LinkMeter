@@ -93,6 +93,7 @@ public class MainActivity extends Activity {
         resumed = true;
         afterShow();
         updateWatches();
+        FastVpn.resumeIfWanted(this); // Fast Wi-Fi was on, and nothing runs (the app was stopped): it comes back (tablet only)
     }
 
     @Override
@@ -559,10 +560,12 @@ public class MainActivity extends Activity {
             unlockResult = null;
             cb.onResult(result == RESULT_OK);
         } else if (req == REQ_VPN) {
-            if (result == RESULT_OK) {
+            // Android's own answer is the one that counts: a second question that replaced this one reports "cancelled" for the first
+            if (result == RESULT_OK || FastVpn.consent(this)) {
                 FastVpn.start(this);
             } else {
                 Cfg.setFastWanted(this, false);
+                FastVpn.record(this, "You answered No to Android's VPN question: Fast Wi-Fi stays off.");
                 FastVpn.detail = "Fast Wi-Fi needs Android's OK for LinkMeter's VPN; it stays off until then.";
             }
         }

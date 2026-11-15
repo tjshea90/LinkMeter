@@ -31,6 +31,7 @@ public final class FastRulesTest {
         offCard();
         onCard();
         blockers();
+        staysOn();
         directLink();
         everything();
         probe();
@@ -200,6 +201,54 @@ public final class FastRulesTest {
             }
         }
         yes(n == 2 * 4 * 2 * 2 * 2 * 2 * 3 * 2 * 3, "all combinations seen");
+    }
+
+    /**
+     * "Stays on until the user switches it off": what the service does when Android takes the VPN away, what the card says then, and
+     * the history of what changed it.
+     */
+    private static void staysOn() {
+        // Android took the VPN away: LinkMeter puts it back by itself while Android lets it, up to three times in ten minutes
+        for (int recent = 0; recent <= FastRules.REVOKE_TRIES; recent++) {
+            eq(FastRules.Revoke.COME_BACK, FastRules.afterRevoke(true, recent), "OK kept, revoke number " + recent + ": put the VPN back");
+        }
+        eq(FastRules.Revoke.ASK, FastRules.afterRevoke(true, FastRules.REVOKE_TRIES + 1), "a fourth revoke inside the window: stop fighting, ask");
+        eq(FastRules.Revoke.ASK, FastRules.afterRevoke(true, 50), "many revokes: ask");
+        for (int recent = 0; recent <= FastRules.REVOKE_TRIES + 2; recent++) {
+            eq(FastRules.Revoke.ASK, FastRules.afterRevoke(false, recent), "Android's OK gone: ask, never a silent try (revokes " + recent + ")");
+        }
+        eq(3, FastRules.REVOKE_TRIES, "three tries");
+        eq(10 * 60_000L, FastRules.REVOKE_WINDOW_MS, "ten minutes");
+
+        // the card after a revoke keeps the choice (Fast Wi-Fi stays chosen) and says why, with the button that gives the OK
+        for (boolean kept : new boolean[] {false, true}) {
+            String why = FastRules.revokedWords(kept);
+            FastRules.Card c = FastRules.card(true, FastRules.PERMISSION, why, GOOD, "");
+            eq(1, c.pick, "after a revoke Fast Wi-Fi is still the chosen one");
+            eq(why, c.line, "after a revoke the card says why");
+            eq(FastRules.Action.CONSENT, c.action, "after a revoke one button gives the OK");
+            eq(FastRules.AMBER, c.tone, "after a revoke: amber, not green");
+            yes(why.contains("Your choice is kept"), "the words say the choice is kept");
+            yes(why.contains("Give the OK"), "the words name the button");
+        }
+        yes(FastRules.revokedWords(true).contains("Another VPN app keeps taking"), "a VPN app that keeps taking over is named");
+        yes(!FastRules.revokedWords(false).equals(FastRules.revokedWords(true)), "the two reasons read differently");
+        eq(FastRules.PERMISSION_LINE, FastRules.card(true, FastRules.PERMISSION, "", GOOD, "").line, "no reason: the first-time question");
+        yes(FastRules.PERMISSION_LINE.contains("asks once"), "the first-time question");
+        eq(0, FastRules.card(false, FastRules.PERMISSION, "x", GOOD, "").pick, "not wanted: Hotspot stays chosen");
+
+        // the history: newest first, six at most, nothing blank
+        eq("1 a", FastRules.remember(null, "1", "a"), "first line");
+        eq("1 a", FastRules.remember("", "1", "a"), "empty history");
+        eq("2 b\n1 a", FastRules.remember("1 a", "2", "b"), "newest first");
+        String h = null;
+        for (int i = 1; i <= 10; i++) {
+            h = FastRules.remember(h, "t" + i, "w");
+        }
+        eq(FastRules.HISTORY, h.split("\n").length, "only the newest lines are kept");
+        yes(h.startsWith("t10 w") && h.endsWith("t5 w"), "the newest ten minus the oldest four");
+        eq("3 c\n2 b", FastRules.remember("\n2 b\n  \n", "3", "c"), "blank lines dropped");
+        eq(6, FastRules.HISTORY, "six lines");
     }
 
     private static void probe() {

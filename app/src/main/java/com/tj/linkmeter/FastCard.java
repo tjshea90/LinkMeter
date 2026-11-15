@@ -47,6 +47,7 @@ final class FastCard {
     void onShow() {
         shown = true;
         lastDown = -1;
+        FastVpn.resumeIfWanted(act); // wanted but nothing runs: start it again (or say Android's OK is needed)
         tick();
     }
 
@@ -125,7 +126,7 @@ final class FastCard {
             }
         } else {
             if (Cfg.fastWanted(act) || FastVpn.state != FastVpn.State.OFF) {
-                FastVpn.stop(act);
+                FastVpn.stop(act, "Home"); // the user's own choice: the only way off besides the tile and the notification
             }
             if (phone.known && Boolean.TRUE.equals(phone.direct)) {
                 sendDirect(false); // back to the normal hotspot, which the tablet joins by itself

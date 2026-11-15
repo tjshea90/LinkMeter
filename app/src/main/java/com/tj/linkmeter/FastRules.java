@@ -56,6 +56,59 @@ final class FastRules {
     static final int GREEN = 1;
     static final int AMBER = 2;
 
+    /** The card's words when Android's VPN question has to be answered (the first time). */
+    static final String PERMISSION_LINE = "Android asks once whether LinkMeter may set up a VPN (that is how the tablet's traffic reaches "
+            + "the phone). Nothing leaves the tablet and the phone.";
+
+    // ------------------------------------------------------------------------------------------- staying on
+
+    /**
+     * Fast Wi-Fi stays on until the USER switches it off (Cfg.fastWanted): Android taking the VPN away (another VPN app, Android's
+     * VPN settings) never clears that choice. COME_BACK: LinkMeter puts the VPN up again by itself; ASK: the card asks for the OK.
+     */
+    enum Revoke { COME_BACK, ASK }
+
+    /** Android's revokes counted for this long: a VPN app that keeps taking the VPN away is not fought for ever. */
+    static final long REVOKE_WINDOW_MS = 10 * 60_000L;
+    /** So many revokes inside the window are answered by putting the VPN back; one more and the user is asked. */
+    static final int REVOKE_TRIES = 3;
+
+    /**
+     * What to do after Android revoked the VPN. consentKept: LinkMeter may still set up its VPN without Android's question
+     * (VpnService.prepare gave null). recent: Android's revokes inside {@link #REVOKE_WINDOW_MS}, this one counted.
+     */
+    static Revoke afterRevoke(boolean consentKept, int recent) {
+        return consentKept && recent <= REVOKE_TRIES ? Revoke.COME_BACK : Revoke.ASK;
+    }
+
+    /** The card's words when {@link #afterRevoke} says ASK. */
+    static String revokedWords(boolean consentKept) {
+        if (consentKept) {
+            return "Another VPN app keeps taking the VPN away from Fast Wi-Fi, so LinkMeter stopped putting it back. Your choice is "
+                    + "kept: switch the other VPN off, then press Give the OK.";
+        }
+        return "Android turned Fast Wi-Fi's VPN off (another VPN app took over, or it was switched off in Android's VPN settings). "
+                + "Your choice is kept: press Give the OK and it comes back.";
+    }
+
+    /** How many lines of "what changed Fast Wi-Fi lately" are kept (Settings > Fast Wi-Fi). */
+    static final int HISTORY = 6;
+
+    /** The history with one more line first ("when what"): newest first, at most {@link #HISTORY} lines, blank lines dropped. */
+    static String remember(String old, String when, String what) {
+        StringBuilder b = new StringBuilder(when).append(' ').append(what);
+        int kept = 1;
+        if (old != null) {
+            for (String line : old.split("\n")) {
+                if (!line.trim().isEmpty() && kept < HISTORY) {
+                    b.append('\n').append(line);
+                    kept++;
+                }
+            }
+        }
+        return b.toString();
+    }
+
     /**
      * The card for this moment. wanted: the user chose Fast Wi-Fi. state and detail: the VPN service's. speed: the words for what
      * went through it lately ("" when not measured).
@@ -92,8 +145,8 @@ final class FastRules {
         }
         if (PERMISSION.equals(state)) {
             c.tone = AMBER;
-            c.line = "Android asks once whether LinkMeter may set up a VPN (that is how the tablet's traffic reaches the phone). "
-                    + "Nothing leaves the tablet and the phone.";
+            // the service's own reason when it has one (Android took the VPN away), else the first-time question
+            c.line = detail.isEmpty() ? PERMISSION_LINE : detail;
             c.action = Action.CONSENT;
             c.actionLabel = "Give the OK";
             return c;

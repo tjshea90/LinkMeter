@@ -212,6 +212,15 @@ final class Cfg {
         sp(c).edit().putBoolean("fastWanted", on).apply();
     }
 
+    /** Tablet: what changed Fast Wi-Fi lately, newest first (FastRules.remember): who switched it off, what Android did to its VPN. */
+    static String fastLog(Context c) {
+        return sp(c).getString("fastLog", "");
+    }
+
+    static void setFastLog(Context c, String log) {
+        sp(c).edit().putString("fastLog", log).apply();
+    }
+
     /** Tablet: QUIC (UDP 443) refused so apps use TCP, which the relay carries for much less battery. On by default. */
     static boolean fastBlockQuic(Context c) {
         return sp(c).getBoolean("fastBlockQuic", true);

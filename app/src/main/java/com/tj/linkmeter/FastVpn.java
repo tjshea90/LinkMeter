@@ -32,6 +32,11 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SocketChannel;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * Tablet only. Fast Wi-Fi's VPN (docs/FAST_WIFI.md): every app's internet traffic goes into this VPN, and {@link TunStack} carries it
@@ -45,10 +50,17 @@ import java.nio.channels.SocketChannel;
  *
  * The service runs while the user wants Fast Wi-Fi ({@link Cfg#fastWanted}): started from the Home card, the quick settings tile or
  * after a restart of the tablet; stopped by the same switches or the notification's "Turn off".
+ *
+ * STAYS ON UNTIL THE USER SWITCHES IT OFF: {@link Cfg#fastWanted} is cleared by those switches and by "No" to Android's VPN question,
+ * and by nothing else. When Android takes the VPN away ({@link #onRevoke}: another VPN app, Android's VPN settings) the choice stays,
+ * the VPN is put back by itself ({@link FastRules#afterRevoke}) or the card asks for the OK; when the service is gone while the
+ * choice is on (the app was stopped) {@link #resumeIfWanted} starts it again. What changed it is kept in {@link Cfg#fastLog}.
  */
 public class FastVpn extends VpnService {
     static final String START = "com.tj.linkmeter.FAST_START";
     static final String STOP = "com.tj.linkmeter.FAST_STOP";
+    /** The extra of the notification's "Turn off": who switched it off, for the history. */
+    private static final String BY = "by";
     private static final String CHANNEL = "fast";
     private static final int NOTE_ID = 7;
     private static final long RETRY_MS = 30_000L;
@@ -74,8 +86,12 @@ public class FastVpn extends VpnService {
 
     // ------------------------------------------------------------------------------------------- switching
 
+    /** When {@link #start} was last called (elapsedRealtime; 0: not since this process began). */
+    private static volatile long startedAt;
+
     /** Starts it (the caller has made sure Android's VPN question was answered: {@link VpnService#prepare} gave null). */
     static void start(Context c) {
+        startedAt = SystemClock.elapsedRealtime();
         Cfg.setFastWanted(c, true);
         try {
             c.startForegroundService(new Intent(c, FastVpn.class).setAction(START));
@@ -84,8 +100,10 @@ public class FastVpn extends VpnService {
         }
     }
 
-    static void stop(Context c) {
+    /** The USER switches it off (by: "Home", "the quick settings tile": for the history). Nothing else may clear the choice. */
+    static void stop(Context c, String by) {
         Cfg.setFastWanted(c, false);
+        record(c, "Switched off by you (" + by + ").");
         if (state == State.OFF) {
             return;
         }
@@ -94,6 +112,45 @@ public class FastVpn extends VpnService {
         } catch (RuntimeException e) {
             // not running
         }
+    }
+
+    /** True when Android lets LinkMeter set up its VPN without asking ({@link VpnService#prepare} gave null). */
+    static boolean consent(Context c) {
+        try {
+            return VpnService.prepare(c) == null;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Tablet: the choice is on but nothing is running (the app was stopped, or Android ended the service): start it again, or, when
+     * Android's OK is gone, make the card say so. Cheap and safe to call whenever the app or Home or the tile is shown.
+     */
+    static void resumeIfWanted(Context c) {
+        if (!Cfg.TABLET.equals(Cfg.mode(c)) || !Cfg.fastWanted(c) || state == State.ON || state == State.WAITING) {
+            return;
+        }
+        long since = SystemClock.elapsedRealtime() - startedAt;
+        if (state == State.OFF && startedAt != 0 && since < 15_000L) {
+            return; // it was only just started: it will say what it is doing
+        }
+        if (consent(c)) {
+            if (state == State.OFF) {
+                record(c, "Fast Wi-Fi was on but its service was gone (the app had been stopped): started again.");
+            }
+            start(c);
+        } else if (state == State.OFF) {
+            state = State.PERMISSION;
+            detail = "";
+            FastTile.refresh(c);
+        }
+    }
+
+    /** One more line in what changed Fast Wi-Fi lately (Settings > Fast Wi-Fi). */
+    static synchronized void record(Context c, String what) {
+        String when = new SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(new Date());
+        Cfg.setFastLog(c, FastRules.remember(Cfg.fastLog(c), when, what));
     }
 
     @Override
@@ -109,6 +166,10 @@ public class FastVpn extends VpnService {
         String a = intent == null ? START : intent.getAction(); // null: Android started it again after it had stopped it
         if (STOP.equals(a)) {
             Cfg.setFastWanted(this, false);
+            String by = intent.getStringExtra(BY); // only the notification's "Turn off" says who: Home and the tile wrote it already
+            if (by != null) {
+                record(this, "Switched off by you (" + by + ").");
+            }
             h.post(() -> {
                 wanted = false;
                 down(State.OFF, "");
@@ -131,16 +192,43 @@ public class FastVpn extends VpnService {
         return START_STICKY;
     }
 
+    /** Android's revokes lately (elapsedRealtime), newest last; the service's thread only. */
+    private final List<Long> revokedAt = new ArrayList<>();
+    /** The card is asking for the OK because Android took the VPN away (its words stay until the VPN is up again). */
+    private boolean revokedAsk;
+
     @Override
     public void onRevoke() {
-        // another VPN was switched on, or Fast Wi-Fi was switched off in Android's VPN settings: then it is off
-        Cfg.setFastWanted(this, false);
+        // Android took the VPN away: another VPN app became active, or LinkMeter's VPN was switched off in Android's VPN settings, or
+        // Android's OK was withdrawn. That is NOT the user switching Fast Wi-Fi off in LinkMeter, so the choice (Cfg.fastWanted) stays:
+        // the tablet uses its Wi-Fi as before meanwhile, and the VPN is put back as soon as Android lets LinkMeter; if it needs the
+        // user's OK again, or another VPN app keeps taking over, the card says so (FastRules.afterRevoke).
         h.post(() -> {
-            wanted = false;
-            down(State.OFF, "Android's VPN settings switched Fast Wi-Fi off (or another VPN app took over).");
-            unwatch();
-            stopForeground(true);
-            stopSelf();
+            if (!Cfg.fastWanted(this)) {
+                wanted = false; // the user switched it off in the meantime
+                down(State.OFF, "");
+                unwatch();
+                stopForeground(true);
+                stopSelf();
+                return;
+            }
+            long now = SystemClock.elapsedRealtime();
+            revokedAt.add(now);
+            while (now - revokedAt.get(0) > FastRules.REVOKE_WINDOW_MS) {
+                revokedAt.remove(0);
+            }
+            boolean kept = consent(this);
+            h.removeCallbacks(retry);
+            if (FastRules.afterRevoke(kept, revokedAt.size()) == FastRules.Revoke.COME_BACK) {
+                revokedAsk = false;
+                record(this, "Android took the VPN away (another VPN app, or Android's VPN settings): putting it back.");
+                down(State.WAITING, "Android took the VPN away; LinkMeter is putting it back.");
+                h.postDelayed(retry, 2000L); // a moment for the other VPN app to settle
+            } else {
+                revokedAsk = true;
+                record(this, kept ? "Another VPN app keeps taking the VPN away: asking you." : "Android turned the VPN off: it needs your OK.");
+                down(State.PERMISSION, FastRules.revokedWords(kept));
+            }
         });
     }
 
@@ -176,10 +264,13 @@ public class FastVpn extends VpnService {
         if (e != null && e.running()) {
             return;
         }
-        if (VpnService.prepare(this) != null) {
-            down(State.PERMISSION, "Android needs your OK for LinkMeter's VPN once. Open LinkMeter and switch Fast Wi-Fi on there.");
+        if (!consent(this)) {
+            if (!revokedAsk) { // after Android took the VPN away the card keeps saying why
+                down(State.PERMISSION, "");
+            }
             return;
         }
+        revokedAsk = false;
         Network n = Net.wifi(this);
         wifi = n;
         if (n == null) {
@@ -246,7 +337,7 @@ public class FastVpn extends VpnService {
         b.setConfigureIntent(PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE));
         ParcelFileDescriptor fd = b.establish();
         if (fd == null) {
-            down(State.PERMISSION, "Android needs your OK for LinkMeter's VPN once. Open LinkMeter and switch Fast Wi-Fi on there.");
+            down(State.PERMISSION, "");
             return;
         }
         pfd = fd;
@@ -274,7 +365,8 @@ public class FastVpn extends VpnService {
         state = s;
         detail = why;
         if (wanted) {
-            foreground(s == State.PERMISSION ? "Fast Wi-Fi needs your OK" : "Fast Wi-Fi is waiting for the phone", why);
+            foreground(s == State.PERMISSION ? "Fast Wi-Fi needs your OK" : "Fast Wi-Fi is waiting for the phone",
+                    s == State.PERMISSION && why.isEmpty() ? FastRules.PERMISSION_LINE : why);
         }
         FastTile.refresh(this);
     }
@@ -451,8 +543,8 @@ public class FastVpn extends VpnService {
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Fast Wi-Fi", NotificationManager.IMPORTANCE_LOW));
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
-        PendingIntent off = PendingIntent.getService(this, 1, new Intent(this, FastVpn.class).setAction(STOP),
-                PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent off = PendingIntent.getService(this, 1,
+                new Intent(this, FastVpn.class).setAction(STOP).putExtra(BY, "the notification"), PendingIntent.FLAG_IMMUTABLE);
         Notification n = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setContentTitle(title)

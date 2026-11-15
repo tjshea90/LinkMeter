@@ -389,6 +389,12 @@ final class SettingsTab extends Tab {
                 + "the phone switches its hotspot (and with it the carrier's tethering) completely off and opens its own Wi-Fi Direct "
                 + "network on 2.4 GHz (" + FastRules.FAST_NET + "), which the tablet joins by itself; Hotspot on Home switches back. "
                 + "Try this one if Fast Wi-Fi is still slow over the hotspot. The phone needs Shizuku for it."), Ui.lp(act, 4));
+        String lately = Cfg.fastLog(act);
+        if (!lately.isEmpty()) {
+            // Fast Wi-Fi stays on until you switch it off; if it ever stops, this says who or what did it
+            card.addView(Ui.text(act, "What changed it lately", 14.5f, Ui.FG, false), Ui.lp(act, 10));
+            card.addView(Ui.hint(act, lately), Ui.lp(act, 4));
+        }
         col.addView(card, Ui.lp(act, 12));
     }
 
