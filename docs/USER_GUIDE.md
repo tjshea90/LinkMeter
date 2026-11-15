@@ -104,8 +104,9 @@ always.
   choices: **Hotspot** (as always: the carrier limits hotspot traffic to 5 Mbit/s) and **Fast Wi-Fi**. With Fast Wi-Fi the tablet stays
   on the phone's hotspot, but every app's traffic goes through LinkMeter on the phone, which makes the connections itself, so the
   carrier sees ordinary phone traffic. The first time, Android asks whether LinkMeter may set up a VPN: press **OK** (the key icon at
-  the top of the tablet's screen then shows while it is on). After that it is one tap. Fast Wi-Fi stays chosen after a restart of the
-  tablet and comes back by itself; if the phone's LinkMeter does not answer (or the hotspot is off) the tablet simply uses the normal
+  the top of the tablet's screen then shows while it is on). After that it is one tap. Fast Wi-Fi stays on until YOU switch it off (**Hotspot** on Home, the tile, or the notification's **Turn off**): a restart of the
+  tablet or of the app does not end it, and if Android takes the VPN away (another VPN app was switched on) LinkMeter puts it back, or the
+  card says Android needs your OK again (**Give the OK**). If it ever does stop, Settings > Fast Wi-Fi > "What changed it lately" says why; if the phone's LinkMeter does not answer (or the hotspot is off) the tablet simply uses the normal
   hotspot and Fast Wi-Fi takes over again by itself when the phone answers. **Quickest switch:** add the **Fast Wi-Fi** tile to the
   tablet's quick settings (swipe down twice from the top, press the pencil, drag the tile in): one tap from anywhere. The notification
   has **Turn off**. Install the newest release on **both** devices: the phone does the relaying. Settings > Fast Wi-Fi: leave "Steer

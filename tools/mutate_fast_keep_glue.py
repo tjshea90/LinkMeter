@@ -18,12 +18,16 @@ M = [
  ("Android's revoke clears the choice again (the old fault)", J + "FastVpn.java",
   "        // user's OK again, or another VPN app keeps taking over, the card says so (FastRules.afterRevoke).\n        h.post(() -> {",
   "        // user's OK again, or another VPN app keeps taking over, the card says so (FastRules.afterRevoke).\n        Cfg.setFastWanted(this, false);\n        h.post(() -> {",
-  "onRevokeKeepsTheChoice"),
+  "onRevokeAskedForTheOkKeepsTheChoice"),
+ ("a revoke is not put back by itself when Android allows it", J + "FastVpn.java",
+  "                h.postDelayed(retry, 2000L); // a moment for the other VPN app to settle\n", "", "onRevokeAllowedLooksAgainByItself"),
+ ("a revoke is never counted: another VPN app is fought for ever", J + "FastVpn.java",
+  "            revokedAt.add(now);\n", "", "fourthRevokeAsks"),
  ("a revoke that needs the OK does not say why", J + "FastVpn.java",
-  "down(State.PERMISSION, FastRules.revokedWords(kept));", 'down(State.PERMISSION, "");', "onRevokeKeepsTheChoice"),
+  "down(State.PERMISSION, FastRules.revokedWords(kept));", 'down(State.PERMISSION, "");', "onRevokeAskedForTheOkKeepsTheChoice"),
  ("a revoke is not written in the history", J + "FastVpn.java",
   'record(this, kept ? "Another VPN app keeps taking the VPN away: asking you." : "Android turned the VPN off: it needs your OK.");',
-  "", "onRevokeKeepsTheChoice"),
+  "", "onRevokeAskedForTheOkKeepsTheChoice"),
  # the user's own switches
  ("the user's switch does not clear the choice (the notification)", J + "FastVpn.java",
   "        if (STOP.equals(a)) {\n            Cfg.setFastWanted(this, false);", "        if (STOP.equals(a)) {", "notificationTurnOffSwitchesItOff"),
@@ -33,13 +37,15 @@ M = [
   'FastVpn.stop(act, "Home");', "FastVpn.stop(act, \"Home\"); Cfg.setFastWanted(act, true);", "hotspotChoiceSwitchesFastWifiOff"),
  # Android's VPN question
  ("a cancelled answer overrules Android's own OK", J + "MainActivity.java",
-  "if (result == RESULT_OK || FastVpn.consent(this)) {", "if (result == RESULT_OK) {", "answeringNoKeepsItOff"),
+  "if (result == RESULT_OK || FastVpn.consent(this)) {", "if (result == RESULT_OK) {", "cancelledButAllowedGoesOn"),
  ("'No' to Android's question leaves the choice on", J + "MainActivity.java",
   '                Cfg.setFastWanted(this, false);\n                FastVpn.record(this, "You answered No', '                FastVpn.record(this, "You answered No', "answeringNoKeepsItOff"),
  # coming back after the app was stopped
  ("nothing starts Fast Wi-Fi again when its service is gone", J + "FastVpn.java",
   "        if (!Cfg.TABLET.equals(Cfg.mode(c)) || !Cfg.fastWanted(c) || state == State.ON || state == State.WAITING) {",
   "        if (true || !Cfg.fastWanted(c)) {", "wantedButGoneComesBack"),
+ ("a service that is gone while Android's OK is gone says 'starting' for ever", J + "FastVpn.java",
+  "        } else if (state == State.OFF) {\n            state = State.PERMISSION;", "        } else if (false) {\n            state = State.PERMISSION;", "wantedButGoneAsksForTheOk"),
 ]
 only = sys.argv[1:]
 caught = missed = 0

@@ -115,6 +115,27 @@ otherwise).
   `/s`, the switch "Let the tablet use Fast Wi-Fi" on its own screen (`PhoneTab.buildFast`, `Cfg.fastAllowed`, default on).
 - Settings > Fast Wi-Fi: "Steer apps to their faster way" (QUIC refused, `Cfg.fastBlockQuic`, default on).
 
+## Stays on until the user switches it off (2026-11-15)
+
+The user's words: "the fast wifi toggle keeps turning off by itself. If I turn on fast wifi, make it stay on until I turn it off."
+FOUND BY READING THE CODE, NOT SEEN ON A DEVICE: the tablet's choice `Cfg.fastWanted` was cleared by `FastVpn.onRevoke()` too, which Android
+calls when ANOTHER VPN app becomes active (or Android's VPN settings or a lost consent take LinkMeter's VPN away); the service stopped, nothing
+brought it back, and with the service gone but the choice on the card read "starting..." for ever. Now:
+- **Only the user clears the choice**: "Hotspot" on Home, the tile while it is on, the notification's "Turn off" (`FastVpn.stop(c, by)`),
+  and "No" to Android's VPN question (`MainActivity`: Android's own `VpnService.prepare` answer counts, not the "cancelled" of an older question).
+- **Android takes the VPN away** (`FastVpn.onRevoke`): the choice stays, the VPN is down (the tablet uses its Wi-Fi as before), and
+  `FastRules.afterRevoke` decides: COME_BACK (Android still allows it: tried again after 2 s, at most 3 revokes in 10 minutes) or ASK (Android's OK is
+  gone, or another VPN app keeps taking over: state PERMISSION, the card says why and has **Give the OK**; the tile says "Needs your OK" and a tap gives it).
+- **The service is gone while the choice is on** (the app was stopped): `FastVpn.resumeIfWanted` (called by `MainActivity.onResume`, the Home card and
+  the tile) starts it again, or, when Android's OK is gone, makes the card ask. `BootReceiver` and `START_STICKY` stay as they were.
+  NOT POSSIBLE: a FORCE-STOPPED app (Android's "Force stop", some "sleeping apps" lists) runs nothing until it is opened again.
+- **What changed it** is kept (`Cfg.fastLog`, `FastRules.remember`, six lines, newest first) and shown in Settings > Fast Wi-Fi, "What changed it lately": who
+  switched it off (Home, the tile, the notification), what Android did to the VPN, a service started again. IF THE USER SAYS IT TURNED OFF AGAIN: ask for
+  those lines first.
+- Tests: `FastRulesTest` (`staysOn`), `FastPreviewTest` (the real `FastVpn` service gets `onRevoke`; the notification's Turn off; answering No; the service gone;
+  the Settings lines), `python3 tools/mutate_fast.py pure revoke` (+ "history", "card: the") and `python3 tools/mutate_fast_keep_glue.py` (glue; run it in a git worktree).
+- NOT KNOWN UNTIL THE TABLET TRIES: which of these really switched it off by itself on the user's tablet (the history will say).
+
 ## Stage 2: the phone's own Wi-Fi (hotspot off), as NetShare does it
 
 Settings > Fast Wi-Fi > "Fast Wi-Fi's Wi-Fi": **The phone's hotspot** (stage 1, the default) or **Its own Wi-Fi**. With its own Wi-Fi:

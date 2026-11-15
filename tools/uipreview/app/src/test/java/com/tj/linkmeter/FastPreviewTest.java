@@ -25,8 +25,22 @@ import org.robolectric.annotation.GraphicsMode;
  */
 @RunWith(RobolectricTestRunner.class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = 29, qualifiers = "w565dp-h916dp-port-170dpi")
+@Config(sdk = 29, qualifiers = "w565dp-h916dp-port-170dpi", shadows = FastPreviewTest.ShadowVpn.class)
 public class FastPreviewTest {
+    /**
+     * Robolectric has no VPN: Android's answer to VpnService.prepare is pretended. allowed: LinkMeter may set up its VPN without a
+     * question (prepare gives null); not allowed: Android would ask the user (prepare gives its question).
+     */
+    @org.robolectric.annotation.Implements(android.net.VpnService.class)
+    public static class ShadowVpn extends org.robolectric.shadows.ShadowService {
+        static volatile boolean allowed;
+
+        @org.robolectric.annotation.Implementation
+        public static android.content.Intent prepare(android.content.Context c) {
+            return allowed ? null : new android.content.Intent("pretend.vpn.question");
+        }
+    }
+
     @After
     public void tearDown() {
         FastVpn.state = FastVpn.State.OFF;
@@ -34,6 +48,8 @@ public class FastPreviewTest {
         Cfg.setFastWanted(RuntimeEnvironment.getApplication(), false);
         Cfg.setFastLink(RuntimeEnvironment.getApplication(), FastRules.LINK_HOTSPOT);
         Cfg.setFastLog(RuntimeEnvironment.getApplication(), "");
+        ShadowVpn.allowed = false;
+        FastVpn.startedAt = 0;
     }
 
     /** The pretend phone's status with Fast Wi-Fi's part (null: an older phone app without it). */
@@ -183,26 +199,104 @@ public class FastPreviewTest {
         shot(a, "fast-revoked");
     }
 
-    /** The REAL service: Android calls onRevoke; the choice must survive it (it used to be cleared, and the service stopped). */
+    /** Waits (the service answers on its own thread) until the state is no longer {@code from}, at most 8 s. */
+    private static void awaitState(FastVpn.State from) throws InterruptedException {
+        long end = System.currentTimeMillis() + 8000;
+        while (FastVpn.state == from && System.currentTimeMillis() < end) {
+            Thread.sleep(20);
+        }
+    }
+
+    /** The REAL service: Android calls onRevoke and no longer lets LinkMeter set up its VPN: the choice stays and the card asks for the OK. */
     @Test
-    public void onRevokeKeepsTheChoice() throws Exception {
+    public void onRevokeAskedForTheOkKeepsTheChoice() throws Exception {
         android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = false;
         Cfg.setFastWanted(app, true);
         FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
         svc.onRevoke();
-        long end = System.currentTimeMillis() + 8000;
-        while (FastVpn.state == FastVpn.State.OFF && System.currentTimeMillis() < end) {
-            Thread.sleep(20); // the service's own thread answers
-        }
+        awaitState(FastVpn.State.OFF);
         boolean wanted = Cfg.fastWanted(app);
         FastVpn.State st = FastVpn.state;
         String detail = FastVpn.detail;
         String log = Cfg.fastLog(app);
         svc.onDestroy();
-        check(wanted, "after Android took the VPN away the choice is still on");
-        check(st != FastVpn.State.PERMISSION || detail.contains("Your choice is kept"), "if it asks for the OK, it says why: " + detail);
-        check(st == FastVpn.State.WAITING || st == FastVpn.State.PERMISSION, "and the service says it is putting it back or asks for the OK, not 'off': " + st);
-        check(log.contains("Android"), "the history says what Android did: " + log);
+        check(wanted, "after Android took the VPN away the choice is still on (it used to be cleared)");
+        check(st == FastVpn.State.PERMISSION, "Android's OK is gone: the card asks for it, not 'off': " + st);
+        check(detail.contains("Your choice is kept"), "and says why: " + detail);
+        check(log.contains("needs your OK"), "the history says what Android did: " + log);
+    }
+
+    /** The REAL service: Android took the VPN away but still allows it: LinkMeter puts it back by itself, the choice stays. */
+    @Test
+    public void onRevokeAllowedPutsItBack() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onRevoke();
+        awaitState(FastVpn.State.OFF);
+        boolean wanted = Cfg.fastWanted(app);
+        FastVpn.State st = FastVpn.state;
+        String detail = FastVpn.detail;
+        String log = Cfg.fastLog(app);
+        svc.onDestroy();
+        check(wanted, "the choice is still on");
+        check(st == FastVpn.State.WAITING, "the service is putting it back (waiting), not off and not asking: " + st);
+        check(detail.contains("putting it back"), "and says so: " + detail);
+        check(log.contains("putting it back"), "the history says what Android did: " + log);
+    }
+
+    /** ... and it really looks again a moment later (what it finds then is another matter: here, no Wi-Fi to put the VPN on). */
+    @Test
+    public void onRevokeAllowedLooksAgainByItself() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1); // it runs: wanted
+        awaitState(FastVpn.State.OFF);
+        svc.onRevoke();
+        long end = System.currentTimeMillis() + 5000;
+        while (!FastVpn.detail.contains("putting it back") && System.currentTimeMillis() < end) {
+            Thread.sleep(20);
+        }
+        check(FastVpn.detail.contains("putting it back"), "after the revoke it says it is putting the VPN back: " + FastVpn.detail);
+        // Robolectric's clock is a pretend one: let the service thread's 2 seconds pass
+        java.lang.reflect.Field worker = FastVpn.class.getDeclaredField("worker");
+        worker.setAccessible(true);
+        android.os.Looper looper = ((android.os.HandlerThread) worker.get(svc)).getLooper();
+        org.robolectric.Shadows.shadowOf(looper).idleFor(java.time.Duration.ofSeconds(3));
+        end = System.currentTimeMillis() + 5000;
+        while (FastVpn.detail.contains("putting it back") && System.currentTimeMillis() < end) {
+            Thread.sleep(20);
+        }
+        String detail = FastVpn.detail;
+        svc.onDestroy();
+        check(!detail.contains("putting it back"), "it looked again by itself (the words changed): " + detail);
+    }
+
+    /** Another VPN app that keeps taking the VPN away is not fought for ever: the fourth revoke in ten minutes asks the user. */
+    @Test
+    public void fourthRevokeAsks() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        for (int i = 0; i < FastRules.REVOKE_TRIES + 1; i++) {
+            svc.onRevoke();
+        }
+        long end = System.currentTimeMillis() + 8000;
+        while (FastVpn.state != FastVpn.State.PERMISSION && System.currentTimeMillis() < end) {
+            Thread.sleep(20);
+        }
+        boolean wanted = Cfg.fastWanted(app);
+        FastVpn.State st = FastVpn.state;
+        String detail = FastVpn.detail;
+        svc.onDestroy();
+        check(wanted, "the choice is still on");
+        check(st == FastVpn.State.PERMISSION, "after the fourth revoke the card asks: " + st);
+        check(detail.contains("Another VPN app keeps taking"), "and names the other VPN app: " + detail);
     }
 
     /** The notification's "Turn off" is the user's own switch: it clears the choice, stops the service and says who did it. */
@@ -219,36 +313,63 @@ public class FastPreviewTest {
         check(log.contains("Switched off by you (the notification)"), "and the history says who: " + log);
     }
 
-    /** "No" to Android's VPN question is the user's answer: it stays off. (Cancelled while Android allows it anyway: it goes on.) */
+    /** "No" to Android's VPN question is the user's answer: it stays off. */
     @Test
     public void answeringNoKeepsItOff() throws Exception {
         android.app.Application app = RuntimeEnvironment.getApplication();
         phone(true, READY);
         MainActivity a = tablet();
         settle();
+        ShadowVpn.allowed = false;
         Cfg.setFastWanted(app, true);
-        boolean allowed = FastVpn.consent(app);
         a.onActivityResult(11, android.app.Activity.RESULT_CANCELED, null); // REQ_VPN
-        if (allowed) {
-            check(Cfg.fastWanted(app), "Android allows it anyway: a 'cancelled' of an older question does not switch it off");
-        } else {
-            check(!Cfg.fastWanted(app), "No to Android's question: Fast Wi-Fi stays off");
-            check(Cfg.fastLog(app).contains("You answered No"), "and the history says so: " + Cfg.fastLog(app));
-        }
+        check(!Cfg.fastWanted(app), "No to Android's question: Fast Wi-Fi stays off");
+        check(Cfg.fastLog(app).contains("You answered No"), "and the history says so: " + Cfg.fastLog(app));
     }
 
-    /** The service is gone but the choice is on (the app was stopped): opening the app starts it again, or asks for the OK. */
+    /** A "cancelled" that belongs to an older question while Android allows the VPN anyway does not switch it off: it goes on. */
+    @Test
+    public void cancelledButAllowedGoesOn() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        phone(true, READY);
+        MainActivity a = tablet();
+        settle();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        a.onActivityResult(11, android.app.Activity.RESULT_CANCELED, null); // REQ_VPN
+        check(Cfg.fastWanted(app), "Android allows it: the choice stays on");
+        android.content.Intent started = org.robolectric.Shadows.shadowOf(app).peekNextStartedService();
+        check(started != null && FastVpn.START.equals(started.getAction()), "and the service is started");
+    }
+
+    /** The service is gone but the choice is on (the app was stopped) and Android allows the VPN: opening the app starts it again. */
     @Test
     public void wantedButGoneComesBack() throws Exception {
         android.app.Application app = RuntimeEnvironment.getApplication();
         phone(true, READY);
+        ShadowVpn.allowed = true;
         Cfg.setFastWanted(app, true);
         FastVpn.state = FastVpn.State.OFF;
         MainActivity a = tablet();
         settle();
-        boolean started = org.robolectric.Shadows.shadowOf(app).peekNextStartedService() != null;
-        boolean asks = shows(root(a), "Give the OK");
-        check(started || asks, "the service was started again, or the card asks for Android's OK (not 'starting' for ever)");
+        android.content.Intent started = org.robolectric.Shadows.shadowOf(app).peekNextStartedService();
+        check(started != null && FastVpn.START.equals(started.getAction()), "the service was started again, not 'starting' for ever");
+        check(Cfg.fastWanted(app), "the choice is still on");
+        check(Cfg.fastLog(app).contains("started again"), "the history says so: " + Cfg.fastLog(app));
+    }
+
+    /** The same, but Android's OK is gone: the card asks for it instead of saying 'starting' for ever. */
+    @Test
+    public void wantedButGoneAsksForTheOk() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        phone(true, READY);
+        ShadowVpn.allowed = false;
+        Cfg.setFastWanted(app, true);
+        FastVpn.state = FastVpn.State.OFF;
+        MainActivity a = tablet();
+        settle();
+        check(shows(root(a), "Give the OK"), "the card asks for Android's OK");
+        check(!shows(root(a), "Fast Wi-Fi is starting"), "and does not say 'starting' for ever");
         check(Cfg.fastWanted(app), "the choice is still on");
     }
 

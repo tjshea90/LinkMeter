@@ -87,7 +87,7 @@ public class FastVpn extends VpnService {
     // ------------------------------------------------------------------------------------------- switching
 
     /** When {@link #start} was last called (elapsedRealtime; 0: not since this process began). */
-    private static volatile long startedAt;
+    static volatile long startedAt;
 
     /** Starts it (the caller has made sure Android's VPN question was answered: {@link VpnService#prepare} gave null). */
     static void start(Context c) {
