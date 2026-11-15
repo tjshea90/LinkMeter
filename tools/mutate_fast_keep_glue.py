@@ -59,7 +59,7 @@ M = [
  ("the launcher's word is not read", J + "FastVpn.java", "return FastRules.pauseWhy(screenOn, locked, world);", "return FastRules.pauseWhy(screenOn, locked, null);", "customLauncherWordPausesIt"),
  ("the lock screen is not read", J + "FastVpn.java", "locked = km != null && km.isKeyguardLocked();", "locked = false;", "revokeOnTheLockScreenStaysPaused"),
  ("the screen is not read", J + "FastVpn.java", "screenOn = pm == null || pm.isInteractive();", "screenOn = true;", "withoutTheLaunchersWordItRunsWhenUnlocked"),
- ("the unlock does not wake the service", J + "FastVpn.java", "        f.addAction(Intent.ACTION_USER_PRESENT);\n", "", "unlockedInQuickstepItComesBack"),
+ ("the unlock does not wake the service", J + "FastVpn.java", "        f.addAction(Intent.ACTION_USER_PRESENT);\n", "", "userPresentAloneWakesIt"),
  ("the launcher's word changing does not wake the service", J + "FastVpn.java", "                    gateChanged();\n                }\n            };", "                }\n            };", "theLaunchersWordWakesTheService"),
  ("a missed event is never healed (no look while paused)", J + "FastVpn.java", "        h.postDelayed(retry, PAUSE_LOOK_MS);\n    }", "    }", "aMissedEventIsHealedByTheLook"),
  ("opening the app while locked asks Android for the VPN slot", J + "FastVpn.java", "        if (pause != null && state == State.OFF) {", "        if (false) {", "resumeWhileLockedDoesNotAskAndroid"),

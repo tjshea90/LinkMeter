@@ -97,6 +97,14 @@ public class FastPreviewTest {
         org.robolectric.Shadows.shadowOf(looper).idleFor(java.time.Duration.ofSeconds(seconds));
     }
 
+    /** Runs what is due NOW on the service thread without moving its pretend clock (a test that moves it by minutes lets the 30-second look heal what the test means to prove an EVENT does). */
+    private static void idleNow(FastVpn svc) throws Exception {
+        java.lang.reflect.Field worker = FastVpn.class.getDeclaredField("worker");
+        worker.setAccessible(true);
+        android.os.Looper looper = ((android.os.HandlerThread) worker.get(svc)).getLooper();
+        org.robolectric.Shadows.shadowOf(looper).idle();
+    }
+
     /** The pretend phone's status with Fast Wi-Fi's part (null: an older phone app without it). */
     static Pretend phone(boolean hotspot, String fast) {
         Pretend p = new Pretend();
@@ -614,14 +622,14 @@ public class FastPreviewTest {
         org.robolectric.Shadows.shadowOf((android.app.KeyguardManager) app.getSystemService(android.content.Context.KEYGUARD_SERVICE)).setKeyguardLocked(false);
         launcherSays("quiet:unlock not decided yet");
         app.sendBroadcast(new android.content.Intent(android.content.Intent.ACTION_USER_PRESENT));
-        passTime(svc, 1);
+        idleNow(svc);
         Thread.sleep(300);
         FastVpn.State undecided = FastVpn.state;
         launcherSays(FastRules.WORLD_QUICKSTEP);
         app.sendBroadcast(new android.content.Intent(android.content.Intent.ACTION_USER_PRESENT));
         long end = System.currentTimeMillis() + 5000;
         while (FastVpn.state == FastVpn.State.PAUSED && System.currentTimeMillis() < end) {
-            passTime(svc, 1);
+            idleNow(svc);
             Thread.sleep(50);
         }
         FastVpn.State st = FastVpn.state;
@@ -630,6 +638,31 @@ public class FastPreviewTest {
         check(undecided == FastVpn.State.PAUSED, "a PIN typed but the launcher not decided yet: still paused (it may be the custom launcher): " + undecided);
         check(st != FastVpn.State.PAUSED, "unlocked in Quickstep: it is no longer paused, it went on to put the VPN up: " + st + " / " + detail);
         check(detail.contains("Wi-Fi"), "(here there is no Wi-Fi to put it on, so it says it waits for the phone's Wi-Fi: it really tried): " + detail);
+    }
+
+    /** The unlock event ALONE (no word from the launcher): the service wakes at USER_PRESENT. Without the receiver's action only the 30-second look would heal it, which this test does not wait for. */
+    @Test
+    public void userPresentAloneWakesIt() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        ShadowVpn.allowed = true;
+        Cfg.setFastWanted(app, true);
+        lockScreen();
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
+        awaitIs(FastVpn.State.PAUSED);
+        check(FastVpn.state == FastVpn.State.PAUSED, "locked: paused");
+        org.robolectric.Shadows.shadowOf((android.app.KeyguardManager) app.getSystemService(android.content.Context.KEYGUARD_SERVICE)).setKeyguardLocked(false);
+        idleNow(svc);
+        check(FastVpn.state == FastVpn.State.PAUSED, "unlocked but no event yet: still paused (the look is 30 s away)");
+        app.sendBroadcast(new android.content.Intent(android.content.Intent.ACTION_USER_PRESENT));
+        long end = System.currentTimeMillis() + 5000;
+        while (FastVpn.state == FastVpn.State.PAUSED && System.currentTimeMillis() < end) {
+            idleNow(svc);
+            Thread.sleep(50);
+        }
+        FastVpn.State st = FastVpn.state;
+        svc.onDestroy();
+        check(st != FastVpn.State.PAUSED, "USER_PRESENT woke the service and it went on: " + st);
     }
 
     /** The launcher changes its word (custom launcher -> Quickstep) while the screen stays on and unlocked: no screen event comes, the observer of the word wakes the service. */
@@ -647,7 +680,7 @@ public class FastPreviewTest {
         app.getContentResolver().notifyChange(android.provider.Settings.Global.getUriFor(FastRules.WORLD_KEY), null);
         long end = System.currentTimeMillis() + 5000;
         while (FastVpn.state == FastVpn.State.PAUSED && System.currentTimeMillis() < end) {
-            passTime(svc, 1);
+            idleNow(svc);
             Thread.sleep(50);
         }
         FastVpn.State st = FastVpn.state;
@@ -665,11 +698,15 @@ public class FastPreviewTest {
         FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
         svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.START), 0, 1);
         awaitIs(FastVpn.State.PAUSED);
-        openGate(); // unlocked in Quickstep, and no broadcast and no observer call reaches the service
+        // unlocked in Quickstep, and no broadcast and no observer call reaches the service (the word is never touched here: writing it would wake the observer)
+        org.robolectric.Shadows.shadowOf((android.os.PowerManager) app.getSystemService(android.content.Context.POWER_SERVICE)).turnScreenOn(true);
+        org.robolectric.Shadows.shadowOf((android.app.KeyguardManager) app.getSystemService(android.content.Context.KEYGUARD_SERVICE)).setKeyguardLocked(false);
+        idleNow(svc);
+        check(FastVpn.state == FastVpn.State.PAUSED, "nothing woke the service yet (no event): still paused");
         passTime(svc, (int) (FastVpn.PAUSE_LOOK_MS / 1000) + 2);
         long end = System.currentTimeMillis() + 5000;
         while (FastVpn.state == FastVpn.State.PAUSED && System.currentTimeMillis() < end) {
-            passTime(svc, 1);
+            idleNow(svc);
             Thread.sleep(50);
         }
         FastVpn.State st = FastVpn.state;
