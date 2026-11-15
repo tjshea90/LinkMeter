@@ -60,6 +60,7 @@ public class FastTile extends TileService {
         if (Build.VERSION.SDK_INT >= 29) {
             t.setSubtitle(!tablet ? "On the tablet" : !wanted ? "Off: normal hotspot"
                     : FastVpn.state == FastVpn.State.ON ? "On"
+                    : FastVpn.state == FastVpn.State.PAUSED ? "Paused until Quickstep"
                     : FastVpn.state == FastVpn.State.PERMISSION ? "Needs your OK" : "Waiting for the phone");
         }
         t.updateTile();

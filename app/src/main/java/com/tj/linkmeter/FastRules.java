@@ -13,6 +13,8 @@ final class FastRules {
     /** The VPN service's state, as the card gets it (FastVpn.State's names). */
     static final String OFF = "OFF";
     static final String WAITING = "WAITING";
+    /** The VPN is held down on purpose (the tablet is locked, or the launcher says no VPN now); the choice is kept, see {@link #pauseWhy}. */
+    static final String PAUSED = "PAUSED";
     static final String ON = "ON";
     static final String PERMISSION = "PERMISSION";
 
@@ -91,8 +93,63 @@ final class FastRules {
                 + "Your choice is kept: press Give the OK and it comes back.";
     }
 
-    /** How many lines of "what changed Fast Wi-Fi lately" are kept (Settings > Fast Wi-Fi). */
-    static final int HISTORY = 6;
+    // ------------------------------------------------------------------------------------------- paused while locked / in the custom launcher
+
+    /**
+     * The launcher's word about which world the tablet is in: a Settings.Global string written by the Launcher app (it holds the adb permission to write it;
+     * every app may read it). {@link #WORLD_QUICKSTEP}: an unlocked, decided Quickstep session is on screen. {@code quiet:<why>} ({@link #WORLD_QUIET}): no VPN
+     * now (the custom launcher is in front, the screen is off, the lock screen is up, the unlock is not decided yet). Missing: the launcher says nothing
+     * (not installed, its switch is off, no adb permission): LinkMeter then goes by its own look at the screen and the lock only.
+     * The same words are in the Launcher (VpnOffRules.WORLD_*); keep them in step.
+     */
+    static final String WORLD_KEY = "tj_launcher_world";
+    static final String WORLD_QUICKSTEP = "quickstep";
+    static final String WORLD_QUIET = "quiet";
+
+    /** Does the launcher's word say "no VPN now"? Anything else (also a missing or unknown word) says "may run": Fast Wi-Fi never stays down for a word it does not know. */
+    static boolean worldIsQuiet(String world) {
+        return world != null && (world.equals(WORLD_QUIET) || world.startsWith(WORLD_QUIET + ":"));
+    }
+
+    /**
+     * Fast Wi-Fi keeps the user's CHOICE but holds its VPN down while a VPN would show on the lock screen or in the custom launcher (the user's rule: the
+     * "Device connected to ..." row must never show there, and Fast Wi-Fi must never be switched off by anything but the user). Returns null when the VPN may
+     * run, else the reason in words. Screen and lock are LinkMeter's own look (they hold without the launcher); the launcher's word adds the custom launcher
+     * and the moment between a PIN and the launcher's decision.
+     */
+    static String pauseWhy(boolean screenOn, boolean keyguardLocked, String world) {
+        if (!screenOn) {
+            return "the screen is off";
+        }
+        if (keyguardLocked) {
+            return "the lock screen is up";
+        }
+        if (worldIsQuiet(world)) {
+            String why = world.length() > WORLD_QUIET.length() + 1 ? world.substring(WORLD_QUIET.length() + 1).trim() : "";
+            switch (why) {
+                case "custom launcher":
+                    return "the custom launcher is in front";
+                case "unlock not decided yet":
+                    return "the unlock is still being decided";
+                case "screen off":
+                    return "the screen is off";
+                case "lock screen":
+                    return "the lock screen is up";
+                default:
+                    return "the launcher says no VPN now";
+            }
+        }
+        return null;
+    }
+
+    /** The card's, the tile's and the notification's words while paused ({@code why} from {@link #pauseWhy}). */
+    static String pausedWords(String why) {
+        return "Fast Wi-Fi is paused: " + (why == null || why.isEmpty() ? "no VPN now" : why) + ". Your choice is kept, and it comes back by itself "
+                + "when you are in Quickstep, unlocked. (While it is paused the tablet uses its Wi-Fi as before, and Android shows no VPN row.)";
+    }
+
+    /** How many lines of "what changed Fast Wi-Fi lately" are kept (Settings > Fast Wi-Fi). Pauses and comebacks write lines too, so room for several lock cycles. */
+    static final int HISTORY = 10;
 
     /** The history with one more line first ("when what"): newest first, at most {@link #HISTORY} lines, blank lines dropped. */
     static String remember(String old, String when, String what) {
@@ -141,6 +198,11 @@ final class FastRules {
                 c.action = Action.DIRECT_ON;
                 c.actionLabel = "Use its own network";
             }
+            return c;
+        }
+        if (PAUSED.equals(state)) {
+            c.tone = GREY;   // nothing is wrong: it waits for Quickstep. The phone's state does not matter until it comes back
+            c.line = detail.isEmpty() ? pausedWords("") : detail;
             return c;
         }
         if (PERMISSION.equals(state)) {

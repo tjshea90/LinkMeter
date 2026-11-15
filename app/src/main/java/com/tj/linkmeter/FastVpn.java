@@ -3,9 +3,12 @@ package com.tj.linkmeter;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.KeyguardManager;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
 import android.net.ConnectivityManager;
@@ -14,11 +17,14 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.VpnService;
+import android.database.ContentObserver;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.ParcelFileDescriptor;
+import android.os.PowerManager;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
@@ -55,6 +61,13 @@ import java.util.Locale;
  * and by nothing else. When Android takes the VPN away ({@link #onRevoke}: another VPN app, Android's VPN settings) the choice stays,
  * the VPN is put back by itself ({@link FastRules#afterRevoke}) or the card asks for the OK; when the service is gone while the
  * choice is on (the app was stopped) {@link #resumeIfWanted} starts it again. What changed it is kept in {@link Cfg#fastLog}.
+ *
+ * PAUSED WHILE LOCKED OR IN THE CUSTOM LAUNCHER (the user, 2026-11-15: the VPN bar "should never show up at any time on any lock screen or in custom launcher",
+ * "turn off the fast wifi if necessary if I go to the lock screen", "go back to quickstep launcher, automatically turn back on"): the choice stays, the VPN is
+ * held DOWN by LinkMeter itself ({@link State#PAUSED}) while the screen is off, the lock screen is up or the launcher's word says no VPN now
+ * ({@link FastRules#pauseWhy}), and it is put up again by itself the moment the tablet is unlocked in Quickstep. The launcher turning the VPN off (its own rule
+ * does the same for any VPN app) is therefore never answered by putting it back: a revoke while paused only confirms the pause. Level-triggered: the gate is read
+ * at every attempt, a screen / unlock receiver and an observer of the launcher's word call it at once, and a look every {@link #PAUSE_LOOK_MS} heals a missed event.
  */
 public class FastVpn extends VpnService {
     static final String START = "com.tj.linkmeter.FAST_START";
@@ -64,8 +77,10 @@ public class FastVpn extends VpnService {
     private static final String CHANNEL = "fast";
     private static final int NOTE_ID = 7;
     private static final long RETRY_MS = 30_000L;
+    /** While paused the gate is looked at this often (only while the CPU is awake anyway): a missed screen or unlock event never keeps Fast Wi-Fi down. */
+    static final long PAUSE_LOOK_MS = 30_000L;
 
-    enum State { OFF, WAITING, ON, PERMISSION }
+    enum State { OFF, WAITING, ON, PAUSED, PERMISSION }
 
     /** For the Home card, the tile and the notification (written by the service's thread). */
     static volatile State state = State.OFF;
@@ -83,6 +98,12 @@ public class FastVpn extends VpnService {
     private volatile Network wifi;
     private volatile InetSocketAddress relay;
     private boolean wanted;
+    /** The gate is closed: the VPN is held down on purpose (service thread only). */
+    private boolean paused;
+    /** The VPN was up when the pause began: its coming back is worth a line in the history. */
+    private boolean pausedFromOn;
+    private BroadcastReceiver gateReceiver;
+    private ContentObserver gateObserver;
 
     // ------------------------------------------------------------------------------------------- switching
 
@@ -127,16 +148,48 @@ public class FastVpn extends VpnService {
     }
 
     /**
+     * Why the VPN must be held down right now ({@link FastRules#pauseWhy}), or null when it may run. LinkMeter's own look at the screen and the lock, plus the
+     * launcher's word. Reads only; cheap; never throws (a failed read says "may run").
+     */
+    static String pauseNow(Context c) {
+        boolean screenOn = true;
+        boolean locked = false;
+        String world = null;
+        try {
+            PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+            screenOn = pm == null || pm.isInteractive();
+            KeyguardManager km = (KeyguardManager) c.getSystemService(Context.KEYGUARD_SERVICE);
+            locked = km != null && km.isKeyguardLocked();
+        } catch (RuntimeException ignored) {
+            // unknown: go by the launcher's word
+        }
+        try {
+            world = Settings.Global.getString(c.getContentResolver(), FastRules.WORLD_KEY);
+        } catch (RuntimeException ignored) {
+            // unreadable: the launcher says nothing
+        }
+        return FastRules.pauseWhy(screenOn, locked, world);
+    }
+
+    /**
      * Tablet: the choice is on but nothing is running (the app was stopped, or Android ended the service): start it again, or, when
      * Android's OK is gone, make the card say so. Cheap and safe to call whenever the app or Home or the tile is shown.
      */
     static void resumeIfWanted(Context c) {
-        if (!Cfg.TABLET.equals(Cfg.mode(c)) || !Cfg.fastWanted(c) || state == State.ON || state == State.WAITING) {
+        if (!Cfg.TABLET.equals(Cfg.mode(c)) || !Cfg.fastWanted(c) || state == State.ON || state == State.WAITING || state == State.PAUSED) {
             return;
         }
         long since = SystemClock.elapsedRealtime() - startedAt;
         if (state == State.OFF && startedAt != 0 && since < 15_000L) {
             return; // it was only just started: it will say what it is doing
+        }
+        String pause = pauseNow(c);
+        if (pause != null && state == State.OFF) {
+            // locked or in the custom launcher: start the service (it pauses itself and watches for the way back). No consent() here: asking Android for the OK takes the
+            // VPN slot away from any other VPN app, and nothing is going to be set up now.
+            record(c, "Fast Wi-Fi was on but its service was gone (the app had been stopped): started again, paused (" + pause + ").");
+            start(c);
+            return;
         }
         if (consent(c)) {
             if (state == State.OFF) {
@@ -175,8 +228,10 @@ public class FastVpn extends VpnService {
             }
             h.post(() -> {
                 wanted = false;
+                paused = false;
                 down(State.OFF, "");
                 unwatch();
+                unwatchGate();
                 stopForeground(true);
                 stopSelf();
             });
@@ -190,6 +245,7 @@ public class FastVpn extends VpnService {
         h.post(() -> {
             wanted = true;
             watch();
+            watchGate();
             attempt();
         });
         return START_STICKY;
@@ -209,10 +265,21 @@ public class FastVpn extends VpnService {
         h.post(() -> {
             if (!Cfg.fastWanted(this)) {
                 wanted = false; // the user switched it off in the meantime
+                paused = false;
                 down(State.OFF, "");
                 unwatch();
+                unwatchGate();
                 stopForeground(true);
                 stopSelf();
+                return;
+            }
+            String pause = pauseNow(this);
+            if (pause != null) {
+                // The tablet is locked, or the launcher says no VPN now: the launcher turned the VPN off on purpose (it does for any VPN app, so that no "Device connected
+                // to ..." row shows on the lock screen or in the custom launcher). That is not Android taking it away and not a reason to put it back: it stays paused and
+                // comes back by itself in Quickstep. Not counted as a revoke (a lock must never use up the tries kept for another VPN app). No consent() here either: asking
+                // Android for the OK would take the VPN slot from the launcher / another app for nothing.
+                pauseFor(pause);
                 return;
             }
             long now = SystemClock.elapsedRealtime();
@@ -244,6 +311,7 @@ public class FastVpn extends VpnService {
         }
         tearDown();
         unwatch();
+        unwatchGate();
         if (state != State.PERMISSION) {
             state = State.OFF;
         }
@@ -263,6 +331,12 @@ public class FastVpn extends VpnService {
         if (!wanted) {
             return;
         }
+        String pause = pauseNow(this);
+        if (pause != null) {
+            pauseFor(pause); // also takes a VPN that is up down: the gate is read before anything else
+            return;
+        }
+        paused = false;
         TunStack e = engine;
         if (e != null && e.running()) {
             return;
@@ -297,6 +371,92 @@ public class FastVpn extends VpnService {
         } catch (IOException | RuntimeException ex) {
             tearDown();
             waitAgain("The VPN could not be set up: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * The gate is closed: take the VPN down (if it is up), keep the choice, say why, and look again later (the receiver and the observer call {@link #attempt}
+     * at once when something changes; the look every {@link #PAUSE_LOOK_MS} heals a missed event). Service thread only.
+     */
+    private void pauseFor(String why) {
+        boolean wasUp = engine != null || pfd != null;
+        if (wasUp && !paused) {
+            record(this, "Paused (" + why + "): the VPN went down, Fast Wi-Fi is still on and comes back by itself in Quickstep.");
+        }
+        if (wasUp) {
+            pausedFromOn = true;
+        }
+        paused = true;
+        revokedAsk = false;
+        String words = FastRules.pausedWords(why);
+        if (wasUp || state != State.PAUSED || !words.equals(detail)) {
+            down(State.PAUSED, words);
+        }
+        h.removeCallbacks(retry);
+        h.postDelayed(retry, PAUSE_LOOK_MS);
+    }
+
+    /** The screen, the lock or the launcher's word changed: look at the gate at once (a way back opens within a moment, a way down closes at once). */
+    private void gateChanged() {
+        if (!wanted) {
+            return;
+        }
+        retryMs = RETRY_MS; // a new situation: look quickly again
+        attempt();
+    }
+
+    private void watchGate() {
+        if (gateReceiver != null) {
+            return;
+        }
+        gateReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                h.post(FastVpn.this::gateChanged);
+            }
+        };
+        IntentFilter f = new IntentFilter();
+        f.addAction(Intent.ACTION_SCREEN_OFF);
+        f.addAction(Intent.ACTION_SCREEN_ON);
+        f.addAction(Intent.ACTION_USER_PRESENT);
+        try {
+            registerReceiver(gateReceiver, f, null, h);
+        } catch (RuntimeException e) {
+            gateReceiver = null;
+        }
+        if (gateObserver == null) {
+            gateObserver = new ContentObserver(h) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    gateChanged();
+                }
+            };
+            try {
+                getContentResolver().registerContentObserver(Settings.Global.getUriFor(FastRules.WORLD_KEY), false, gateObserver);
+            } catch (RuntimeException e) {
+                gateObserver = null;
+            }
+        }
+    }
+
+    private void unwatchGate() {
+        BroadcastReceiver r = gateReceiver;
+        gateReceiver = null;
+        if (r != null) {
+            try {
+                unregisterReceiver(r);
+            } catch (RuntimeException ignored) {
+                // gone
+            }
+        }
+        ContentObserver o = gateObserver;
+        gateObserver = null;
+        if (o != null) {
+            try {
+                getContentResolver().unregisterContentObserver(o);
+            } catch (RuntimeException ignored) {
+                // gone
+            }
         }
     }
 
@@ -358,6 +518,11 @@ public class FastVpn extends VpnService {
         onSince = SystemClock.elapsedRealtime();
         state = State.ON;
         detail = "";
+        paused = false;
+        if (pausedFromOn) {
+            pausedFromOn = false;
+            record(this, "Fast Wi-Fi came back by itself (the tablet is unlocked in Quickstep).");
+        }
         foreground("Fast Wi-Fi is on", "The tablet's internet goes through LinkMeter on the phone, without the hotspot's speed limit.");
         FastTile.refresh(this);
     }
@@ -368,7 +533,7 @@ public class FastVpn extends VpnService {
         state = s;
         detail = why;
         if (wanted) {
-            foreground(s == State.PERMISSION ? "Fast Wi-Fi needs your OK" : "Fast Wi-Fi is waiting for the phone",
+            foreground(s == State.PERMISSION ? "Fast Wi-Fi needs your OK" : s == State.PAUSED ? "Fast Wi-Fi is paused" : "Fast Wi-Fi is waiting for the phone",
                     s == State.PERMISSION && why.isEmpty() ? FastRules.PERMISSION_LINE : why);
         }
         FastTile.refresh(this);
