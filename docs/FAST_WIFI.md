@@ -136,6 +136,34 @@ brought it back, and with the service gone but the choice on the card read "star
   the Settings lines), `python3 tools/mutate_fast.py pure revoke` (+ "history", "card: the") and `python3 tools/mutate_fast_keep_glue.py` (12 breakages of the glue, all caught; run it in a git worktree). The pretend answer of Android's VPN question is `FastPreviewTest.ShadowVpn`.
 - NOT KNOWN UNTIL THE TABLET TRIES: which of these really switched it off by itself on the user's tablet (the history will say).
 
+## Paused on the lock screen and in the custom launcher, back by itself in Quickstep (2026-11-15)
+
+The user's words: "the VPN notification line in the notification panel is showing up on the lock screen ... Never automatically turn off fast wifi mode
+if I turned it on and I'm inside quickstep launcher. Turn off the fast wifi if necessary if I go to the lock screen so that it doesn't show up in the
+notification panel. The VPN bar ... should never show up at any time on any lock screen or in custom launcher. If I had fast wifi turned on then go to
+the lock screen, then go back to quickstep launcher, automatically turn back on fast wifi mode in linkmeter if possible."
+CAUSE (read in the code of both apps, NOT seen on a device): since v0.2.183 LinkMeter put its VPN back 2 s after every revoke (at most 3 in 10 minutes), while the
+Launcher app's "no VPN on the lock screen" switch (`VpnOff`, Launcher v0.9.10) revokes any VPN at screen off. After the third revoke both gave up and the VPN
+stayed up, so Android's own row "Device connected to ..." showed on the lock screen.
+- **One rule, written by the Launcher, read here.** The Launcher publishes the word `Settings.Global tj_launcher_world`: `quickstep` (an unlocked Quickstep session:
+  a VPN may run) or `quiet:<why>` (why = custom launcher, screen off, lock screen, unlock not decided yet: no VPN row may show). Only the Launcher (and adb) can write it,
+  anyone can read it. Missing word = the Launcher says nothing: LinkMeter then uses its own two facts (screen off, `KeyguardManager.isKeyguardLocked`) and never
+  waits for the word. An unknown word means "may run" (fail open).
+- **The choice stays** (`Cfg.fastWanted`): the VPN is only held DOWN. `FastRules.pauseWhy(screenOn, keyguardLocked, world)` is the one pure answer (null = may run;
+  else the reason). State `FastVpn.State.PAUSED`: grey card "Fast Wi-Fi is paused: <why>. Your choice is kept, and it comes back by itself ..." without a button, tile "Paused until Quickstep", the tablet uses
+  its Wi-Fi as before. The Launcher's revoke at screen off therefore ends in PAUSED, not in the 2 s put-back fight; pauses are not counted as revokes.
+- **Never asks while paused**: while PAUSED LinkMeter never calls `VpnService.prepare` (that would take the VPN slot from another VPN app and can show Android's dialog on the lock screen).
+- **Comes back by itself**: a receiver (screen off / on, user present), a `ContentObserver` on the word, and a level look every 30 s while paused call
+  `resumeIfWanted`; when the gate opens (unlocked, word `quickstep` or missing) and Android's OK still holds, the VPN starts again and the history says
+  "Fast Wi-Fi came back by itself (the tablet is unlocked in Quickstep)". If Android's OK is gone the card asks as before.
+- **Needs the adb grant on the Launcher** (WRITE_SECURE_SETTINGS) to publish the word; without it the custom launcher cannot be signalled (lock screen and screen off
+  still work through LinkMeter's own facts and the Launcher's revoke).
+- Tests: `FastRulesTest` (`pausedWorld`: every combination, the words, the PAUSED card), `FastPreviewTest` (`FastVpn` locked / screen off / word quiet: nothing
+  asked, no VPN service; gate opens: VPN back, history line; revoke while locked is not counted; choice kept), `python3 tools/mutate_fast.py pure` (16 breakages of the
+  pause rule) and `python3 tools/mutate_fast_keep_glue.py` (11 more; run it in a git worktree).
+- NOT KNOWN UNTIL THE TABLET TRIES: the real lock screen without the row; the return time after an unlock (Launcher's decision of "unlock decided" comes
+  a few hundred ms after the PIN); whether Samsung's keyguard reads `isKeyguardLocked` the same way. ASK THE USER for Settings > Fast Wi-Fi > "What changed it lately".
+
 ## Stage 2: the phone's own Wi-Fi (hotspot off), as NetShare does it
 
 Settings > Fast Wi-Fi > "Fast Wi-Fi's Wi-Fi": **The phone's hotspot** (stage 1, the default) or **Its own Wi-Fi**. With its own Wi-Fi:
