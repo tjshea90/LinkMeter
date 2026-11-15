@@ -33,6 +33,7 @@ public class FastPreviewTest {
         FastVpn.detail = "";
         Cfg.setFastWanted(RuntimeEnvironment.getApplication(), false);
         Cfg.setFastLink(RuntimeEnvironment.getApplication(), FastRules.LINK_HOTSPOT);
+        Cfg.setFastLog(RuntimeEnvironment.getApplication(), "");
     }
 
     /** The pretend phone's status with Fast Wi-Fi's part (null: an older phone app without it). */
@@ -161,6 +162,106 @@ public class FastPreviewTest {
         settle();
         check(!Cfg.fastWanted(RuntimeEnvironment.getApplication()), "Hotspot switches Fast Wi-Fi off (it stays off after a restart)");
         check(shows(root(a), "uses the phone's hotspot as usual"), "and the card says so at once");
+        check(Cfg.fastLog(RuntimeEnvironment.getApplication()).contains("Switched off by you (Home)"), "the history says the user did it");
+    }
+
+    // ------------------------------------------------------------------------------------------------ stays on until the user switches it off
+
+    @Test
+    public void androidTookTheVpnAwayTheChoiceStays() throws Exception {
+        phone(true, READY);
+        Cfg.setFastWanted(RuntimeEnvironment.getApplication(), true);
+        FastVpn.state = FastVpn.State.PERMISSION;
+        FastVpn.detail = FastRules.revokedWords(false);
+        MainActivity a = tablet();
+        settle();
+        check(shows(root(a), "Android turned Fast Wi-Fi's VPN off"), "the card says what Android did");
+        check(shows(root(a), "Your choice is kept"), "and that the choice is kept");
+        check(PreviewTest.findButton(root(a), "Give the OK") != null, "with the button that brings it back");
+        check(!shows(root(a), "uses the phone's hotspot as usual"), "it does not pretend Hotspot was chosen");
+        check(Cfg.fastWanted(RuntimeEnvironment.getApplication()), "the choice is still on");
+        shot(a, "fast-revoked");
+    }
+
+    /** The REAL service: Android calls onRevoke; the choice must survive it (it used to be cleared, and the service stopped). */
+    @Test
+    public void onRevokeKeepsTheChoice() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        Cfg.setFastWanted(app, true);
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onRevoke();
+        long end = System.currentTimeMillis() + 8000;
+        while (FastVpn.state == FastVpn.State.OFF && System.currentTimeMillis() < end) {
+            Thread.sleep(20); // the service's own thread answers
+        }
+        boolean wanted = Cfg.fastWanted(app);
+        FastVpn.State st = FastVpn.state;
+        String detail = FastVpn.detail;
+        String log = Cfg.fastLog(app);
+        svc.onDestroy();
+        check(wanted, "after Android took the VPN away the choice is still on");
+        check(st != FastVpn.State.PERMISSION || detail.contains("Your choice is kept"), "if it asks for the OK, it says why: " + detail);
+        check(st == FastVpn.State.WAITING || st == FastVpn.State.PERMISSION, "and the service says it is putting it back or asks for the OK, not 'off': " + st);
+        check(log.contains("Android"), "the history says what Android did: " + log);
+    }
+
+    /** The notification's "Turn off" is the user's own switch: it clears the choice, stops the service and says who did it. */
+    @Test
+    public void notificationTurnOffSwitchesItOff() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        Cfg.setFastWanted(app, true);
+        FastVpn svc = org.robolectric.Robolectric.buildService(FastVpn.class).create().get();
+        svc.onStartCommand(new android.content.Intent(app, FastVpn.class).setAction(FastVpn.STOP).putExtra("by", "the notification"), 0, 1);
+        boolean wanted = Cfg.fastWanted(app);
+        String log = Cfg.fastLog(app);
+        svc.onDestroy();
+        check(!wanted, "'Turn off' in the notification switches the choice off");
+        check(log.contains("Switched off by you (the notification)"), "and the history says who: " + log);
+    }
+
+    /** "No" to Android's VPN question is the user's answer: it stays off. (Cancelled while Android allows it anyway: it goes on.) */
+    @Test
+    public void answeringNoKeepsItOff() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        phone(true, READY);
+        MainActivity a = tablet();
+        settle();
+        Cfg.setFastWanted(app, true);
+        boolean allowed = FastVpn.consent(app);
+        a.onActivityResult(11, android.app.Activity.RESULT_CANCELED, null); // REQ_VPN
+        if (allowed) {
+            check(Cfg.fastWanted(app), "Android allows it anyway: a 'cancelled' of an older question does not switch it off");
+        } else {
+            check(!Cfg.fastWanted(app), "No to Android's question: Fast Wi-Fi stays off");
+            check(Cfg.fastLog(app).contains("You answered No"), "and the history says so: " + Cfg.fastLog(app));
+        }
+    }
+
+    /** The service is gone but the choice is on (the app was stopped): opening the app starts it again, or asks for the OK. */
+    @Test
+    public void wantedButGoneComesBack() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        phone(true, READY);
+        Cfg.setFastWanted(app, true);
+        FastVpn.state = FastVpn.State.OFF;
+        MainActivity a = tablet();
+        settle();
+        boolean started = org.robolectric.Shadows.shadowOf(app).peekNextStartedService() != null;
+        boolean asks = shows(root(a), "Give the OK");
+        check(started || asks, "the service was started again, or the card asks for Android's OK (not 'starting' for ever)");
+        check(Cfg.fastWanted(app), "the choice is still on");
+    }
+
+    @Test
+    public void settingsSaysWhatChangedItLately() throws Exception {
+        phone(true, READY);
+        Cfg.setFastLog(RuntimeEnvironment.getApplication(), "15 Nov 14:32 Android took the VPN away (another VPN app, or Android's VPN settings): putting it back.");
+        MainActivity a = tablet();
+        a.openTab(Tab.SETTINGS);
+        settle();
+        check(findText(root(a), "What changed it lately") != null, "Settings has the history");
+        check(shows(root(a), "15 Nov 14:32 Android took the VPN away"), "with its lines");
+        PreviewTest.shot(a, "fast-settings-history");
     }
 
     // ------------------------------------------------------------------------------------------------ stage 2: the phone's own network

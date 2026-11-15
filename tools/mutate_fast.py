@@ -47,6 +47,18 @@ RULES = [
   "        if (answer == FastProto.DENIED) {\n            return null;\n        }\n        if (false) {\n            return \"The phone does not know"),
  ("speed: a speed from too short a time", FR, "if (ms < 500 || downBytes < 0 || upBytes < 0) {", "if (ms < 1 || downBytes < 0 || upBytes < 0) {"),
  ("phone line: switched off not said", FR, "        if (!allowed) {\n            return \"Off. The tablet uses the normal hotspot.\";\n        }\n", ""),
+ ("revoke: put back for ever, however often Android takes it", FR, "        return consentKept && recent <= REVOKE_TRIES ? Revoke.COME_BACK : Revoke.ASK;", "        return consentKept ? Revoke.COME_BACK : Revoke.ASK;"),
+ ("revoke: put back without Android's OK", FR, "        return consentKept && recent <= REVOKE_TRIES ? Revoke.COME_BACK : Revoke.ASK;", "        return recent <= REVOKE_TRIES ? Revoke.COME_BACK : Revoke.ASK;"),
+ ("revoke: one try too many", FR, "recent <= REVOKE_TRIES ? Revoke.COME_BACK", "recent <= REVOKE_TRIES + 1 ? Revoke.COME_BACK"),
+ ("revoke: one try too few", FR, "recent <= REVOKE_TRIES ? Revoke.COME_BACK", "recent < REVOKE_TRIES ? Revoke.COME_BACK"),
+ ("revoke: the window shortened", FR, "REVOKE_WINDOW_MS = 10 * 60_000L;", "REVOKE_WINDOW_MS = 60_000L;"),
+ ("card: the reason Android took the VPN away dropped", FR, "c.line = detail.isEmpty() ? PERMISSION_LINE : detail;", "c.line = PERMISSION_LINE;"),
+ ("card: the first-time question lost", FR, "c.line = detail.isEmpty() ? PERMISSION_LINE : detail;", "c.line = detail;"),
+ ("revoke words: the choice not said kept", FR, "Your choice is kept: press Give the OK", "Press Give the OK"),
+ ("history: not limited", FR, "if (!line.trim().isEmpty() && kept < HISTORY) {", "if (!line.trim().isEmpty()) {"),
+ ("history: blank lines kept", FR, "if (!line.trim().isEmpty() && kept < HISTORY) {", "if (kept < HISTORY) {"),
+ ("history: the oldest kept instead of the newest", FR, "StringBuilder b = new StringBuilder(when).append(' ').append(what);\n        int kept = 1;",
+  "StringBuilder b = new StringBuilder();\n        int kept = 0;"),
 ]
 E2E = [
  ("engine: no FIN after the server closed", TS, "if (c.relayEof && unsent == 0 && !c.finSent) {", "if (false) {"),
