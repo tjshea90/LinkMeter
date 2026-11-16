@@ -142,6 +142,12 @@ java -cp "$out" com.tj.linkmeter.SmsProtocolTest || fail=1
 echo "== Texts protocol 2 (waiting for news instead of asking every 3 s, paging back through a conversation, search, delete and mark read, over a real socket)"
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" tools/test/SmsV2Test.java || fail=1
 java -cp "$out" com.tj.linkmeter.SmsV2Test || fail=1
+echo "== Calls, the rules (CallRules: what may be dialed, over every short string of the keypad's characters: no emergency number and no # or inner * ever passes; how a number is shown while typed; the keypad's letters; which contacts a typed number finds; the call log's grouping; the timer words; the wire form of everything; what the headset card says and offers in every state)"
+javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/ContactBook.java $FM/Calls.java $FM/CallTracker.java $FM/CallRules.java $FM/CallJson.java $FM/HeadsetRules.java tools/test/CallsLogicTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.CallsLogicTest || fail=1
+echo "== Calls protocol (the real server code and the real client over a real socket against a fake phone: nothing dials while the switch is off, nothing dials unless the number passed the guard, the long poll waits for news, an old phone and a stranger are told apart)"
+javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/CallApi.java $FM/RemoteCalls.java tools/test/CallApiTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.CallApiTest || fail=1
 echo "== Texts, the tablet's side (text-message counter, tapback texts, quick replies, pins/archive/delete/drafts, the saved copy, the conversation list, the rows of a conversation)"
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/BlobStore.java $FM/FileBlobStore.java $FM/TextsLocal.java $FM/TextsCache.java $FM/SmsLength.java $FM/SmsReactions.java \
   $FM/SmartReply.java $FM/SmsPreview.java $FM/ThreadListRules.java $FM/ThreadRows.java $FM/ThreadMerge.java $FM/Sealer.java $FM/AesGcmSealer.java $FM/SealedBlobStore.java $FM/TextsLock.java $FM/OtpCodes.java $FM/ContactBook.java $FM/LinkLog.java $FM/TimedLink.java $FM/EmojiText.java \

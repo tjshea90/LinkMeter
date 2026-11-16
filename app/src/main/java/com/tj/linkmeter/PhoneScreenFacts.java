@@ -58,6 +58,11 @@ final class PhoneScreenFacts {
     /** What LinkMeter may not do yet for lack of a texts permission ("read texts, send texts"; SmsAccess.missing), "" = nothing. */
     String textsMissing = "";
 
+    // ---- calls
+    boolean callsOn;
+    /** What LinkMeter may not do yet for lack of a calls permission ("place calls, answer calls"; CallAccess.missing), "" = nothing. */
+    String callsMissing = "";
+
     // ---- battery saver, screen, the start after a restart
     boolean saverAuto;
     /** The saver's settings are in force on the phone right now. */

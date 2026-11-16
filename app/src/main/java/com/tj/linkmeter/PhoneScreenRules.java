@@ -19,6 +19,8 @@ final class PhoneScreenRules {
     /** The names of the switches and buttons that texts elsewhere quote. One place, so a rename cannot leave a stale sentence. */
     static final String BT_SWITCH = "Let the tablet reach this phone over Bluetooth";
     static final String TEXTS_BUTTON = "Allow texts access";
+    static final String CALLS_SWITCH = "Let the tablet make and answer calls";
+    static final String CALLS_BUTTON = "Allow calls access";
     static final String PAIR_BUTTON = "Pair tablet";
     static final String FORGET_BUTTON = "Forget all tablets";
 
@@ -413,6 +415,21 @@ final class PhoneScreenRules {
         return f.textsOn && !f.textsMissing.isEmpty();
     }
 
+    // ----------------------------------------------------------------------------------------------------------- calls
+
+    /** Like {@link #textsLine}: only what the calls still lack; the switch's own words say the rest. */
+    static Line callsLine(PhoneScreenFacts f) {
+        if (f.callsOn && !f.callsMissing.isEmpty()) {
+            return new Line("On, but not ready. LinkMeter may not " + f.callsMissing + " yet.", Tone.WARN);
+        }
+        return new Line("", Tone.QUIET);
+    }
+
+    /** The button for the calls permissions: only while calls are on and still lack something. */
+    static boolean callsButton(PhoneScreenFacts f) {
+        return f.callsOn && !f.callsMissing.isEmpty();
+    }
+
     // ----------------------------------------------------------------------------------------------------------- battery
 
     static Line saverFact(PhoneScreenFacts f) {
@@ -511,6 +528,10 @@ final class PhoneScreenRules {
             + "texts and pictures through this phone.";
     static final String TEXTS_RCS = "Chats that use RCS (\"chat features\" in Google Messages) are kept inside that app and cannot be "
             + "seen here; turn chat features off there to see those conversations as plain texts.";
+    static final String CALLS_EXPLAIN = "Off until you switch it on. When on, only the tablet you paired can dial, answer and end calls "
+            + "through this phone, see its call list and contacts, and connect it to your Bluetooth headset. The headset stays connected "
+            + "to THIS phone: the sound of a call never goes through the tablet. Emergency numbers and codes with # cannot be dialed "
+            + "from the tablet.";
     static final String SAVER_SWITCH = "LinkMeter's saver while the tablet is connected";
     static final String SAVER_EXPLAIN = "Switches off background scanning and the always-on display and shortens the screen timeout; "
             + "all of it is put back 10 minutes after the tablet is gone. Mobile data, the hotspot's speed and Bluetooth are not touched. "

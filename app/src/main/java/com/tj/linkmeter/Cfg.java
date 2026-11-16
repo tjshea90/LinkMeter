@@ -279,6 +279,15 @@ final class Cfg {
         sp(c).edit().putBoolean("textsOn", on).apply();
     }
 
+    /** Phone: may the paired tablet place, answer and end calls through this phone (docs/PHONE_CALLS.md)? OFF until the user switches it on. */
+    static boolean callsOn(Context c) {
+        return sp(c).getBoolean("callsOn", false);
+    }
+
+    static void setCallsOn(Context c, boolean on) {
+        sp(c).edit().putBoolean("callsOn", on).apply();
+    }
+
     /** Phone: may the paired tablet reach this phone over Bluetooth (docs/REMOTE_LINK.md)? On by default. */
     static boolean btLink(Context c) {
         return sp(c).getBoolean("btLink", true);
