@@ -125,7 +125,7 @@ must be on.
 - [x] Tripwire rewritten (`tools/test/test_dial_paths.py`; `python3 tools/mutate_dial.py`: 48 breakages, all caught), `docs/SAFETY.md` (Dialing row, section 12), `docs/USER_GUIDE.md`, `docs/REMOTE_LINK.md`
 - [x] Screen pictures looked at (`tools/preview.sh --tests "com.tj.linkmeter.CallsPreviewTest"`, 21 scenarios; the pictures are `tools/uipreview/out/calls-*.png`)
 - [ ] Deliberate breakages of the screens' glue (`tools/mutate_calls_glue.py`, run it from a git worktree): see HANDOFF for the result
-- [ ] Release: see HANDOFF ("RELEASED AS")
+- [x] Released as v0.2.188 (https://github.com/tjshea90/LinkMeter/releases/tag/v0.2.188)
 - NOT BUILT: calls over the Bluetooth-only link, tones during a call, hold/merge/conference, a tablet service for calls while the app is in the background, an audio-route fallback through the shell.
 
 ## Not known until a device tries (say so to the user)
