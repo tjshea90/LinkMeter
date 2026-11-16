@@ -1939,6 +1939,71 @@ final class TextsTab extends Tab {
         return local.display(key, base == null ? "" : base, System.currentTimeMillis());
     }
 
+    /**
+     * For the Calls tab (docs/PHONE_CALLS.md): contacts are SHARED, so the name shown for a number there is the one Texts shows (a
+     * name this tablet gave wins, as in Texts). {@code phoneName}: what the phone calls them, "" when it does not know.
+     */
+    String nameForNumber(String number, String phoneName) {
+        openStorage();
+        String send = PhoneNumbers.forSending(number);
+        if (local == null || send.isEmpty()) {
+            return phoneName == null ? "" : phoneName;
+        }
+        return shownName(PhoneNumbers.threadKey(java.util.Collections.singletonList(send)), phoneName);
+    }
+
+    /** For the Calls tab: a contact was saved there (on the phone when {@code onPhone}): Texts shows the name as well. */
+    void rememberName(String number, String name, boolean onPhone) {
+        openStorage();
+        String send = PhoneNumbers.forSending(number);
+        if (local == null || send.isEmpty() || name == null || name.trim().isEmpty()) {
+            return;
+        }
+        local.setName(PhoneNumbers.threadKey(java.util.Collections.singletonList(send)), number, name, onPhone ? System.currentTimeMillis() : 0);
+        refreshNames();
+    }
+
+    /** For the Calls tab: may a conversation be opened from there without the Texts lock (the screen-lock question) having been passed? */
+    boolean canOpenWithoutLock() {
+        return !mustUnlock();
+    }
+
+    /** From a conversation: call this person (the Calls tab asks first, then dials through the phone; the headset is on the phone). */
+    void callPerson(String number, String shown) {
+        CallsTab calls = act.tabOf(CallsTab.class);
+        if (calls != null) {
+            calls.callWithAsk(number, shown);
+        }
+    }
+
+    /** For the Calls tab: opens the conversation with this number (a new one when there is none yet). */
+    void openWith(String number) {
+        String send = PhoneNumbers.forSending(number);
+        if (send.isEmpty()) {
+            return;
+        }
+        String key = PhoneNumbers.threadKey(java.util.Collections.singletonList(send));
+        String shown = shownName(key, "");
+        openThread(key, shown.isEmpty() ? CallRules.pretty(send) : shown, java.util.Collections.singletonList(send));
+    }
+
+    /** For the Calls tab: does this tablet give this number a name of its own? */
+    boolean hasTabletName(String number) {
+        openStorage();
+        String send = PhoneNumbers.forSending(number);
+        return local != null && !send.isEmpty() && !local.nameOf(PhoneNumbers.threadKey(java.util.Collections.singletonList(send))).isEmpty();
+    }
+
+    /** For the Calls tab: give up the name this tablet gave (the phone's own name is shown again). */
+    void forgetTabletName(String number) {
+        openStorage();
+        String send = PhoneNumbers.forSending(number);
+        if (local != null && !send.isEmpty()) {
+            local.forgetName(PhoneNumbers.threadKey(java.util.Collections.singletonList(send)));
+            refreshNames();
+        }
+    }
+
     /** Does this person have a name (this tablet's, or the phone's contact name rather than their number)? */
     boolean hasContactName(String key, String shown) {
         return (local != null && !local.nameOf(key).isEmpty()) || (shown != null && !shown.isEmpty() && !PhoneNumbers.looksLikeNumber(shown));

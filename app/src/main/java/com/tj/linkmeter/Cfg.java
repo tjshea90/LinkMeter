@@ -279,6 +279,49 @@ final class Cfg {
         sp(c).edit().putBoolean("textsOn", on).apply();
     }
 
+    /** Phone: the headset the user chose for calls: its Bluetooth address and name ("" when none). */
+    static String headsetAddr(Context c) {
+        return sp(c).getString("headsetAddr", "");
+    }
+
+    static String headsetName(Context c) {
+        return sp(c).getString("headsetName", "");
+    }
+
+    static void setHeadset(Context c, String addr, String name) {
+        sp(c).edit().putString("headsetAddr", addr == null ? "" : addr).putString("headsetName", name == null ? "" : name).apply();
+    }
+
+    /** Phone: when the user last looked at the missed calls (milliseconds); calls after that are the new ones. */
+    static long callsSeenAt(Context c) {
+        return sp(c).getLong("callsSeenAt", 0);
+    }
+
+    static void setCallsSeenAt(Context c, long t) {
+        sp(c).edit().putLong("callsSeenAt", t).apply();
+    }
+
+    /**
+     * Tablet: does the app listen for calls while it is in front? Off until the Calls tab has found the phone allowing calls, so a
+     * tablet that never uses calls never asks the phone anything about them.
+     */
+    static boolean callsWatch(Context c) {
+        return sp(c).getBoolean("callsWatch", false);
+    }
+
+    static void setCallsWatch(Context c, boolean on) {
+        sp(c).edit().putBoolean("callsWatch", on).apply();
+    }
+
+    /** Tablet: show the strip with Answer and End at the top of every tab while a call rings or is on? On by default. */
+    static boolean callsBanner(Context c) {
+        return sp(c).getBoolean("callsBanner", true);
+    }
+
+    static void setCallsBanner(Context c, boolean on) {
+        sp(c).edit().putBoolean("callsBanner", on).apply();
+    }
+
     /** Phone: may the paired tablet place, answer and end calls through this phone (docs/PHONE_CALLS.md)? OFF until the user switches it on. */
     static boolean callsOn(Context c) {
         return sp(c).getBoolean("callsOn", false);

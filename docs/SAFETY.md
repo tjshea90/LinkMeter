@@ -1,4 +1,4 @@
-# LinkMeter safety: what it can change, how every change is undone, and what it can type (it dials nothing)
+# LinkMeter safety: what it can change, how every change is undone, and what it can type (it dials no code; it places a call only when you press Call)
 
 Rule 1 of this project: **the phone must never break, brick, or lose its internet for good.** This file says how that is kept,
 and where it cannot be (section 7). The "Safety check" button (Phone tab, Signal tab) shows at any moment what LinkMeter still has
@@ -25,7 +25,7 @@ phone, and what stops a dangerous code:
 
 | Route | What it can send | Rule |
 |---|---|---|
-| **Dialing** | nothing | **The app dials nothing.** It has no dial button, no dial command and no way to open the dialer or to place a call or send USSD. (Versions up to v0.2.102 had seven fixed service-code buttons; this phone's dialer answered "invalid MMI code" to every one of them, so they were removed, and a phone that is not updated yet answers "unknown action" to them.) The build fails if a dial route ever comes back (`tools/test/test_dial_paths.py`). |
+| **Dialing** | a number the user typed or chose, from the tablet's Calls tab | **The app dials no code and places a call only when you press Call on the tablet** (`docs/PHONE_CALLS.md`; off until the phone's switch "Let the tablet make and answer calls" is on). It never dials an emergency number (911, 112 and the others of `CallRules`), never anything with a `#`, and never a `*` except as the first character (*67 is a call, a service code is not): `CallRules.check` decides this, and it runs in `CallApi` AND again in `CallBackend.dial`, the one method that calls `placeCall`. There is no way to open the dialer, send USSD or call by intent. (Versions up to v0.2.102 had seven fixed service-code buttons; this phone's dialer answered "invalid MMI code" to every one of them, so they were removed.) The build fails if a dial route comes back or a call can be placed any other way (`tools/test/test_dial_paths.py`, rewritten on 2026-11-16 for the Calls feature; `tools/mutate_dial.py` breaks each rule to prove it). Not tried on a phone yet. |
 | **Remote keyboard** (Screen tab > Type; glide typing and suggestions are on by default, which only changes how the tablet's keyboard writes: every character it produces goes through the same rule) | letters, digits, punctuation | **It never types `*` or `#`**, and not their look-alikes (full-width, small, heavy, Arabic, mathematical). This is enforced at the one place where typed text becomes key presses on the phone (`ShellMain.typeText`), again on the phone's control channel, and again on the tablet, which tells you why a character was left out (the Type field itself drops them before its text can hold one). With no `*` and no `#`, no service code can be typed. |
 | One-shot text route | letters, digits, a few punctuation marks | Whitelist; no `*`, no `#`. |
 | PIN route | 4 to 16 digits, only while the phone is locked | Digits only. |
@@ -105,7 +105,7 @@ unreachable), the words of the Safety check, the typing rule described in sectio
 ## 7. What cannot be made safe by the app (read this)
 
 - **Phone screens.** Looking is safe. Inside a technician screen, the phone's own software lets you do things LinkMeter cannot see
-  or undo (for example a band selection stored in the modem, an IMEI or NVRAM entry, a reset). So the app dials nothing, never opens
+  or undo (for example a band selection stored in the modem, an IMEI or NVRAM entry, a reset). So the app dials no code, never opens
   a screen whose name suggests erase/reset/IMEI/NVRAM/flash/firmware/unlock/backup, asks before it opens one, and for two hours
   afterwards watches mobile data. A band chosen inside such a screen is undone by choosing all bands / auto there.
 - **Touching the phone.** See section 2: taps on the phone's keypad, or on its picture in the Screen tab, are yours.
@@ -280,3 +280,17 @@ answers nothing about texts, and the tablet wipes what it had saved. Only the pa
   the normal hotspot back); the phone's Wi-Fi is left on (it was switched on for this). Android 13+ needs "Nearby Wi-Fi devices" for
   LinkMeter (given by Allow everything through Shizuku; it is never used for location). If the phone restarts with the mode on, the
   network comes back with LinkMeter's service; Hotspot on from the tablet (over Bluetooth if needed) ends it.
+
+## 12. Calls (the tablet dials, answers and ends calls on the phone, 2026-11-16; docs/PHONE_CALLS.md)
+
+| What | Rule |
+|---|---|
+| The switch | "Let the tablet make and answer calls" on the phone's own screen, OFF until the user switches it on. Off: every /call/ route except `/call/state` answers 403 and nothing reaches Android. |
+| Who | Only the paired tablet (the same secret as every other route; over Bluetooth also the signed request of `LinkAuth`). The secret travels in clear over Wi-Fi like everything else (decision 9). |
+| What may be dialed | `CallRules.check`: numbers with 2 to 20 digits, a leading `+` or `*` allowed. NOT: emergency numbers (also with a prefix such as *67911 or `+1911`), anything with `#`, a `*` anywhere but first, letters, pauses. Checked in `CallApi.dial` and again in `CallBackend.dial`, which also asks Android (`isEmergencyNumber`). 1,164,775 offline checks run it over every string of up to five characters of the keypad. |
+| One call at a time | A dial while a call is on or ringing is refused ("A call is already on or ringing"). |
+| Answer and end | `TelecomManager.acceptRingingCall` / `endCall`, only for a ringing or a current call; `ANSWER_PHONE_CALLS`. |
+| Permissions | `CALL_PHONE`, `ANSWER_PHONE_CALLS`, `READ_PHONE_STATE`, `READ_CALL_LOG` (and `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` for the headset) given through Shizuku like the texts'; none of `CALL_PRIVILEGED`, `PROCESS_OUTGOING_CALLS`, `WRITE_CALL_LOG`, `MODIFY_PHONE_STATE`. |
+| The headset | Connected to the PHONE. `ShellMain bt-connect ADDR` connects a paired device in the shell user's name (the address is checked to be six hex pairs in `CallApi` and in `ShellMain`, so nothing else reaches the shell). A connect is believed only when Android then lists the device as connected. Pairing a new device runs a Bluetooth search for 12 seconds, only when the user presses Pair. |
+| Not done on purpose | Tones during a call, hold, merge, conference, recording, voicemail, blocking. |
+| NOT KNOWN until a phone tries | See "Not known until a device tries" in `docs/PHONE_CALLS.md`. |

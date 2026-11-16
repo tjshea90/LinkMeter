@@ -37,6 +37,10 @@ import java.util.function.IntPredicate;
  *   radio-on             make sure the radio is on
  *   nrdc-set on          allow the 5G leg (NR dual connectivity) again, for what an older version left switched off (see NrLeg)
  *   sleep [nodoze]       put the device to sleep through the power service (nodoze: skip the Always-On Display)
+ *   bt-connect ADDR      connect a paired Bluetooth headset (every profile it has: calls and music), as the shell user, which may do what
+ *                        an app may not (BluetoothDevice.connect needs BLUETOOTH_PRIVILEGED); the caller then looks whether Android lists
+ *                        it as connected
+ *   bt-disconnect ADDR   the same the other way round
  *   hotspot-start        switch the Wi-Fi hotspot on (the system's tethering service, as the shell user), and say whether it
  *                        really came on
  *   hotspot-stop         switch it off, and say whether it really went off
@@ -76,6 +80,9 @@ public final class ShellMain {
         if (a[0].equals("inject")) {
             return inject();
         }
+        if (a[0].startsWith("bt-")) {
+            return bluetooth(a);
+        }
         if (a[0].equals("sleep")) {
             return sleep(a.length > 1 && a[1].equals("nodoze"));
         }
@@ -99,6 +106,65 @@ public final class ShellMain {
                 return nrdcOn(tm, a.length > 1 ? a[1] : "");
             default:
                 return "ERR unknown command";
+        }
+    }
+
+    /**
+     * Connects or disconnects a paired Bluetooth device (a headset) through the hidden BluetoothDevice.connect() and disconnect(),
+     * which need a privilege only the shell user has. The request is made in the name of the shell package. Prints OK when the
+     * Bluetooth service accepted it (it does the connecting in the background: the caller checks the result), else ERR and why.
+     */
+    private static String bluetooth(String[] a) throws Exception {
+        if (a.length < 2 || !a[1].matches("[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")) {
+            return "ERR missing or bad Bluetooth address";
+        }
+        boolean connect = a[0].equals("bt-connect");
+        if (!connect && !a[0].equals("bt-disconnect")) {
+            return "ERR unknown command";
+        }
+        shellContext(); // the looper and the system modules a normal app process has set up by now
+        Class<?> adapterClass = Class.forName("android.bluetooth.BluetoothAdapter");
+        Object adapter = adapterClass.getMethod("getDefaultAdapter").invoke(null);
+        if (adapter == null) {
+            return "ERR this phone has no Bluetooth";
+        }
+        Object device = adapterClass.getMethod("getRemoteDevice", String.class).invoke(adapter, a[1].toUpperCase(java.util.Locale.US));
+        giveShellSource(device);
+        Method m = find(device.getClass(), connect ? "connect" : "disconnect", 0);
+        if (m == null) {
+            return "ERR this Android has no BluetoothDevice." + (connect ? "connect" : "disconnect") + "()";
+        }
+        Object r = m.invoke(device);
+        if (r instanceof Boolean) {
+            return ((Boolean) r) ? "OK" : "ERR Android said no";
+        }
+        if (r instanceof Integer) {
+            return ((Integer) r) == 0 ? "OK" : "ERR Bluetooth status " + r;
+        }
+        return "OK";
+    }
+
+    /** Tells a BluetoothDevice to make its requests as the shell package (uid 2000), when this Android has a place to say so. */
+    private static void giveShellSource(Object device) {
+        try {
+            Class<?> builder = Class.forName("android.content.AttributionSource$Builder");
+            Object b = builder.getConstructor(int.class).newInstance(android.os.Process.myUid());
+            builder.getMethod("setPackageName", String.class).invoke(b, "com.android.shell");
+            try {
+                builder.getMethod("setPid", int.class).invoke(b, android.os.Process.myPid());
+            } catch (NoSuchMethodException ignored) {
+                // an Android without a pid in it
+            }
+            Object source = builder.getMethod("build").invoke(b);
+            Method set = find(device.getClass(), "setAttributionSource", 1);
+            if (set == null) {
+                set = find(device.getClass(), "prepareToEnterProcess", 1);
+            }
+            if (set != null) {
+                set.invoke(device, source);
+            }
+        } catch (Throwable ignored) {
+            // an Android that does not use attribution sources: the call is made as it is
         }
     }
 

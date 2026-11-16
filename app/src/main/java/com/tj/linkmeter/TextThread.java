@@ -350,6 +350,9 @@ final class TextThread {
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         tp.leftMargin = Ui.dp(act, 12);
         normalBar.addView(titles, tp);
+        if (addresses.size() == 1 && !PhoneNumbers.forSending(addresses.get(0)).isEmpty()) { // one person with a real number: a call button
+            normalBar.addView(TextsViews.icon(act, Icons.Kind.HANDSET, "Call", v -> tab.callPerson(addresses.get(0), name)));
+        }
         normalBar.addView(TextsViews.icon(act, Icons.Kind.MORE, "More", v -> showMenu()));
 
         selectBar = new LinearLayout(act);

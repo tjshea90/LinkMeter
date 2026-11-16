@@ -18,7 +18,9 @@ final class Icons {
         // the Texts screens
         PLUS, SEARCH, TRASH, PIN, ARCHIVE, SEND, MORE, CHECK, MUTE,
         // a conversation's "jump to the newest message" button, and the smiling face of the reactions
-        CHEVRON_DOWN, SMILE
+        CHEVRON_DOWN, SMILE,
+        // the Calls screens: the handset, the hang-up, the dial pad, recents, a person, the headset and the arrows of the call list
+        HANDSET, HANGUP, KEYPAD, CLOCK, PERSON, HEADSET, ARROW_OUT, ARROW_IN, MIC, MIC_OFF
     }
 
     /** The drawing operations the icons need. Angles are degrees, clockwise from 3 o'clock. */
@@ -92,6 +94,57 @@ final class Icons {
         for (int i = 0; i < out.length; i += 2) {
             out[i] = cx + (v.get(i) - 12f) / 12f * r * 1.05f;
             out[i + 1] = cy + (v.get(i + 1) - 12f) / 12f * r * 1.05f;
+        }
+        return out;
+    }
+
+    /** Adds the points of a cubic curve (without its first point) to a list of 24-unit coordinates. */
+    private static void cubic(java.util.List<Float> out, double x0, double y0, double x1, double y1, double x2, double y2, double x3, double y3) {
+        for (int i = 1; i <= 8; i++) {
+            double t = i / 8.0;
+            double u = 1 - t;
+            out.add((float) (u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3));
+            out.add((float) (u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3));
+        }
+    }
+
+    /**
+     * The telephone handset (the common 24-unit "call" icon: an earpiece and a mouthpiece joined by a curve), turned by {@code degrees}
+     * round its middle: 0 for "call", 135 for "hang up".
+     */
+    private static float[] handset(float cx, float cy, float r, double degrees) {
+        java.util.List<Float> v = new java.util.ArrayList<>();
+        double[][] straight = {{6.62, 10.79}};
+        v.add((float) straight[0][0]);
+        v.add((float) straight[0][1]);
+        cubic(v, 6.62, 10.79, 8.06, 13.62, 10.38, 15.93, 13.21, 17.38);
+        float[][] line1 = {{15.41f, 15.18f}};
+        v.add(line1[0][0]);
+        v.add(line1[0][1]);
+        cubic(v, 15.41, 15.18, 15.68, 14.91, 16.08, 14.82, 16.43, 14.94);
+        cubic(v, 16.43, 14.94, 17.55, 15.31, 18.76, 15.51, 20.0, 15.51);
+        cubic(v, 20.0, 15.51, 20.55, 15.51, 21.0, 15.96, 21.0, 16.51);
+        v.add(21f);
+        v.add(20f);
+        cubic(v, 21.0, 20.0, 21.0, 20.55, 20.55, 21.0, 20.0, 21.0);
+        cubic(v, 20.0, 21.0, 10.61, 21.0, 3.0, 13.39, 3.0, 4.0);
+        cubic(v, 3.0, 4.0, 3.0, 3.45, 3.45, 3.0, 4.0, 3.0);
+        v.add(7.5f);
+        v.add(3f);
+        cubic(v, 7.5, 3.0, 8.05, 3.0, 8.5, 3.45, 8.5, 4.0);
+        cubic(v, 8.5, 4.0, 8.5, 5.25, 8.7, 6.45, 9.07, 7.57);
+        cubic(v, 9.07, 7.57, 9.18, 7.92, 9.1, 8.31, 8.82, 8.59);
+        v.add(6.62f);
+        v.add(10.79f);
+        double a = Math.toRadians(degrees);
+        double cos = Math.cos(a);
+        double sin = Math.sin(a);
+        float[] out = new float[v.size()];
+        for (int i = 0; i < out.length; i += 2) {
+            double x = v.get(i) - 12.0;
+            double y = v.get(i + 1) - 12.0;
+            out[i] = cx + (float) ((x * cos - y * sin) / 12.0 * r * 1.05);
+            out[i + 1] = cy + (float) ((x * sin + y * cos) / 12.0 * r * 1.05);
         }
         return out;
     }
@@ -297,6 +350,51 @@ final class Icons {
                 p.dot(cx - 0.3f * r, cy - 0.22f * r, 0.11f * r);
                 p.dot(cx + 0.3f * r, cy - 0.22f * r, 0.11f * r);
                 p.arc(cx - 0.46f * r, cy - 0.3f * r, cx + 0.46f * r, cy + 0.5f * r, 25f, 130f);
+                break;
+            case HANDSET:
+                p.poly(handset(cx, cy, r, 0), true, true);
+                break;
+            case HANGUP:
+                p.poly(handset(cx, cy, r, 135), true, true);
+                break;
+            case KEYPAD:
+                for (int i = -1; i <= 1; i++) {
+                    for (int j = -1; j <= 1; j++) {
+                        p.dot(cx + 0.58f * r * j, cy + 0.58f * r * i, 0.17f * r);
+                    }
+                }
+                break;
+            case CLOCK:
+                p.circle(cx, cy, 0.86f * r);
+                p.poly(pts(cx, cy, r, 0f, -0.5f, 0f, 0f, 0.38f, 0.26f), false, false);
+                break;
+            case PERSON:
+                p.circle(cx, cy - 0.34f * r, 0.34f * r);
+                p.arc(cx - 0.72f * r, cy + 0.12f * r, cx + 0.72f * r, cy + 1.2f * r, 180f, 180f);
+                break;
+            case HEADSET:
+                p.arc(cx - 0.8f * r, cy - 0.9f * r, cx + 0.8f * r, cy + 0.7f * r, 180f, 180f);
+                p.rrect(cx - 0.98f * r, cy - 0.1f * r, cx - 0.5f * r, cy + 0.62f * r, 0.16f * r);
+                p.rrect(cx + 0.5f * r, cy - 0.1f * r, cx + 0.98f * r, cy + 0.62f * r, 0.16f * r);
+                p.poly(pts(cx, cy, r, 0.74f, 0.62f, 0.74f, 0.9f, 0.1f, 0.96f), false, false);
+                break;
+            case MIC:
+            case MIC_OFF:
+                p.rrect(cx - 0.3f * r, cy - 0.92f * r, cx + 0.3f * r, cy + 0.14f * r, 0.3f * r);
+                p.arc(cx - 0.64f * r, cy - 0.46f * r, cx + 0.64f * r, cy + 0.62f * r, 0f, 180f);
+                p.line(cx, cy + 0.62f * r, cx, cy + 0.94f * r);
+                p.line(cx - 0.3f * r, cy + 0.94f * r, cx + 0.3f * r, cy + 0.94f * r);
+                if (k == Kind.MIC_OFF) {
+                    p.line(cx - 0.82f * r, cy - 0.82f * r, cx + 0.82f * r, cy + 0.82f * r);
+                }
+                break;
+            case ARROW_OUT:
+                p.line(cx - 0.55f * r, cy + 0.55f * r, cx + 0.5f * r, cy - 0.5f * r);
+                p.poly(pts(cx, cy, r, -0.05f, -0.6f, 0.6f, -0.6f, 0.6f, 0.05f), false, false);
+                break;
+            case ARROW_IN:
+                p.line(cx + 0.55f * r, cy - 0.55f * r, cx - 0.5f * r, cy + 0.5f * r);
+                p.poly(pts(cx, cy, r, 0.05f, 0.6f, -0.6f, 0.6f, -0.6f, -0.05f), false, false);
                 break;
             default:
                 break;

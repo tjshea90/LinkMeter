@@ -47,6 +47,20 @@ final class Menus {
         return "This phone has no Phone info screen that LinkMeter could open (" + missed.toString().trim() + ").";
     }
 
+    /** Opens the phone's own Bluetooth settings screen (the first of MenuScan.BLUETOOTH_SCREENS that this phone has). */
+    static String bluetoothSettings() throws IOException {
+        StringBuilder missed = new StringBuilder();
+        for (int i = 0; i < MenuScan.BLUETOOTH_SCREENS.length; i++) {
+            String comp = MenuScan.BLUETOOTH_SCREENS[i];
+            Priv.Result r = Priv.run((i == 0 ? "input keyevent 224; " : "") + "am start -n '" + comp + "' 2>&1 | head -8", 20);
+            if (MenuScan.started(r.out)) {
+                return "Opened the phone's Bluetooth settings.";
+            }
+            missed.append(comp).append("; ");
+        }
+        return "";
+    }
+
     /**
      * A screen was opened: for the next two hours the safety net watches mobile data, because a change made INSIDE a phone menu
      * (a band, a network type) is something LinkMeter cannot see. If data dies, it resets what the phone's own software lets it

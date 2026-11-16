@@ -73,6 +73,7 @@ public class SenderService extends Service {
                 BtServer.start(getApplicationContext()); // the Bluetooth door: the tablet can reach the phone while the hotspot is off
                 FastRelay.start(getApplicationContext()); // Fast Wi-Fi's relay: sleeps until the paired tablet uses it
                 FastDirect.resume(getApplicationContext()); // and its own Wi-Fi Direct network, if that mode was on
+                CallService.ensure(getApplicationContext()); // calls: hears the phone ring and go off the hook, if the user switched calls on
             }
         }
         // Sticky: if Android ever stops it, it comes back by itself.

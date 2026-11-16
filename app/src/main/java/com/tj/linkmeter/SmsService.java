@@ -11,6 +11,15 @@ final class SmsService {
 
     private static SmsOutbox outbox;
     private static SmsApi api;
+    private static SmsBackend backend;
+
+    /** The one reader of the phone's texts and contacts: Texts and Calls both use it (one set of observers, one list of contact names). */
+    static synchronized SmsBackend backend(Context c) {
+        if (backend == null) {
+            backend = new SmsBackend(c.getApplicationContext());
+        }
+        return backend;
+    }
 
     /** The record of the texts the tablet sent (in the app's private files). */
     static synchronized SmsOutbox outbox(Context c) throws IOException {
@@ -23,7 +32,7 @@ final class SmsService {
     private static synchronized SmsApi api(Context c) throws IOException {
         if (api == null) {
             Context app = c.getApplicationContext();
-            api = new SmsApi(new SmsBackend(app), outbox(app), new SmsStaging(new File(app.getCacheDir(), "sms-staging"), System::currentTimeMillis),
+            api = new SmsApi(backend(app), outbox(app), new SmsStaging(new File(app.getCacheDir(), "sms-staging"), System::currentTimeMillis),
                     System::currentTimeMillis);
         }
         return api;

@@ -450,6 +450,48 @@ public final class CallsLogicTest {
         check(true, "random events");
     }
 
+
+    // ------------------------------------------------------------------ what stands in the way of a call
+
+    static void notices() {
+        int combos = 0;
+        for (int watch = Calls.WATCH_IDLE; watch <= Calls.WATCH_NO_PEER; watch++) {
+            for (int sv = 0; sv < 7; sv++) { // 0 = no answer yet, 1 = old phone, 2 = off, 3.. = on with some permissions
+                Calls.State st = null;
+                if (sv > 0) {
+                    st = new Calls.State();
+                    st.version = sv == 1 ? 0 : 1;
+                    st.on = sv >= 3;
+                    st.call = sv != 4;
+                    st.answer = sv != 5;
+                    st.phone = true;
+                    st.shell = sv != 6;
+                    st.note = sv >= 4 && sv <= 6 ? "missing something" : "";
+                }
+                for (String problem : new String[] {"", "no route"}) {
+                    CallRules.Notice n = CallRules.notice(watch, problem, st);
+                    combos++;
+                    String id = "watch=" + watch + " state=" + sv + " problem=" + problem;
+                    boolean reachable = watch != Calls.WATCH_NO_PEER && watch != Calls.WATCH_UNREACHED;
+                    boolean fine = reachable && watch != Calls.WATCH_OLD && watch != Calls.WATCH_OFF && (st == null || (st.version > 0 && st.on && st.canCall()));
+                    check((n == null) == fine, "a notice only when something is in the way: " + id);
+                    if (n == null) {
+                        continue;
+                    }
+                    check(!n.title.isEmpty() && !n.line.isEmpty(), "a notice says what and why: " + id);
+                    check(n.button.isEmpty() == n.action.isEmpty(), "a button has an action and the other way round: " + id);
+                    check(n.action.isEmpty() || n.action.equals("retry") || n.action.equals("allow"), "known actions: " + id);
+                    check(!n.action.equals("allow") || (st != null && st.shell && st.on), "Allow only when the phone can do it: " + id);
+                    if (!reachable) {
+                        check(n.title.contains("can't be reached"), "an unreachable phone is said first: " + id);
+                        check(problem.isEmpty() || n.line.equals(problem), "and the reason is shown: " + id);
+                    }
+                }
+            }
+        }
+        check(combos == 6 * 7 * 2, "every combination was looked at (" + combos + ")");
+    }
+
     // ------------------------------------------------------------------ the wire
 
     static void wire() throws Exception {
@@ -647,6 +689,7 @@ public final class CallsLogicTest {
         log();
         onCall();
         tracker();
+        notices();
         wire();
         headset();
         System.out.println(checks + " checks, " + failed + " failed");

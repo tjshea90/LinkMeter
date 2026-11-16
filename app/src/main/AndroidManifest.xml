@@ -26,6 +26,12 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
 
+    <!-- Phone side, only used when the user switches on "Let the tablet make and answer calls" (docs/PHONE_CALLS.md): place, answer and
+         end calls the tablet asks for, see that the phone rings and read the call list. Given through Shizuku with the others. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
     <!-- "Start the phone after a restart". Tablet: make its own Wi-Fi Direct hotspot (Android 10 wants the location permission for it). -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -43,6 +49,11 @@
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="33" />
+    <!-- Phone: find and pair a headset for the Calls feature (Android 12 and newer). Never used to find where the phone is. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="31" />
     <uses-permission
         android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />

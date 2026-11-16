@@ -81,6 +81,21 @@ final class PhoneTab extends Tab {
     private LinearLayout itemButtons;
     private String shownItemButtons = "";
 
+    // Calls
+    private Ui.Toggle tgCalls;
+    private TextView tCalls;
+    private Button bCalls;
+    private final CompoundButton.OnCheckedChangeListener callsListener = (v, on) -> {
+        Cfg.setCallsOn(act, on);
+        if (on) {
+            CallService.ensure(act);
+            if (!CallAccess.missing(act).isEmpty()) {
+                allowCalls();
+            }
+        }
+        refresh();
+    };
+
     // Texts
     private Ui.Toggle tgTexts;
     /** Fast Wi-Fi (docs/FAST_WIFI.md): may the tablet use the relay, and what it does now. */
@@ -224,6 +239,7 @@ final class PhoneTab extends Tab {
         buildFast();
         buildPermissions();
         buildTexts();
+        buildCalls();
         buildBattery();
         buildRestart();
         buildApp();
@@ -344,6 +360,18 @@ final class PhoneTab extends Tab {
         card.addView(tgFast.view, Ui.lp(act, 6));
         tFast = Ui.body(act, FastRelay.line(act));
         card.addView(tFast, Ui.lp(act, 4));
+        col.addView(card, Ui.lp(act, 12));
+    }
+
+    private void buildCalls() {
+        LinearLayout card = Ui.card(act, "Calls", null);
+        tgCalls = new Ui.Toggle(act, PhoneScreenRules.CALLS_SWITCH, PhoneScreenRules.CALLS_EXPLAIN, Cfg.callsOn(act), callsListener);
+        card.addView(tgCalls.view, Ui.lp(act, 6));
+        tCalls = Ui.body(act, "");
+        card.addView(tCalls, Ui.lp(act, 4));
+        bCalls = Ui.button(act, PhoneScreenRules.CALLS_BUTTON, v -> allowCalls());
+        bCalls.setVisibility(View.GONE);
+        card.addView(bCalls, Ui.lp(act, 6));
         col.addView(card, Ui.lp(act, 12));
     }
 
@@ -547,6 +575,14 @@ final class PhoneTab extends Tab {
         visible(bAllowEverything, PhoneScreenRules.allowEverything(f));
         paintItemButtons(f);
 
+        // Calls
+        toggle(tgCalls, f.callsOn, callsListener);
+        PhoneScreenRules.Line cl = PhoneScreenRules.callsLine(f);
+        tCalls.setText(cl.text);
+        tCalls.setTextColor(lineColor(cl.tone));
+        visible(tCalls, !cl.text.isEmpty());
+        visible(bCalls, PhoneScreenRules.callsButton(f));
+
         // Texts
         toggle(tgTexts, f.textsOn, textsListener);
         PhoneScreenRules.Line tl = PhoneScreenRules.textsLine(f);
@@ -732,6 +768,22 @@ final class PhoneTab extends Tab {
         off("linkmeter-safety", "Couldn't check the phone: ", "The check did not finish.", app -> result(Actions.run(app, "safety"), true));
     }
 
+    /** Gets the calls permissions (and the Bluetooth ones): through Shizuku if it is ready, otherwise through Android's own permission question. */
+    private void allowCalls() {
+        if (Priv.ready()) {
+            working("Allowing calls access");
+            off("linkmeter-calls-grant", "Couldn't allow calls access: ", "Calls access could not be allowed.", app -> {
+                String said = CallAccess.grant(app);
+                CallService.ensure(app);
+                result(said, CallAccess.missing(app).isEmpty());
+            });
+        } else {
+            act.requestCallsPermissions();
+            Toast.makeText(act, "If Android says the setting is restricted, start Shizuku and tap this again, or allow restricted "
+                    + "settings in this app's info page.", Toast.LENGTH_LONG).show();
+        }
+    }
+
     /** Gets the texts permissions: through Shizuku if it is ready, otherwise through Android's own permission question. */
     private void allowTexts() {
         if (Priv.ready()) {
@@ -764,6 +816,15 @@ final class PhoneTab extends Tab {
                     BtServer.recheck();
                 } catch (IOException e) {
                     sb.append("\nBluetooth: ").append(e.getMessage());
+                    ok = false;
+                }
+            }
+            if (Cfg.callsOn(app) && !CallAccess.missing(app).isEmpty()) {
+                try {
+                    sb.append('\n').append(CallAccess.grant(app));
+                    CallService.ensure(app);
+                } catch (IOException e) {
+                    sb.append("\nCalls: ").append(e.getMessage());
                     ok = false;
                 }
             }
@@ -853,6 +914,8 @@ final class PhoneTab extends Tab {
         f.hotspot = Radios.hotspot(a);
         f.hotspotAddress = Boolean.TRUE.equals(f.hotspot) ? Boot.hotspotAddress(a) : "";
 
+        f.callsOn = Cfg.callsOn(a);
+        f.callsMissing = CallAccess.missing(a);
         f.textsOn = Cfg.textsOn(a);
         f.textsMissing = SmsAccess.missing(a);
         f.saverAuto = Cfg.ecoAuto(a);

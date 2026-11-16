@@ -32,6 +32,12 @@ final class MenuScan {
         "com.android.settings/.RadioInfo",
     };
 
+    /** The phone's own Bluetooth settings: the first of these that this phone has (Samsung keeps Android's names for these). */
+    static final String[] BLUETOOTH_SCREENS = {
+        "com.android.settings/.Settings$BluetoothSettingsActivity",
+        "com.android.settings/.bluetooth.BluetoothSettings",
+    };
+
     private static final Pattern COMPONENT = Pattern.compile("[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+");
 
     static boolean isComponent(String s) {

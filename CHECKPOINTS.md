@@ -239,3 +239,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-15T22:00:15Z Fast Wi-Fi pauses on the lock screen / screen off / custom launcher (launcher word) and comes back by itself in Quickstep
 - 2026-11-15T22:05:11Z HANDOFF: v0.2.184 released (CE1), release line filled in
 - 2026-11-16T01:46:44Z WORK IN PROGRESS (not finished, not built): calls: pure logic done and tested (Calls, CallRules, CallTracker, CallJson, CallApi, RemoteCalls, HeadsetRules; 1.16M + 91 checks); next: phone Android side (CallBackend, HeadsetLink, ShellMain bt-connect), then the tablet screens
+- 2026-11-16T02:02:31Z WORK IN PROGRESS (not finished, not built): calls: phone side done (CallBackend, HeadsetLink, ShellMain bt-connect, tripwire rewritten, 48 breakages caught) and the tablet's Calls tab written (keypad, recents, contacts, call screen, strip, headset screen); compiles; pictures being checked next

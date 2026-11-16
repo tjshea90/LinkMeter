@@ -19,6 +19,8 @@ abstract class Tab {
     static final String SCREEN = "Screen";
     static final String FILES = "Files";
     static final String TEXTS = "Texts";
+    /** The phone's calls from the tablet: keypad, recents, contacts, the headset (CallsTab; docs/PHONE_CALLS.md). */
+    static final String CALLS = "Calls";
     static final String SETTINGS = "Settings";
 
     Tab(MainActivity a) {

@@ -473,6 +473,53 @@ final class CallRules {
         return sb.toString();
     }
 
+    // ------------------------------------------------------------------ what the Calls tab says when calls cannot be used yet
+
+    /** A card at the top of the Calls tab: what is in the way, and the one button that may help ("retry", "allow" or ""). */
+    static final class Notice {
+        final String title;
+        final String line;
+        final String action;
+        final String button;
+
+        Notice(String title, String line, String action, String button) {
+            this.title = title;
+            this.line = line;
+            this.action = action;
+            this.button = button;
+        }
+    }
+
+    /**
+     * What stands between the user and a call, most basic first; null when nothing does.
+     *
+     * @param watch   {@link Calls#WATCH_OK} and the others: what the tablet knows of the phone's calls
+     * @param problem what went wrong, in a sentence, when the phone could not be reached
+     * @param st      the phone's last /call/state answer, or null when none came yet
+     */
+    static Notice notice(int watch, String problem, Calls.State st) {
+        if (watch == Calls.WATCH_NO_PEER || watch == Calls.WATCH_UNREACHED) {
+            return new Notice("The phone can't be reached", problem == null || problem.isEmpty()
+                    ? "Is the tablet on the phone's hotspot, and has it been paired?" : problem, "retry", "Try again");
+        }
+        if (watch == Calls.WATCH_OLD || (st != null && st.version == 0)) {
+            return new Notice("The phone's LinkMeter app is too old for calls",
+                    "Install the newest LinkMeter on the phone: Phone tab > Update the phone.", "retry", "Check again");
+        }
+        if (watch == Calls.WATCH_OFF || (st != null && !st.on)) {
+            return new Notice("Calls are switched off on the phone",
+                    "On the phone, open LinkMeter and switch on \"" + PhoneScreenRules.CALLS_SWITCH + "\" (its Phone tab, the Calls card). "
+                            + "Then press Check again.", "retry", "Check again");
+        }
+        if (st != null && !st.canCall()) {
+            String missing = st.note == null ? "" : st.note;
+            return new Notice("The phone still has to allow calls", missing.isEmpty()
+                    ? "LinkMeter is missing a permission on the phone." : missing, st.shell ? "allow" : "retry",
+                    st.shell ? "Allow it for me" : "Check again");
+        }
+        return null;
+    }
+
     // ------------------------------------------------------------------ a call that is on
 
     /** The length of a call as the timer shows it: 0:07, 12:03, 1:02:03. */

@@ -42,6 +42,7 @@ public class MainActivity extends Activity {
     /** Also asked by the tablet's Settings tab. */
     static final int REQ_BLUETOOTH = 9;
     private static final int REQ_UNLOCK = 10;
+    private static final int REQ_CALLS = 11;
 
     /** Shared with the tabs. */
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -50,6 +51,9 @@ public class MainActivity extends Activity {
     private FrameLayout content;
     private Tab[] tabs;
     private BarButton[] bar;
+    /** Tablet only: the listener for the phone's calls and the strip at the top that shows a ringing or current call (docs/PHONE_CALLS.md). */
+    private CallWatch callWatch;
+    private CallBanner callBanner;
     private Tab cur;
     private int index;
     private View tabBar;
@@ -93,12 +97,18 @@ public class MainActivity extends Activity {
         resumed = true;
         afterShow();
         updateWatches();
+        if (callWatch != null) {
+            callWatch.start(); // hears the phone ring while the app is in front (only for a tablet that uses calls)
+        }
         FastVpn.resumeIfWanted(this); // Fast Wi-Fi was on, and nothing runs (the app was stopped): it comes back (tablet only)
     }
 
     @Override
     protected void onPause() {
         resumed = false;
+        if (callWatch != null) {
+            callWatch.stop();
+        }
         if (cur != null) {
             cur.onHide();
         }
@@ -257,6 +267,24 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** The listener for the phone's calls (tablet only; null on the phone). */
+    CallWatch callWatch() {
+        return callWatch;
+    }
+
+    /** The tab of this class, or null: one tab asks another for what only it knows (the Calls tab asks Texts for contact names). */
+    @SuppressWarnings("unchecked")
+    <T extends Tab> T tabOf(Class<T> type) {
+        if (tabs != null) {
+            for (Tab t : tabs) {
+                if (type.isInstance(t)) {
+                    return (T) t;
+                }
+            }
+        }
+        return null;
+    }
+
     /** The number of new things on a tab's button in the bottom bar (the Texts tab's new texts); 0 for none. */
     void setBadge(String title, int n) {
         if (tabs == null || bar == null) {
@@ -295,12 +323,18 @@ public class MainActivity extends Activity {
         tabs = null;
         bar = null;
         content = null;
+        if (callWatch != null) {
+            callWatch.stop();
+        }
+        callWatch = null;
+        callBanner = null;
 
         String mode = Cfg.mode(this);
         View root;
         if (Cfg.TABLET.equals(mode)) {
+            callWatch = new CallWatch(this);
             root = buildTabs(new Tab[] {new HomeTab(this), new SpeedTab(this), new SignalTab(this),
-                    new ControlTab(this), new ScreenTab(this), new FilesTab(this), new TextsTab(this),
+                    new ControlTab(this), new ScreenTab(this), new FilesTab(this), new CallsTab(this), new TextsTab(this),
                     new SettingsTab(this)});
         } else if (Cfg.PHONE.equals(mode)) {
             root = buildTabs(new Tab[] {new PhoneTab(this), new FilesTab(this)});
@@ -390,6 +424,16 @@ public class MainActivity extends Activity {
         tabBar = barBox;
         root.addView(barBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (callWatch != null) { // the strip for a ringing or current call, above everything, and the number of missed calls on the button
+            callBanner = new CallBanner(this, callWatch);
+            root.addView(callBanner, 0, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            callWatch.addListener(w -> {
+                setBadge(Tab.CALLS, w.status() == CallWatch.OK ? CallRules.badge(w.latest()) : 0);
+                if (callBanner != null) {
+                    callBanner.refresh();
+                }
+            });
+        }
 
         if (index >= tabs.length) {
             index = 0;
@@ -446,6 +490,9 @@ public class MainActivity extends Activity {
             cur.onShow();
         }
         updateWatches();
+        if (callBanner != null) {
+            callBanner.refresh(); // hidden while the Calls tab itself shows the call
+        }
     }
 
     // ---------------------------------------------------------------- phone actions
@@ -492,7 +539,7 @@ public class MainActivity extends Activity {
             ui.postDelayed(this::refreshPhone, 400);
         } else if (req == REQ_STORAGE && tabs != null) {
             showTab(index, true);
-        } else if (req == REQ_PHONE || req == REQ_TEXTS || req == REQ_NOTIFICATIONS || req == REQ_BLUETOOTH) {
+        } else if (req == REQ_PHONE || req == REQ_TEXTS || req == REQ_CALLS || req == REQ_NOTIFICATIONS || req == REQ_BLUETOOTH) {
             if (req == REQ_BLUETOOTH) {
                 if (Cfg.PHONE.equals(Cfg.mode(this))) {
                     BtServer.recheck(); // the listener looks again, now that it may be allowed
@@ -656,6 +703,11 @@ public class MainActivity extends Activity {
     /** Asks for the texts permissions through Android's own question. */
     void requestTextsPermissions() {
         requestPermissions(SmsAccess.ASK, REQ_TEXTS);
+    }
+
+    /** Asks for the calls permissions through Android's own question. */
+    void requestCallsPermissions() {
+        requestPermissions(CallAccess.ask(), REQ_CALLS);
     }
 
     /** Asks for the Bluetooth permission ("Nearby devices", Android 12 and later); the answer makes the phone's listener look again. */

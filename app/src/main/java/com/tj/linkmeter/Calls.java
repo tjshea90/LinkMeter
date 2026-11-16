@@ -13,6 +13,16 @@ final class Calls {
     /** The version of the /call/* routes. An older phone app answers 404 "unknown request" to all of them. */
     static final int VERSION = 1;
 
+    // ---- what the tablet knows about the phone's calls (CallWatch.status)
+    static final int WATCH_IDLE = 0;
+    static final int WATCH_OK = 1;
+    /** The phone's switch "Let the tablet make and answer calls" is off. */
+    static final int WATCH_OFF = 2;
+    /** The phone's app is too old for calls. */
+    static final int WATCH_OLD = 3;
+    static final int WATCH_UNREACHED = 4;
+    static final int WATCH_NO_PEER = 5;
+
     // ---- what a call is doing
     static final String RINGING = "ringing";
     static final String DIALING = "dialing";

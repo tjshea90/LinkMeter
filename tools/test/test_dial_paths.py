@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Tripwire: the app dials NOTHING, places no call, sends no USSD, and types only through the guarded routes.
+"""Tripwire: the app dials NO CODE, sends no USSD, places a call from ONE reviewed place only, and types only through the guarded routes.
+
+Changed on purpose on 2026-11-16 (the user asked for a phone feature, docs/PHONE_CALLS.md). Before, the app placed no call at all. Now a
+call may be placed by exactly one method, CallBackend.dial, which must run CallRules.check (it refuses emergency numbers and every code
+with # or an inner *) before placeCall; CallApi must run the same check before it hands a number to the backend; the telecom calls that
+answer and end a call and the call permissions live in one file each. Everything else below is as strict as before.
 
 Run by tools/test.sh (so the release pipeline runs it too). It reads the app's SOURCE, with comments removed, and fails if:
-  * anything can place a call or send USSD (ACTION_CALL, CALL_PHONE, placeCall, sendUssdRequest, ...);
+  * anything can send USSD or start a call by intent (sendUssdRequest, ACTION_CALL, CALL_PRIVILEGED, ...), or placeCall, CALL_PHONE,
+    ANSWER_PHONE_CALLS, acceptRingingCall or endCall appear outside their one file, or placeCall is not guarded in CallBackend.dial and
+    CallApi.dial;
   * any dial route exists, in ANY file: android.intent.action.DIAL, ACTION_DIAL, tel:, dialCommand, dialUri, SAFE_CODES, menu_dial
     (versions up to v0.2.102 could dial seven fixed service codes; this phone's dialer answered "invalid MMI" to all of them, so the
     app dials nothing now and the build fails if a dial route ever comes back);
@@ -14,7 +21,8 @@ Run by tools/test.sh (so the release pipeline runs it too). It reads the app's S
     the PIN route must be digits only;
   * the keys the app may press (Screen.KEYS and every literal `input keyevent N`) include a digit, *, #, call or numeric-keypad key,
     or `input keyevent` appears anywhere except Screen.java and Menus.java (Menus only wakes the screen);
-  * docs/SAFETY.md still lists a block of safe dial codes, or any dial code in backticks (it must say that the app dials nothing).
+  * docs/SAFETY.md still lists a block of safe dial codes, or any dial code in backticks (it must say that the app dials no code and
+    places a call only when the user presses Call on the tablet).
 Prints "N checks, M failed". tools/mutate_dial.py breaks each of these rules in a scratch copy and checks that this test fails.
 """
 import os
@@ -78,12 +86,38 @@ with open(os.path.join(ROOT, "app", "src", "main", "AndroidManifest.xml"), encod
 
 check(len(sources) > 80, "the sources were found (%d files)" % len(sources))
 
-# ---- 1. nothing can place a call or send USSD
-for token in ["ACTION_CALL", "CALL_PHONE", "CALL_PRIVILEGED", "ANSWER_PHONE_CALLS", "placeCall", "sendUssdRequest",
-              "android.intent.action.CALL", "am broadcast", "CALL_BUTTON", "ACTION_DIAL"]:
+# ---- 1. nothing sends USSD or starts a call by intent; a call is placed by ONE guarded method
+for token in ["sendUssdRequest", "android.intent.action.CALL", "ACTION_CALL", "CALL_PRIVILEGED", "am broadcast", "CALL_BUTTON", "ACTION_DIAL",
+              "PROCESS_OUTGOING_CALLS", "ACTION_NEW_OUTGOING_CALL", "MODIFY_PHONE_STATE", "WRITE_CALL_LOG"]:
     for name, text in sources.items():
-        check(token not in text, "no way to call or send USSD: %s found in %s" % (token, name))
+        check(token not in text, "no way to send USSD or call by intent: %s found in %s" % (token, name))
     check(token not in manifest, "the manifest has no %s" % token)
+for token, only in [("placeCall", "CallBackend.java"), ("acceptRingingCall", "CallBackend.java"), ("endCall", "CallBackend.java"),
+                    ("CALL_PHONE", "CallAccess.java"), ("ANSWER_PHONE_CALLS", "CallAccess.java")]:
+    holders = [n for n, t in sources.items() if token in t]
+    check(holders == [only], "%s appears only in %s (found in %s)" % (token, only, holders))
+callback = sources["CallBackend.java"]
+check(callback.count("placeCall(") == 1, "placeCall is called exactly once")
+dial = re.search(r"public Calls\.Result dial\(String number\) \{.*?\n    \}\n", callback, re.S)
+check(dial is not None, "CallBackend.dial exists")
+dt = dial.group(0) if dial else ""
+check("CallRules.check(" in dt and "placeCall(" in dt and dt.index("CallRules.check(") < dt.index("placeCall(") if "placeCall(" in dt and "CallRules.check(" in dt else False,
+      "CallBackend.dial runs CallRules.check before placeCall")
+check("if (!d.ok())" in dt and dt.index("if (!d.ok())") < dt.index("placeCall(") if "placeCall(" in dt and "if (!d.ok())" in dt else False,
+      "and stops when the check says no, before placeCall")
+check("placeCall(Uri.fromParts(\"tel\", d.number" in dt, "and places the checked number, not the raw one")
+apitext = sources["CallApi.java"]
+api_dial = re.search(r"private FsApi\.Reply dial\(.*?\n    \}\n", apitext, re.S)
+check(api_dial is not None, "CallApi.dial exists")
+at = api_dial.group(0) if api_dial else ""
+check("CallRules.check(" in at and "backend.dial(" in at and at.index("CallRules.check(") < at.index("backend.dial(") if "backend.dial(" in at and "CallRules.check(" in at else False,
+      "CallApi.dial runs CallRules.check before the backend dials")
+check("if (!d.ok())" in at and "backend.dial(d.number)" in at, "and dials only the checked number")
+holders = [n for n, t in sources.items() if "backend.dial(" in t]
+check(holders == ["CallApi.java"], "only CallApi hands a number to the backend (found in %s)" % holders)
+rules = sources["CallRules.java"]
+for must in ["if (s.indexOf('#') >= 0) {", "EMERGENCY_NUMBERS", "emergencyDigits(digits.toString(), star)", "return new Dial(CODE, \"\")"]:
+    check(must in rules, "CallRules.check keeps its rule: %s" % must)
 
 # ---- 2. the app dials nothing: no dial route in any file
 for token in ["android.intent.action.DIAL", "ACTION_DIAL", "tel:", "dialCommand", "dialUri", "SAFE_CODES", "menu_dial", "isSafeDialCode", "isDialCode"]:
@@ -140,16 +174,18 @@ for name, text in sources.items():
         check(name in ("Screen.java", "Menus.java"), "`input keyevent` only in the reviewed files (found in %s)" % name)
 check("allowedKey(" in screen and screen.count("allowedKey(") >= 3, "tablet key presses go through the whitelist")
 
-# ---- 6. no permission to call
-check("CALL_PHONE" not in manifest and "CALL_PRIVILEGED" not in manifest, "the manifest asks for no call permission")
+# ---- 6. the call permissions are the ones the feature needs and no more
+for perm in ["CALL_PHONE", "ANSWER_PHONE_CALLS", "READ_CALL_LOG"]:
+    check("android.permission." + perm in manifest, "the manifest asks for %s (the Calls feature)" % perm)
 
-# ---- 7. the document says the same as the code: the app dials nothing, so it lists no dial code
+# ---- 7. the document says the same as the code: the app dials no code, so it lists no dial code
 with open(os.path.join(ROOT, "docs", "SAFETY.md"), encoding="utf-8") as f:
     doc = f.read()
 check("safe-codes" not in doc, "docs/SAFETY.md has no marked list of safe dial codes")
 check(re.search(r"`(?=[*#0-9]{3,}`)[*#0-9]*[*#][*#0-9]*`", doc) is None,
       "and lists no dial code in backticks: %s" % re.findall(r"`(?=[*#0-9]{3,}`)[*#0-9]*[*#][*#0-9]*`", doc))
-check("dials nothing" in doc or "dials no code" in doc, "and says that the app dials nothing")
+check("dials no code" in doc, "and says that the app dials no code")
+check("places a call only when" in doc, "and says when a call is placed")
 
 print("%d checks, %d failed" % (checks, failed))
 sys.exit(1 if failed else 0)

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Deliberate breakages of the dial tripwire: each must make tools/test/test_dial_paths.py FAIL.
 
+Rewritten on 2026-11-16 for the Calls feature (docs/PHONE_CALLS.md): a call may now be placed, but only by CallBackend.dial after
+CallRules.check, and every other way stays forbidden.
+
 A test of the test, like tools/mutate_link.py (and not part of tools/test.sh). It copies the tripwire, the app's sources, the manifest
 and docs/SAFETY.md into a scratch folder, first checks that the copy passes, then brings back one forbidden thing at a time (a dial
 intent, a tel: address, a dial command, a menu_dial action, a stray `am start`, a key press outside the reviewed files, a digit key,
@@ -45,6 +48,23 @@ BREAKS = [
     ("the menu_dial action comes back", JAVA + "Actions.java", replace('case "menu_open":', 'case "menu_dial":\n                return "";\n            case "menu_open":')),
     ("a call action", JAVA + "Boot.java", add_constant("android.intent.action.CALL")),
     ("a call is placed", JAVA + "Boot.java", add_constant("placeCall")),
+    ("a call is answered elsewhere", JAVA + "Boot.java", add_constant("acceptRingingCall")),
+    ("a call is ended elsewhere", JAVA + "Boot.java", add_constant("endCall")),
+    ("the call permission is named elsewhere", JAVA + "Boot.java", add_constant("CALL_PHONE")),
+    ("the answer permission is named elsewhere", JAVA + "Boot.java", add_constant("ANSWER_PHONE_CALLS")),
+    ("a call is placed with the privileged permission", JAVA + "CallAccess.java", add_constant("CALL_PRIVILEGED")),
+    ("outgoing calls are intercepted", JAVA + "CallAccess.java", add_constant("PROCESS_OUTGOING_CALLS")),
+    ("the call log is written", JAVA + "CallAccess.java", add_constant("WRITE_CALL_LOG")),
+    ("the dial intent comes back in the Calls files", JAVA + "CallBackend.java", add_constant("ACTION_DIAL")),
+    ("placeCall runs without the guard", JAVA + "CallBackend.java", replace("CallRules.Dial d = CallRules.check(number);", "CallRules.Dial d = new CallRules.Dial(\"\", number);")),
+    ("placeCall ignores the guard's answer", JAVA + "CallBackend.java", replace("if (!d.ok()) {\n            return Calls.Result.fail(d.why());", "if (false) {\n            return Calls.Result.fail(d.why());")),
+    ("placeCall dials the raw number", JAVA + "CallBackend.java", replace('Uri.fromParts("tel", d.number, null)', 'Uri.fromParts("tel", number, null)')),
+    ("a second placeCall", JAVA + "CallBackend.java", replace("return Calls.Result.ok(\"Answered.\");", "tc.placeCall(null, null);\n        return Calls.Result.ok(\"Answered.\");")),
+    ("the API dials without the guard", JAVA + "CallApi.java", replace('CallRules.Dial d = CallRules.check(Json.str(m, "number", ""));', 'CallRules.Dial d = new CallRules.Dial("", Json.str(m, "number", ""));')),
+    ("the API dials the raw text", JAVA + "CallApi.java", replace("backend.dial(d.number)", 'backend.dial(Json.str(m, "number", ""))')),
+    ("the guard forgets the #", JAVA + "CallRules.java", replace("if (s.indexOf('#') >= 0) {", "if (false) {")),
+    ("the guard forgets the emergency numbers", JAVA + "CallRules.java", replace("if (emergencyDigits(digits.toString(), star)) {", "if (false) {")),
+    ("another file dials", JAVA + "RemoteCalls.java", add_constant("backend.dial(")),
     ("USSD is sent", JAVA + "Boot.java", add_constant("sendUssdRequest")),
     ("a screen is opened by action", JAVA + "Menus.java", replace("am start -n '", "am start -a '")),
     ("a screen is opened by address", JAVA + "Menus.java", replace("am start -n '", "am start -d '")),
@@ -60,13 +80,18 @@ BREAKS = [
     ("the control channel stops filtering", JAVA + "Screen.java", replace("TypingFilter.filterLine(", "String.valueOf(")),
     ("the tablet stops filtering", JAVA + "ScreenTab.java", replace("TypingFilter.keep(", "String.valueOf(")),
     ("input text in another file", JAVA + "Actions.java", add_constant("input text hello")),
-    ("the manifest asks for a call permission", "app/src/main/AndroidManifest.xml",
-     replace("<application", '<uses-permission android:name="android.permission.CALL_PHONE"/>\n    <application')),
+    ("the manifest asks for the privileged call permission", "app/src/main/AndroidManifest.xml",
+     replace("<application", '<uses-permission android:name="android.permission.CALL_PRIVILEGED"/>\n    <application')),
+    ("the manifest asks to write the call log", "app/src/main/AndroidManifest.xml",
+     replace("<application", '<uses-permission android:name="android.permission.WRITE_CALL_LOG"/>\n    <application')),
+    ("the manifest stops asking for the call permission", "app/src/main/AndroidManifest.xml",
+     replace('<uses-permission android:name="android.permission.CALL_PHONE" />', "")),
     ("the manifest answers tel: addresses", "app/src/main/AndroidManifest.xml",
      replace("<application", '<queries><intent><action android:name="android.intent.action.DIAL"/></intent></queries>\n    <application')),
     ("the document lists a safe code block again", "docs/SAFETY.md", append_text("\n<!-- safe-codes:start -->\n<!-- safe-codes:end -->\n")),
     ("the document lists a dial code", "docs/SAFETY.md", append_text("\nThe code `*#06#` shows the IMEI.\n")),
-    ("the document stops saying that the app dials nothing", "docs/SAFETY.md", lambda src: src.replace("dials nothing", "dials little")),
+    ("the document stops saying that the app dials no code", "docs/SAFETY.md", lambda src: src.replace("dials no code", "dials little")),
+    ("the document stops saying when a call is placed", "docs/SAFETY.md", lambda src: src.replace("places a call only when", "places calls when")),
 ]
 
 COPY = [JAVA, "app/src/main/AndroidManifest.xml", "docs/SAFETY.md", "tools/test/test_dial_paths.py"]
