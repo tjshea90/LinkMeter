@@ -242,3 +242,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-16T02:02:31Z WORK IN PROGRESS (not finished, not built): calls: phone side done (CallBackend, HeadsetLink, ShellMain bt-connect, tripwire rewritten, 48 breakages caught) and the tablet's Calls tab written (keypad, recents, contacts, call screen, strip, headset screen); compiles; pictures being checked next
 - 2026-11-16T02:15:49Z Calls: the tablet's Calls tab (keypad, recents, contacts shared with Texts, call screen, headset screen), the phone side, the rewritten dial tripwire; tests and build pass, not run on a device
 - 2026-11-16T02:32:31Z Calls: whole screen preview 241 tests 0 failed; mutation script for the Calls glue; test fixes
+- 2026-11-16T02:32:43Z Calls: dial, answer and end calls from the tablet, with a large keypad, recents, contacts shared with Texts and an easy headset connection (not run on a device yet)
