@@ -1036,9 +1036,13 @@ final class HomeTab extends Tab {
                     : "";
         }
         String go = (standby ? "Standby" : "Turn it off") + (linkWorks ? "" : " anyway");
+        CallWatch cw = act.callWatch();
+        String onCall = cw != null && cw.status() == CallWatch.OK && cw.lead() != null
+                ? "A CALL IS ON. " + (deep ? "Airplane mode would end it." : "The call goes on (the phone makes it), but this tablet loses its "
+                + "internet and so its view of the call.") + "\n\n" : "";
         AlertDialog.Builder b = new AlertDialog.Builder(act)
                 .setTitle(standby ? "Put the phone on standby?" : "Turn the hotspot off?")
-                .setMessage(what + "\n\n" + back + extra)
+                .setMessage(onCall + what + "\n\n" + back + extra)
                 .setPositiveButton(go, (d, w) -> {
                     if (standby) {
                         send("standby", "Putting the phone on standby", 60000);

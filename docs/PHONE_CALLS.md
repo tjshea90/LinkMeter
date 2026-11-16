@@ -119,12 +119,14 @@ must be on.
 
 ## Status
 
-- [ ] Pure logic + tests (`Calls`, `CallRules`, `CallJson`, `CallApi`, `HeadsetRules`)
-- [ ] Phone side (CallBackend, CallService, CallWatcher, CallAccess, HeadsetLink, ShellMain bt-connect, phone screen card)
-- [ ] Tablet side (RemoteCalls, CallsTab, DialPadView, InCallView, HeadsetPanel, CallWatch/CallBanner, Texts links)
-- [ ] Tripwire, SAFETY.md, USER_GUIDE.md, REMOTE_LINK.md updated
-- [ ] Screen pictures looked at (`tools/preview.sh --tests com.tj.linkmeter.CallsPreviewTest`), deliberate breakages caught
-- [ ] Release
+- [x] Pure logic + tests (`Calls`, `CallRules`, `CallTracker`, `CallJson`, `CallApi`, `RemoteCalls`, `HeadsetRules`; `CallsLogicTest` about 1.17 million checks, `CallApiTest` 91 checks over a real socket)
+- [x] Phone side (`CallAccess`, `CallBackend`, `CallService`, `HeadsetLink`, `ShellMain bt-connect|bt-disconnect`, `Menus.bluetoothSettings`, the Calls card on the phone's own screen, manifest, `Api` route; the release build compiles)
+- [x] Tablet side (`CallWatch`, `CallBanner`, `CallsTab`, `DialPad`, `InCallView`, `HeadsetPanel`, `CallsViews`, the Call button in Texts, the Message buttons in Calls, the shared names, a warning on Hotspot off / Standby while a call is on)
+- [x] Tripwire rewritten (`tools/test/test_dial_paths.py`; `python3 tools/mutate_dial.py`: 48 breakages, all caught), `docs/SAFETY.md` (Dialing row, section 12), `docs/USER_GUIDE.md`, `docs/REMOTE_LINK.md`
+- [x] Screen pictures looked at (`tools/preview.sh --tests "com.tj.linkmeter.CallsPreviewTest"`, 21 scenarios; the pictures are `tools/uipreview/out/calls-*.png`)
+- [ ] Deliberate breakages of the screens' glue (`tools/mutate_calls_glue.py`, run it from a git worktree): see HANDOFF for the result
+- [ ] Release: see HANDOFF ("RELEASED AS")
+- NOT BUILT: calls over the Bluetooth-only link, tones during a call, hold/merge/conference, a tablet service for calls while the app is in the background, an audio-route fallback through the shell.
 
 ## Not known until a device tries (say so to the user)
 

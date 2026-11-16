@@ -44,7 +44,7 @@ final class InCallView extends LinearLayout {
         watch = w;
         setOrientation(VERTICAL);
         setGravity(Gravity.CENTER_HORIZONTAL);
-        setPadding(Ui.dp(a, 16), Ui.dp(a, 24), Ui.dp(a, 16), Ui.dp(a, 16));
+        setPadding(Ui.dp(a, 16), Ui.dp(a, 40), Ui.dp(a, 16), Ui.dp(a, 28));
 
         avatar = TextsViews.avatar(a, 96);
         avatar.setTextSize(36);
@@ -70,10 +70,11 @@ final class InCallView extends LinearLayout {
         buildButtons();
         addView(buttons, Ui.lp(a, 36));
 
+        addView(new View(a), new LayoutParams(1, 0, 1f)); // the Answer, Decline and End buttons sit at the bottom, where the thumb is
         ring = new LinearLayout(a);
         ring.setOrientation(HORIZONTAL);
         ring.setGravity(Gravity.CENTER);
-        addView(ring, Ui.lp(a, 36));
+        addView(ring, Ui.lp(a, 12));
         update();
     }
 

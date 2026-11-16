@@ -450,6 +450,15 @@ Deep sleep: DeepSleepRules (the steps and the fail-safe, pure), DeepSleep and Ph
 Fast Wi-Fi: Ip4, FastProto, FastRules, TunStack (tablet engine), FastRelayCore (phone relay) are pure; FastRelay (phone glue),
 FastVpn (tablet VpnService), FastCard (Home card), FastTile (quick settings tile); tests FastCodecTest, FastRulesTest, tools/fast_e2e.sh
 (real Linux tun), uipreview FastPreviewTest.
+Calls (2026-11-16, `docs/PHONE_CALLS.md`): pure: Calls (model), CallRules (the dial guard, number display, keypad letters, contact search, recents
+grouping, timer words, the notices), CallTracker (Android's ring/off-hook/idle into calls), CallJson, CallApi (the /call/* routes over a Backend),
+RemoteCalls (the tablet's client), HeadsetRules (what the headset card says and offers). Phone: CallBackend (Telecom, audio, call log; contacts through
+the SAME SmsBackend as Texts, `SmsService.backend`), CallService, CallAccess (permissions, Shizuku grant), HeadsetLink (read, pair, connect through
+ShellMain `bt-connect` / `bt-disconnect`), Menus.bluetoothSettings, the Calls card in PhoneTab. Tablet: CallWatch (one long poll /call/now while the app
+is in front), CallBanner (strip on every tab), CallsTab (Keypad | Recents | Contacts, the chip), DialPad, InCallView, HeadsetPanel, CallsViews,
+Icons HANDSET/HANGUP/KEYPAD/CLOCK/PERSON/HEADSET/ARROW_OUT/ARROW_IN/MIC/MIC_OFF; Texts links: TextsTab.nameForNumber/rememberName/openWith/callPerson,
+the Call button in TextThread. Tests: CallsLogicTest, CallApiTest, test_dial_paths.py (rewritten), uipreview CallsPreviewTest + PretendCalls,
+mutate_dial.py, mutate_calls_glue.py.
 Tablet Wi-Fi with the hotspot: TabletWifiRules (the rules, pure), TabletWifi (Android's Wi-Fi manager, Shizuku, the Wi-Fi switch screen).
 Remote screen, phone: Screen (routes), PowerSequence (Sleep / Wake steps), RemoteProfile and ProfilePlan (screen kept on and
 dimmed, restored), ShellMain `inject` and `sleep`.

@@ -111,6 +111,13 @@ restart failed, a shell command refused. So the tablet's "ok" means "done". The 
 the phone took the request and does not report the hotspot's state: 200, and the sentence says "It does not say whether it
 is on." After an answer-first action nobody is left to tell; the next status shows what happened.
 
+## Calls are NOT carried over Bluetooth (2026-11-16)
+
+The /call/ routes (`docs/PHONE_CALLS.md`) are served on the hotspot link only, like texts: `RemoteRoutes.BLUETOOTH_PATHS` does not list them, so
+`LinkServer` answers 404 on Bluetooth. `/call/now` is a long request (up to 25 seconds) and `/call/dial` has a body; the Bluetooth link carries
+small questions and switches only. Making the small ones (`/call/state`, `/call/answer`, `/call/hangup`, `/call/dial` with the number in the query)
+work over Bluetooth is possible later; the headset itself needs neither link (it is connected to the phone).
+
 ## The phone's new actions (all through Shizuku; `Actions`)
 
 - `hotspot_on`: ShellMain `hotspot-start` (the system's tethering service, as the shell user). `boot_hotspot_on` is the same.

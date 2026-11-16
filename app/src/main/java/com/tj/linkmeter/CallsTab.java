@@ -436,8 +436,55 @@ final class CallsTab extends Tab {
 
     // ------------------------------------------------------------------ calling
 
-    /** Dials a number (already checked on the phone again): says what the phone answered, and the call screen follows by itself. */
+    /**
+     * Dials a number. When the headset the user chose is not connected to the phone, asks first (the call would otherwise ring on the
+     * phone's own earpiece, which may be across the room): connect it and call, call anyway, or cancel.
+     */
     void dial(final String number) {
+        if (dialing) {
+            return;
+        }
+        final Calls.Device cur = headsets == null || !headsets.allowed ? null : headsets.current();
+        if (cur != null && !cur.connected && Cfg.callsHeadsetAsk(act)) {
+            TextsViews.show(new android.app.AlertDialog.Builder(act).setTitle("Headset not connected")
+                    .setMessage(cur.name + " is not connected to the phone, so the call would play on the phone itself. Connect the headset first?")
+                    .setPositiveButton("Connect and call", (x, i) -> connectThenDial(number))
+                    .setNeutralButton("Call anyway", (x, i) -> startCall(number))
+                    .setNegativeButton("Cancel", null));
+            return;
+        }
+        startCall(number);
+    }
+
+    private void connectThenDial(final String number) {
+        final int my = session;
+        Toast.makeText(act, "Connecting the headset to the phone… (up to 25 seconds)", Toast.LENGTH_LONG).show();
+        net.execute(() -> {
+            Calls.Result r = null;
+            IOException bad = null;
+            try {
+                r = remote().headsetConnect("");
+            } catch (IOException e) {
+                bad = e;
+            }
+            final Calls.Result fr = r;
+            final IOException fb = bad;
+            act.ui.post(() -> {
+                if (fr != null && fr.ok) {
+                    if (my == session) {
+                        loadHeadsets(my);
+                    }
+                    startCall(number);
+                } else {
+                    setHeadsetProblem(fr != null ? fr.why : TextsTab.explain(fb));
+                    Toast.makeText(act, "The call was not placed. " + (fr != null ? fr.why : TextsTab.explain(fb)), Toast.LENGTH_LONG).show();
+                }
+            });
+        });
+    }
+
+    /** Places the call: says what the phone answered, and the call screen follows by itself. */
+    private void startCall(final String number) {
         if (dialing) {
             return;
         }

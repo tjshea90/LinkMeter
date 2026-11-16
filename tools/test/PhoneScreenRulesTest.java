@@ -511,6 +511,25 @@ public final class PhoneScreenRulesTest {
                 say(l.text);
             }
         }
+        // calls: the same shape as the texts line (docs/PHONE_CALLS.md)
+        for (boolean on : new boolean[] {true, false}) {
+            for (String missing : new String[] {"", "place calls, use the headset"}) {
+                PhoneScreenFacts f = ready();
+                f.callsOn = on;
+                f.callsMissing = missing;
+                Line l = PhoneScreenRules.callsLine(f);
+                String ctx = " (calls " + on + ", missing '" + missing + "')";
+                if (on && !missing.isEmpty()) {
+                    eq("On, but not ready. LinkMeter may not " + missing + " yet.", l.text, "calls not ready" + ctx);
+                    eq(Tone.WARN, l.tone, "calls not ready is amber" + ctx);
+                } else {
+                    eq("", l.text, "calls off, or on and ready: no line" + ctx);
+                    eq(Tone.QUIET, l.tone, "no line is quiet" + ctx);
+                }
+                eq(on && !missing.isEmpty(), PhoneScreenRules.callsButton(f), "the calls button only while on and lacking something" + ctx);
+                say(l.text);
+            }
+        }
         // the saver
         PhoneScreenFacts f = ready();
         f.saverOn = true;

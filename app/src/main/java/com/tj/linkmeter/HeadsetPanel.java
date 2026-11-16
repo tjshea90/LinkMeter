@@ -238,6 +238,11 @@ final class HeadsetPanel extends LinearLayout {
 
         Calls.Headsets h = tab.headsets();
         HeadsetRules.View v = HeadsetRules.of(h, tab.headsetProblem());
+        if (h != null && h.allowed) {
+            col.addView(new Ui.Toggle(act, "Ask before calling without the headset", "When your headset is not connected to the phone, a call "
+                    + "would play on the phone itself. LinkMeter then asks whether to connect the headset first.", Cfg.callsHeadsetAsk(act),
+                    (b, on) -> Cfg.setCallsHeadsetAsk(act, on)).view, Ui.lp(act, 12));
+        }
         LinearLayout status = Ui.card(act, v.title.isEmpty() ? "Headset" : v.title, null);
         if (!v.line.isEmpty()) {
             TextView line = Ui.body(act, v.line);

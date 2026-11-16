@@ -11,7 +11,7 @@ import android.widget.TextView;
 /**
  * Tablet only: the large dial pad of the Calls tab: twelve big keys with the letters under them, the green Call button in the middle
  * of the bottom row and Backspace beside it (a long press clears the number; a long press on 0 types the plus). The keys are wide
- * rounded buttons, 80 dp tall, so they are easy to hit; the layout is the one every phone's keypad has.
+ * rounded buttons, 96 dp tall, so they are easy to hit; the layout is the one every phone's keypad has.
  */
 final class DialPad extends LinearLayout {
     interface Listener {
@@ -26,7 +26,7 @@ final class DialPad extends LinearLayout {
         void call();
     }
 
-    static final int KEY_DP = 80;
+    static final int KEY_DP = 96;
 
     DialPad(Context c, final Listener l) {
         super(c);
@@ -60,7 +60,7 @@ final class DialPad extends LinearLayout {
         v.setGravity(Gravity.CENTER);
         v.setBackground(CallsViews.ripple(Ui.CARD_HI, Ui.dp(c, 22)));
         v.setContentDescription(k == '*' ? "star" : k == '#' ? "pound" : String.valueOf(k));
-        TextView digit = Ui.text(c, String.valueOf(k), 32, Ui.FG, false);
+        TextView digit = Ui.text(c, String.valueOf(k), 34, Ui.FG, false);
         digit.setGravity(Gravity.CENTER);
         v.addView(digit);
         String letters = CallRules.letters(k);
@@ -108,7 +108,7 @@ final class DialPad extends LinearLayout {
             return true;
         });
         IconButton icon = new IconButton(c, Icons.Kind.BACKSPACE, Ui.DIM, 0, "Delete", null);
-        icon.setScale(0.4f);
+        icon.setScale(0.46f);
         f.addView(icon, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return f;
     }

@@ -313,6 +313,15 @@ final class Cfg {
         sp(c).edit().putBoolean("callsWatch", on).apply();
     }
 
+    /** Tablet: ask before a call is placed while the chosen headset is not connected to the phone? On by default. */
+    static boolean callsHeadsetAsk(Context c) {
+        return sp(c).getBoolean("callsHeadsetAsk", true);
+    }
+
+    static void setCallsHeadsetAsk(Context c, boolean on) {
+        sp(c).edit().putBoolean("callsHeadsetAsk", on).apply();
+    }
+
     /** Tablet: show the strip with Answer and End at the top of every tab while a call rings or is on? On by default. */
     static boolean callsBanner(Context c) {
         return sp(c).getBoolean("callsBanner", true);

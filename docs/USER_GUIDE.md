@@ -99,6 +99,26 @@ always.
   LinkMeter (it asks the phone to allow that; Shizuku must be running); the screen says which of the two happened. **If it says "The phone is
   slow to answer"** the phone is there but did not answer in time; LinkMeter asks again by itself. Texts menu > Connection details shows how
   long each request took (Copy puts it on the clipboard: it holds no texts).
+- **Calls (2026-11-16): the phone's phone app, from the tablet.** The **Calls** tab has a large **Keypad** (a long press on 0 types a +, Backspace
+  deletes one digit, a long press on it clears the number, a long press on the number pastes one; typing 666 finds *Mom* by the letters on the
+  keys), **Recents** (missed calls in red, calls in a row from one person as one line, the green button calls back, a tap opens a menu: Call,
+  Message, Rename contact, Copy number) and **Contacts** (the same contacts as Texts: a name given in either place shows in both; the chat button
+  opens the conversation, the green one calls). While the phone rings the **Calls** tab shows Answer and Decline, and a green strip with the
+  same buttons shows at the top of EVERY tab; while a call is on it shows the length, **Mute**, **Audio** (headset, speaker, earpiece), **Phone
+  screen** (opens the Screen tab: use it for "press 1 for ..." menus, which only the phone's own screen can type) and a large red **End call**.
+  A **Call** button in a Texts conversation asks "Call Mom?" and dials. The Calls button gets a number for missed calls you have not looked at.
+  **Set up once:** on the phone's own screen (LinkMeter, Phone tab, the **Calls** card) switch on **Let the tablet make and answer calls** and
+  tap **Allow calls access** (Shizuku gives the permissions), or press **Allow it for me** on the tablet's Calls tab. It stays off until you
+  switch it on. **Never dialed from the tablet:** emergency numbers (911 and the others: use the phone itself) and codes with # (or more than one *);
+  a number that only starts with * (like *67) is an ordinary call.
+  **The headset belongs to the PHONE, not the tablet.** The call's sound only exists inside the phone (Android lets no app take it out, and the
+  tablet cannot play a call it is not part of), so pair the headset with the phone and keep it within a few metres of the phone. The chip at the top
+  of the Calls tab (for example *Sony WH-1000XM4 · connected*) opens the **Headset** screen: **Connect headset** connects the one you chose
+  (LinkMeter switches the phone's Bluetooth on first if it is off), **Pair a headset** looks for one in pairing mode and pairs it, **Choose
+  another** picks among the paired ones, and **Phone's Bluetooth settings** opens the phone's own screen in the Screen tab if the button cannot do
+  it (most headsets also connect by themselves when you switch them on). If the headset drops, the screen counts the drops: move the phone closer.
+  Calls need the hotspot link (Wi-Fi), like Texts; they do not work over the Bluetooth-only link. Read `docs/PHONE_CALLS.md` for how it works and
+  what is not known until a phone tries it.
 - **Speed, Screen, Files:** as before.
 - **Fast Wi-Fi (2026-11-12): the tablet's internet without the hotspot's speed limit.** Home > "Internet for this tablet" has two
   choices: **Hotspot** (as always: the carrier limits hotspot traffic to 5 Mbit/s) and **Fast Wi-Fi**. With Fast Wi-Fi the tablet stays
@@ -133,6 +153,8 @@ phone's screen). Until Shizuku runs, the tablet can read the status but cannot s
 ## 5. What I would like to hear after you try it
 
 Tell me what happened, in your own words, for any of these:
+- Calls: after switching **Let the tablet make and answer calls** on, does the Calls tab say it is ready? Does a call placed from the Keypad ring the other phone and
+  play on your headset? Does a ringing call show on the tablet, and do Answer, End, Mute and the audio button work? Does **Connect headset** connect it (or what does it say)?
 - Settings > Bluetooth link > Set up, then Test: did it say Ready?
 - Hotspot off, then Hotspot on from the tablet; Standby, then waking the phone.
 - Hotspot off (deep): after you press **Turn it off**, does the phone end up with the hotspot off, location off, airplane mode on and the screen off

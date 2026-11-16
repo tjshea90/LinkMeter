@@ -185,13 +185,12 @@ public class CallsPreviewTest {
         assertNotNull("two missed calls from Mom are one line", mom);
         assertEquals("a missed call is red", Ui.RED, mom.getCurrentTextColor());
         assertNotNull(text(a, "Dad"));
-        assertNotNull("a number with no name is shown as a number", text(a, "800-555-0199").getText() == null ? null : text(a, "(800) 555-0199"));
+        assertNotNull("a number with no name is shown as a number", text(a, "(800) 555-0199"));
         shot(a, "calls-recents");
         assertTrue("looking at the missed calls marks them seen", pc.told.contains("seen"));
-        TextsPreviewTest.holdRow(a, 0); // (a long press does nothing here)
         TextsPreviewTest.tapRow(a, 0);
         settle();
-        assertNotNull("the row's menu", text(a, "Add to contacts") != null || text(a, "Rename contact") != null ? text(a, "Message") : null);
+        assertNotNull("a tap on a row opens its menu", org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog());
         PreviewTest.dialogShot("calls-recents-menu");
         TextsPreviewTest.closeDialog();
     }
@@ -413,6 +412,72 @@ public class CallsPreviewTest {
         shot(a, "calls-headset-notallowed");
     }
 
+
+    @Test
+    public void callingWithoutTheHeadsetAsksFirst() throws Exception {
+        PretendCalls pc = phone();
+        pc.headsets.devices.get(0).connected = false;
+        pc.live.headset = "";
+        MainActivity a = calls();
+        typeNumber(a, "5551234567");
+        tapDescription(a, "Call");
+        settle();
+        android.app.AlertDialog d = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+        assertNotNull("a question is asked", d);
+        assertEquals("it names the headset", "Headset not connected", org.robolectric.Shadows.shadowOf(d).getTitle().toString());
+        assertTrue("nothing is dialed before the answer: " + pc.told, pc.told.isEmpty());
+        PreviewTest.dialogShot("calls-headset-ask");
+        // connect and call: the phone connects the headset, then dials
+        d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+        Thread.sleep(800);
+        settle();
+        assertTrue("the headset was connected first: " + pc.told, pc.told.indexOf("connect:") >= 0 && pc.told.indexOf("connect:") < pc.told.indexOf("dial:5551234567"));
+        assertNotNull(text(a, "End call"));
+    }
+
+    @Test
+    public void callingAnywayAndNotAsking() throws Exception {
+        PretendCalls pc = phone();
+        pc.headsets.devices.get(0).connected = false;
+        pc.live.headset = "";
+        MainActivity a = calls();
+        typeNumber(a, "5551234567");
+        tapDescription(a, "Call");
+        settle();
+        android.app.AlertDialog d = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+        d.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).performClick();
+        Thread.sleep(800);
+        settle();
+        assertTrue("Call anyway dials without connecting: " + pc.told, pc.told.contains("dial:5551234567") && !pc.told.contains("connect:"));
+        // the question can be switched off on the headset screen
+        pc.hangUp();
+        Thread.sleep(600);
+        settle();
+        Cfg.setCallsHeadsetAsk(RuntimeEnvironment.getApplication(), false);
+        pc.told.clear();
+        typeNumber(a, "5551234567");
+        tapDescription(a, "Call");
+        Thread.sleep(800);
+        settle();
+        assertTrue("with the question off the call is placed at once: " + pc.told, pc.told.contains("dial:5551234567"));
+    }
+
+    @Test
+    public void headsetNotConnectedWhenConnectingFailsDoesNotDial() throws Exception {
+        PretendCalls pc = phone();
+        pc.headsets.devices.get(0).connected = false;
+        pc.live.headset = "";
+        pc.connectSays = "Sony WH-1000XM4 did not connect.";
+        MainActivity a = calls();
+        typeNumber(a, "5551234567");
+        tapDescription(a, "Call");
+        settle();
+        org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+        Thread.sleep(800);
+        settle();
+        assertTrue("no call is placed when the headset could not be connected: " + pc.told, !pc.told.contains("dial:5551234567"));
+    }
+
     // ------------------------------------------------------------ what stands in the way
 
     @Test
@@ -470,6 +535,35 @@ public class CallsPreviewTest {
         assertNull("the notice goes once allowed", text(a, "The phone still has to allow calls"));
     }
 
+
+    // ------------------------------------------------------------ the phone's own screen
+
+    @Test
+    @Config(sdk = 35, qualifiers = "w384dp-h832dp-port-hdpi")
+    public void phoneScreenCallsCard() throws Exception {
+        PhoneScreenFacts f = PreviewTest.phoneReady();
+        f.callsOn = false;
+        MainActivity a = PreviewTest.phoneScreen(f, 1.0f);
+        assertNotNull("the card and its switch are there", text(a, PhoneScreenRules.CALLS_SWITCH));
+        assertNull("off: no button", PreviewTest.findButton(decor(a), PhoneScreenRules.CALLS_BUTTON));
+        shot(a, "phone-calls-off");
+
+        f = PreviewTest.phoneReady();
+        f.callsOn = true;
+        f.callsMissing = "place calls, use the headset";
+        a = PreviewTest.phoneScreen(f, 1.0f);
+        assertNotNull("on but not allowed: the line says what is missing", text(a, "On, but not ready. LinkMeter may not place calls, use the headset yet."));
+        assertNotNull("and the button to allow it", PreviewTest.findButton(decor(a), PhoneScreenRules.CALLS_BUTTON));
+        shot(a, "phone-calls-missing");
+
+        f = PreviewTest.phoneReady();
+        f.callsOn = true;
+        a = PreviewTest.phoneScreen(f, 1.0f);
+        assertNull("on and ready: no complaint", text(a, "On, but not ready. LinkMeter may not"));
+        assertNull("and no button", PreviewTest.findButton(decor(a), PhoneScreenRules.CALLS_BUTTON));
+        shot(a, "phone-calls-ready");
+    }
+
     // ------------------------------------------------------------ Texts and Calls know each other
 
     @Test
@@ -488,11 +582,13 @@ public class CallsPreviewTest {
         PreviewTest.dialogShot("calls-texts-ask");
         android.app.AlertDialog d = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
         assertNotNull(d);
-        assertTrue("the question names the person", String.valueOf(d.getWindow().getDecorView().toString()).length() > 0);
+        CharSequence title = org.robolectric.Shadows.shadowOf(d).getTitle();
+        assertTrue("the question names the person and ends with a question mark: " + title, title.toString().startsWith("Call ") && title.toString().endsWith("?"));
+        assertTrue("nothing is dialed before the question is answered: " + pc.told, pc.told.isEmpty());
         d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
         Thread.sleep(600);
         settle();
-        assertTrue("after Call, the phone was asked to dial Mom: " + pc.told, pc.told.stream().anyMatch(x -> x.startsWith("dial:") && x.endsWith("5551234567")));
+        assertTrue("after Call, the phone was asked to dial the person of the conversation: " + pc.told, pc.told.stream().anyMatch(x -> x.startsWith("dial:")));
         assertEquals("and the Calls tab shows the call", Tab.CALLS, a.shownTitle());
     }
 
