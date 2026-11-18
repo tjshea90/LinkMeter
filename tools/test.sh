@@ -165,6 +165,9 @@ java -cp "$out" com.tj.linkmeter.FastCodecTest || fail=1
 echo "== Fast Wi-Fi card and checks (FastRules: never 'on' unless the VPN is up, the one thing to do first, nothing claimed about a phone that was not heard, what a check of the phone's relay means, the speed words; every combination)"
 javac -proc:none -encoding UTF-8 -d "$out" $FM/Ip4.java $FM/FastProto.java $FM/FastRules.java tools/test/FastRulesTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.FastRulesTest || fail=1
+echo "== Pocket return for the Launcher app (PocketRules: the phone's six steps in a fixed order, a phone that cannot be reached ends the run at once, one failing step never stops the next, the tablet's Wi-Fi is released only for an accepted sleep order and before any waiting, 'done' only when the status showed hotspot off + airplane on + screen off, the wait is bounded; LauncherIdentity: only com.tj.launcher with its pinned certificate may ask; every combination against simulated phones)"
+javac -proc:none -encoding UTF-8 -d "$out" $FM/PocketRules.java $FM/LauncherIdentity.java tools/test/PocketRulesTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.PocketRulesTest || fail=1
 echo "== SpsFix (the H.264 header fix, against real x264 streams and ffmpeg)"
 tools/test-spsfix.sh || fail=1
 echo "== AnnexBFramer (cuts the phone's H.264 stream into whole pictures, against real x264 streams and ffprobe)"

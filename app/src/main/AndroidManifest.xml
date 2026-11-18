@@ -109,6 +109,13 @@
             </intent-filter>
         </receiver>
 
+        <!-- Tablet: the door the Launcher app on the same tablet uses to ask for "pocket return" (docs/LAUNCHER_BRIDGE.md). Exported, but every call first
+             proves that the caller's uid owns com.tj.launcher AND that package carries the Launcher's pinned certificate (LauncherIdentity); only call() is served. -->
+        <provider
+            android:name=".LauncherBridge"
+            android:authorities="com.tj.linkmeter.launcher"
+            android:exported="true" />
+
         <!-- Hears how a text or picture message went (sent, failed, delivered). Not exported: only our own PendingIntents reach it. -->
         <receiver
             android:name=".SmsResultReceiver"

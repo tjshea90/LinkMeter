@@ -244,3 +244,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-16T02:32:31Z Calls: whole screen preview 241 tests 0 failed; mutation script for the Calls glue; test fixes
 - 2026-11-16T02:32:43Z Calls: dial, answer and end calls from the tablet, with a large keypad, recents, contacts shared with Texts and an easy headset connection (not run on a device yet)
 - 2026-11-18T19:34:41Z WORK IN PROGRESS (not finished, not built): wip: pocket return, LinkMeter half: PocketRules (pure), LauncherIdentity (pure, cert pin), PocketJob (glue) written; STILL TO WRITE: LauncherBridge provider + manifest entry, tools/test/PocketRulesTest.java + tools/test.sh lines, docs/LAUNCHER_BRIDGE.md, HANDOFF block
+- 2026-11-18T19:41:57Z pocket return, LinkMeter half: Launcher bridge (identity-checked provider), job and pure step rules; offline tests 35,580 checks, release build compiles; not run on a device
