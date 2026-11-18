@@ -243,3 +243,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-16T02:15:49Z Calls: the tablet's Calls tab (keypad, recents, contacts shared with Texts, call screen, headset screen), the phone side, the rewritten dial tripwire; tests and build pass, not run on a device
 - 2026-11-16T02:32:31Z Calls: whole screen preview 241 tests 0 failed; mutation script for the Calls glue; test fixes
 - 2026-11-16T02:32:43Z Calls: dial, answer and end calls from the tablet, with a large keypad, recents, contacts shared with Texts and an easy headset connection (not run on a device yet)
+- 2026-11-18T19:34:41Z WORK IN PROGRESS (not finished, not built): wip: pocket return, LinkMeter half: PocketRules (pure), LauncherIdentity (pure, cert pin), PocketJob (glue) written; STILL TO WRITE: LauncherBridge provider + manifest entry, tools/test/PocketRulesTest.java + tools/test.sh lines, docs/LAUNCHER_BRIDGE.md, HANDOFF block
