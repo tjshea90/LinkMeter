@@ -167,7 +167,13 @@ final class CallWatch {
     /** Somebody wants to hear (the app is in front, the floating phone is on): listen, when the user uses calls. Pair with {@link #stop}. */
     synchronized void start() {
         holds++;
-        if (running || !Cfg.callsWatch(act)) {
+        if (running) {
+            synchronized (lock) {
+                lock.notifyAll(); // somebody came back: a loop that rests between failed tries asks again now
+            }
+            return;
+        }
+        if (!Cfg.callsWatch(act)) {
             return;
         }
         running = true;
@@ -262,7 +268,10 @@ final class CallWatch {
                 String host = Net.peerHost(act);
                 tell(host.isEmpty() && testLink == null ? NO_PEER : UNREACHED, TextsTab.explain(e));
                 failures++;
-                long wait = Math.min(30_000L, 2000L << Math.min(failures, 4));
+                // a phone that cannot be reached for long (the hotspot is off, the tablet is on another network) is asked about rarely:
+                // two seconds, then four, eight, sixteen, thirty; after six failures in a row every two minutes. The Calls tab, the
+                // screen coming on and any button press ask at once ({@link #wake}).
+                long wait = failures > 6 ? 120_000L : Math.min(30_000L, 2000L << Math.min(failures, 4));
                 synchronized (lock) {
                     try {
                         lock.wait(wait);

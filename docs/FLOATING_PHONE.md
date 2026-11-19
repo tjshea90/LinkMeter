@@ -96,7 +96,13 @@ Android: `HeadsetLink` (phone: battery ways), `ShellMain` (`bt-battery`), `CallB
 `tabletHeadsetAddr`), manifest (`SYSTEM_ALERT_WINDOW`, the service).
 
 Pictures and behaviour against a pretend phone running the REAL phone-side code: `tools/preview.sh --tests "com.tj.linkmeter.FloatingPreviewTest"`
-(pictures `tools/uipreview/out/float-*.png`).
+(11 scenarios: pictures `tools/uipreview/out/float-*.png`; the service is run end to end: a ring pops the card up, Answer / End / Call / the
+two Bluetooth buttons reach the pretend phone, an emergency number is refused, the warning before a call without the headset, drag, snap and
+the remembered place, the card steps aside for LinkMeter, a phone that cannot be heard mid-call is not "call ended"). Deliberate breakages of
+the pure rules: `python3 tools/mutate_floating.py` (35, all caught; about two minutes). The tablet's pretend Bluetooth is
+`TabletHeadset.pretend` (tests only). TEST ISOLATION: the watch is ONE object in the process, so every screen test starts with
+`CallWatch.dropForTest()` (done by `PreviewTest.tablet()`); without it an earlier test's screens stay subscribed and ask the next test's pretend
+phone things (the Calls tests then fail at random).
 
 ## Not known until a device tries (say so to the user)
 
