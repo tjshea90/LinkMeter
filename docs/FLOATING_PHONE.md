@@ -50,7 +50,24 @@ the process (shared with the app's screens, counted: `start()`/`stop()`), which 
 only on news or after 20 s; a screen-on receiver asks the phone at once when the tablet wakes. A foreground-service notification (minimal
 importance) with "Show phone" and "Turn off" is what Android requires. After a restart the app's `BootReceiver` brings it back.
 
-### 2. The headset's battery in the app (tablet) and how the phone reads it
+#### Android 10 Go (the user's tablet): the Accessibility way
+
+The user's tablet is an Android 10 **Go** device. Android turns "Display over other apps" off there for every app: the screen the Allow button
+opens says "Feature not available: This feature has been turned off because it slows down your phone" (the user's screenshot, 2026-11-19), so
+the overlay permission can never be given and `FloatingPhoneService` can not draw anything. The same card is therefore also hosted by
+`FloatingPhoneAccess`, an ACCESSIBILITY service: an enabled accessibility service may add windows of type `TYPE_ACCESSIBILITY_OVERLAY` with no
+overlay permission. All the logic lives in `FloatingPhoneController` (window, drag, actions, hand-over, hiding); the two hosts only start it
+(`FloatingPhoneService` with a foreground notification and `TYPE_APPLICATION_OVERLAY`; `FloatingPhoneAccess` as the system keeps it, no
+notification). Only one runs: when the accessibility service is connected `FloatingPhone.wanted` is false and the foreground service is stopped.
+The user switches it on once: Settings > Floating phone > **Turn on with Accessibility** (opens Android's Accessibility settings) > "LinkMeter
+floating phone" > on. **It asks for nothing else:** `res/xml/floating_phone_access.xml` declares no window content (`canRetrieveWindowContent`
+false) and no event types, `onAccessibilityEvent` does nothing, and the Settings card and the service's own description say so. On a device
+that allows overlays the Allow button is shown instead (`FloatingPhone.overlayUnavailable` = `ActivityManager.isLowRamDevice()` decides which).
+NOT KNOWN until the tablet tries: whether Android 10 Go lets this service draw (expected: the restriction is on the overlay app-op, not on
+accessibility windows), whether it survives the tablet's memory pressure, and how the Accessibility switch's own warning reads.
+
+### 2. The headset's battery in the app
+ (tablet) and how the phone reads it
 
 - Calls tab: the battery icon beside the headset chip while the headset is connected to the phone; tap = the Headset screen.
 - Headset screen: a "Headset battery" card at the top (big icon, percent, words from `BatteryRules.words`).

@@ -125,7 +125,9 @@ always.
   open, because LinkMeter shows the call on its own; **Show the phone now** keeps it there). Drag the top strip to move it; it
   slides to the nearer side edge and remembers the place. After a call it stays six seconds ("Call ended · 3:12"). The cross closes it when no
   call is on. **Set up once:** Settings > **Floating phone** > **Allow display over other apps** (Android's own screen opens: switch it on for
-  LinkMeter and come back). **Show the phone now** (Settings, the small blue handset at the top of the Calls tab, or the notification's *Show
+  LinkMeter and come back). **On a Go tablet (Android says "Feature not available" there) use Settings > Floating phone > Turn on with
+  Accessibility** instead: open "LinkMeter floating phone" in Android's Accessibility settings and switch it on (it only draws the window;
+  it asks for no window content and receives no events). **Show the phone now** (Settings, the small blue handset at the top of the Calls tab, or the notification's *Show
   phone*) brings it up without a call, for dialing. It only controls the phone: the call and its sound stay on the phone and the headset, and
   emergency numbers and codes are refused here like everywhere. It keeps a small service running (one quiet question to the phone every
   20 seconds while the tablet is awake and calls work); the Settings switch **Pop up when the phone rings or a call is on**, or the

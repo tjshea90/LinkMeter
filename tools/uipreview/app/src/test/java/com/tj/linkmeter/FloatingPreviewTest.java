@@ -81,6 +81,7 @@ public class FloatingPreviewTest {
     public void tearDown() {
         CallWatch.testLink = null;
         FloatingPhone.canDrawForTest = null;
+        FloatingPhone.accessForTest = null;
         FloatingPhone.setAppInFront(false);
         TabletHeadset.pretend = null;
         TabletHeadset.refusedForTest = false;
@@ -224,15 +225,15 @@ public class FloatingPreviewTest {
         return f.get(o);
     }
 
-    private static MiniPhoneView viewOf(FloatingPhoneService s) throws Exception {
+    private static MiniPhoneView viewOf(FloatingPhoneController s) throws Exception {
         return (MiniPhoneView) field(s, "view");
     }
 
-    private static MiniPhoneView.Model modelOf(FloatingPhoneService s) throws Exception {
+    private static MiniPhoneView.Model modelOf(FloatingPhoneController s) throws Exception {
         return (MiniPhoneView.Model) field(s, "model");
     }
 
-    private static android.view.WindowManager.LayoutParams paramsOf(FloatingPhoneService s) throws Exception {
+    private static android.view.WindowManager.LayoutParams paramsOf(FloatingPhoneController s) throws Exception {
         return (android.view.WindowManager.LayoutParams) field(s, "lp");
     }
 
@@ -262,7 +263,7 @@ public class FloatingPreviewTest {
     public void popsUpOnARingAnswersAndHidesAfterTheCall() throws Exception {
         PretendCalls pc = CallsPreviewTest.phone();
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         assertNull("nothing shows while the phone is idle", viewOf(s));
 
         pc.ring("+15551234567", "Mom");
@@ -291,12 +292,12 @@ public class FloatingPreviewTest {
     public void doesNotPopUpWhenSwitchedOffOrWithoutAndroidsPermission() throws Exception {
         PretendCalls pc = CallsPreviewTest.phone();
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         Cfg.setFloatOn(ctx(), false);
         pc.ring("+15551234567", "Mom");
         settle();
         assertNull("the automatic pop-up is off: a ring does not show it", viewOf(s));
-        s.onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1);
+        s.command(FloatingPhoneController.ACTION_SHOW);
         settle();
         assertNotNull("but the user asked to see it", viewOf(s));
         s.closed();
@@ -322,8 +323,8 @@ public class FloatingPreviewTest {
     public void theDialPadCallsThroughThePhonesGuard() throws Exception {
         PretendCalls pc = CallsPreviewTest.phone();
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
-        s.onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1);
+        FloatingPhoneController s = FloatingPhoneController.active();
+        s.command(FloatingPhoneController.ACTION_SHOW);
         settle();
         MiniPhoneView v = viewOf(s);
         assertNotNull(v);
@@ -359,8 +360,8 @@ public class FloatingPreviewTest {
         pc.headsets.devices.get(0).connected = false;
         pc.live.headset = "";
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
-        s.onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1);
+        FloatingPhoneController s = FloatingPhoneController.active();
+        s.command(FloatingPhoneController.ACTION_SHOW);
         settle();
         MiniPhoneView v = viewOf(s);
         assertFalse("the battery is not shown without a headset", modelOf(s).batteryShown);
@@ -389,8 +390,8 @@ public class FloatingPreviewTest {
         return d;
     }
 
-    private MiniPhoneView shown(FloatingPhoneService s) throws Exception {
-        s.onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1);
+    private MiniPhoneView shown(FloatingPhoneController s) throws Exception {
+        s.command(FloatingPhoneController.ACTION_SHOW);
         settle();
         MiniPhoneView v = viewOf(s);
         assertNotNull(v);
@@ -402,7 +403,7 @@ public class FloatingPreviewTest {
         PretendCalls pc = CallsPreviewTest.phone();
         TabletHeadsetRules.Dev d = pretendTablet(false);
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         shown(s);
         assertTrue("the headset is on the phone", modelOf(s).headsetOnPhone);
         assertFalse(modelOf(s).tabletOn);
@@ -434,7 +435,7 @@ public class FloatingPreviewTest {
         TabletHeadsetRules.Dev d = pretendTablet(false);
         Cfg.setHeadsetBoth(ctx(), true);
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         shown(s);
         press(viewOf(s), "Headset Bluetooth link to this tablet");
         PreviewTest.later(2000);
@@ -451,7 +452,7 @@ public class FloatingPreviewTest {
         PretendCalls pc = CallsPreviewTest.phone();
         TabletHeadsetRules.Dev d = pretendTablet(false);
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         pc.onCall("+15551234567", "Mom", true, 5000);
         settle();
         press(viewOf(s), "Headset Bluetooth link to this tablet");
@@ -471,7 +472,7 @@ public class FloatingPreviewTest {
         TabletHeadsetRules.Dev d = pretendTablet(true);
         TabletHeadset.refusedForTest = true; // Android only opens its list for a tap
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         shown(s);
         assertTrue(modelOf(s).tabletOn);
         press(viewOf(s), "Headset Bluetooth link to the phone");
@@ -488,7 +489,7 @@ public class FloatingPreviewTest {
         PretendCalls pc = CallsPreviewTest.phone();
         pretendTablet(false);
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         shown(s);
         press(viewOf(s), "Headset Bluetooth link to the phone");
         PreviewTest.later(2000);
@@ -508,10 +509,60 @@ public class FloatingPreviewTest {
     }
 
     @Test
+    public void theSameCardIsDrawnByTheAccessibilityServiceWhereAndroidTurnsOverlaysOff() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        FloatingPhone.canDrawForTest = false; // Android 10 Go: "Feature not available"
+        Cfg.setMode(ctx(), Cfg.TABLET);
+        Cfg.setCallsWatch(ctx(), true);
+        Cfg.setFloatOn(ctx(), true);
+        Cfg.clearFloatPos(ctx());
+        assertFalse("without the service nothing can be shown", FloatingPhone.canShow(ctx()));
+        assertFalse(FloatingPhone.wanted(ctx()));
+        ServiceController<FloatingPhoneAccess> sc = Robolectric.buildService(FloatingPhoneAccess.class).create();
+        FloatingPhoneAccess a = sc.get();
+        a.onServiceConnected(); // Android connects an accessibility service the user switched on
+        settle();
+        assertTrue("the accessibility service is on", FloatingPhone.accessOn());
+        assertTrue("so the card can be shown without Android's overlay permission", FloatingPhone.canShow(ctx()));
+        assertFalse("and no foreground service is wanted", FloatingPhone.wanted(ctx()));
+        assertTrue(FloatingPhone.stateLine(ctx()).startsWith("On, through Accessibility"));
+        FloatingPhoneController s = FloatingPhoneController.active();
+        assertNotNull(s);
+        assertNull("idle: nothing shows", viewOf(s));
+
+        pc.ring("+15551234567", "Mom");
+        settle();
+        assertNotNull("a ring pops the card up", viewOf(s));
+        assertEquals("it is an accessibility overlay window", android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, paramsOf(s).type);
+        press(viewOf(s), "Answer");
+        assertTrue("Answer reached the phone: " + pc.told, pc.told.contains("answer"));
+        draw(viewOf(s), "access-active");
+        press(viewOf(s), "End call");
+        assertTrue(pc.told.contains("hangup"));
+        PreviewTest.later(FloatRules.LINGER_MS + 1000);
+        assertNull(viewOf(s));
+        sc.destroy();
+        assertFalse("switched off in Accessibility: it is gone", FloatingPhone.accessOn());
+        assertNull(FloatingPhoneController.active());
+    }
+
+    @Test
+    public void theAccessibilityServiceReplacesTheForegroundService() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        Cfg.setMode(ctx(), Cfg.TABLET);
+        Cfg.setCallsWatch(ctx(), true);
+        Cfg.setFloatOn(ctx(), true);
+        FloatingPhone.canDrawForTest = true; // Android allows overlays here too
+        assertTrue(FloatingPhone.wanted(ctx()));
+        FloatingPhone.accessForTest = true; // and the accessibility service is also on
+        assertFalse("then only one of the two runs: the foreground service is not wanted", FloatingPhone.wanted(ctx()));
+    }
+
+    @Test
     public void aPhoneThatCannotBeHeardMidCallIsNotACallThatEnded() throws Exception {
         PretendCalls pc = CallsPreviewTest.phone();
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         pc.onCall("+15551234567", "Mom", true, 5000);
         settle();
         assertEquals(Calls.ACTIVE, modelOf(s).call);
@@ -533,7 +584,7 @@ public class FloatingPreviewTest {
     public void staysOutOfTheWayOfLinkMeterItselfUnlessAsked() throws Exception {
         PretendCalls pc = CallsPreviewTest.phone();
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        FloatingPhoneController s = FloatingPhoneController.active();
         pc.onCall("+15551234567", "Mom", true, 5000);
         settle();
         assertNotNull("a call over another app shows the card", viewOf(s));
@@ -543,7 +594,7 @@ public class FloatingPreviewTest {
         FloatingPhone.setAppInFront(false);
         settle();
         assertNotNull("and is back when LinkMeter goes away", viewOf(s));
-        s.onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1); // "Show the phone now"
+        s.command(FloatingPhoneController.ACTION_SHOW); // "Show the phone now"
         FloatingPhone.setAppInFront(true);
         settle();
         assertNotNull("unless the user asked to see it", viewOf(s));
@@ -554,8 +605,8 @@ public class FloatingPreviewTest {
     public void dragSnapAndRememberThePlace() throws Exception {
         PretendCalls pc = CallsPreviewTest.phone();
         ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
-        s.onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1);
+        FloatingPhoneController s = FloatingPhoneController.active();
+        s.command(FloatingPhoneController.ACTION_SHOW);
         settle();
         android.view.WindowManager.LayoutParams lp = paramsOf(s);
         int sw = ctx().getResources().getDisplayMetrics().widthPixels;
@@ -573,9 +624,9 @@ public class FloatingPreviewTest {
         // the next start puts it back where it was left
         ServiceController<FloatingPhoneService> sc2 = service(pc);
         Cfg.setFloatPos(ctx(), Ui.dp(ctx(), 6), 300);
-        sc2.get().onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1);
+        FloatingPhoneController.active().command(FloatingPhoneController.ACTION_SHOW);
         settle();
-        assertEquals(300, paramsOf(sc2.get()).y);
+        assertEquals(300, paramsOf(FloatingPhoneController.active()).y);
         stop(sc2);
     }
 
