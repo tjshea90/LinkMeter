@@ -132,4 +132,4 @@ phone things (the Calls tests then fail at random).
 - [x] Pure rules and tests (`FloatingLogicTest`)
 - [x] Tablet: Headset screen cards, battery by the chip, Home line, tablet headset ladder
 - [x] The floating phone (service, view, settings, permission, boot) — compiles; pictures: see the preview run
-- [ ] Release: this session's branch is `claude/*`: a push starts no GitHub run (see HANDOFF)
+- [x] Release: v0.2.194 (https://github.com/tjshea90/LinkMeter/releases/tag/v0.2.194), published by the pipeline after a push to `ccr-floating-phone`
