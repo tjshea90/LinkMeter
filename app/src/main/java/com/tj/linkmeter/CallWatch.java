@@ -1,5 +1,6 @@
 package com.tj.linkmeter;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -10,10 +11,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Tablet only: while the app is in front and the user has used calls, hears from the phone when it rings and while a call is on
- * (docs/PHONE_CALLS.md). It holds ONE long request open at the phone (/call/now waits for news), so a ring shows within a second and
- * the tablet and the phone are quiet in between. Nothing is asked in the background, when calls are switched off on the phone, or
- * for a tablet that never used calls. The Calls tab, the strip at the top of every tab and the number on the Calls button listen here.
+ * Tablet only: while the app is in front (or the floating phone is on) and the user has used calls, hears from the phone when it
+ * rings and while a call is on (docs/PHONE_CALLS.md, docs/FLOATING_PHONE.md). It holds ONE long request open at the phone (/call/now
+ * waits for news), so a ring shows within a second and the tablet and the phone are quiet in between. Nothing is asked when nobody
+ * wants to hear (the app is away and the floating phone is off), when calls are switched off on the phone, or for a tablet that never
+ * used calls. There is ONE of these in the process ({@link #shared}), kept by the number of those who want to hear ({@link #start},
+ * {@link #stop}): the app's screens (the Calls tab, the strip at the top of every tab, the number on the Calls button) and the floating
+ * phone listen to the same picture.
  */
 final class CallWatch {
     static final int IDLE = Calls.WATCH_IDLE;
@@ -35,7 +39,18 @@ final class CallWatch {
         void done(Calls.Result result, IOException problem);
     }
 
-    private final MainActivity act;
+    private static CallWatch shared;
+
+    /** The one watch of this process. */
+    static synchronized CallWatch shared(Context c) {
+        if (shared == null) {
+            shared = new CallWatch(c.getApplicationContext());
+        }
+        return shared;
+    }
+
+    private final Context act;
+    private int holds;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private final ExecutorService net = Executors.newFixedThreadPool(2, r -> {
@@ -53,8 +68,27 @@ final class CallWatch {
     private volatile int gen;
     private volatile String stamp = "";
 
-    CallWatch(MainActivity a) {
+    private CallWatch(Context a) {
         act = a;
+    }
+
+    /**
+     * Back to the state of a watch nobody has used (what the app's screens expect at a new start): stops listening, forgets the picture and
+     * the problem, and holds nobody. The listeners stay: each owner takes its own away.
+     */
+    synchronized void reset() {
+        holds = 0;
+        running = false;
+        parked = false;
+        gen++;
+        stamp = "";
+        now = new Calls.Now();
+        receivedAt = 0;
+        status = IDLE;
+        problem = "";
+        synchronized (lock) {
+            lock.notifyAll();
+        }
     }
 
     void addListener(Listener l) {
@@ -103,8 +137,9 @@ final class CallWatch {
         return new RemoteCalls(new PeerLink(host, Net.peerToken(act), 8000));
     }
 
-    /** The app is in front: listen (when the user uses calls). */
-    void start() {
+    /** Somebody wants to hear (the app is in front, the floating phone is on): listen, when the user uses calls. Pair with {@link #stop}. */
+    synchronized void start() {
+        holds++;
         if (running || !Cfg.callsWatch(act)) {
             return;
         }
@@ -115,8 +150,14 @@ final class CallWatch {
         t.start();
     }
 
-    /** The app went to the background: stop listening (the request that is held ends by itself within half a minute). */
-    void stop() {
+    /** One of those who wanted to hear has gone; the last one stops the listening (the request that is held ends by itself within half a minute). */
+    synchronized void stop() {
+        if (holds > 0) {
+            holds--;
+        }
+        if (holds > 0) {
+            return;
+        }
         running = false;
         gen++;
         synchronized (lock) {
@@ -125,7 +166,7 @@ final class CallWatch {
     }
 
     /** Ask now, whatever the last answer was (the Calls tab was opened, the user pressed Check again). Starts listening if it is not. */
-    void wake() {
+    synchronized void wake() {
         parked = false;
         if (!running) {
             running = true;
@@ -250,5 +291,15 @@ final class CallWatch {
 
     void dial(final String number, Done d) {
         run(rc -> rc.dial(number), d);
+    }
+
+    /** Connects the headset the user chose to the PHONE (the phone looks for up to 25 seconds). */
+    void headsetConnect(Done d) {
+        run(rc -> rc.headsetConnect(""), d);
+    }
+
+    /** Disconnects the headset from the phone. */
+    void headsetDisconnect(Done d) {
+        run(RemoteCalls::headsetDisconnect, d);
     }
 }

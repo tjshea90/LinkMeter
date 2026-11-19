@@ -61,6 +61,10 @@
         android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
 
+    <!-- Tablet: the floating phone (docs/FLOATING_PHONE.md) is drawn over other apps. The user gives this once in Android's own
+         "Display over other apps" screen; nothing is drawn without it. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
@@ -133,6 +137,17 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Carries the user's own tablet's internet traffic over Wi-Fi to the user's own phone, which relays it" />
+        </service>
+
+        <!-- Tablet: the floating phone (docs/FLOATING_PHONE.md), a small window over other apps that shows a ringing or current call with
+             Answer, End, a dial pad and the headset's Bluetooth buttons. It runs only while the user has it on and Android allows it. -->
+        <service
+            android:name=".FloatingPhoneService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Shows the user's own phone call controls in a small window over other apps on the user's own tablet" />
         </service>
 
         <!-- Tablet: the quick settings tile that switches Fast Wi-Fi on and off. Only the system may bind it. -->

@@ -54,6 +54,8 @@ public class MainActivity extends Activity {
     /** Tablet only: the listener for the phone's calls and the strip at the top that shows a ringing or current call (docs/PHONE_CALLS.md). */
     private CallWatch callWatch;
     private CallBanner callBanner;
+    private CallWatch.Listener watchListener;
+    private boolean watchHeld;
     private Tab cur;
     private int index;
     private View tabBar;
@@ -97,18 +99,15 @@ public class MainActivity extends Activity {
         resumed = true;
         afterShow();
         updateWatches();
-        if (callWatch != null) {
-            callWatch.start(); // hears the phone ring while the app is in front (only for a tablet that uses calls)
-        }
+        holdWatch(); // hears the phone ring while the app is in front (only for a tablet that uses calls)
+        FloatingPhone.sync(this); // the floating phone follows its setting and Android's permission (tablet only)
         FastVpn.resumeIfWanted(this); // Fast Wi-Fi was on, and nothing runs (the app was stopped): it comes back (tablet only)
     }
 
     @Override
     protected void onPause() {
         resumed = false;
-        if (callWatch != null) {
-            callWatch.stop();
-        }
+        releaseWatch();
         if (cur != null) {
             cur.onHide();
         }
@@ -229,6 +228,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         holdLock(false);
+        releaseWatch();
+        dropWatchListener(); // the watch lives on in the process (the floating phone uses it): it must not keep this screen
         super.onDestroy();
     }
 
@@ -265,6 +266,28 @@ public class MainActivity extends Activity {
         for (Tab t : tabs) {
             t.watchWhileHidden(resumed && t != cur);
         }
+    }
+
+    /** This screen wants to hear the phone's calls (it is in front). Once per resume. */
+    private void holdWatch() {
+        if (callWatch != null && !watchHeld) {
+            watchHeld = true;
+            callWatch.start();
+        }
+    }
+
+    private void releaseWatch() {
+        if (callWatch != null && watchHeld) {
+            watchHeld = false;
+            callWatch.stop();
+        }
+    }
+
+    private void dropWatchListener() {
+        if (callWatch != null && watchListener != null) {
+            callWatch.removeListener(watchListener);
+        }
+        watchListener = null;
     }
 
     /** The listener for the phone's calls (tablet only; null on the phone). */
@@ -323,16 +346,16 @@ public class MainActivity extends Activity {
         tabs = null;
         bar = null;
         content = null;
-        if (callWatch != null) {
-            callWatch.stop();
-        }
+        releaseWatch();
+        dropWatchListener();
         callWatch = null;
         callBanner = null;
 
         String mode = Cfg.mode(this);
         View root;
         if (Cfg.TABLET.equals(mode)) {
-            callWatch = new CallWatch(this);
+            callWatch = CallWatch.shared(this); // one watch in the process: the floating phone listens to the same picture
+            callWatch.reset();
             root = buildTabs(new Tab[] {new HomeTab(this), new SpeedTab(this), new SignalTab(this),
                     new ControlTab(this), new ScreenTab(this), new FilesTab(this), new CallsTab(this), new TextsTab(this),
                     new SettingsTab(this)});
@@ -348,6 +371,8 @@ public class MainActivity extends Activity {
         }
         if (resumed) {
             applyKeepOn();
+            holdWatch(); // a screen drawn again while the app is in front goes on listening to the phone
+            FloatingPhone.sync(this);
         }
     }
 
@@ -427,12 +452,13 @@ public class MainActivity extends Activity {
         if (callWatch != null) { // the strip for a ringing or current call, above everything, and the number of missed calls on the button
             callBanner = new CallBanner(this, callWatch);
             root.addView(callBanner, 0, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            callWatch.addListener(w -> {
+            watchListener = w -> {
                 setBadge(Tab.CALLS, w.status() == CallWatch.OK ? CallRules.badge(w.latest()) : 0);
                 if (callBanner != null) {
                     callBanner.refresh();
                 }
-            });
+            };
+            callWatch.addListener(watchListener);
         }
 
         if (index >= tabs.length) {

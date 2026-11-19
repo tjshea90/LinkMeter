@@ -154,6 +154,17 @@ final class CallsTab extends Tab {
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(Ui.dp(act, 16), Ui.dp(act, 12), Ui.dp(act, 12), Ui.dp(act, 4));
         head.addView(Ui.title(act, "Calls"), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        IconButton floating = new IconButton(act, Icons.Kind.HANDSET, Ui.ACCENT, 0, "Show the floating phone", v -> {
+            if (!FloatingPhone.showNow(act)) {
+                Toast.makeText(act, "The floating phone needs Android's \"Display over other apps\". Settings > Floating phone has the button.",
+                        Toast.LENGTH_LONG).show();
+                act.openTab(Tab.SETTINGS);
+            }
+        });
+        floating.setScale(0.5f);
+        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(Ui.dp(act, 34), Ui.dp(act, 34));
+        fp.rightMargin = Ui.dp(act, 6);
+        head.addView(floating, fp);
         battery = new BatteryIconView(act, 1f); // the headset's battery, while it is connected to the phone
         battery.setVisibility(View.GONE);
         battery.setClickable(true);
@@ -301,6 +312,7 @@ final class CallsTab extends Tab {
                     if (!Cfg.callsWatch(act)) {
                         Cfg.setCallsWatch(act, true);
                     }
+                    FloatingPhone.sync(act); // calls work: the floating phone may start now (if it is on and Android allows it)
                     act.callWatch().wake();
                 }
                 paintNotice();
@@ -520,6 +532,7 @@ final class CallsTab extends Tab {
                 paintTyped();
                 if (!Cfg.callsWatch(act)) {
                     Cfg.setCallsWatch(act, true);
+                    FloatingPhone.sync(act);
                 }
             } else {
                 String say = e != null ? TextsTab.explain(e) : r.why;

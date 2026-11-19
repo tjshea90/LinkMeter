@@ -59,7 +59,7 @@ final class FileBrowser {
         return path.equals("/") && isFolderView();
     }
 
-    static String noPeer(MainActivity act) {
+    static String noPeer(android.content.Context act) {
         return Cfg.PHONE.equals(Cfg.mode(act))
                 ? "The phone hasn't seen the tablet yet. Open LinkMeter on the tablet and turn on \"Let the phone browse this "
                         + "tablet's files\" in its Settings."

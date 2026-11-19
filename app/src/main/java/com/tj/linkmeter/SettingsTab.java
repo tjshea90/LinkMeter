@@ -54,6 +54,7 @@ final class SettingsTab extends Tab {
         buildLink(col);
         buildConnection(col);
         buildTablet(col);
+        buildFloating(col);
         buildFast(col);
         buildPairing(col);
         return Ui.scroll(act, col);
@@ -62,6 +63,7 @@ final class SettingsTab extends Tab {
     @Override
     void onShow() {
         paintLink();
+        paintFloating(); // Android's permission may have been given on its own screen since this card was drawn
     }
 
     // ------------------------------------------------------------------------------------------------ Bluetooth link
@@ -360,6 +362,76 @@ final class SettingsTab extends Tab {
                 });
         card.addView(share.view, Ui.lp(act, 6));
         col.addView(card, Ui.lp(act, 12));
+    }
+
+    // ------------------------------------------------------------------------------------------------ floating phone
+
+    private TextView floatState;
+    private Button floatAllow;
+
+    /** The floating phone's switch, Android's permission and a way to see it now (docs/FLOATING_PHONE.md). */
+    private void buildFloating(LinearLayout col) {
+        LinearLayout card = Ui.card(act, "Floating phone", "A small phone that floats over every app on this tablet when the phone rings "
+                + "or a call is on: who and how long, Answer and End, a dial pad you can open, the headset's battery and its Bluetooth "
+                + "buttons. Drag it anywhere. It only controls the phone: the call and its sound stay on the phone and the headset.");
+        Ui.Toggle on = new Ui.Toggle(act, "Pop up when the phone rings or a call is on",
+                "Keeps a small service running on this tablet (it asks the phone once in a while, only while calls work). Switch it off "
+                + "and the floating phone only shows when you press \"Show the phone now\".",
+                Cfg.floatOn(act), (b, want) -> {
+                    Cfg.setFloatOn(act, want);
+                    FloatingPhone.sync(act);
+                    paintFloating();
+                });
+        card.addView(on.view, Ui.lp(act, 6));
+        floatState = Ui.hint(act, "");
+        card.addView(floatState, Ui.lp(act, 4));
+        floatAllow = Ui.primary(act, "Allow display over other apps", v -> allowOverlay());
+        card.addView(floatAllow, Ui.lp(act, 8));
+        card.addView(Ui.button(act, "Show the phone now", v -> {
+            if (!FloatingPhone.showNow(act)) {
+                allowOverlay();
+            }
+        }), Ui.lp(act, 8));
+        card.addView(Ui.quiet(act, "Put it back at the right edge", v -> {
+            Cfg.clearFloatPos(act);
+            Toast.makeText(act, "It starts at the right edge the next time it shows.", Toast.LENGTH_SHORT).show();
+        }), Ui.lp(act, 4));
+        col.addView(card, Ui.lp(act, 12));
+        paintFloating();
+    }
+
+    private void paintFloating() {
+        if (floatState == null) {
+            return;
+        }
+        floatState.setText(FloatingPhone.stateLine(act));
+        floatAllow.setVisibility(FloatingPhone.canDraw(act) ? View.GONE : View.VISIBLE);
+    }
+
+    /** Asks Android for "Display over other apps": through Shizuku when this tablet has it, else on Android's own screen (read back either way). */
+    private void allowOverlay() {
+        new Thread(() -> {
+            try {
+                if (Priv.ready()) {
+                    Priv.run("appops set " + act.getPackageName() + " SYSTEM_ALERT_WINDOW allow", 15);
+                }
+            } catch (java.io.IOException | RuntimeException ignored) {
+                // the screen below is the way then
+            }
+            act.ui.post(() -> {
+                if (FloatingPhone.canDraw(act)) {
+                    FloatingPhone.sync(act);
+                    paintFloating();
+                    return;
+                }
+                try {
+                    act.startActivity(FloatingPhone.permissionIntent(act));
+                    Toast.makeText(act, "Switch on \"Allow display over other apps\" for LinkMeter, then come back.", Toast.LENGTH_LONG).show();
+                } catch (RuntimeException e) {
+                    Toast.makeText(act, "Open Settings > Apps > LinkMeter > Display over other apps.", Toast.LENGTH_LONG).show();
+                }
+            });
+        }, "linkmeter-overlay-permission").start();
     }
 
     // ------------------------------------------------------------------------------------------------ Fast Wi-Fi

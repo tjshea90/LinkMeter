@@ -34,6 +34,7 @@ final class BatteryIconView extends View {
     private final RectF r = new RectF();
     private final RectF clip = new RectF();
     private int level = Calls.BATTERY_UNKNOWN;
+    private boolean init;
     private float shown;
     private float pulse = 1f;
     private boolean showText = true;
@@ -85,6 +86,10 @@ final class BatteryIconView extends View {
 
     /** Shows this level (0 to 100, or {@link Calls#BATTERY_UNKNOWN}); {@code animate} makes the fill glide to it. */
     void setLevel(int newLevel, boolean animate) {
+        if (init && newLevel == level) {
+            return; // nothing moved: no new animation, no new layout (the floating phone asks once a second)
+        }
+        init = true;
         boolean sameBand = BatteryRules.band(newLevel) == BatteryRules.band(level);
         level = newLevel;
         setContentDescription(BatteryRules.words(newLevel, ""));

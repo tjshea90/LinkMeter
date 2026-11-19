@@ -1,6 +1,5 @@
 package com.tj.linkmeter;
 
-import android.app.Activity;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
@@ -288,6 +287,12 @@ final class TabletHeadset {
      * Everything the card needs. {@code phone} is what the phone said about its headset (may be null: nothing asked yet). Never blocks.
      */
     TabletHeadsetRules.Facts facts(Calls.Headsets phone) {
+        Calls.Device cur = phone == null ? null : phone.current();
+        return facts(cur == null ? "" : cur.addr, cur == null ? "" : cur.name, cur != null && cur.connected);
+    }
+
+    /** The same from what is known of the phone's headset: its address and name ("" = not known) and whether it is connected to the phone. */
+    TabletHeadsetRules.Facts facts(String phoneAddr, String phoneName, boolean phoneConnected) {
         if (pretend != null) {
             return pretend;
         }
@@ -296,14 +301,9 @@ final class TabletHeadset {
         f.bluetoothOn = bluetoothOn();
         f.userAddr = Cfg.tabletHeadsetAddr(app);
         f.canSwitch = Priv.ready();
-        if (phone != null) {
-            Calls.Device cur = phone.current();
-            if (cur != null) {
-                f.phoneAddr = cur.addr;
-                f.phoneName = cur.name;
-                f.phoneConnected = cur.connected;
-            }
-        }
+        f.phoneAddr = phoneAddr == null ? "" : phoneAddr;
+        f.phoneName = phoneName == null ? "" : phoneName;
+        f.phoneConnected = phoneConnected;
         if (!f.bluetoothOn) {
             return f;
         }
@@ -368,7 +368,7 @@ final class TabletHeadset {
     }
 
     /** Switches Bluetooth on (a button press may; a status look never does). Reads back; false when it did not come on. */
-    void switchOn(final Activity act, final BooleanSupplier mayAsk, final Done done) {
+    void switchOn(final Context act, final BooleanSupplier mayAsk, final Done done) {
         new Thread(() -> {
             boolean ok = bluetoothOn();
             if (!ok && !refusedForTest) {
@@ -424,7 +424,7 @@ final class TabletHeadset {
     }
 
     /** Connects the headset to this tablet (or disconnects it): every way in order, each read back. Done is called on the UI thread. */
-    void set(final Activity act, final String addr, final boolean connect, final BooleanSupplier mayAsk, final Done done) {
+    void set(final Context act, final String addr, final boolean connect, final BooleanSupplier mayAsk, final Done done) {
         new Thread(() -> {
             boolean did = false;
             if (pretend != null) {
@@ -446,11 +446,11 @@ final class TabletHeadset {
         }, "linkmeter-tablet-bt").start();
     }
 
-    void connect(Activity act, String addr, BooleanSupplier mayAsk, Done done) {
+    void connect(Context act, String addr, BooleanSupplier mayAsk, Done done) {
         set(act, addr, true, mayAsk, done);
     }
 
-    void disconnect(Activity act, String addr, BooleanSupplier mayAsk, Done done) {
+    void disconnect(Context act, String addr, BooleanSupplier mayAsk, Done done) {
         set(act, addr, false, mayAsk, done);
     }
 
@@ -491,10 +491,13 @@ final class TabletHeadset {
         return tried && waitUntil(connect, addr, LOOKS * LOOK_MS);
     }
 
-    /** Android's own Bluetooth list (to tap the headset, or to pair it). Only from the UI thread and only while the app is in front. */
-    static boolean openList(Activity act) {
+    /**
+     * Android's own Bluetooth list (to tap the headset, or to pair it). Only from the UI thread, and while the app is in front or the floating
+     * phone is up (Android 10 lets an app that may draw over other apps open a screen from the background).
+     */
+    static boolean openList(Context act) {
         try {
-            act.startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+            act.startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return true;
         } catch (RuntimeException e) {
             return false;
