@@ -119,6 +119,24 @@ always.
   it (most headsets also connect by themselves when you switch them on). If the headset drops, the screen counts the drops: move the phone closer.
   Calls need the hotspot link (Wi-Fi), like Texts; they do not work over the Bluetooth-only link. Read `docs/PHONE_CALLS.md` for how it works and
   what is not known until a phone tries it.
+- **The floating phone, the headset's battery and the headset on the tablet (2026-11-19).** *Floating phone:* when the phone rings or a call is
+  on, a small dark card floats over whatever app you are in: who and how long, a green button (Answer, or Call when you typed a number) and a red
+  one (Decline, End), the headset's battery, two Bluetooth buttons and an arrow that opens a **dial pad**. Drag the top strip to move it; it
+  slides to the nearer side edge and remembers the place. After a call it stays six seconds ("Call ended · 3:12"). The cross closes it when no
+  call is on. **Set up once:** Settings > **Floating phone** > **Allow display over other apps** (Android's own screen opens: switch it on for
+  LinkMeter and come back). **Show the phone now** (Settings, the small blue handset at the top of the Calls tab, or the notification's *Show
+  phone*) brings it up without a call, for dialing. It only controls the phone: the call and its sound stay on the phone and the headset, and
+  emergency numbers and codes are refused here like everywhere. It keeps a small service running (one quiet question to the phone every
+  20 seconds while the tablet is awake and calls work); the Settings switch **Pop up when the phone rings or a call is on**, or the
+  notification's *Turn off*, stops it. *Battery:* while the headset is connected to the phone, its battery shows beside the chip at the top of
+  the Calls tab, on the Headset screen (big icon) and on Home ("Headset"). A dash means the headset does not tell the phone its level
+  (some only do while a call or music plays): nothing is invented. *The headset on the tablet too:* the Headset screen has a card **This
+  tablet** and the floating phone has a second Bluetooth button (Phone / Tablet). The headset must already be paired with the tablet (the card
+  has **Pair with this tablet**); a headset that can keep two connections ("multipoint") then stays on both. A headset that keeps only one
+  leaves the phone when it joins the tablet: press the Phone button to take it back. **Android 10 does not let an app connect a headset by
+  itself**: unless Shizuku runs on the tablet, **Connect to tablet** opens Android's Bluetooth list and you tap the headset once (the app says
+  so; it never claims it connected before the tablet's own list shows it). Read `docs/FLOATING_PHONE.md` for how it works and what is not
+  known until a device tries it.
 - **Speed, Screen, Files:** as before.
 - **Fast Wi-Fi (2026-11-12): the tablet's internet without the hotspot's speed limit.** Home > "Internet for this tablet" has two
   choices: **Hotspot** (as always: the carrier limits hotspot traffic to 5 Mbit/s) and **Fast Wi-Fi**. With Fast Wi-Fi the tablet stays
@@ -155,6 +173,12 @@ phone's screen). Until Shizuku runs, the tablet can read the status but cannot s
 Tell me what happened, in your own words, for any of these:
 - Calls: after switching **Let the tablet make and answer calls** on, does the Calls tab say it is ready? Does a call placed from the Keypad ring the other phone and
   play on your headset? Does a ringing call show on the tablet, and do Answer, End, Mute and the audio button work? Does **Connect headset** connect it (or what does it say)?
+- The floating phone: after **Allow display over other apps**, does the card pop up over another app when the phone rings, do **Answer**, **End**
+  and the pad's **Call** work, does the timer count, can you drag it and does it keep its place, and does it go away six seconds after the call?
+  Does it feel slow on this tablet, and does it still pop up after the tablet slept for a while (if not, how long was it asleep)?
+- The headset's battery: does the Calls tab / Headset screen / Home show a percentage for your headset, or a dash (then: which headset)? Does it
+  move when you use the headset? The two Bluetooth buttons: does **Phone** disconnect and connect the headset, and does **Tablet** connect it to
+  the tablet (or open Android's list, and then one tap does it)? Does your headset stay on the phone while it plays on the tablet?
 - Settings > Bluetooth link > Set up, then Test: did it say Ready?
 - Hotspot off, then Hotspot on from the tablet; Standby, then waking the phone.
 - Hotspot off (deep): after you press **Turn it off**, does the phone end up with the hotspot off, location off, airplane mode on and the screen off

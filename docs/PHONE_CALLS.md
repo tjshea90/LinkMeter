@@ -62,7 +62,7 @@ DOES NOT (said on the screens too, never faked):
 - **Tones during a call** (pressing 1 for the menu of a company): Android gives a call's tones only to the app that IS the phone app.
   The in-call screen has "Phone screen", which opens the Screen tab so the phone's own in-call keypad can be used.
 - Hold, merge, add a call, conference, video, call recording, voicemail list, spam filter: the phone's own app does those.
-- Notify the tablet of a call when LinkMeter is not in front (a tablet service for that costs battery; same decision as for texts).
+- Notify the tablet of a call when LinkMeter is not in front: NOT by default (a tablet service costs battery; same decision as for texts). Since 2026-11-19 the FLOATING PHONE (`docs/FLOATING_PHONE.md`) is exactly that service, on by default but only once calls work and Android's "Display over other apps" is given, and off with one switch (Settings > Floating phone).
 
 ## Design
 
@@ -89,7 +89,7 @@ request" (the tablet then says to update the phone). `VERSION = 1`.
 | `POST /call/headset/settings` | opens the phone's Bluetooth settings screen (the always-works fallback; then use the Screen tab) |
 
 The tablet reaches these over the hotspot or the Bluetooth link exactly like `/sms/*` (`Reach`); `/call/now` is a long poll like
-`/sms/stamp`, so a ring shows on the tablet within about a second and nothing polls while the app is in the background.
+`/sms/stamp`, so a ring shows on the tablet within about a second and nothing polls while the app is in the background (unless the floating phone, `docs/FLOATING_PHONE.md`, is on: it holds the same watch while its service runs).
 
 ### Files
 
@@ -126,7 +126,7 @@ must be on.
 - [x] Screen pictures looked at (`tools/preview.sh --tests "com.tj.linkmeter.CallsPreviewTest"`, 21 scenarios; the pictures are `tools/uipreview/out/calls-*.png`)
 - [ ] Deliberate breakages of the screens' glue (`tools/mutate_calls_glue.py`, run it from a git worktree): see HANDOFF for the result
 - [ ] Release: see HANDOFF ("RELEASED AS")
-- NOT BUILT: calls over the Bluetooth-only link, tones during a call, hold/merge/conference, a tablet service for calls while the app is in the background, an audio-route fallback through the shell.
+- NOT BUILT: calls over the Bluetooth-only link, tones during a call, hold/merge/conference, an audio-route fallback through the shell. (A tablet service for calls while the app is in the background IS built since 2026-11-19: the floating phone, `docs/FLOATING_PHONE.md`.)
 
 ## Not known until a device tries (say so to the user)
 
