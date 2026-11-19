@@ -95,8 +95,10 @@ final class PretendCalls implements CallApi.Backend {
         headsets.bluetoothOn = true;
         headsets.canConnect = true;
         headsets.devices.add(device("AA:BB:CC:DD:EE:01", "Sony WH-1000XM4", true));
+        headsets.devices.get(0).battery = 78;
         headsets.chosen = "AA:BB:CC:DD:EE:01";
         live.headset = "Sony WH-1000XM4";
+        live.headsetBattery = 78;
     }
 
     // ---------------------------------------------------------------- what the screens can change
@@ -221,6 +223,7 @@ final class PretendCalls implements CallApi.Backend {
         n.muted = live.muted;
         n.route = live.route;
         n.headset = live.headset;
+        n.headsetBattery = live.headset.isEmpty() ? Calls.BATTERY_UNKNOWN : live.headsetBattery;
         int missed = 0;
         for (Calls.Entry e : log) {
             missed += e.isNew ? 1 : 0;

@@ -168,7 +168,7 @@ final class MiniPhoneView extends LinearLayout {
         numRow.setOrientation(HORIZONTAL);
         numRow.setGravity(Gravity.CENTER_VERTICAL);
         typedView = Ui.text(c, "", 22, Ui.FG, false);
-        typedView.setSingleLine(true);
+        typedView.setMaxLines(1); // not setSingleLine: that makes a very wide layout and a centred text is then drawn off to the side
         typedView.setEllipsize(TextUtils.TruncateAt.START);
         typedView.setGravity(Gravity.CENTER);
         numRow.addView(typedView, new LayoutParams(0, Ui.dp(c, 40), 1f));
@@ -255,7 +255,7 @@ final class MiniPhoneView extends LinearLayout {
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         col.addView(b, new LayoutParams(Ui.dp(c, 44), Ui.dp(c, 44)));
         label.setGravity(Gravity.CENTER);
-        label.setSingleLine(true);
+        label.setMaxLines(1);
         col.addView(label, new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return col;
     }

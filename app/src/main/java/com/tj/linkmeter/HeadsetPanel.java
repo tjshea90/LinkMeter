@@ -367,7 +367,7 @@ final class HeadsetPanel extends LinearLayout {
         why.addView(Ui.hint(act, "The phone makes the call, so your headset is paired with the phone, not with this tablet: the voice "
                 + "goes straight from the headset to the phone, and keeps going if this tablet sleeps. This screen only helps you connect it. "
                 + "Keep the phone within a few metres of where you sit."), Ui.lp(act, 4));
-        col.addView(why);
+        col.addView(why, Ui.lp(act, now != null && now.connected ? 12 : 0));
 
         Calls.Headsets h = tab.headsets();
         HeadsetRules.View v = HeadsetRules.of(h, tab.headsetProblem());

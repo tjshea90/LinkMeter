@@ -428,7 +428,15 @@ final class TabletHeadset {
         new Thread(() -> {
             boolean did = false;
             if (pretend != null) {
-                did = !refusedForTest && isConnected(addr) == connect;
+                // a pretend tablet (tests only): the switch is taken unless the test says Android refuses it
+                if (!refusedForTest) {
+                    for (TabletHeadsetRules.Dev d : pretend.bonded) {
+                        if (up(d.addr).equals(up(addr))) {
+                            d.connected = connect;
+                        }
+                    }
+                }
+                did = !refusedForTest;
             } else {
                 did = isConnected(addr) == connect || viaShizuku(addr, connect) || viaProfiles(addr, connect);
             }
