@@ -33,6 +33,8 @@ import java.util.concurrent.TimeUnit;
 public class SenderService extends Service {
     /** Read by the activity to show running / stopped. */
     static volatile boolean active;
+    /** Why the last start did not stay up ("" when it did): the phone's screen says it, so a Start that fails is never silent. */
+    static volatile String lastFailure = "";
     /** Phone: while now is before this, a new tablet may pair itself. */
     static volatile long pairUntil;
 
@@ -50,7 +52,16 @@ public class SenderService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        startInForeground();
+        lastFailure = "";
+        try {
+            startInForeground();
+        } catch (RuntimeException e) {
+            // Android refused to make it a foreground service (not allowed to start now, a missing permission): say so, do not die quietly
+            lastFailure = "Android would not let it run in the background: " + e;
+            active = false;
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         if (intent != null && ACTION_RESTORE.equals(intent.getAction())) {
             final Context app = getApplicationContext();
             new Thread(() -> Notice.post(app, "LinkMeter restore",
@@ -115,18 +126,33 @@ public class SenderService extends Service {
     }
 
     private void serve() {
-        ServerSocket ss;
-        try {
-            ss = new ServerSocket();
-            ss.setReuseAddress(true);
-            ss.bind(new InetSocketAddress(Cfg.PORT), 8);
-            server = ss;
-        } catch (IOException e) {
+        ServerSocket ss = null;
+        IOException last = null;
+        // The port may still be held for a moment by what was running before (a restart of the app, an update): a few tries before giving up
+        for (int attempt = 0; attempt < 8 && running && ss == null; attempt++) {
+            try {
+                ServerSocket t = new ServerSocket();
+                t.setReuseAddress(true);
+                t.bind(new InetSocketAddress(Cfg.PORT), 8);
+                ss = t;
+            } catch (IOException e) {
+                last = e;
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        if (ss == null) {
+            lastFailure = "Port " + Cfg.PORT + " is busy or blocked on this phone" + (last == null ? "." : " (" + last.getMessage() + ").");
             active = false;
             running = false;
             stopSelf(); // port busy or blocked: give up cleanly
             return;
         }
+        server = ss;
         while (running) {
             try {
                 final Socket s = ss.accept();

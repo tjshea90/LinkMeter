@@ -781,7 +781,19 @@ public class MainActivity extends Activity {
     }
 
     void startService() {
-        startForegroundService(new Intent(this, SenderService.class));
+        try {
+            startForegroundService(new Intent(this, SenderService.class));
+        } catch (RuntimeException e) {
+            Toast.makeText(this, "LinkMeter could not be started: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+        // A start that does not stay up is said, with the reason (it used to end without a word)
+        ui.postDelayed(() -> {
+            if (!SenderService.active && !isFinishing() && Cfg.PHONE.equals(Cfg.mode(this)) && !SenderService.lastFailure.isEmpty()) {
+                Toast.makeText(this, "LinkMeter did not start. " + SenderService.lastFailure, Toast.LENGTH_LONG).show();
+                refreshPhone();
+            }
+        }, 4500);
     }
 
     void stopService() {
