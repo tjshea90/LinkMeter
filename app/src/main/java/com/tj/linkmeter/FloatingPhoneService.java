@@ -450,29 +450,32 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
 
     @Override
     public void phoneBluetooth() {
-        if (phoneBusy) {
+        if (phoneBusy || tabletBusy) {
             return;
         }
-        final boolean on = model.headsetOnPhone;
-        phoneBusy = true;
-        say(on ? "Disconnecting the headset from the phone…" : "Connecting the headset to the phone… (up to 25 seconds)", false, 0);
-        CallWatch.Done done = (r, e) -> {
-            phoneBusy = false;
-            afterRequest(r, e, r != null && r.ok && !r.out.isEmpty() ? r.out : "");
-            if (r != null && r.ok && e == null && r.out.isEmpty()) {
-                say("", false, 0);
-            }
-        };
-        if (on) {
-            watch.headsetDisconnect(done);
-        } else {
-            watch.headsetConnect(done);
+        if (model.headsetOnPhone) {
+            phoneBusy = true;
+            say(HandOverRules.working(HandOverRules.Step.DISCONNECT_PHONE, model.headsetName), false, 0);
+            watch.headsetDisconnect((r, e) -> {
+                phoneBusy = false;
+                afterRequest(r, e, r != null && r.ok && !r.out.isEmpty() ? r.out : "");
+                if (r != null && r.ok && e == null && r.out.isEmpty()) {
+                    say("", false, 0);
+                }
+            });
+            return;
         }
+        // connecting it to the phone first lets go of this tablet (one connection at a time)
+        phoneBusy = true;
+        HeadsetHandOver.toPhone(this, watch, "", () -> true, text -> say(text, false, 0), (ok, text, bad) -> {
+            phoneBusy = false;
+            say(text, bad, text.isEmpty() ? 0 : SAY_MS * 2);
+        });
     }
 
     @Override
     public void tabletBluetooth() {
-        if (tabletBusy) {
+        if (tabletBusy || phoneBusy) {
             return;
         }
         final TabletHeadsetRules.Facts f = tablet.facts("", model.headsetName, model.headsetOnPhone);
@@ -500,13 +503,19 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
             }
             return;
         }
-        final boolean connect = !d.connected;
         tabletBusy = true;
-        say(connect ? "Connecting " + d.name + " to this tablet…" : "Disconnecting " + d.name + " from this tablet…", false, 0);
-        tablet.set(this, d.addr, connect, () -> true, way -> {
+        if (d.connected) {
+            say(HandOverRules.working(HandOverRules.Step.DISCONNECT_TABLET, d.name), false, 0);
+            tablet.disconnect(this, d.addr, () -> true, way -> {
+                tabletBusy = false;
+                say(TabletHeadsetRules.afterDisconnect(way, d.name), way == TabletHeadsetRules.Way.FAILED, SAY_MS * 2);
+            });
+            return;
+        }
+        // connecting it to this tablet first lets the phone go (one connection at a time)
+        HeadsetHandOver.toTablet(this, watch, () -> true, text -> say(text, false, 0), (ok, text, bad) -> {
             tabletBusy = false;
-            say(connect ? TabletHeadsetRules.afterConnect(way, d.name) : TabletHeadsetRules.afterDisconnect(way, d.name),
-                    way == TabletHeadsetRules.Way.FAILED, SAY_MS * 2);
+            say(text, bad, text.isEmpty() ? 0 : SAY_MS * 2);
         });
     }
 

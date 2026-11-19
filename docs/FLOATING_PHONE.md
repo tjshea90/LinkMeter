@@ -78,28 +78,36 @@ Which headset: the one chosen on the tablet, else the phone's (the same device h
 only audio device paired with the tablet (`TabletHeadsetRules.pick`). Not paired with the tablet yet: the card has "Pair with this tablet"
 (opens Android's Bluetooth list: pairing needs the headset in pairing mode).
 
-THE HEADSET MUST SUPPORT TWO CONNECTIONS ("multipoint") to be connected to the phone and the tablet at once. A headset that keeps only one
-connection leaves the phone when it joins the tablet (the card says so) and "Connect" on the phone's card takes it back. Nothing here
-switches the phone's side behind the user's back, and a call's sound is never moved to the tablet (impossible, see `docs/PHONE_CALLS.md`).
+**ONE CONNECTION AT A TIME (the user's rule, 2026-11-19: "when I connect bluetooth to my tablet it must disconnect from my phone first, and
+vice versa").** Connecting the headset to the tablet first asks the PHONE to let go (`/call/headset/disconnect`), waits 1.5 s, then connects
+the tablet; connecting it to the phone first lets go of the TABLET (the same ladder, read back), then asks the phone to connect. Pure plan:
+`HandOverRules.plan` (tested for every combination: the other side always lets go BEFORE the connect); the carrying out, used by the Headset
+screen, the floating phone's two buttons and "Connect and call": `HeadsetHandOver.toTablet` / `toPhone`. Stops and says why: a call is on and the
+headset is on the phone (its sound would be lost: "End the call first"); the phone answers "no" to letting go; the tablet's disconnect was only
+ASKED (Android's list opened for a tap: the phone is NOT connected, the words say "disconnect it in the list, then press the Phone button
+again"). A phone that cannot be reached does not block the tablet (the headset may not be on it): the connect goes on and the words say the
+phone was not asked. A headset that CAN keep two connections ("multipoint") has the switch **My headset can stay connected to both** (This tablet
+card, `Cfg.headsetBoth`, off by default): then nothing is disconnected. Pressing a Bluetooth button of the side that already has the headset
+only disconnects it there. A call's sound is never moved to the tablet (impossible, see `docs/PHONE_CALLS.md`).
 
 ## Files
 
-Pure (no Android; `tools/test/FloatingLogicTest.java`, 54k checks, run by `tools/test.sh`): `BtBattery`, `BatteryRules`, `FloatRules`
-(visibility, buttons, words, where the card may sit), `TabletHeadsetRules`; the wire fields in `Calls`/`CallJson` (`CallsLogicTest`,
+Pure (no Android; `tools/test/FloatingLogicTest.java`, 55k checks, run by `tools/test.sh`): `BtBattery`, `BatteryRules`, `FloatRules`
+(visibility, buttons, words, where the card may sit), `TabletHeadsetRules`, `HandOverRules` (one connection at a time); the wire fields in `Calls`/`CallJson` (`CallsLogicTest`,
 `CallApiTest`).
 
 Android: `HeadsetLink` (phone: battery ways), `ShellMain` (`bt-battery`), `CallBackend.now`, `TabletHeadset` (tablet Bluetooth),
 `HeadsetPanel` (battery card + tablet card), `CallsTab` (battery by the chip, the handset button), `HomeTab` (Headset line),
-`BatteryIconView`, `MiniPhoneView` (the card), `FloatingPhoneService` (window, drag/snap, actions, notification), `FloatingPhone`
+`HeadsetHandOver` (moves the headset between phone and tablet), `BatteryIconView`, `MiniPhoneView` (the card), `FloatingPhoneService` (window, drag/snap, actions, notification), `FloatingPhone`
 (switchboard, permission), `SettingsTab` (card "Floating phone"), `CallWatch` (now ONE shared, counted watch + headset actions),
 `MainActivity` (holds the watch while in front, calls `FloatingPhone.sync`), `BootReceiver`, `Cfg` (`floatOn`, `floatX/Y`,
 `tabletHeadsetAddr`), manifest (`SYSTEM_ALERT_WINDOW`, the service).
 
 Pictures and behaviour against a pretend phone running the REAL phone-side code: `tools/preview.sh --tests "com.tj.linkmeter.FloatingPreviewTest"`
-(11 scenarios: pictures `tools/uipreview/out/float-*.png`; the service is run end to end: a ring pops the card up, Answer / End / Call / the
+(15 scenarios: pictures `tools/uipreview/out/float-*.png`; the service is run end to end: a ring pops the card up, Answer / End / Call / the
 two Bluetooth buttons reach the pretend phone, an emergency number is refused, the warning before a call without the headset, drag, snap and
 the remembered place, the card steps aside for LinkMeter, a phone that cannot be heard mid-call is not "call ended"). Deliberate breakages of
-the pure rules: `python3 tools/mutate_floating.py` (35, all caught; about two minutes). The tablet's pretend Bluetooth is
+the pure rules: `python3 tools/mutate_floating.py` (44, all caught; about two minutes). The tablet's pretend Bluetooth is
 `TabletHeadset.pretend` (tests only). TEST ISOLATION: the watch is ONE object in the process, so every screen test starts with
 `CallWatch.dropForTest()` (done by `PreviewTest.tablet()`); without it an earlier test's screens stay subscribed and ask the next test's pretend
 phone things (the Calls tests then fail at random).

@@ -113,6 +113,54 @@ final class HeadsetPanel extends LinearLayout {
         });
     }
 
+    /**
+     * Connects the headset to the PHONE; this tablet lets go of it first (one connection at a time) unless the headset can keep both.
+     * {@code choose}: make {@code addr} the user's headset first.
+     */
+    private void connectPhone(final String addr, final boolean choose) {
+        if (working) {
+            return;
+        }
+        working = true;
+        workingText = "Connecting the headset to the phone… (up to 25 seconds)";
+        render();
+        final Runnable go = () -> HeadsetHandOver.toPhone(act, act.callWatch(), addr, act::inFront, text -> {
+            workingText = text;
+            render();
+        }, (ok, text, bad) -> {
+            working = false;
+            tab.setHeadsetProblem(bad ? text : "");
+            if (!bad && !text.isEmpty()) {
+                Toast.makeText(act, text, Toast.LENGTH_SHORT).show();
+            }
+            reload();
+        });
+        if (!choose) {
+            go.run();
+            return;
+        }
+        tab.net().execute(() -> {
+            Calls.Result r = null;
+            IOException bad = null;
+            try {
+                r = tab.remote().headsetChoose(addr);
+            } catch (IOException e) {
+                bad = e;
+            }
+            final Calls.Result fr = r;
+            final IOException fb = bad;
+            act.ui.post(() -> {
+                if (fb != null || fr == null || !fr.ok) {
+                    working = false;
+                    tab.setHeadsetProblem(fr != null ? fr.why : TextsTab.explain(fb));
+                    reload();
+                } else {
+                    go.run();
+                }
+            });
+        });
+    }
+
     private void press(HeadsetRules.Do what) {
         switch (what) {
             case ALLOW:
@@ -122,7 +170,7 @@ final class HeadsetPanel extends LinearLayout {
                 }, false);
                 break;
             case CONNECT:
-                work("Connecting the headset to the phone… (up to 25 seconds)", rc -> rc.headsetConnect(""), true);
+                connectPhone("", false);
                 break;
             case DISCONNECT:
                 work("Disconnecting…", RemoteCalls::headsetDisconnect, false);
@@ -160,13 +208,13 @@ final class HeadsetPanel extends LinearLayout {
         List<Runnable> acts = new ArrayList<>();
         for (final Calls.Device d : h.devices) {
             labels.add(d.name + (d.connected ? " (connected)" : ""));
-            acts.add(() -> work("Choosing " + d.name + "…", rc -> {
-                Calls.Result r = rc.headsetChoose(d.addr);
-                if (r.ok && !d.connected) {
-                    return rc.headsetConnect(d.addr);
+            acts.add(() -> {
+                if (d.connected) {
+                    work("Choosing " + d.name + "…", rc -> rc.headsetChoose(d.addr), true);
+                } else {
+                    connectPhone(d.addr, true);
                 }
-                return r;
-            }, true));
+            });
         }
         TextsViews.menu(act, "Choose your headset", labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
     }
@@ -273,8 +321,20 @@ final class HeadsetPanel extends LinearLayout {
                 break;
             case CONNECT:
                 if (d != null) {
+                    // the phone lets go first (one connection at a time), unless the headset can keep both
                     tabletWork("Connecting " + d.name + " to this tablet…");
-                    tb.connect(act, d.addr, act::inFront, way -> tabletDone(way, TabletHeadsetRules.afterConnect(way, d.name)));
+                    HeadsetHandOver.toTablet(act, act.callWatch(), act::inFront, text -> {
+                        tabletWorkingText = text;
+                        render();
+                    }, (ok, text, bad) -> {
+                        tabletWorking = false;
+                        tabletProblem = bad ? text : "";
+                        if (!text.isEmpty()) {
+                            Toast.makeText(act, text, Toast.LENGTH_LONG).show();
+                        }
+                        render();
+                        reload();
+                    });
                 }
                 break;
             case DISCONNECT:
@@ -344,6 +404,12 @@ final class HeadsetPanel extends LinearLayout {
             btn.setEnabled(!tabletWorking);
             card.addView(btn, Ui.lp(act, 8));
         }
+        card.addView(new Ui.Toggle(act, "My headset can stay connected to both", "Only for a headset that can keep two connections at once "
+                + "(\"multipoint\"). Off: connecting the headset to the tablet disconnects it from the phone first, and the other way round.",
+                Cfg.headsetBoth(act), (b, on) -> {
+                    Cfg.setHeadsetBoth(act, on);
+                    render();
+                }).view, Ui.lp(act, 10));
         return card;
     }
 
@@ -416,10 +482,13 @@ final class HeadsetPanel extends LinearLayout {
                 wp.leftMargin = Ui.dp(act, 10);
                 row.addView(words, wp);
                 row.setClickable(true);
-                row.setOnClickListener(x -> work(d.connected ? "Choosing " + d.name + "…" : "Connecting " + d.name + "…", rc -> {
-                    Calls.Result r = rc.headsetChoose(d.addr);
-                    return r.ok && !d.connected ? rc.headsetConnect(d.addr) : r;
-                }, true));
+                row.setOnClickListener(x -> {
+                    if (d.connected) {
+                        work("Choosing " + d.name + "…", rc -> rc.headsetChoose(d.addr), true);
+                    } else {
+                        connectPhone(d.addr, true);
+                    }
+                });
                 list.addView(row);
             }
             col.addView(list, Ui.lp(act, 12));

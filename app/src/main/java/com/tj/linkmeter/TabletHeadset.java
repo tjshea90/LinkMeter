@@ -301,6 +301,7 @@ final class TabletHeadset {
         f.bluetoothOn = bluetoothOn();
         f.userAddr = Cfg.tabletHeadsetAddr(app);
         f.canSwitch = Priv.ready();
+        f.keepBoth = Cfg.headsetBoth(app);
         f.phoneAddr = phoneAddr == null ? "" : phoneAddr;
         f.phoneName = phoneName == null ? "" : phoneName;
         f.phoneConnected = phoneConnected;

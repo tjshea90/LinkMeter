@@ -341,6 +341,18 @@ final class Cfg {
     }
 
     /**
+     * Tablet: can the user's headset stay connected to the phone AND this tablet at the same time ("multipoint")? OFF by default: the headset
+     * then moves between them, one connection at a time (connecting it to one first disconnects it from the other, HandOverRules).
+     */
+    static boolean headsetBoth(Context c) {
+        return sp(c).getBoolean("headsetBoth", false);
+    }
+
+    static void setHeadsetBoth(Context c, boolean on) {
+        sp(c).edit().putBoolean("headsetBoth", on).apply();
+    }
+
+    /**
      * Tablet: does the floating phone pop up by itself when the phone rings or a call is on (docs/FLOATING_PHONE.md)? On by default, but it
      * only runs once calls work (the Calls tab found the phone allowing them) and Android has allowed drawing over other apps.
      */

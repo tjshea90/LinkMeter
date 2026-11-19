@@ -50,6 +50,16 @@ BREAKS = [
     ("the card snaps to the wrong side", "FloatRules.java", "c[0] = (c[0] + w / 2 < screenW / 2) ? left : right;", "c[0] = (c[0] + w / 2 < screenW / 2) ? right : left;"),
     ("a call that never ran says how long it lasted", "FloatRules.java", 'return answeredMs > 0 ? "Call ended · " + CallRules.timer(answeredMs) : "Call ended";', 'return "Call ended · " + CallRules.timer(answeredMs);'),
     ("the pad accepts letters", "FloatRules.java", "if ((c >= '0' && c <= '9') || c == '*' || c == '#' || c == '+') {", "if (true) {"),
+    # ---- HandOverRules (one connection at a time)
+    ("the tablet connects without the phone letting go", "HandOverRules.java", "return steps(Step.DISCONNECT_PHONE, Step.CONNECT_TABLET);", "return steps(Step.CONNECT_TABLET);"),
+    ("the phone connects without the tablet letting go", "HandOverRules.java", "return steps(Step.DISCONNECT_TABLET, Step.CONNECT_PHONE);", "return steps(Step.CONNECT_PHONE);"),
+    ("the phone connects BEFORE the tablet lets go", "HandOverRules.java", "return steps(Step.DISCONNECT_TABLET, Step.CONNECT_PHONE);", "return steps(Step.CONNECT_PHONE, Step.DISCONNECT_TABLET);"),
+    ("a call's sound is pulled away from the phone", "HandOverRules.java", "if (callOn) {\n                    return new Plan", "if (false) {\n                    return new Plan"),
+    ("a headset that keeps both is disconnected anyway", "HandOverRules.java", "if (phoneOn && !keepBoth) {", "if (phoneOn) {"),
+    ("the tablet's list only opened is taken for a disconnect", "HandOverRules.java", "return way == TabletHeadsetRules.Way.DONE ? Then.CONTINUE : Then.STOP;", "return way == TabletHeadsetRules.Way.FAILED ? Then.STOP : Then.CONTINUE;"),
+    ("a phone that says no does not stop the connect", "HandOverRules.java", "return !reached || ok ? Then.CONTINUE : Then.STOP;", "return Then.CONTINUE;"),
+    ("a phone that cannot be reached blocks the tablet for ever", "HandOverRules.java", "return !reached || ok ? Then.CONTINUE : Then.STOP;", "return ok ? Then.CONTINUE : Then.STOP;"),
+    ("the card stops saying the phone lets go first", "TabletHeadsetRules.java", "if (f.phoneConnected && !f.keepBoth) {", "if (false) {"),
     # ---- TabletHeadsetRules
     ("the user's own choice is ignored", "TabletHeadsetRules.java", "Dev d = find(f.bonded, f.userAddr);", "Dev d = null;"),
     ("several paired devices: the first is taken", "TabletHeadsetRules.java", "return f.bonded.size() == 1 ? f.bonded.get(0) : null;", "return f.bonded.isEmpty() ? null : f.bonded.get(0);"),

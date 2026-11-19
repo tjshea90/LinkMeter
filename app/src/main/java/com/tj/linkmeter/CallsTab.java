@@ -495,27 +495,18 @@ final class CallsTab extends Tab {
     private void connectThenDial(final String number) {
         final int my = session;
         Toast.makeText(act, "Connecting the headset to the phone… (up to 25 seconds)", Toast.LENGTH_LONG).show();
-        net.execute(() -> {
-            Calls.Result r = null;
-            IOException bad = null;
-            try {
-                r = remote().headsetConnect("");
-            } catch (IOException e) {
-                bad = e;
-            }
-            final Calls.Result fr = r;
-            final IOException fb = bad;
-            act.ui.post(() -> {
-                if (fr != null && fr.ok) {
-                    if (my == session) {
-                        loadHeadsets(my);
-                    }
-                    startCall(number);
-                } else {
-                    setHeadsetProblem(fr != null ? fr.why : TextsTab.explain(fb));
-                    Toast.makeText(act, "The call was not placed. " + (fr != null ? fr.why : TextsTab.explain(fb)), Toast.LENGTH_LONG).show();
+        // this tablet lets go of the headset first (one connection at a time), unless the user's headset can keep both
+        HeadsetHandOver.toPhone(act, act.callWatch(), "", act::inFront, text -> {
+        }, (ok, text, bad) -> {
+            if (ok) {
+                if (my == session) {
+                    loadHeadsets(my);
                 }
-            });
+                startCall(number);
+            } else {
+                setHeadsetProblem(text);
+                Toast.makeText(act, "The call was not placed. " + text, Toast.LENGTH_LONG).show();
+            }
         });
     }
 

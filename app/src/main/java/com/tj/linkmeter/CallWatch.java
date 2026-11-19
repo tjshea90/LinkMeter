@@ -331,7 +331,12 @@ final class CallWatch {
 
     /** Connects the headset the user chose to the PHONE (the phone looks for up to 25 seconds). */
     void headsetConnect(Done d) {
-        run(rc -> rc.headsetConnect(""), d);
+        headsetConnect("", d);
+    }
+
+    /** Connects this headset ("" = the one the user chose on the phone) to the PHONE. */
+    void headsetConnect(final String addr, Done d) {
+        run(rc -> rc.headsetConnect(addr == null ? "" : addr), d);
     }
 
     /** Disconnects the headset from the phone. */

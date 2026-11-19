@@ -51,6 +51,8 @@ final class TabletHeadsetRules {
         boolean phoneConnected;
         /** Shizuku runs on the tablet and LinkMeter may use it: connecting and disconnecting need no tap. */
         boolean canSwitch;
+        /** The user's headset can stay connected to the phone and the tablet at once (else it moves between them, one at a time). */
+        boolean keepBoth;
     }
 
     /** What the card shows. */
@@ -206,9 +208,9 @@ final class TabletHeadsetRules {
         v.title = name + " is not connected to this tablet";
         StringBuilder line = new StringBuilder("Turn the headset on and hold it near the tablet. ");
         line.append(f.canSwitch ? "LinkMeter connects it for you." : "Android will show its Bluetooth list: tap the headset there once.");
-        if (f.phoneConnected) {
-            line.append(" A headset that keeps only one connection will leave the phone when it joins the tablet: press Connect on the "
-                    + "phone's card to take it back.");
+        if (f.phoneConnected && !f.keepBoth) {
+            line.append(" It is connected to the phone now: LinkMeter disconnects it from the phone first (one connection at a time), and "
+                    + "back again when you connect it to the phone.");
         }
         if (!problem.isEmpty()) {
             line.append('\n').append(problem);

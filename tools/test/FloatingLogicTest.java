@@ -41,6 +41,7 @@ public final class FloatingLogicTest {
         tabletPick();
         tabletCard();
         tabletWords();
+        handOver();
         System.out.println(checks + " checks, " + fails + " failed");
         if (fails > 0) {
             System.exit(1);
@@ -344,8 +345,11 @@ public final class FloatingLogicTest {
         yes(TabletHeadsetRules.pick(f) == null, "pick: a name that matches nothing");
     }
 
+    private static boolean keepBothForFacts;
+
     private static TabletHeadsetRules.Facts facts(boolean bt, boolean on, int paired, int connectedIndex, boolean can, boolean phoneOn) {
         TabletHeadsetRules.Facts f = new TabletHeadsetRules.Facts();
+        f.keepBoth = keepBothForFacts;
         f.hasBluetooth = bt;
         f.bluetoothOn = on;
         f.canSwitch = can;
@@ -368,6 +372,7 @@ public final class FloatingLogicTest {
                         for (boolean can : bs) {
                             for (boolean phoneOn : bs) {
                                 for (String problem : new String[] {"", "It did not connect."}) {
+                                    keepBothForFacts = phoneOn && can; // both settings of the user's choice meet both phone states across the loops
                                     TabletHeadsetRules.Facts f = facts(bt, on, paired, conn, can, phoneOn);
                                     TabletHeadsetRules.View v = TabletHeadsetRules.of(f, problem);
                                     String id = "bt=" + bt + " on=" + on + " paired=" + paired + " conn=" + conn + " can=" + can + " phone=" + phoneOn;
@@ -398,7 +403,8 @@ public final class FloatingLogicTest {
                                         yes(v.tone == TabletHeadsetRules.Tone.WARN, "not connected is a warning: " + id);
                                         yes(can ? v.line.contains("LinkMeter connects it for you") : v.line.contains("tap the headset there once"),
                                                 "says whether a tap is needed: " + id);
-                                        yes(phoneOn == v.line.contains("leave the phone"), "warns about a one-connection headset only when it is on the phone: " + id);
+                                        yes((phoneOn && !keepBothForFacts) == v.line.contains("disconnects it from the phone first"),
+                                                "says the phone lets go first, only when the headset is on the phone and cannot keep both: " + id);
                                         yes(problem.isEmpty() == v.main().label.equals("Connect to tablet"), "Try again after a failure: " + id);
                                         yes(problem.isEmpty() || v.line.contains(problem), "the failure is shown: " + id);
                                     }
@@ -431,5 +437,78 @@ public final class FloatingLogicTest {
         }
         List<String> labels = Arrays.asList("Connect to tablet", "Disconnect from tablet");
         yes(labels.size() == 2, "labels");
+    }
+
+    // ------------------------------------------------------------------ HandOverRules: one connection at a time
+
+    private static void handOver() {
+        boolean[] bs = {false, true};
+        for (HandOverRules.Target t : HandOverRules.Target.values()) {
+            for (boolean phoneOn : bs) {
+                for (boolean tabletOn : bs) {
+                    for (boolean callOn : bs) {
+                        for (boolean both : bs) {
+                            HandOverRules.Plan p = HandOverRules.plan(t, phoneOn, tabletOn, callOn, both);
+                            String id = t + " phoneOn=" + phoneOn + " tabletOn=" + tabletOn + " call=" + callOn + " both=" + both;
+                            java.util.List<HandOverRules.Step> want = new java.util.ArrayList<>();
+                            boolean refuse = false;
+                            if (t == HandOverRules.Target.TABLET) {
+                                if (!tabletOn) {
+                                    if (phoneOn && !both) {
+                                        if (callOn) {
+                                            refuse = true;
+                                        } else {
+                                            want.add(HandOverRules.Step.DISCONNECT_PHONE);
+                                            want.add(HandOverRules.Step.CONNECT_TABLET);
+                                        }
+                                    } else {
+                                        want.add(HandOverRules.Step.CONNECT_TABLET);
+                                    }
+                                }
+                            } else if (!phoneOn) {
+                                if (tabletOn && !both) {
+                                    want.add(HandOverRules.Step.DISCONNECT_TABLET);
+                                }
+                                want.add(HandOverRules.Step.CONNECT_PHONE);
+                            }
+                            eq(refuse, p.refused(), "refused: " + id);
+                            eq(want, p.steps, "steps: " + id);
+                            // the rule itself: a connect to one side never happens while the other side still holds the headset
+                            int connectAt = p.steps.indexOf(t == HandOverRules.Target.TABLET ? HandOverRules.Step.CONNECT_TABLET : HandOverRules.Step.CONNECT_PHONE);
+                            if (connectAt >= 0 && !both) {
+                                boolean otherHolds = t == HandOverRules.Target.TABLET ? phoneOn : tabletOn;
+                                HandOverRules.Step let = t == HandOverRules.Target.TABLET ? HandOverRules.Step.DISCONNECT_PHONE : HandOverRules.Step.DISCONNECT_TABLET;
+                                yes(!otherHolds || p.steps.indexOf(let) >= 0 && p.steps.indexOf(let) < connectAt, "the other side lets go BEFORE the connect: " + id);
+                            }
+                            if (both) {
+                                yes(!p.steps.contains(HandOverRules.Step.DISCONNECT_PHONE) && !p.steps.contains(HandOverRules.Step.DISCONNECT_TABLET),
+                                        "a headset that keeps both is never disconnected: " + id);
+                            }
+                            if (callOn && t == HandOverRules.Target.TABLET && phoneOn && !tabletOn && !both) {
+                                yes(p.refused() && p.steps.isEmpty() && p.refusal.contains("End the call first"), "a call's sound is never pulled away: " + id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // what a step that went wrong means for the steps after it
+        yes(HandOverRules.afterPhoneDisconnect(true, true) == HandOverRules.Then.CONTINUE, "phone let go: go on");
+        yes(HandOverRules.afterPhoneDisconnect(false, false) == HandOverRules.Then.CONTINUE, "phone not reached: go on, it says so");
+        yes(HandOverRules.afterPhoneDisconnect(true, false) == HandOverRules.Then.STOP, "phone said no: stop");
+        for (TabletHeadsetRules.Way w : TabletHeadsetRules.Way.values()) {
+            yes((HandOverRules.afterTabletDisconnect(w) == HandOverRules.Then.CONTINUE) == (w == TabletHeadsetRules.Way.DONE),
+                    "only a tablet disconnect that was SEEN lets the phone connect: " + w);
+        }
+        yes(HandOverRules.tabletStillHolds(TabletHeadsetRules.Way.ASKED, "Sony").contains("press the Phone button again"), "asked: what to do");
+        yes(HandOverRules.tabletStillHolds(TabletHeadsetRules.Way.FAILED, "Sony").contains("was not connected to the phone"), "failed: it did not connect");
+        yes(HandOverRules.phoneStillHolds("it said no", "Sony").contains("(it said no)"), "the phone's reason is shown");
+        yes(HandOverRules.phoneStillHolds("", "").startsWith("The headset is still connected to the phone"), "no name: the headset");
+        for (HandOverRules.Step st : HandOverRules.Step.values()) {
+            yes(!HandOverRules.working(st, "Sony").isEmpty() && !HandOverRules.working(st, "").isEmpty(), "words while " + st);
+        }
+        yes(HandOverRules.working(HandOverRules.Step.DISCONNECT_PHONE, "Sony").contains("from the phone"), "words: from the phone");
+        yes(HandOverRules.working(HandOverRules.Step.DISCONNECT_TABLET, "Sony").contains("from this tablet"), "words: from the tablet");
+        yes(HandOverRules.SETTLE_MS > 0, "a pause between the two steps");
     }
 }

@@ -377,50 +377,133 @@ public class FloatingPreviewTest {
         stop(sc);
     }
 
-    @Test
-    public void theBluetoothButtonsSwitchTheHeadsetOnThePhoneAndOnTheTablet() throws Exception {
-        PretendCalls pc = CallsPreviewTest.phone();
+    private static TabletHeadsetRules.Dev pretendTablet(boolean connected) {
         TabletHeadsetRules.Facts f = new TabletHeadsetRules.Facts();
         f.bluetoothOn = true;
         TabletHeadsetRules.Dev d = new TabletHeadsetRules.Dev();
         d.addr = "AA:BB:CC:DD:EE:01";
         d.name = "Sony WH-1000XM4";
+        d.connected = connected;
         f.bonded.add(d);
         TabletHeadset.pretend = f;
-        ServiceController<FloatingPhoneService> sc = service(pc);
-        FloatingPhoneService s = sc.get();
+        return d;
+    }
+
+    private MiniPhoneView shown(FloatingPhoneService s) throws Exception {
         s.onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1);
         settle();
         MiniPhoneView v = viewOf(s);
-        assertTrue("the phone says the headset is on it", modelOf(s).headsetOnPhone);
+        assertNotNull(v);
+        return v;
+    }
+
+    @Test
+    public void connectingToTheTabletLetsTheHeadsetGoFromThePhoneFirst() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        TabletHeadsetRules.Dev d = pretendTablet(false);
+        ServiceController<FloatingPhoneService> sc = service(pc);
+        FloatingPhoneService s = sc.get();
+        shown(s);
+        assertTrue("the headset is on the phone", modelOf(s).headsetOnPhone);
         assertFalse(modelOf(s).tabletOn);
 
-        press(v, "Headset Bluetooth link to the phone");
+        press(viewOf(s), "Headset Bluetooth link to this tablet");
+        PreviewTest.later(1000);
+        assertTrue("the phone was asked to let go first: " + pc.told, pc.told.contains("disconnect"));
+        assertFalse("it is not on both: the tablet waits until the phone has let go", d.connected && modelOf(s).headsetOnPhone);
+        PreviewTest.later(4000);
+        assertTrue("then it connected to the tablet", d.connected);
+        assertFalse("and it is no longer on the phone", modelOf(s).headsetOnPhone);
+        assertTrue(modelOf(s).tabletOn);
+        draw(viewOf(s), "service-handover-tablet");
+
+        // and back: connecting it to the phone lets the tablet go first
+        pc.told.clear();
+        press(viewOf(s), "Headset Bluetooth link to the phone");
+        PreviewTest.later(4000);
+        assertFalse("the tablet let go", d.connected);
+        assertTrue("then the phone connected it: " + pc.told, pc.told.stream().anyMatch(x -> x.startsWith("connect:")));
+        assertTrue(modelOf(s).headsetOnPhone);
+        assertFalse(modelOf(s).tabletOn);
+        stop(sc);
+    }
+
+    @Test
+    public void aHeadsetThatKeepsBothIsNotDisconnected() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        TabletHeadsetRules.Dev d = pretendTablet(false);
+        Cfg.setHeadsetBoth(ctx(), true);
+        ServiceController<FloatingPhoneService> sc = service(pc);
+        FloatingPhoneService s = sc.get();
+        shown(s);
+        press(viewOf(s), "Headset Bluetooth link to this tablet");
+        PreviewTest.later(2000);
+        assertTrue(d.connected);
+        assertFalse("the phone was NOT asked to let go: " + pc.told, pc.told.contains("disconnect"));
+        assertTrue("it is on both", modelOf(s).headsetOnPhone && modelOf(s).tabletOn);
+        draw(viewOf(s), "service-both-bluetooth");
+        stop(sc);
+        Cfg.setHeadsetBoth(ctx(), false);
+    }
+
+    @Test
+    public void aCallsSoundIsNotPulledAwayFromThePhone() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        TabletHeadsetRules.Dev d = pretendTablet(false);
+        ServiceController<FloatingPhoneService> sc = service(pc);
+        FloatingPhoneService s = sc.get();
+        pc.onCall("+15551234567", "Mom", true, 5000);
+        settle();
+        press(viewOf(s), "Headset Bluetooth link to this tablet");
+        PreviewTest.later(3000);
+        assertFalse("nothing was disconnected: " + pc.told, pc.told.contains("disconnect"));
+        assertFalse(d.connected);
+        assertTrue("it says to end the call first: " + modelOf(s).message, modelOf(s).message.contains("End the call first"));
+        assertTrue("the call is still on the headset", modelOf(s).headsetOnPhone);
+        stop(sc);
+    }
+
+    @Test
+    public void thePhoneDoesNotConnectWhileTheTabletStillHoldsTheHeadset() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        pc.headsets.devices.get(0).connected = false;
+        pc.live.headset = "";
+        TabletHeadsetRules.Dev d = pretendTablet(true);
+        TabletHeadset.refusedForTest = true; // Android only opens its list for a tap
+        ServiceController<FloatingPhoneService> sc = service(pc);
+        FloatingPhoneService s = sc.get();
+        shown(s);
+        assertTrue(modelOf(s).tabletOn);
+        press(viewOf(s), "Headset Bluetooth link to the phone");
+        PreviewTest.later(4000);
+        assertTrue("the tablet still holds it", d.connected);
+        assertTrue("the phone was NOT asked to connect: " + pc.told, pc.told.stream().noneMatch(x -> x.startsWith("connect:")));
+        assertTrue("it says what to do: " + modelOf(s).message, modelOf(s).message.contains("press the Phone button again"));
+        assertNotNull("Android's Bluetooth list was opened for the tap", org.robolectric.Shadows.shadowOf((android.app.Application) ctx()).getNextStartedActivity());
+        stop(sc);
+    }
+
+    @Test
+    public void thePhoneAloneDisconnectsAndConnects() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        pretendTablet(false);
+        ServiceController<FloatingPhoneService> sc = service(pc);
+        FloatingPhoneService s = sc.get();
+        shown(s);
+        press(viewOf(s), "Headset Bluetooth link to the phone");
         PreviewTest.later(2000);
         assertTrue("Disconnect reached the phone: " + pc.told, pc.told.contains("disconnect"));
-        assertFalse("the card follows what the phone says", modelOf(s).headsetOnPhone);
+        assertFalse(modelOf(s).headsetOnPhone);
         draw(viewOf(s), "service-phone-bt-off");
         press(viewOf(s), "Headset Bluetooth link to the phone");
         PreviewTest.later(2000);
-        assertTrue("Connect reached the phone: " + pc.told, pc.told.contains("connect:"));
+        assertTrue("Connect reached the phone: " + pc.told, pc.told.stream().anyMatch(x -> x.startsWith("connect:")));
         assertTrue(modelOf(s).headsetOnPhone);
-
-        press(viewOf(s), "Headset Bluetooth link to this tablet");
-        PreviewTest.later(2000);
-        assertTrue("the tablet's own Bluetooth connected it", d.connected);
-        assertTrue(modelOf(s).tabletOn);
-        draw(viewOf(s), "service-both-bluetooth");
-        press(viewOf(s), "Headset Bluetooth link to this tablet");
-        PreviewTest.later(2000);
-        assertFalse("and disconnected it again", d.connected);
-
-        // Android refuses: it is said as a tap in Android's list, never as done
+        // Android refuses on the tablet: said as a tap in Android's list, never as done
         TabletHeadset.refusedForTest = true;
         press(viewOf(s), "Headset Bluetooth link to this tablet");
-        PreviewTest.later(2000);
-        assertFalse("nothing was switched", d.connected);
-        assertTrue("it says what to do: " + modelOf(s).message, modelOf(s).message.contains("tap Sony"));
-        assertNotNull("and Android's Bluetooth list was opened", org.robolectric.Shadows.shadowOf((android.app.Application) ctx()).getNextStartedActivity());
+        PreviewTest.later(4000);
+        assertFalse(modelOf(s).tabletOn);
         stop(sc);
     }
 
