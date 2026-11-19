@@ -49,6 +49,26 @@ final class CallWatch {
         return shared;
     }
 
+    /**
+     * Tests only (tools/uipreview): forgets the watch the test before left behind, with its listeners, its holders and its thread, so every
+     * test starts from a watch nobody has used. Never called by the app.
+     */
+    static synchronized void dropForTest() {
+        CallWatch w = shared;
+        shared = null;
+        if (w != null) {
+            synchronized (w) {
+                w.holds = 0;
+                w.running = false;
+                w.gen++;
+                w.listeners.clear();
+            }
+            synchronized (w.lock) {
+                w.lock.notifyAll();
+            }
+        }
+    }
+
     private final Context act;
     private int holds;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -73,14 +93,14 @@ final class CallWatch {
     }
 
     /**
-     * Back to the state of a watch nobody has used (what the app's screens expect at a new start): stops listening, forgets the picture and
-     * the problem, and holds nobody. The listeners stay: each owner takes its own away.
+     * Back to the state of a watch nobody has used (what the app's screens expect at a new start): forgets the picture and the problem and asks
+     * again from nothing. Those who want to hear (the count of {@link #start}) are NOT forgotten: the floating phone keeps listening while the
+     * app draws its screens again. The listeners stay too: each owner takes its own away.
      */
     synchronized void reset() {
-        holds = 0;
-        running = false;
+        gen++; // the old request ends without being heard
         parked = false;
-        gen++;
+        running = false;
         stamp = "";
         now = new Calls.Now();
         receivedAt = 0;
@@ -88,6 +108,13 @@ final class CallWatch {
         problem = "";
         synchronized (lock) {
             lock.notifyAll();
+        }
+        if (holds > 0 && Cfg.callsWatch(act)) {
+            running = true;
+            final int my = ++gen;
+            Thread t = new Thread(() -> loop(my), "linkmeter-callwatch");
+            t.setDaemon(true);
+            t.start();
         }
     }
 

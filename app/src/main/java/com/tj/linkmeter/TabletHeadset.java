@@ -37,7 +37,7 @@ import java.util.function.BooleanSupplier;
  * <li>the hidden connect and disconnect of the hands-free and music profiles, called from this app (Android usually refuses it);</li>
  * <li>Android's own Bluetooth list, opened for ONE tap of the user. That is said as what it is: the app asked, nothing was switched.</li>
  * </ol>
- * Nothing here runs while the headset screens are not in use: the profile connections and the receiver are made when a screen asks and
+ * Nothing here runs while no screen listens (the Headset screen, the floating phone while its card is up): the profile connections and the receiver are made when a screen asks and
  * dropped when the last one goes.
  */
 final class TabletHeadset {

@@ -42,11 +42,22 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
     private static final int NOTE_ID = 7;
     private static final long WARN_MS = 7_000;
     private static final long SAY_MS = 5_000;
+    /** How long the card stays when the phone cannot be heard in the middle of a call. */
+    private static final long OFFLINE_MS = 20_000;
 
     private static volatile boolean running;
+    private static volatile FloatingPhoneService instance;
 
     static boolean running() {
         return running;
+    }
+
+    /** Looks again at what to show (the app came to the front or went away). Does nothing when no service runs. */
+    static void poke() {
+        final FloatingPhoneService s = instance;
+        if (s != null) {
+            s.ui.post(s::update);
+        }
     }
 
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -62,6 +73,7 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
     private String message = "";
     private boolean messageBad;
     private long endedAt;
+    private long offlineSince;
     private long lastElapsed;
     private String lastCall = "";
     private MiniPhoneView.Model model = new MiniPhoneView.Model();
@@ -99,13 +111,13 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
     public void onCreate() {
         super.onCreate();
         running = true;
+        instance = this;
         wm = getSystemService(WindowManager.class);
         startInForeground();
         watch = CallWatch.shared(this);
         watch.addListener(watchListener);
         watch.start();
-        tablet = TabletHeadset.of(this);
-        tablet.add(tabletListener);
+        tablet = TabletHeadset.of(this); // listened to only while the card is up (show/hide)
         try {
             registerReceiver(screenOn, new IntentFilter(Intent.ACTION_SCREEN_ON));
         } catch (RuntimeException ignored) {
@@ -133,14 +145,14 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
     @Override
     public void onDestroy() {
         running = false;
+        if (instance == this) {
+            instance = null;
+        }
         ui.removeCallbacksAndMessages(null);
         hide();
         if (watch != null) {
             watch.removeListener(watchListener);
             watch.stop();
-        }
-        if (tablet != null) {
-            tablet.remove(tabletListener);
         }
         try {
             unregisterReceiver(screenOn);
@@ -197,17 +209,29 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
         final long now = SystemClock.elapsedRealtime();
         Calls.Call lead = watch.lead();
         boolean ok = watch.status() == CallWatch.OK;
-        String state = ok && lead != null ? lead.state : "";
-        if (!state.isEmpty()) {
-            lastElapsed = 0;
-            String st = CallRules.status(lead, watch.elapsed(lead));
-            if (!st.equals("Incoming call") && !st.equals("Calling…")) {
-                lastElapsed = watch.elapsed(lead);
+        String state;
+        if (ok) {
+            offlineSince = 0;
+            state = lead != null ? lead.state : "";
+            if (!state.isEmpty()) {
+                lastElapsed = 0;
+                String st = CallRules.status(lead, watch.elapsed(lead));
+                if (!st.equals("Incoming call") && !st.equals("Calling…")) {
+                    lastElapsed = watch.elapsed(lead);
+                }
+                endedAt = 0;
+            } else if (!lastCall.isEmpty()) {
+                endedAt = now; // a call just ended: its length stays readable for a moment
+                ui.postDelayed(this::update, FloatRules.LINGER_MS + 150);
             }
-            endedAt = 0;
-        } else if (!lastCall.isEmpty()) {
-            endedAt = now; // a call just ended: its length stays readable for a moment
-            ui.postDelayed(this::update, FloatRules.LINGER_MS + 150);
+        } else {
+            // The phone cannot be heard: that says nothing about the call. The card stays (its buttons off, "Can't reach the phone") for a
+            // little while, then goes without claiming that the call ended.
+            if (offlineSince == 0) {
+                offlineSince = now;
+                ui.postDelayed(this::update, OFFLINE_MS + 150);
+            }
+            state = !lastCall.isEmpty() && now - offlineSince < OFFLINE_MS ? lastCall : "";
         }
         lastCall = state;
 
@@ -216,6 +240,7 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
         in.canDraw = FloatingPhone.canDraw(this);
         in.pinned = pinned;
         in.padOpen = view != null && view.expanded();
+        in.appInFront = FloatingPhone.appInFront();
         in.call = state;
         in.endedAt = endedAt;
         in.now = now;
@@ -237,9 +262,12 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
         Calls.Now n = watch.latest();
         m.call = state;
         m.offline = !ok;
-        if (!state.isEmpty()) {
+        if (!state.isEmpty() && lead != null) {
             m.title = leadName(lead);
-            m.subtitle = CallRules.status(lead, watch.elapsed(lead));
+            m.subtitle = ok ? CallRules.status(lead, watch.elapsed(lead)) : FloatRules.idleLine(watch.status());
+        } else if (!state.isEmpty()) {
+            m.title = "Phone call";
+            m.subtitle = FloatRules.idleLine(watch.status());
         } else if (endedAt > 0 && now - endedAt < FloatRules.LINGER_MS) {
             m.title = "Phone";
             m.subtitle = FloatRules.endedLine(lastElapsed);
@@ -312,6 +340,7 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
             view = null; // Android refused (the permission went): the next update stops the service
             return;
         }
+        tablet.add(tabletListener); // the tablet's Bluetooth is listened to only while the card is up
         view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r - l != or - ol || b - t != ob - ot) {
                 place(); // the card has its size (first layout) or the pad opened or closed: keep all of it on the screen
@@ -332,6 +361,7 @@ public final class FloatingPhoneService extends Service implements MiniPhoneView
         }
         view = null;
         armed = false;
+        tablet.remove(tabletListener);
     }
 
     /** Puts the card where it is allowed to be: all of it on the screen. */

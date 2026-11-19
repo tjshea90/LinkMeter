@@ -17,6 +17,22 @@ final class FloatingPhone {
     /** Tests only (tools/uipreview): a pretend answer to "may this app draw over other apps" (null = ask Android). */
     static volatile Boolean canDrawForTest;
 
+    /** LinkMeter's own screens are in front (the card keeps out of their way, see {@link FloatRules.In#appInFront}). */
+    private static volatile boolean appInFront;
+
+    static boolean appInFront() {
+        return appInFront;
+    }
+
+    /** The app came to the front or went away: the card hides or shows at once. Called by the main screen. */
+    static void setAppInFront(boolean front) {
+        if (appInFront == front) {
+            return;
+        }
+        appInFront = front;
+        FloatingPhoneService.poke();
+    }
+
     /** Does Android let this app draw over other apps (the special permission "Display over other apps")? */
     static boolean canDraw(Context c) {
         Boolean t = canDrawForTest;

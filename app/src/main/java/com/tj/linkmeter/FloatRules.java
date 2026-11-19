@@ -22,6 +22,8 @@ final class FloatRules {
         boolean pinned;
         /** The dial pad is open. */
         boolean padOpen;
+        /** LinkMeter's own screens are in front: the strip at the top of every tab and the Calls tab already show the call, so the card keeps out of the way. */
+        boolean appInFront;
         /** The state of the call the screen is about: "", {@link Calls#RINGING}, {@link Calls#DIALING}, {@link Calls#ACTIVE} or {@link Calls#HELD}. */
         String call = "";
         /** When the last call ended, on the tablet's elapsed clock (0 = none ended). */
@@ -29,9 +31,15 @@ final class FloatRules {
         long now;
     }
 
-    /** Does the widget show? Never without Android's permission; a call shows it when the automatic pop-up is on; the user's own request keeps it. */
+    /**
+     * Does the widget show? Never without Android's permission; never over LinkMeter's own screens unless the user asked for it (they show
+     * the call themselves); a call shows it when the automatic pop-up is on; the user's own request keeps it.
+     */
     static boolean visible(In in) {
         if (!in.canDraw) {
+            return false;
+        }
+        if (in.appInFront && !in.pinned) {
             return false;
         }
         boolean call = in.call != null && !in.call.isEmpty();

@@ -155,32 +155,38 @@ public final class FloatingLogicTest {
             for (boolean canDraw : bs) {
                 for (boolean pinned : bs) {
                     for (boolean pad : bs) {
-                        for (String call : CALLS) {
-                            for (long end : ends) {
-                                FloatRules.In in = new FloatRules.In();
-                                in.enabled = enabled;
-                                in.canDraw = canDraw;
-                                in.pinned = pinned;
-                                in.padOpen = pad;
-                                in.call = call;
-                                in.endedAt = end;
-                                in.now = now;
-                                boolean hasCall = !call.isEmpty();
-                                boolean recent = end > 0 && now - end >= 0 && now - end < FloatRules.LINGER_MS;
-                                boolean want = canDraw && ((hasCall && (enabled || pinned)) || pinned || pad || (enabled && recent));
-                                eq(want, FloatRules.visible(in), "visible enabled=" + enabled + " draw=" + canDraw + " pinned=" + pinned + " pad=" + pad
-                                        + " call=" + call + " end=" + end);
-                                if (!canDraw) {
-                                    yes(!FloatRules.visible(in), "never without Android's permission");
+                        for (boolean front : bs) {
+                            for (String call : CALLS) {
+                                for (long end : ends) {
+                                    FloatRules.In in = new FloatRules.In();
+                                    in.enabled = enabled;
+                                    in.canDraw = canDraw;
+                                    in.pinned = pinned;
+                                    in.padOpen = pad;
+                                    in.appInFront = front;
+                                    in.call = call;
+                                    in.endedAt = end;
+                                    in.now = now;
+                                    boolean hasCall = !call.isEmpty();
+                                    boolean recent = end > 0 && now - end >= 0 && now - end < FloatRules.LINGER_MS;
+                                    boolean want = canDraw && !(front && !pinned) && ((hasCall && (enabled || pinned)) || pinned || pad || (enabled && recent));
+                                    eq(want, FloatRules.visible(in), "visible enabled=" + enabled + " draw=" + canDraw + " pinned=" + pinned + " pad=" + pad
+                                            + " front=" + front + " call=" + call + " end=" + end);
+                                    if (!canDraw) {
+                                        yes(!FloatRules.visible(in), "never without Android's permission");
+                                    }
+                                    if (front && !pinned) {
+                                        yes(!FloatRules.visible(in), "never over LinkMeter's own screens unless asked for");
+                                    }
+                                    n++;
                                 }
-                                n++;
                             }
                         }
                     }
                 }
             }
         }
-        yes(n == 2 * 2 * 2 * 2 * 5 * 6, "every combination was looked at (" + n + ")");
+        yes(n == 2 * 2 * 2 * 2 * 2 * 5 * 6, "every combination was looked at (" + n + ")");
         FloatRules.In ring = new FloatRules.In();
         ring.enabled = true;
         ring.canDraw = true;

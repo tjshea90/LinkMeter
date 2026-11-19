@@ -121,7 +121,8 @@ always.
   what is not known until a phone tries it.
 - **The floating phone, the headset's battery and the headset on the tablet (2026-11-19).** *Floating phone:* when the phone rings or a call is
   on, a small dark card floats over whatever app you are in: who and how long, a green button (Answer, or Call when you typed a number) and a red
-  one (Decline, End), the headset's battery, two Bluetooth buttons and an arrow that opens a **dial pad**. Drag the top strip to move it; it
+  one (Decline, End), the headset's battery, two Bluetooth buttons and an arrow that opens a **dial pad** (it steps aside while LinkMeter itself is
+  open, because LinkMeter shows the call on its own; **Show the phone now** keeps it there). Drag the top strip to move it; it
   slides to the nearer side edge and remembers the place. After a call it stays six seconds ("Call ended · 3:12"). The cross closes it when no
   call is on. **Set up once:** Settings > **Floating phone** > **Allow display over other apps** (Android's own screen opens: switch it on for
   LinkMeter and come back). **Show the phone now** (Settings, the small blue handset at the top of the Calls tab, or the notification's *Show

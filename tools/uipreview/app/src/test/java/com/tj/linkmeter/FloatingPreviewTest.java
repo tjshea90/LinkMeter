@@ -72,6 +72,7 @@ public class FloatingPreviewTest {
 
     @Before
     public void setUp() {
+        CallWatch.dropForTest();
         RuntimeEnvironment.setFontScale(1.2f);
         FloatingPhone.canDrawForTest = true;
     }
@@ -80,9 +81,10 @@ public class FloatingPreviewTest {
     public void tearDown() {
         CallWatch.testLink = null;
         FloatingPhone.canDrawForTest = null;
+        FloatingPhone.setAppInFront(false);
         TabletHeadset.pretend = null;
         TabletHeadset.refusedForTest = false;
-        CallWatch.shared(RuntimeEnvironment.getApplication()).reset();
+        CallWatch.dropForTest();
     }
 
     // ------------------------------------------------------------ pictures of the card over a pretend app
@@ -419,6 +421,49 @@ public class FloatingPreviewTest {
         assertFalse("nothing was switched", d.connected);
         assertTrue("it says what to do: " + modelOf(s).message, modelOf(s).message.contains("tap Sony"));
         assertNotNull("and Android's Bluetooth list was opened", org.robolectric.Shadows.shadowOf((android.app.Application) ctx()).getNextStartedActivity());
+        stop(sc);
+    }
+
+    @Test
+    public void aPhoneThatCannotBeHeardMidCallIsNotACallThatEnded() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        ServiceController<FloatingPhoneService> sc = service(pc);
+        FloatingPhoneService s = sc.get();
+        pc.onCall("+15551234567", "Mom", true, 5000);
+        settle();
+        assertEquals(Calls.ACTIVE, modelOf(s).call);
+        pc.offline = true; // the hotspot went away: the phone cannot be heard any more
+        pc.bump();
+        settle();
+        PreviewTest.later(1500);
+        assertNotNull("the card stays", viewOf(s));
+        assertTrue("it says so, and its buttons are off", modelOf(s).offline);
+        assertEquals("Can't reach the phone", modelOf(s).subtitle);
+        assertFalse("it does NOT claim that the call ended", modelOf(s).subtitle.startsWith("Call ended"));
+        draw(viewOf(s), "service-offline-midcall");
+        PreviewTest.later(25_000);
+        assertNull("after a while it goes without a word about the call", viewOf(s));
+        stop(sc);
+    }
+
+    @Test
+    public void staysOutOfTheWayOfLinkMeterItselfUnlessAsked() throws Exception {
+        PretendCalls pc = CallsPreviewTest.phone();
+        ServiceController<FloatingPhoneService> sc = service(pc);
+        FloatingPhoneService s = sc.get();
+        pc.onCall("+15551234567", "Mom", true, 5000);
+        settle();
+        assertNotNull("a call over another app shows the card", viewOf(s));
+        FloatingPhone.setAppInFront(true); // the user came back to LinkMeter, which shows the call itself
+        settle();
+        assertNull("the card steps aside", viewOf(s));
+        FloatingPhone.setAppInFront(false);
+        settle();
+        assertNotNull("and is back when LinkMeter goes away", viewOf(s));
+        s.onStartCommand(new android.content.Intent(FloatingPhoneService.ACTION_SHOW), 0, 1); // "Show the phone now"
+        FloatingPhone.setAppInFront(true);
+        settle();
+        assertNotNull("unless the user asked to see it", viewOf(s));
         stop(sc);
     }
 

@@ -337,6 +337,7 @@ public class PreviewTest {
     static MainActivity tablet() {
         RuntimeEnvironment.setFontScale(1.2f);
         Cfg.setMode(RuntimeEnvironment.getApplication(), Cfg.TABLET);
+        CallWatch.dropForTest(); // the one watch of the process must not carry the test before into this one
         lastTablet = Robolectric.buildActivity(MainActivity.class).setup();
         return lastTablet.get();
     }
@@ -1450,6 +1451,7 @@ public class PreviewTest {
         PhoneTab.source = a -> shownFacts;
         RuntimeEnvironment.setFontScale(font);
         Cfg.setMode(RuntimeEnvironment.getApplication(), Cfg.PHONE);
+        CallWatch.dropForTest();
         MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
         if (!a.shownTitle().equals(Tab.PHONE)) {
             throw new AssertionError("the phone's own screen did not open: " + a.shownTitle());
@@ -2005,6 +2007,7 @@ public class PreviewTest {
     public void roleChooser() throws Exception {
         RuntimeEnvironment.setFontScale(1.0f);
         Cfg.setMode(RuntimeEnvironment.getApplication(), "");
+        CallWatch.dropForTest();
         MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
         shot(a, "chooser");
     }
