@@ -132,7 +132,7 @@ final class CallBackend implements CallApi.Backend {
             n.calls.add(c);
         }
         AudioManager am = ctx.getSystemService(AudioManager.class);
-        n.headset = headset.connectedName();
+        headset.fill(n); // the name of the connected headset and its battery level
         if (am != null) {
             n.muted = am.isMicrophoneMute();
             n.route = n.calls.isEmpty() ? Calls.ROUTE_UNKNOWN : routeNow(am, !n.headset.isEmpty());

@@ -45,6 +45,7 @@ final class CallsTab extends Tab {
 
     private FrameLayout root;
     private TextView chip;
+    private BatteryIconView battery;
     private LinearLayout noticeBox;
     private LinearLayout segRow;
     private final TextView[] segs = new TextView[3];
@@ -153,6 +154,13 @@ final class CallsTab extends Tab {
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(Ui.dp(act, 16), Ui.dp(act, 12), Ui.dp(act, 12), Ui.dp(act, 4));
         head.addView(Ui.title(act, "Calls"), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        battery = new BatteryIconView(act, 1f); // the headset's battery, while it is connected to the phone
+        battery.setVisibility(View.GONE);
+        battery.setClickable(true);
+        battery.setOnClickListener(v -> openHeadset());
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bp.rightMargin = Ui.dp(act, 8);
+        head.addView(battery, bp);
         chip = Ui.chip(act, "Headset", Ui.DIM);
         chip.setClickable(true);
         chip.setOnClickListener(v -> openHeadset());
@@ -359,6 +367,22 @@ final class CallsTab extends Tab {
             }
         }
         Ui.paintChip(chip, v.chip, v.tone == HeadsetRules.Tone.GOOD ? Ui.GREEN : v.tone == HeadsetRules.Tone.WARN ? Ui.AMBER : Ui.DIM);
+        paintBattery();
+    }
+
+    /** The headset's battery beside the chip: only while the phone says the headset is connected to it (the live picture carries the level). */
+    private void paintBattery() {
+        if (battery == null) {
+            return;
+        }
+        CallWatch w = act.callWatch();
+        Calls.Now n = w == null ? null : w.latest();
+        boolean on = n != null && w.status() == CallWatch.OK && !n.headset.isEmpty();
+        battery.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (on) {
+            battery.setLevel(n.headsetBattery, true);
+            battery.setContentDescription(BatteryRules.words(n.headsetBattery, n.headset));
+        }
     }
 
     private void paintNotice() {

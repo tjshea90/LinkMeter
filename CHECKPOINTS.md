@@ -247,3 +247,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-18T19:41:57Z pocket return, LinkMeter half: Launcher bridge (identity-checked provider), job and pure step rules; offline tests 35,580 checks, release build compiles; not run on a device
 - 2026-11-18T21:32:53Z pocket return, LinkMeter half done: bridge for the Launcher app (identity-checked), phone sleep job, offline tests 35,580 checks, release build compiles; not run on a device
 - 2026-11-18T21:39:17Z HANDOFF: pocket return LinkMeter half released as v0.2.190
+- 2026-11-19T01:39:59Z Headset battery from the phone (BtBattery, HeadsetLink, ShellMain bt-battery, wire fields hsb/bat), battery icon, Headset screen battery card and This-tablet card (connect/disconnect ladder), Calls header and Home battery; pure rules + 54k checks; offline tests green, release build compiles; not run on a device

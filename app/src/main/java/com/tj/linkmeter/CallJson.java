@@ -49,7 +49,8 @@ final class CallJson {
         for (Calls.Call c : n.calls) {
             calls.add(call(c));
         }
-        return Json.obj("stamp", n.stamp, "at", n.at, "calls", calls, "mute", n.muted, "route", n.route, "missed", n.missed, "hs", n.headset);
+        return Json.obj("stamp", n.stamp, "at", n.at, "calls", calls, "mute", n.muted, "route", n.route, "missed", n.missed, "hs", n.headset,
+                "hsb", n.headsetBattery);
     }
 
     static Calls.Now nowFrom(Map<String, Object> m) {
@@ -63,6 +64,7 @@ final class CallJson {
         n.route = Json.str(m, "route", Calls.ROUTE_UNKNOWN);
         n.missed = (int) Json.num(m, "missed", 0);
         n.headset = Json.str(m, "hs", "");
+        n.headsetBattery = (int) Json.num(m, "hsb", Calls.BATTERY_OLD_PHONE);
         return n;
     }
 
@@ -83,7 +85,7 @@ final class CallJson {
     }
 
     static Map<String, Object> device(Calls.Device d) {
-        return Json.obj("addr", d.addr, "name", d.name, "kind", d.kind, "on", d.connected);
+        return Json.obj("addr", d.addr, "name", d.name, "kind", d.kind, "on", d.connected, "bat", d.battery);
     }
 
     static Calls.Device deviceFrom(Map<String, Object> m) {
@@ -92,6 +94,7 @@ final class CallJson {
         d.name = Json.str(m, "name", "");
         d.kind = Json.str(m, "kind", "headset");
         d.connected = Json.bool(m, "on", false);
+        d.battery = (int) Json.num(m, "bat", Calls.BATTERY_OLD_PHONE);
         return d;
     }
 

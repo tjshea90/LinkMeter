@@ -553,6 +553,7 @@ public final class CallsLogicTest {
         d.name = "Sony";
         d.kind = "earbuds";
         d.connected = true;
+        d.battery = 78;
         h.devices.add(d);
         h.chosen = d.addr;
         h.bluetoothOn = true;
@@ -563,6 +564,15 @@ public final class CallsLogicTest {
         Calls.Headsets h2 = CallJson.headsetsFrom(Json.parseObject(Json.write(CallJson.headsets(h))));
         check(h2.devices.size() == 1 && h2.devices.get(0).addr.equals(d.addr) && h2.devices.get(0).kind.equals("earbuds") && h2.devices.get(0).connected
                 && h2.chosen.equals(d.addr) && h2.bluetoothOn && h2.allowed && h2.canConnect && h2.drops == 2 && h2.note.equals("n"), "headsets");
+        check(h2.devices.get(0).battery == 78 && h2.devices.get(0).hasBattery(), "the headset's battery goes over the wire");
+        Calls.Device olddev = CallJson.deviceFrom(Json.parseObject("{\"addr\":\"AA:BB:CC:DD:EE:FF\",\"name\":\"Sony\",\"on\":true}"));
+        check(olddev.battery == Calls.BATTERY_OLD_PHONE && !olddev.hasBattery(), "an older phone's device has no battery field: said so, not guessed");
+        Calls.Now nb = new Calls.Now();
+        nb.headset = "Sony";
+        nb.headsetBattery = 41;
+        check(CallJson.nowFrom(Json.parseObject(Json.write(CallJson.now(nb)))).headsetBattery == 41, "the live picture carries the battery");
+        check(CallJson.nowFrom(Json.parseObject("{\"stamp\":\"1\",\"hs\":\"Sony\"}")).headsetBattery == Calls.BATTERY_OLD_PHONE, "an older phone's picture has no battery");
+        check(new Calls.Now().headsetBattery == Calls.BATTERY_UNKNOWN && new Calls.Device().battery == Calls.BATTERY_UNKNOWN, "nothing is claimed by default");
         check(h2.find("aa:bb:cc:dd:ee:ff") != null, "find ignores the case");
         check(h2.current() == h2.devices.get(0), "the chosen one is the current one");
 

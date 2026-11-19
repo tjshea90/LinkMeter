@@ -331,6 +331,44 @@ final class Cfg {
         sp(c).edit().putBoolean("callsBanner", on).apply();
     }
 
+    /** Tablet: which paired audio device is the headset to use with THIS tablet ("" = the same one the phone uses, or the only one paired). */
+    static String tabletHeadsetAddr(Context c) {
+        return sp(c).getString("tabletHeadsetAddr", "");
+    }
+
+    static void setTabletHeadsetAddr(Context c, String addr) {
+        sp(c).edit().putString("tabletHeadsetAddr", addr == null ? "" : addr).apply();
+    }
+
+    /**
+     * Tablet: does the floating phone pop up by itself when the phone rings or a call is on (docs/FLOATING_PHONE.md)? On by default, but it
+     * only runs once calls work (the Calls tab found the phone allowing them) and Android has allowed drawing over other apps.
+     */
+    static boolean floatOn(Context c) {
+        return sp(c).getBoolean("floatOn", true);
+    }
+
+    static void setFloatOn(Context c, boolean on) {
+        sp(c).edit().putBoolean("floatOn", on).apply();
+    }
+
+    /** Tablet: where the user left the floating phone (the top-left corner in pixels; -1 = never moved: it starts at the right edge, a bit down). */
+    static int floatX(Context c) {
+        return sp(c).getInt("floatX", -1);
+    }
+
+    static int floatY(Context c) {
+        return sp(c).getInt("floatY", -1);
+    }
+
+    static void setFloatPos(Context c, int x, int y) {
+        sp(c).edit().putInt("floatX", x).putInt("floatY", y).apply();
+    }
+
+    static void clearFloatPos(Context c) {
+        sp(c).edit().remove("floatX").remove("floatY").apply();
+    }
+
     /** Phone: may the paired tablet place, answer and end calls through this phone (docs/PHONE_CALLS.md)? OFF until the user switches it on. */
     static boolean callsOn(Context c) {
         return sp(c).getBoolean("callsOn", false);

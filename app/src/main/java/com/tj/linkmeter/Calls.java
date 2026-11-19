@@ -35,6 +35,12 @@ final class Calls {
     static final String ROUTE_HEADSET = "headset";
     static final String ROUTE_UNKNOWN = "unknown";
 
+    // ---- the battery of a Bluetooth headset (percent), or why there is no number
+    /** The headset does not report a battery level (or it is not connected). */
+    static final int BATTERY_UNKNOWN = -1;
+    /** The phone's app is too old to say anything about a headset's battery (the field is missing from its answer). */
+    static final int BATTERY_OLD_PHONE = -2;
+
     // ---- what kind of entry the call log holds
     static final String IN = "in";
     static final String OUT = "out";
@@ -94,6 +100,8 @@ final class Calls {
         int missed;
         /** The name of the headset that is connected to the phone, or "". */
         String headset = "";
+        /** The battery of that headset in percent (0 to 100), {@link #BATTERY_UNKNOWN} or {@link #BATTERY_OLD_PHONE}. */
+        int headsetBattery = BATTERY_UNKNOWN;
     }
 
     /** One line of the call log. */
@@ -116,6 +124,13 @@ final class Calls {
         /** "headset", "earbuds", "speaker", "car" or "other". */
         String kind = "headset";
         boolean connected;
+        /** Percent (0 to 100) when the headset is connected and says so; else {@link #BATTERY_UNKNOWN} or {@link #BATTERY_OLD_PHONE}. */
+        int battery = BATTERY_UNKNOWN;
+
+        /** The battery is a real percentage. */
+        boolean hasBattery() {
+            return battery >= 0 && battery <= 100;
+        }
     }
 
     /** The phone's headsets (GET /call/headset). */

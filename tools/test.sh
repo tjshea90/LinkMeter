@@ -148,6 +148,9 @@ java -cp "$out" com.tj.linkmeter.CallsLogicTest || fail=1
 echo "== Calls protocol (the real server code and the real client over a real socket against a fake phone: nothing dials while the switch is off, nothing dials unless the number passed the guard, the long poll waits for news, an old phone and a stranger are told apart)"
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/CallApi.java $FM/RemoteCalls.java tools/test/CallApiTest.java || fail=1
 java -cp "$out" com.tj.linkmeter.CallApiTest || fail=1
+echo "== The floating phone and the headset's battery (BtBattery: a level only when Android gave 0 to 100, from the shell's answer or the Bluetooth dump, never another device's; BatteryRules: bands, lamps and words for every level; FloatRules: when the widget shows, what its green and red buttons do for every combination, that it always stays on the screen; TabletHeadsetRules: which headset the tablet's switch is about, what its card says, an asked switch is never claimed as done)"
+javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/BtBattery.java $FM/BatteryRules.java $FM/FloatRules.java $FM/TabletHeadsetRules.java tools/test/FloatingLogicTest.java || fail=1
+java -cp "$out" com.tj.linkmeter.FloatingLogicTest || fail=1
 echo "== Texts, the tablet's side (text-message counter, tapback texts, quick replies, pins/archive/delete/drafts, the saved copy, the conversation list, the rows of a conversation)"
 javac -proc:none -encoding UTF-8 -cp "$out" -d "$out" $FM/BlobStore.java $FM/FileBlobStore.java $FM/TextsLocal.java $FM/TextsCache.java $FM/SmsLength.java $FM/SmsReactions.java \
   $FM/SmartReply.java $FM/SmsPreview.java $FM/ThreadListRules.java $FM/ThreadRows.java $FM/ThreadMerge.java $FM/Sealer.java $FM/AesGcmSealer.java $FM/SealedBlobStore.java $FM/TextsLock.java $FM/OtpCodes.java $FM/ContactBook.java $FM/LinkLog.java $FM/TimedLink.java $FM/EmojiText.java \

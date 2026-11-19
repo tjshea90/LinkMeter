@@ -25,6 +25,11 @@ final class HeadsetPanel extends LinearLayout {
     private String workingText = "";
     private Calls.Found found;
     private int gen;
+    // the headset's link to THIS tablet (the second card): what the last try said, and whether one is running
+    private String tabletProblem = "";
+    private boolean tabletWorking;
+    private String tabletWorkingText = "";
+    private final Runnable tabletChanged = this::render;
 
     HeadsetPanel(CallsTab t) {
         super(t.act);
@@ -219,6 +224,129 @@ final class HeadsetPanel extends LinearLayout {
         found = null;
     }
 
+    // ------------------------------------------------------------------ the battery (the phone's reading of the headset)
+
+    private LinearLayout batteryCard(Calls.Device d) {
+        LinearLayout card = Ui.card(act, "Headset battery", null);
+        LinearLayout row = new LinearLayout(act);
+        row.setOrientation(HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        BatteryIconView icon = new BatteryIconView(act, 2.2f);
+        icon.setLevel(d.battery, false);
+        row.addView(icon);
+        card.addView(row, Ui.lp(act, 8));
+        TextView line = Ui.body(act, BatteryRules.words(d.battery, d.name));
+        line.setTextColor(BatteryRules.known(d.battery) ? Ui.FG : Ui.DIM);
+        card.addView(line, Ui.lp(act, 6));
+        return card;
+    }
+
+    // ------------------------------------------------------------------ the headset on THIS tablet
+
+    private void tabletWork(String what) {
+        tabletWorking = true;
+        tabletWorkingText = what;
+        render();
+    }
+
+    private void tabletDone(TabletHeadsetRules.Way way, String say) {
+        tabletWorking = false;
+        tabletProblem = way == TabletHeadsetRules.Way.FAILED ? say : "";
+        if (way != TabletHeadsetRules.Way.DONE || !say.isEmpty()) {
+            Toast.makeText(act, say, Toast.LENGTH_LONG).show();
+        }
+        render();
+    }
+
+    private void pressTablet(TabletHeadsetRules.Do what) {
+        if (tabletWorking) {
+            return;
+        }
+        final TabletHeadset tb = TabletHeadset.of(act);
+        final TabletHeadsetRules.Facts f = tb.facts(tab.headsets());
+        final TabletHeadsetRules.Dev d = TabletHeadsetRules.pick(f);
+        switch (what) {
+            case BLUETOOTH_ON:
+                tabletWork("Switching the tablet's Bluetooth on…");
+                tb.switchOn(act, act::inFront, way -> tabletDone(way, way == TabletHeadsetRules.Way.DONE ? "Bluetooth is on." : way == TabletHeadsetRules.Way.ASKED
+                        ? "Android's Bluetooth list is open: switch Bluetooth on there." : "The tablet would not switch Bluetooth on."));
+                break;
+            case CONNECT:
+                if (d != null) {
+                    tabletWork("Connecting " + d.name + " to this tablet…");
+                    tb.connect(act, d.addr, act::inFront, way -> tabletDone(way, TabletHeadsetRules.afterConnect(way, d.name)));
+                }
+                break;
+            case DISCONNECT:
+                if (d != null) {
+                    tabletWork("Disconnecting " + d.name + " from this tablet…");
+                    tb.disconnect(act, d.addr, act::inFront, way -> tabletDone(way, TabletHeadsetRules.afterDisconnect(way, d.name)));
+                }
+                break;
+            case CHOOSE: {
+                List<String> labels = new ArrayList<>();
+                List<Runnable> acts = new ArrayList<>();
+                for (final TabletHeadsetRules.Dev x : f.bonded) {
+                    labels.add(x.name + (x.connected ? " (connected)" : ""));
+                    acts.add(() -> {
+                        tb.choose(x.addr);
+                        render();
+                    });
+                }
+                TextsViews.menu(act, "Choose the headset for this tablet", labels.toArray(new String[0]), acts.toArray(new Runnable[0]));
+                break;
+            }
+            case PAIR:
+            case SETTINGS:
+                if (!act.inFront() || !TabletHeadset.openList(act)) {
+                    Toast.makeText(act, "Open Settings > Connected devices > Bluetooth on the tablet.", Toast.LENGTH_LONG).show();
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private LinearLayout tabletCard(Calls.Headsets phone) {
+        TabletHeadset tb = TabletHeadset.of(act);
+        TabletHeadsetRules.Facts f = tb.facts(phone);
+        TabletHeadsetRules.View v = TabletHeadsetRules.of(f, tabletProblem);
+        LinearLayout card = Ui.card(act, "This tablet", null);
+        LinearLayout head = new LinearLayout(act);
+        head.setOrientation(HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        IconButton icon = new IconButton(act, Icons.Kind.BLUETOOTH, v.tone == TabletHeadsetRules.Tone.GOOD ? Ui.GREEN : Ui.DIM, 0, "Bluetooth", null);
+        icon.setScale(0.6f);
+        head.addView(icon, new LayoutParams(Ui.dp(act, 30), Ui.dp(act, 30)));
+        TextView title = Ui.text(act, v.title, 15, Ui.FG, true);
+        LayoutParams tp = new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tp.leftMargin = Ui.dp(act, 8);
+        head.addView(title, tp);
+        card.addView(head, Ui.lp(act, 2));
+        if (!v.line.isEmpty()) {
+            TextView line = Ui.body(act, v.line);
+            line.setTextColor(v.tone == TabletHeadsetRules.Tone.GOOD ? Ui.GREEN : v.tone == TabletHeadsetRules.Tone.WARN ? Ui.AMBER : Ui.FG);
+            card.addView(line, Ui.lp(act, 6));
+        }
+        if (v.device != null && v.device.connected) {
+            int level = tb.battery(v.device.addr);
+            if (BatteryRules.known(level)) {
+                BatteryIconView ic = new BatteryIconView(act, 1.3f);
+                ic.setLevel(level, false);
+                card.addView(ic, Ui.lp(act, 8));
+            }
+        }
+        if (tabletWorking) {
+            card.addView(Ui.text(act, tabletWorkingText, 14, Ui.ACCENT, true), Ui.lp(act, 8));
+        }
+        for (final TabletHeadsetRules.Button b : v.buttons) {
+            Button btn = b.main ? Ui.primary(act, b.label, x -> pressTablet(b.what)) : Ui.button(act, b.label, x -> pressTablet(b.what));
+            btn.setEnabled(!tabletWorking);
+            card.addView(btn, Ui.lp(act, 8));
+        }
+        return card;
+    }
+
     // ------------------------------------------------------------------ drawing
 
     private Button button(HeadsetRules.Button b) {
@@ -230,6 +358,11 @@ final class HeadsetPanel extends LinearLayout {
 
     private void render() {
         col.removeAllViews();
+        Calls.Headsets hp = tab.headsets();
+        Calls.Device now = hp == null || !hp.allowed ? null : hp.current();
+        if (now != null && now.connected) {
+            col.addView(batteryCard(now), Ui.lp(act, 0)); // the headset's battery, while it is connected to the phone
+        }
         LinearLayout why = Ui.card(act, "The headset connects to the phone", null);
         why.addView(Ui.hint(act, "The phone makes the call, so your headset is paired with the phone, not with this tablet: the voice "
                 + "goes straight from the headset to the phone, and keeps going if this tablet sleeps. This screen only helps you connect it. "
@@ -259,6 +392,9 @@ final class HeadsetPanel extends LinearLayout {
             status.addView(button(b), Ui.lp(act, 8));
         }
         col.addView(status, Ui.lp(act, 12));
+        if (h != null && h.allowed) {
+            col.addView(tabletCard(h), Ui.lp(act, 12));
+        }
 
         if (h != null && !h.devices.isEmpty()) {
             LinearLayout list = Ui.card(act, "Paired with the phone", null);
@@ -309,5 +445,17 @@ final class HeadsetPanel extends LinearLayout {
 
     View view() {
         return this;
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        TabletHeadset.of(act).add(tabletChanged); // the tablet's own Bluetooth: heard only while this screen is up
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        TabletHeadset.of(act).remove(tabletChanged);
+        super.onDetachedFromWindow();
     }
 }

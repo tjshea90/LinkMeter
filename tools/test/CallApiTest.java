@@ -86,6 +86,7 @@ public final class CallApiTest {
             n.route = now.route;
             n.missed = missed;
             n.headset = now.headset;
+            n.headsetBattery = now.headsetBattery;
             return n;
         }
 
@@ -357,10 +358,12 @@ public final class CallApiTest {
             f.now.calls.add(ring("+15551234567"));
             f.now.route = Calls.ROUTE_HEADSET;
             f.now.headset = "Sony";
+            f.now.headsetBattery = 64;
             f.missed = 2;
             Calls.Now n = rc.now();
             check(n.calls.size() == 1 && n.calls.get(0).state.equals(Calls.RINGING) && n.calls.get(0).incoming, "a ringing call");
             check(n.route.equals(Calls.ROUTE_HEADSET) && n.headset.equals("Sony") && n.missed == 2, "route, headset, missed");
+            check(n.headsetBattery == 64, "the headset's battery reaches the tablet through the real routes");
             eq(s.clock, n.at, "the phone's clock is in the answer");
             check(!n.stamp.isEmpty(), "a stamp");
 

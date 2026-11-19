@@ -41,6 +41,8 @@ import java.util.function.IntPredicate;
  *                        an app may not (BluetoothDevice.connect needs BLUETOOTH_PRIVILEGED); the caller then looks whether Android lists
  *                        it as connected
  *   bt-disconnect ADDR   the same the other way round
+ *   bt-battery ADDR      "OK 78": the battery level a connected Bluetooth device reported (the hidden BluetoothDevice.getBatteryLevel(), else
+ *                        the device's battery line in the Bluetooth service's own dump); "OK -1" when nothing says (docs/FLOATING_PHONE.md)
  *   hotspot-start        switch the Wi-Fi hotspot on (the system's tethering service, as the shell user), and say whether it
  *                        really came on
  *   hotspot-stop         switch it off, and say whether it really went off
@@ -119,7 +121,8 @@ public final class ShellMain {
             return "ERR missing or bad Bluetooth address";
         }
         boolean connect = a[0].equals("bt-connect");
-        if (!connect && !a[0].equals("bt-disconnect")) {
+        boolean battery = a[0].equals("bt-battery");
+        if (!connect && !battery && !a[0].equals("bt-disconnect")) {
             return "ERR unknown command";
         }
         shellContext(); // the looper and the system modules a normal app process has set up by now
@@ -130,6 +133,9 @@ public final class ShellMain {
         }
         Object device = adapterClass.getMethod("getRemoteDevice", String.class).invoke(adapter, a[1].toUpperCase(java.util.Locale.US));
         giveShellSource(device);
+        if (battery) {
+            return batteryOf(device, a[1]);
+        }
         Method m = find(device.getClass(), connect ? "connect" : "disconnect", 0);
         if (m == null) {
             return "ERR this Android has no BluetoothDevice." + (connect ? "connect" : "disconnect") + "()";
@@ -142,6 +148,50 @@ public final class ShellMain {
             return ((Integer) r) == 0 ? "OK" : "ERR Bluetooth status " + r;
         }
         return "OK";
+    }
+
+    /** The battery level of a connected Bluetooth device: "OK 78", or "OK -1" when neither the hidden call nor the service's dump says. */
+    private static String batteryOf(Object device, String addr) throws Exception {
+        Method m = find(device.getClass(), "getBatteryLevel", 0);
+        if (m != null) {
+            Object r = m.invoke(device);
+            if (r instanceof Integer) {
+                int level = BtBattery.clean((Integer) r);
+                if (level >= 0) {
+                    return "OK " + level;
+                }
+            }
+        }
+        return "OK " + BtBattery.fromDump(dumpBluetooth(), addr);
+    }
+
+    /** What the Bluetooth service says about itself and its devices (the shell user may ask), cut at 3 MB and 8 seconds. */
+    private static String dumpBluetooth() {
+        try {
+            final Process p = new ProcessBuilder("dumpsys", "bluetooth_manager").redirectErrorStream(true).start();
+            final StringBuilder sb = new StringBuilder();
+            Thread t = new Thread(() -> {
+                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream(), "UTF-8"))) {
+                    char[] buf = new char[8192];
+                    int n;
+                    while ((n = r.read(buf)) > 0 && sb.length() < 3_000_000) {
+                        synchronized (sb) {
+                            sb.append(buf, 0, n);
+                        }
+                    }
+                } catch (java.io.IOException ignored) {
+                    // what was read is used
+                }
+            });
+            t.start();
+            t.join(8000);
+            p.destroy();
+            synchronized (sb) {
+                return sb.toString();
+            }
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     /** Tells a BluetoothDevice to make its requests as the shell package (uid 2000), when this Android has a place to say so. */

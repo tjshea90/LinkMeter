@@ -43,6 +43,7 @@ final class HomeTab extends Tab {
     private Ui.Fact fHotspot;
     private Ui.Fact fScreen;
     private Ui.Fact fAirplane;
+    private Ui.Fact fHeadset;
     private Ui.Fact fLocation;
     private Ui.Fact fSaver;
     private Ui.Fact fAndroid;
@@ -243,12 +244,15 @@ final class HomeTab extends Tab {
         fLocation = new Ui.Fact(act, "Location");
         fSaver = new Ui.Fact(act, "LinkMeter's saver");
         fAndroid = new Ui.Fact(act, "Android's Battery saver");
+        fHeadset = new Ui.Fact(act, "Headset");
+        fHeadset.view.setVisibility(View.GONE); // only for a tablet whose calls work (docs/FLOATING_PHONE.md)
         sw.addView(fHotspot.view, Ui.lp(act, 8));
         sw.addView(fScreen.view, Ui.lp(act, 6));
         sw.addView(fAirplane.view, Ui.lp(act, 6));
         sw.addView(fLocation.view, Ui.lp(act, 6));
         sw.addView(fSaver.view, Ui.lp(act, 6));
         sw.addView(fAndroid.view, Ui.lp(act, 6));
+        sw.addView(fHeadset.view, Ui.lp(act, 6));
         bHotspot = Ui.button(act, "Hotspot", v -> hotspotPressed());
         bScreen = Ui.button(act, "Screen", v -> screenPressed());
         bStandby = Ui.button(act, "Standby", v -> confirmOff(true));
@@ -703,11 +707,35 @@ final class HomeTab extends Tab {
                 lvl, -1f, stale ? Ui.GREY : Ui.levelColor(lvl));
     }
 
+    /**
+     * The headset line of the Switches card: the headset that is connected to the phone and its battery, from the live picture of the
+     * phone's calls (which the app already holds while calls are used); nothing at all for a tablet whose calls do not work.
+     */
+    private void paintHeadset() {
+        CallWatch w = act.callWatch();
+        Calls.Now n = w == null ? null : w.latest();
+        boolean show = n != null && w.status() == CallWatch.OK;
+        fHeadset.view.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) {
+            return;
+        }
+        if (n.headset.isEmpty()) {
+            fHeadset.set("not connected to the phone", Ui.DIM);
+        } else if (BatteryRules.known(n.headsetBattery)) {
+            BatteryRules.Band b = BatteryRules.band(n.headsetBattery);
+            fHeadset.set(n.headset + " · " + BatteryRules.percent(n.headsetBattery), b == BatteryRules.Band.GOOD ? Ui.GREEN
+                    : b == BatteryRules.Band.OK ? Ui.FG : b == BatteryRules.Band.LOW ? Ui.AMBER : Ui.RED);
+        } else {
+            fHeadset.set(n.headset + " · battery not shown", Ui.FG);
+        }
+    }
+
     /** The three lines and the buttons of the Switches card, from the phone's last status. */
     private void paintSwitches() {
         if (fHotspot == null) {
             return;
         }
+        paintHeadset();
         JSONObject p = lastPhone;
         // A phone app from before these switches says neither "hs" nor "bt". A newer one always says "bt", and leaves "hs" out
         // only when it cannot tell whether its hotspot is on: that is "not known", never "off".

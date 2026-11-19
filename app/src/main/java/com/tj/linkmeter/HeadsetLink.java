@@ -15,10 +15,12 @@ import android.os.Build;
 import android.os.ParcelUuid;
 import android.os.SystemClock;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -38,6 +40,20 @@ final class HeadsetLink {
     private volatile int drops;
     private volatile long scanEnd;
     private final List<Calls.Device> found = new CopyOnWriteArrayList<>();
+    // The battery of the headsets that are connected (percent), what the three ways to read it said last (docs/FLOATING_PHONE.md)
+    private final ConcurrentHashMap<String, Integer> batteries = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> shellAsked = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> shellKnown = new ConcurrentHashMap<>();
+    private volatile boolean shellBusy;
+    private volatile boolean reflectionBlocked;
+    private volatile Method levelMethod;
+
+    /** Android's own names (hidden in the SDK, plain strings on the wire): the broadcast that carries a headset's battery level. */
+    static final String ACTION_BATTERY = "android.bluetooth.device.action.BATTERY_LEVEL_CHANGED";
+    static final String EXTRA_BATTERY = "android.bluetooth.device.extra.BATTERY_LEVEL";
+    /** A level the shell gave is believed this long before it is asked again; an answer of "not known" is asked again after the second time. */
+    private static final long SHELL_REFRESH_MS = 3 * 60_000L;
+    private static final long SHELL_RETRY_MS = 5 * 60_000L;
 
     HeadsetLink(Context c, Runnable changed) {
         this.app = c.getApplicationContext();
@@ -67,6 +83,16 @@ final class HeadsetLink {
                 return;
             }
             BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+            if (ACTION_BATTERY.equals(a)) {
+                if (d != null && d.getAddress() != null) {
+                    keep(up(d.getAddress()), BtBattery.clean(i.getIntExtra(EXTRA_BATTERY, Calls.BATTERY_UNKNOWN)));
+                }
+                return; // keep() tells the listener when the number moved
+            }
+            if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(a) && d != null && d.getAddress() != null) {
+                batteries.remove(up(d.getAddress())); // a headset that went away has no level any more
+                shellKnown.remove(up(d.getAddress()));
+            }
             if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(a) && d != null && d.getAddress() != null
                     && d.getAddress().equalsIgnoreCase(Cfg.headsetAddr(app))) {
                 drops++;
@@ -116,6 +142,7 @@ final class HeadsetLink {
         f.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
         f.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
         f.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        f.addAction(ACTION_BATTERY);
         f.addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
         f.addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
         try {
@@ -245,6 +272,7 @@ final class HeadsetLink {
                     x.name = nameOf(d);
                     x.kind = kind(d);
                     x.connected = on.contains(x.addr);
+                    x.battery = x.connected ? battery(x.addr, d) : Calls.BATTERY_UNKNOWN;
                     h.devices.add(x);
                 }
             } catch (RuntimeException e) {
@@ -265,38 +293,135 @@ final class HeadsetLink {
         return h;
     }
 
-    /** The name of the connected headset (the chosen one when it is), or "". */
-    String connectedName() {
+    /** The connected audio device to talk about (the chosen one when it is connected, else the first), or null. */
+    private BluetoothDevice connectedPick() {
         if (!CallAccess.bluetooth(app)) {
-            return "";
+            return null;
         }
         BluetoothAdapter a = adapter();
         if (a == null || !a.isEnabled()) {
-            return "";
+            return null;
         }
         ensure();
         Set<String> on = connectedAddrs();
         if (on.isEmpty()) {
-            return "";
+            return null;
         }
         String chosen = up(Cfg.headsetAddr(app));
-        String first = "";
+        BluetoothDevice first = null;
         try {
             for (BluetoothDevice d : a.getBondedDevices()) {
                 String addr = up(d.getAddress());
                 if (on.contains(addr) && isAudio(d)) {
                     if (addr.equals(chosen)) {
-                        return nameOf(d);
+                        return d;
                     }
-                    if (first.isEmpty()) {
-                        first = nameOf(d);
+                    if (first == null) {
+                        first = d;
                     }
                 }
             }
         } catch (RuntimeException e) {
-            return "";
+            return null;
         }
         return first;
+    }
+
+    /** The name of the connected headset (the chosen one when it is), or "". */
+    String connectedName() {
+        BluetoothDevice d = connectedPick();
+        return d == null ? "" : nameOf(d);
+    }
+
+    /** Fills in the headset's name and battery level of the live picture (one look at what is connected). Never waits for the shell. */
+    void fill(Calls.Now n) {
+        BluetoothDevice d = connectedPick();
+        n.headset = d == null ? "" : nameOf(d);
+        n.headsetBattery = d == null ? Calls.BATTERY_UNKNOWN : battery(up(d.getAddress()), d);
+    }
+
+    // ------------------------------------------------------------------ the battery
+
+    /** Stores a level a way of reading gave and tells the listener when the number moved. */
+    private void keep(String addr, int level) {
+        if (addr.isEmpty() || level < 0) {
+            return;
+        }
+        Integer before = batteries.put(addr, level);
+        if (before == null || before != level) {
+            fire(); // the tablet's long request wakes up and shows the new level
+        }
+    }
+
+    /** The hidden BluetoothDevice.getBatteryLevel() in this process. Hidden calls may be refused to an app; then this way is dropped for good. */
+    private int levelHere(BluetoothDevice d) {
+        if (reflectionBlocked) {
+            return Calls.BATTERY_UNKNOWN;
+        }
+        try {
+            Method m = levelMethod;
+            if (m == null) {
+                m = BluetoothDevice.class.getMethod("getBatteryLevel");
+                levelMethod = m;
+            }
+            Object r = m.invoke(d);
+            return r instanceof Integer ? BtBattery.clean((Integer) r) : Calls.BATTERY_UNKNOWN;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            reflectionBlocked = true;
+            return Calls.BATTERY_UNKNOWN;
+        }
+    }
+
+    /**
+     * What is known of the headset's battery: the level Android just gave this process, else the last level the broadcast or the shell gave
+     * (the shell is asked in the background, at most every three minutes for a number it gave and every five for "not known", and only when
+     * Shizuku is ready). Never blocks and never throws.
+     */
+    int battery(String addr, BluetoothDevice d) {
+        String a = up(addr);
+        if (a.isEmpty()) {
+            return Calls.BATTERY_UNKNOWN;
+        }
+        if (d != null) {
+            keep(a, levelHere(d));
+        }
+        Integer v = batteries.get(a);
+        Long known = shellKnown.get(a);
+        long now = SystemClock.elapsedRealtime();
+        boolean stale = v == null || (known != null && now - known > SHELL_REFRESH_MS);
+        if (stale) {
+            askShell(a);
+        }
+        return v == null ? Calls.BATTERY_UNKNOWN : v;
+    }
+
+    private void askShell(final String addr) {
+        if (shellBusy || !Priv.ready()) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        Long last = shellAsked.get(addr);
+        if (last != null && now - last < (batteries.containsKey(addr) ? SHELL_REFRESH_MS : SHELL_RETRY_MS)) {
+            return;
+        }
+        shellAsked.put(addr, now);
+        shellBusy = true;
+        Thread t = new Thread(() -> {
+            try {
+                Priv.Result r = Cells.shellMain(app, "bt-battery " + addr, 25);
+                int level = BtBattery.fromShell(r.out);
+                if (level >= 0) {
+                    shellKnown.put(addr, SystemClock.elapsedRealtime());
+                    keep(addr, level);
+                }
+            } catch (IOException | RuntimeException e) {
+                // the next ask tries again
+            } finally {
+                shellBusy = false;
+            }
+        }, "linkmeter-bt-battery");
+        t.setDaemon(true);
+        t.start();
     }
 
     boolean isConnected(String addr) {
