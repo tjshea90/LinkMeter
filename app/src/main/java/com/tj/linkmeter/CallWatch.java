@@ -183,6 +183,18 @@ final class CallWatch {
         t.start();
     }
 
+    /** Calls may have started to work since somebody asked to hear: starts the listening that {@link #start} could not start then. */
+    synchronized void ensureRunning() {
+        if (running || holds <= 0 || !Cfg.callsWatch(act)) {
+            return;
+        }
+        running = true;
+        final int my = ++gen;
+        Thread t = new Thread(() -> loop(my), "linkmeter-callwatch");
+        t.setDaemon(true);
+        t.start();
+    }
+
     /** One of those who wanted to hear has gone; the last one stops the listening (the request that is held ends by itself within half a minute). */
     synchronized void stop() {
         if (holds > 0) {

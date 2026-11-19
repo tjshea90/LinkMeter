@@ -368,6 +368,7 @@ final class SettingsTab extends Tab {
 
     private TextView floatState;
     private Button floatAllow;
+    private Button floatAccess;
 
     /** The floating phone's switch, Android's permission and a way to see it now (docs/FLOATING_PHONE.md). */
     private void buildFloating(LinearLayout col) {
@@ -387,6 +388,11 @@ final class SettingsTab extends Tab {
         card.addView(floatState, Ui.lp(act, 4));
         floatAllow = Ui.primary(act, "Allow display over other apps", v -> allowOverlay());
         card.addView(floatAllow, Ui.lp(act, 8));
+        floatAccess = Ui.primary(act, "Turn on with Accessibility", v -> openAccessibility());
+        card.addView(floatAccess, Ui.lp(act, 8));
+        card.addView(Ui.hint(act, "Accessibility way (for tablets where Android turns \"Display over other apps\" off, like a Go tablet): in "
+                + "Android's Accessibility settings open \"LinkMeter floating phone\" and switch it on. LinkMeter uses it only to draw this "
+                + "window: it asks for no window content, receives no events and never looks at your screen."), Ui.lp(act, 2));
         card.addView(Ui.button(act, "Show the phone now", v -> {
             if (!FloatingPhone.showNow(act)) {
                 allowOverlay();
@@ -405,7 +411,20 @@ final class SettingsTab extends Tab {
             return;
         }
         floatState.setText(FloatingPhone.stateLine(act));
-        floatAllow.setVisibility(FloatingPhone.canDraw(act) ? View.GONE : View.VISIBLE);
+        boolean can = FloatingPhone.canShow(act);
+        // Android's own screen is shown only where it can work; where it says "Feature not available" the Accessibility way is the one
+        floatAllow.setVisibility(can || FloatingPhone.overlayUnavailable(act) ? View.GONE : View.VISIBLE);
+        floatAccess.setVisibility(can ? View.GONE : View.VISIBLE);
+    }
+
+    /** Opens Android's Accessibility settings, where "LinkMeter floating phone" is switched on. */
+    private void openAccessibility() {
+        try {
+            act.startActivity(new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            Toast.makeText(act, "Open \"LinkMeter floating phone\", switch it on and allow it, then come back.", Toast.LENGTH_LONG).show();
+        } catch (RuntimeException e) {
+            Toast.makeText(act, "Open Settings > Accessibility > LinkMeter floating phone.", Toast.LENGTH_LONG).show();
+        }
     }
 
     /** Asks Android for "Display over other apps": through Shizuku when this tablet has it, else on Android's own screen (read back either way). */

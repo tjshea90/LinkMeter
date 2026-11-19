@@ -150,6 +150,21 @@
                 android:value="Shows the user's own phone call controls in a small window over other apps on the user's own tablet" />
         </service>
 
+        <!-- Tablet: the same floating phone drawn as an accessibility overlay, for tablets where Android turns "Display over other apps" off
+             (Android 10 Go). Only the system may bind it; it asks for no window content and receives no events (res/xml/floating_phone_access.xml). -->
+        <service
+            android:name=".FloatingPhoneAccess"
+            android:exported="true"
+            android:label="@string/floating_phone_access_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/floating_phone_access" />
+        </service>
+
         <!-- Tablet: the quick settings tile that switches Fast Wi-Fi on and off. Only the system may bind it. -->
         <service
             android:name=".FastTile"

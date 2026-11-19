@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="floating_phone_access_label">LinkMeter floating phone</string>
+    <string name="floating_phone_access_description">Lets LinkMeter draw its small floating phone window over other apps on this tablet, where Android does not allow \"Display over other apps\". It only draws that window: it does not read the screen, and it receives no events from other apps.</string>
+</resources>

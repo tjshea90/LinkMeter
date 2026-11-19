@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LinkMeter's floating phone as an accessibility overlay (docs/FLOATING_PHONE.md): used ONLY to draw a window over other apps where
+     Android turns "Display over other apps" off (Android 10 Go). It asks for no window content and no events. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/floating_phone_access_description"
+    android:notificationTimeout="100" />
