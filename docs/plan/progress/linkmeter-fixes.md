@@ -1,6 +1,6 @@
-# linkmeter-fixes progress (2026-11-21)
-Done in code: (1) Wi-Fi button chain+note (TabletWifi.showSwitch, HomeTab.switchWifiOn), (2) PressFeedback tint + 48dp targets + no ripple, (3) one-screen New message (FlowRow, TextsTab.showNew), CS1 keep Android saver (SystemSaver.keep, Eco.setSystemKeep, PocketRules step 5+7).
-Offline tests (tools/test.sh pieces) green for PocketRules/SystemSaver.
-Preview tests running: Texts/Calls/Floating/DeepSleep/Preview (log scratchpad prev-all.log).
-Next: read prev-all.log; fix failures; tools/test.sh; assembleRelease; docs (LAUNCHER_BRIDGE, USER_GUIDE), HANDOFF top block; checkpoint; trigger build.yml on branch.
-Then Launcher CS2 (PowerMenuPrime), then Keyboard R29.
+# linkmeter-fixes: state 2026-11-21 20:02Z (branch claude/linkmeter-keyboard-launcher-fixes-fsk78t, all three repos)
+LinkMeter: code done; tools/test.sh green, assembleRelease green, docs + HANDOFF block written (wip 1416074). Previews (Calls, Texts, Floating, WifiFollow, DeepSleep, Preview) re-running: log scratchpad lm-prev2.log, PREV_EXIT line at the end; fix any failure.
+ Then: NO_RELEASE=1 tools/checkpoint.sh, then trigger build.yml on the claude/* branch (mcp__github__actions_run_trigger) ONLY to check it builds; a numbered release needs a push to a ccr-* branch: ASK THE USER first.
+Launcher: CS2 done; gate runs #691 id 44942545183 (x1,e1,o,ac,hp,pm), #692 id 44942547821 (base,n,cu,pf,rb,last), #693 id 44942550357 (lq,uf,cs,cs2,pk) on head 96d0596b. Read each (list_workflow_jobs, get_job_logs tail 60). If green: tick CS1/CS2 in TASKS, bash ship.sh, android.yml full_build, record-release.sh. If a FAIL: compare solo / on tag v0.9.14 before touching code.
+Keyboard: alpha9 dispatched ONCE run 44943874370; then get_release_by_tag swoop-v0.7.0-alpha9 + bash tools/record-release.sh (note in ckpt 898 'next').
+Final answer to the user: plain words, per item; proven vs reasoned; nothing run on a device; ask yes/no for LinkMeter ccr-* push; releases links only for releases that exist.
