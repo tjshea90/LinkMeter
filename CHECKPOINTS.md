@@ -270,3 +270,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-21T19:51:42Z WORK IN PROGRESS (not finished, not built): LinkMeter: docs (bridge, user guide), HANDOFF block, Calls preview test fixes; offline tests + assembleRelease green; previews re-running
 - 2026-11-21T20:08:35Z LinkMeter: Wi-Fi button chain, instant press feedback, one-screen New message, saver kept on + read back; offline tests, release build and previews green (not run on a device)
 - 2026-11-21T21:52:17Z LinkMeter: closing save for the release the user asked for: Wi-Fi button chain, instant press feedback, one-screen New message, saver kept on + read back (not run on a device)
+- 2026-11-21T21:58:36Z HANDOFF: LinkMeter released as v0.2.204 (run 204 green)
