@@ -36,6 +36,19 @@ public final class CallApiTest {
         check(String.valueOf(want).equals(String.valueOf(got)), msg + ": wanted '" + want + "' but got '" + got + "'");
     }
 
+    static Calls.Volume pretendVolumes() {
+        Calls.Volume v = new Calls.Volume();
+        v.media.min = 0;
+        v.media.max = 15;
+        v.media.now = 6;
+        v.call.min = 1;
+        v.call.max = 5;
+        v.call.now = 3;
+        v.mediaOnHeadset = true;
+        v.callOnHeadset = true;
+        return v;
+    }
+
     /** A phone that does what it is told and writes it down. */
     static final class Fake implements CallApi.Backend {
         volatile boolean on = true;
@@ -55,6 +68,9 @@ public final class CallApiTest {
         volatile Calls.Headsets headsets = new Calls.Headsets();
         volatile Calls.Found found = new Calls.Found();
         volatile boolean granted;
+        /** The headset's volumes of this pretend phone: media 0..15 at 6, call 1..5 at 3, a call's sound on the headset. */
+        volatile Calls.Volume volumes = pretendVolumes();
+        final List<String> volumeAsked = new CopyOnWriteArrayList<>();
 
         @Override
         public boolean on() {
@@ -87,6 +103,7 @@ public final class CallApiTest {
             n.missed = missed;
             n.headset = now.headset;
             n.headsetBattery = now.headsetBattery;
+            n.volume = volumes;
             return n;
         }
 
@@ -124,6 +141,19 @@ public final class CallApiTest {
         public Calls.Result mute(boolean on) {
             done.add("mute" + (on ? 1 : 0));
             return Calls.Result.ok(on ? "Muted" : "Not muted");
+        }
+
+        @Override
+        public Calls.Result volume(String stream, int by) {
+            volumeAsked.add(stream + ":" + by);
+            Calls.Volume v = volumes;
+            VolumeRules.Plan p = VolumeRules.plan(stream, by, v, !now.headset.isEmpty());
+            if (!p.ok) {
+                return Calls.Result.fail(p.why);
+            }
+            VolumeRules.level(v, stream).now = p.target; // this phone obeys; the read-back is the new level
+            bump();
+            return VolumeRules.verify(stream, p, VolumeRules.level(v, stream));
         }
 
         @Override
@@ -352,6 +382,41 @@ public final class CallApiTest {
             check(!f.done.contains("route:moon"), "an unknown route was not passed on");
             rc.logSeen();
             check(f.done.contains("seen"), "seen");
+
+            // ---- the headset's volume (docs/PHONE_CALLS.md "Headset volume")
+            f.now = new Calls.Now();
+            f.now.headset = "Sony";
+            Calls.Now vn = rc.now();
+            check(!vn.volume.old && vn.volume.media.now == 6 && vn.volume.media.max == 15 && vn.volume.call.now == 3 && vn.volume.call.min == 1,
+                    "the headset's volumes reach the tablet in the live picture");
+            check(vn.volume.mediaOnHeadset && vn.volume.callOnHeadset, "and where each one goes");
+            r = rc.volume(Calls.STREAM_MEDIA, 1);
+            check(r.ok && r.out.equals("Media volume 7 of 15."), "one step up, said as the phone read it back: " + r.out + r.why);
+            check(rc.now().volume.media.now == 7, "the next picture has the new level");
+            r = rc.volume(Calls.STREAM_MEDIA, -1);
+            check(r.ok && f.volumes.media.now == 6, "one step down");
+            r = rc.volume(Calls.STREAM_CALL, -3);
+            check(r.ok && r.out.equals("Call volume 1 of 5."), "the call volume stops at its own floor of 1: " + r.out + r.why);
+            r = rc.volume(Calls.STREAM_CALL, -1);
+            check(!r.ok && r.why.equals(VolumeRules.QUIETEST), "already as quiet as it goes: " + r.why);
+            expect(IOException.class, "no stream", () -> rc.volume("", 1));
+            expect(IOException.class, "an unknown stream (the ringer is not the headset's)", () -> rc.volume("ring", 1));
+            expect(IOException.class, "no step", () -> rc.volume(Calls.STREAM_MEDIA, 0));
+            expect(IOException.class, "a jump to full loudness is not accepted", () -> rc.volume(Calls.STREAM_MEDIA, 9));
+            expect(IOException.class, "nor a jump down", () -> rc.volume(Calls.STREAM_MEDIA, -4));
+            check(!f.volumeAsked.contains("ring:1") && !f.volumeAsked.contains("media:0") && !f.volumeAsked.contains("media:9") && !f.volumeAsked.contains("media:-4"),
+                    "a request that is not a volume step never reached the phone: " + f.volumeAsked);
+            f.now.headset = "";
+            r = rc.volume(Calls.STREAM_MEDIA, 1);
+            check(!r.ok && r.why.contains(VolumeRules.NO_HEADSET) && f.volumes.media.now == 6, "no headset: nothing moved, the phone said why: " + r.why);
+            f.now.headset = "Sony";
+            f.volumes.mediaOnHeadset = false;
+            r = rc.volume(Calls.STREAM_MEDIA, 1);
+            check(!r.ok && r.why.equals(VolumeRules.MEDIA_ELSEWHERE) && f.volumes.media.now == 6, "media on the phone's own speaker is left alone: " + r.why);
+            f.volumes = pretendVolumes();
+            f.on = false;
+            expect(RemoteCalls.Off.class, "volume is a call route: off while the switch is off", () -> rc.volume(Calls.STREAM_MEDIA, 1));
+            f.on = true;
 
             // ---- the live picture
             f.now = new Calls.Now();

@@ -49,8 +49,40 @@ final class CallJson {
         for (Calls.Call c : n.calls) {
             calls.add(call(c));
         }
-        return Json.obj("stamp", n.stamp, "at", n.at, "calls", calls, "mute", n.muted, "route", n.route, "missed", n.missed, "hs", n.headset,
-                "hsb", n.headsetBattery);
+        Map<String, Object> m = Json.obj("stamp", n.stamp, "at", n.at, "calls", calls, "mute", n.muted, "route", n.route, "missed", n.missed,
+                "hs", n.headset, "hsb", n.headsetBattery);
+        volumeInto(m, n.volume);
+        return m;
+    }
+
+    /** The headset's volumes, flat in the live picture: vv = 1 says the phone knows about volume at all; m* media, c* call, *h = on the headset. */
+    private static void volumeInto(Map<String, Object> m, Calls.Volume v) {
+        m.put("vv", 1);
+        m.put("vm", v.media.now);
+        m.put("vmlo", v.media.min);
+        m.put("vmhi", v.media.max);
+        m.put("vmh", v.mediaOnHeadset);
+        m.put("vc", v.call.now);
+        m.put("vclo", v.call.min);
+        m.put("vchi", v.call.max);
+        m.put("vch", v.callOnHeadset);
+    }
+
+    static Calls.Volume volumeFrom(Map<String, Object> m) {
+        Calls.Volume v = new Calls.Volume();
+        if (Json.num(m, "vv", 0) < 1) {
+            v.old = true; // an older phone app says nothing about volume
+            return v;
+        }
+        v.media.now = (int) Json.num(m, "vm", -1);
+        v.media.min = (int) Json.num(m, "vmlo", 0);
+        v.media.max = (int) Json.num(m, "vmhi", 0);
+        v.mediaOnHeadset = Json.bool(m, "vmh", false);
+        v.call.now = (int) Json.num(m, "vc", -1);
+        v.call.min = (int) Json.num(m, "vclo", 0);
+        v.call.max = (int) Json.num(m, "vchi", 0);
+        v.callOnHeadset = Json.bool(m, "vch", false);
+        return v;
     }
 
     static Calls.Now nowFrom(Map<String, Object> m) {
@@ -65,6 +97,7 @@ final class CallJson {
         n.missed = (int) Json.num(m, "missed", 0);
         n.headset = Json.str(m, "hs", "");
         n.headsetBattery = (int) Json.num(m, "hsb", Calls.BATTERY_OLD_PHONE);
+        n.volume = volumeFrom(m);
         return n;
     }
 

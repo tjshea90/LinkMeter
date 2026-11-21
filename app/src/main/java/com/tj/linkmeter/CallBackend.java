@@ -28,6 +28,7 @@ final class CallBackend implements CallApi.Backend {
     private final SmsBackend sms;
     private final CallTracker tracker = new CallTracker();
     private final HeadsetLink headset;
+    private final HeadsetVolume volumes = new HeadsetVolume();
     private volatile Runnable listener;
     private volatile boolean started;
 
@@ -55,6 +56,20 @@ final class CallBackend implements CallApi.Backend {
         }
     };
 
+    /**
+     * Android's own announcement that a volume moved (the phone's keys, the headset's buttons, this app): the tablet's picture is told at
+     * once, so the volume shown on the tablet is the volume the headset really has. A hidden but long-standing system broadcast.
+     */
+    private final BroadcastReceiver volumeChanged = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            int stream = i.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1);
+            if (stream == AudioManager.STREAM_MUSIC || stream == AudioManager.STREAM_VOICE_CALL) {
+                fire();
+            }
+        }
+    };
+
     /** Starts listening to the phone's state. Safe to call again and again. */
     synchronized void start() {
         if (started) {
@@ -67,6 +82,16 @@ final class CallBackend implements CallApi.Backend {
             ctx.registerReceiver(phoneState, f, Context.RECEIVER_EXPORTED); // a system broadcast
         } else {
             ctx.registerReceiver(phoneState, f);
+        }
+        try {
+            IntentFilter vf = new IntentFilter("android.media.VOLUME_CHANGED_ACTION");
+            if (Build.VERSION.SDK_INT >= 33) {
+                ctx.registerReceiver(volumeChanged, vf, Context.RECEIVER_EXPORTED); // a system broadcast
+            } else {
+                ctx.registerReceiver(volumeChanged, vf);
+            }
+        } catch (RuntimeException ignored) {
+            // the tablet then sees a changed volume at its next look
         }
         try {
             TelephonyManager tm = ctx.getSystemService(TelephonyManager.class);
@@ -137,6 +162,7 @@ final class CallBackend implements CallApi.Backend {
             n.muted = am.isMicrophoneMute();
             n.route = n.calls.isEmpty() ? Calls.ROUTE_UNKNOWN : routeNow(am, !n.headset.isEmpty());
         }
+        n.volume = volumes.read(am, VolumeRules.callOnHeadset(!n.calls.isEmpty(), !n.headset.isEmpty(), n.route));
         n.missed = missedCount();
         return n;
     }
@@ -326,6 +352,25 @@ final class CallBackend implements CallApi.Backend {
             return Calls.Result.ok(HeadsetRules.route(to, headset.connectedName()));
         }
         return Calls.Result.fail("The phone did not move the sound. Use the phone's own audio button (the Screen tab shows the phone).");
+    }
+
+    /** The headset's volume, one step at a time: only while the sound really goes to the headset (see {@link VolumeRules} and {@link HeadsetVolume}). */
+    @Override
+    public Calls.Result volume(String stream, int by) {
+        AudioManager am = ctx.getSystemService(AudioManager.class);
+        if (am == null) {
+            return Calls.Result.fail("This phone has no audio service.");
+        }
+        boolean hs = !headset.connectedName().isEmpty();
+        boolean callOn = !tracker.calls().isEmpty();
+        boolean callOnHeadset = VolumeRules.callOnHeadset(callOn, hs, callOn ? routeNow(am, hs) : Calls.ROUTE_UNKNOWN);
+        VolumeRules.Plan plan = VolumeRules.plan(stream, by, volumes.read(am, callOnHeadset), hs);
+        if (!plan.ok) {
+            return Calls.Result.fail(plan.why);
+        }
+        Calls.Result r = volumes.move(am, stream, plan, callOnHeadset);
+        fire(); // the tablet's picture shows what the phone really has now
+        return r;
     }
 
     // ------------------------------------------------------------------ the call log

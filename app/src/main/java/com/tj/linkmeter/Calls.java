@@ -41,6 +41,12 @@ final class Calls {
     /** The phone's app is too old to say anything about a headset's battery (the field is missing from its answer). */
     static final int BATTERY_OLD_PHONE = -2;
 
+    // ---- the two volumes of a Bluetooth headset that is connected to the phone
+    /** What plays through the headset when no call is on (music, video, a voice message): Android's media volume. */
+    static final String STREAM_MEDIA = "media";
+    /** The voice of a call: Android's call volume (it only means the headset while a call is on and its sound is there). */
+    static final String STREAM_CALL = "call";
+
     // ---- what kind of entry the call log holds
     static final String IN = "in";
     static final String OUT = "out";
@@ -102,6 +108,35 @@ final class Calls {
         String headset = "";
         /** The battery of that headset in percent (0 to 100), {@link #BATTERY_UNKNOWN} or {@link #BATTERY_OLD_PHONE}. */
         int headsetBattery = BATTERY_UNKNOWN;
+        /** The headset's two volumes (docs/PHONE_CALLS.md, "Headset volume"). */
+        Volume volume = new Volume();
+    }
+
+    /** One volume: where it stands and how far it goes, in Android's own steps (not percent: a headset has 5 to 15 of them). */
+    static final class Level {
+        /** The step it is at now, or -1 when the phone did not say. */
+        int now = -1;
+        int min;
+        int max;
+
+        /** The three numbers make sense: a range with at least two steps and a position inside it. */
+        boolean known() {
+            return max > min && now >= min && now <= max;
+        }
+    }
+
+    /** The headset's volume as the phone reports it in the live picture (and the two places the tablet shows it). */
+    static final class Volume {
+        /** The media volume. */
+        final Level media = new Level();
+        /** The call volume. */
+        final Level call = new Level();
+        /** What plays now goes to a Bluetooth audio device on the phone (A2DP or LE Audio), so the media volume IS the headset's. */
+        boolean mediaOnHeadset;
+        /** A call is on and its sound goes to the headset, or Android does not say where while a headset is connected. */
+        boolean callOnHeadset;
+        /** The phone's app is too old to report volume at all (the fields are missing from its answer). */
+        boolean old;
     }
 
     /** One line of the call log. */

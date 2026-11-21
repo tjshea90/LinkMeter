@@ -56,6 +56,12 @@ final class CallApi {
         /** {@link Calls#ROUTE_PHONE}, {@link Calls#ROUTE_SPEAKER} or {@link Calls#ROUTE_HEADSET}; says what really happened. */
         Calls.Result route(String to);
 
+        /**
+         * Moves the headset's {@link Calls#STREAM_MEDIA} or {@link Calls#STREAM_CALL} volume by {@code by} steps (1 to {@link VolumeRules#MAX_STEP},
+         * up or down) and says what the phone reads back. A backend must refuse (ok = false, a sentence) when the sound is not going to the headset.
+         */
+        Calls.Result volume(String stream, int by);
+
         List<Calls.Entry> log(int limit, long before);
 
         /** The user looked at the missed calls. */
@@ -192,6 +198,17 @@ final class CallApi {
                         return FsApi.Reply.err(409, "Where should the sound go: the phone, the speaker or the headset?");
                     }
                     return result(backend.route(to));
+                }
+                case "/call/volume": {
+                    String stream = p(q, "stream", "");
+                    if (!VolumeRules.validStream(stream)) {
+                        return FsApi.Reply.err(409, VolumeRules.WHICH);
+                    }
+                    long by = num(q, "by", 0);
+                    if (by == 0 || Math.abs(by) > VolumeRules.MAX_STEP) {
+                        return FsApi.Reply.err(409, VolumeRules.STEPS);
+                    }
+                    return result(backend.volume(stream, (int) by));
                 }
                 case "/call/log":
                     return log(q);

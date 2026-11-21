@@ -337,6 +337,11 @@ final class CallWatch {
         run(rc -> rc.route(to), d);
     }
 
+    /** The headset's media or call volume, one press = {@code by} steps (the buttons send 1 or -1). The phone's answer says what it read back. */
+    void volume(final String stream, final int by, Done d) {
+        run(rc -> rc.volume(stream, by), d);
+    }
+
     void dial(final String number, Done d) {
         run(rc -> rc.dial(number), d);
     }

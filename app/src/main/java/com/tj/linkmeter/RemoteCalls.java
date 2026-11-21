@@ -131,6 +131,11 @@ final class RemoteCalls {
         return post("/call/route?to=" + enc(to), 20_000);
     }
 
+    /** The headset's volume ({@link Calls#STREAM_MEDIA} or {@link Calls#STREAM_CALL}) up or down by {@code by} steps; the phone says what it read back. */
+    Calls.Result volume(String stream, int by) throws IOException {
+        return post("/call/volume?stream=" + enc(stream) + "&by=" + by, 20_000);
+    }
+
     /** The newest {@code limit} calls older than {@code before} (milliseconds; 0 = the newest of all). */
     List<Calls.Entry> log(int limit, long before) throws IOException {
         List<Calls.Entry> out = new ArrayList<>();

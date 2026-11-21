@@ -31,6 +31,9 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- Phone side, same switch: the headset's volume, the microphone's mute and the sound's route. A normal permission (no question is
+         asked); without it Android quietly ignores those audio requests. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- "Start the phone after a restart". Tablet: make its own Wi-Fi Direct hotspot (Android 10 wants the location permission for it). -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
