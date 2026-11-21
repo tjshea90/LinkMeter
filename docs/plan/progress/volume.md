@@ -20,12 +20,13 @@ Put the volume settings in both the app on the phone tab and on the accessibilit
 - Volume changes of the phone's own keys reach the tablet live: phone registers VOLUME_CHANGED_ACTION -> fire().
 
 ## Plan (checkpoint order)
-- [ ] V1 Calls.Volume + VolumeRules + CallJson + CallApi route + tests (VolumeRulesTest, CallApiTest, tools/test.sh)
-- [ ] V2 HeadsetVolume + CallBackend (phone)
-- [ ] V3 RemoteCalls.volume + CallWatch.volume
-- [ ] V4 VolumeView + Phone tab card + MiniPhoneView row + controller wiring
-- [ ] V5 PretendCalls + preview tests + pictures; docs (PHONE_CALLS, FLOATING_PHONE, USER_GUIDE, SAFETY), HANDOFF block
-- [ ] V6 ./gradlew --no-daemon assembleRelease, tools/test.sh, checkpoint (NO_RELEASE=1 then plain for the last)
+- [x] V1 Calls.Volume + VolumeRules + CallJson + CallApi route + tests (VolumeRulesTest, CallApiTest, tools/test.sh)
+- [x] V2 HeadsetVolume + CallBackend (phone)
+- [x] V3 RemoteCalls.volume + CallWatch.volume
+- [x] V4 VolumeView + VolumeBarView + Phone tab card + MiniPhoneView row + controller wiring
+- [x] V5 PretendCalls + VolumePreviewTest + pictures looked at; docs (PHONE_CALLS, FLOATING_PHONE, USER_GUIDE, SAFETY), HANDOFF block, tools/mutate_volume.py (30 caught)
+- [ ] V6 regression run of FloatingPreviewTest + CallsPreviewTest + PreviewTest (was running), tools/test.sh, release build, then checkpoint
+      (NO_RELEASE=1 for a finished step; plain `tools/checkpoint.sh` for the closing save = release), then check the run + the release
 
 ## Status
-(nothing written yet)
+Everything is written and compiles (release build green), 59k offline checks green, VolumePreviewTest 5 green. Left: the regression preview run, the final checkpoint and the release check. WIP commit 4793614 has the phone side; the rest is in the working tree if the session dies: commit it with `WIP=1 tools/checkpoint.sh "..."`.
