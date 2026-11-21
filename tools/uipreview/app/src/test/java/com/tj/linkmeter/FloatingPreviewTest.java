@@ -68,6 +68,12 @@ public class FloatingPreviewTest {
 
         @Override
         public void closed() {}
+
+        @Override
+        public void volumeStep(int by) {}
+
+        @Override
+        public void volumeSwitch() {}
     };
 
     @Before

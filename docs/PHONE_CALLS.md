@@ -79,6 +79,7 @@ request" (the tablet then says to update the phone). `VERSION = 1`.
 | `POST /call/dial` `{number}` | guarded by `CallRules.check`; one call at a time |
 | `POST /call/answer`, `POST /call/hangup` | answer the ringing call; end or decline |
 | `POST /call/mute?on=1|0`, `POST /call/route?to=phone|speaker|headset` | read back, answer says what the phone really did |
+| `POST /call/volume?stream=media|call&by=-3..3` | the headset's volume, see "Headset volume" below; the levels themselves ride in `/call/now` |
 | `GET /call/log?limit=&before=` | recents with names, type, time, duration, whether new |
 | `POST /call/log/seen` | marks missed calls as seen (the badge) |
 | `GET /call/contacts?q=&limit=` | the phone's contacts (same reader as `/sms/contacts`) |
@@ -90,6 +91,34 @@ request" (the tablet then says to update the phone). `VERSION = 1`.
 
 The tablet reaches these over the hotspot or the Bluetooth link exactly like `/sms/*` (`Reach`); `/call/now` is a long poll like
 `/sms/stamp`, so a ring shows on the tablet within about a second and nothing polls while the app is in the background (unless the floating phone, `docs/FLOATING_PHONE.md`, is on: it holds the same watch while its service runs).
+
+### Headset volume (2026-11-21)
+
+The user wrote (verbatim): "Add volume options to the app so I can change the volume of my bluetooth from my tablet when it is connected to the
+phone . Put the volume settings in both the app on the phone tab and on the accessibility phone floating widget".
+
+- WHAT IT MOVES: Android's two streams that reach a headset on the phone. **Media** (`STREAM_MUSIC`: what plays when no call is on; with a
+  Bluetooth headset connected Android sends the level to it, "absolute volume") and **Call** (`STREAM_VOICE_CALL`: the voice of a call). Ranges are
+  Android's own steps (a headset has about 0..15 media and 1..5 call), not percent.
+- WHERE IT SHOWS: the tablet's **Phone tab > "Headset volume"** (two rows, Media and Call, each with a quieter button, rising bars, a louder button and
+  "7 of 15"; `ControlTab`, reads the same live picture as the Calls tab) and the **floating phone** (`MiniPhoneView`, one compact row under the
+  buttons, shown while the headset is on the phone; a chip says Media or Call and switches it; it starts on Call during a call and on Media otherwise).
+- ONE PATH FOR BOTH: the live picture `Calls.Now.volume` (flat keys `vv vm vmlo vmhi vmh vc vclo vchi vch` in `/call/now`; `vv` missing = an old phone
+  app, said as "too old for volume") and ONE route `POST /call/volume?stream=&by=`. The phone listens to Android's `VOLUME_CHANGED_ACTION`, so
+  the phone's own keys and the headset's buttons show on the tablet within a second. Hotspot only, and behind the phone's switch "Let the tablet make and
+  answer calls", like the rest of `/call/*` (the Phone tab says so when it is off).
+- THE PROMISES (all in the pure `VolumeRules`, `tools/test/VolumeRulesTest.java`, 59k checks, and again on the phone in `CallBackend.volume`): (1) it
+  only ever means the HEADSET: no headset connected, media that does not go to a Bluetooth device, or a call whose sound is on the phone's ear or
+  speaker, and NOTHING moves (the phone's own speaker can never get louder by a press here); the call volume moves only while a call is on and its
+  sound is on the headset (or Android does not say where it goes while a headset is connected); (2) one press is one step: the buttons send +1 or -1, the
+  phone refuses 0 and more than 3, so nothing jumps to full loudness in somebody's ear; two quick presses are two steps (the phone does them one after the other);
+  (3) a change is believed only when the phone READS THE LEVEL BACK: Android may refuse to go louder (a safe-volume question on the phone's own screen), then
+  the tablet says "Android did not make it louder (6 of 15). The phone may be asking on its own screen to allow louder sound: look at it."
+- NEW MANIFEST PERMISSION: `MODIFY_AUDIO_SETTINGS` (a normal permission, granted at install, no question). Android ignores several audio requests
+  without it (this app already asks for the microphone mute and the sound's route), so Mute and the audio button may start to work as well.
+- Pure: `VolumeRules`, `Calls.Volume`/`Calls.Level`, `CallJson`. Phone: `HeadsetVolume` (reads the two streams, moves one, `getAudioDevicesForAttributes`
+  tells where media goes), `CallBackend.volume` + the broadcast receiver. Tablet: `RemoteCalls.volume`, `CallWatch.volume`, `VolumeView` (a row),
+  `VolumeBarView` (the bars), the card in `ControlTab`, the row in `MiniPhoneView` and `FloatingPhoneController.volumeStep/volumeSwitch`.
 
 ### Files
 
@@ -129,6 +158,11 @@ must be on.
 - NOT BUILT: calls over the Bluetooth-only link, tones during a call, hold/merge/conference, an audio-route fallback through the shell. (A tablet service for calls while the app is in the background IS built since 2026-11-19: the floating phone, `docs/FLOATING_PHONE.md`.)
 
 ## Not known until a device tries (say so to the user)
+
+- Headset volume (2026-11-21): whether this Samsung (One UI on Android 16) takes `setStreamVolume` from LinkMeter for the headset and sends it on to
+  it (the answer is read back; if the level does not move, the tablet says so); whether the call volume moves while a call is on the headset and whether
+  Android reports the call's route there (else the row trusts a connected headset); whether Android asks on the phone's screen before allowing a louder
+  media volume in the headset (then the tablet says "look at the phone"); how the headset's own buttons show on the tablet (the broadcast).
 
 - Whether the shell user may connect a headset on this phone (`ShellMain bt-connect` calls the hidden `BluetoothDevice.connect()`);
   if not, Connect says so and the fallbacks are: turn the headset off and on (most reconnect by themselves), or "Open the phone's

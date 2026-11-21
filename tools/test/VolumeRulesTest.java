@@ -53,6 +53,8 @@ public final class VolumeRulesTest {
         callOnHeadsetTable();
         words();
         rows();
+        unheard();
+        cardNote();
         plans();
         verifies();
         wire();
@@ -157,8 +159,10 @@ public final class VolumeRulesTest {
                                             eq(r.enabled && known && now > range[0], r.canLower, "can lower: " + id);
                                             eq(r.enabled && known && now < range[1], r.canRaise, "can raise: " + id);
                                             eq(known ? now + " of " + range[1] : "–", r.words, "words: " + id);
-                                            eq(known ? range[1] - range[0] : 0, r.steps, "bar steps: " + id);
-                                            eq(known ? now - range[0] : 0, r.filled, "bar filled: " + id);
+                                            int base = Math.max(range[0] - 1, 0);
+                                            eq(known ? range[1] - base : 0, r.steps, "bar steps: " + id);
+                                            eq(known ? now - base : 0, r.filled, "bar filled: " + id);
+                                            yes(r.filled >= 0 && r.filled <= r.steps, "the bar never overfills: " + id);
                                             // the promise: nothing is offered unless a headset is connected AND the sound of this kind goes there
                                             if (r.enabled) {
                                                 yes(headset && reachable && !old, "enabled needs a headset, a reachable phone, a new phone: " + id);
@@ -173,6 +177,38 @@ public final class VolumeRulesTest {
                 }
             }
         }
+    }
+
+    private static void unheard() {
+        String sw = "Let the tablet make and answer calls";
+        eq("", VolumeRules.unheard(Calls.WATCH_OK, "", true, sw), "heard: nothing to say");
+        eq("", VolumeRules.unheard(Calls.WATCH_OK, "whatever", false, sw), "heard: nothing to say, whatever the problem text");
+        yes(VolumeRules.unheard(Calls.WATCH_OFF, "", true, sw).contains(sw), "switched off: names the phone's switch");
+        eq("their words", VolumeRules.unheard(Calls.WATCH_OFF, "their words", true, sw), "switched off: the watch's own words win");
+        eq(VolumeRules.OLD_PHONE, VolumeRules.unheard(Calls.WATCH_OLD, "", true, sw), "old phone");
+        yes(VolumeRules.unheard(Calls.WATCH_NO_PEER, "", true, sw).contains("does not know the phone"), "no phone known");
+        yes(VolumeRules.unheard(Calls.WATCH_UNREACHED, "no route", true, sw).startsWith(VolumeRules.UNREACHED), "unreached");
+        yes(VolumeRules.unheard(Calls.WATCH_UNREACHED, "no route", true, sw).endsWith("no route"), "unreached: and why");
+        yes(VolumeRules.unheard(Calls.WATCH_IDLE, "", false, sw).contains("Calls") && VolumeRules.unheard(Calls.WATCH_IDLE, "", false, sw).contains(sw),
+                "never used calls: says where to start");
+        eq("Looking for the phone…", VolumeRules.unheard(Calls.WATCH_IDLE, "", true, sw), "used calls, nothing heard yet");
+        for (int st = 0; st <= 5; st++) {
+            yes((st == Calls.WATCH_OK) == VolumeRules.unheard(st, "", false, sw).isEmpty(), "only OK is silent: " + st);
+        }
+    }
+
+    private static void cardNote() {
+        VolumeRules.Row a = new VolumeRules.Row();
+        VolumeRules.Row b = new VolumeRules.Row();
+        eq("", VolumeRules.cardNote(a, b), "both work: no note");
+        b.why = "call off";
+        eq("call off", VolumeRules.cardNote(a, b), "only the call row is off");
+        a.why = "media off";
+        eq("media off call off", VolumeRules.cardNote(a, b), "two different reasons are both said");
+        b.why = "media off";
+        eq("media off", VolumeRules.cardNote(a, b), "the same reason once");
+        b.why = "";
+        eq("media off", VolumeRules.cardNote(a, b), "only the media row is off");
     }
 
     private static void plans() {
@@ -250,7 +286,8 @@ public final class VolumeRulesTest {
                                 yes(!r.why.isEmpty(), "a failure says why: " + id);
                             }
                             if (inRange && after == before) {
-                                yes(by > 0 ? r.why.contains("louder") : r.why.contains("quieter"), "a refusal by Android is told as that: " + id);
+                                yes(by > 0 ? r.why.startsWith("Android did not make it louder (") : r.why.startsWith("Android did not make it quieter ("),
+                                        "a refusal by Android is told as that: " + id);
                                 yes(by > 0 ? r.why.contains("look at it") : true, "louder: look at the phone's screen: " + id);
                             }
                         }
@@ -262,6 +299,14 @@ public final class VolumeRulesTest {
         VolumeRules.Plan any = VolumeRules.plan(Calls.STREAM_MEDIA, 1, volume(3, 3, RANGES[0], RANGES[0], true, true), true);
         yes(!VolumeRules.verify(Calls.STREAM_MEDIA, any, unknown).ok, "an unreadable volume is never a success");
         yes(!VolumeRules.verify(Calls.STREAM_MEDIA, any, null).ok, "null is never a success");
+        // a read-back that is only a number matching the target, from a range that makes no sense, is not believed either
+        for (int[] odd : new int[][] {{any.target, any.target, any.target}, {0, any.target, any.target - 1}, {any.target + 1, any.target, 20}}) {
+            Calls.Level l = new Calls.Level();
+            l.min = odd[0];
+            l.now = odd[1];
+            l.max = odd[2];
+            yes(!VolumeRules.verify(Calls.STREAM_MEDIA, any, l).ok, "a nonsense range is never a success: " + odd[0] + " " + odd[1] + " " + odd[2]);
+        }
     }
 
     private static void wire() throws Exception {

@@ -31,6 +31,8 @@ final class PretendCalls implements CallApi.Backend {
     volatile Calls.Found found = new Calls.Found();
     final List<String> told = new java.util.concurrent.CopyOnWriteArrayList<>();
     volatile String connectSays = "";
+    /** The headset's own volumes (media 0..15 at 6, call 1..5 at 3); where each one goes follows the headset and the call, as on the real phone. */
+    final Calls.Volume volumes = new Calls.Volume();
     private volatile Runnable listener;
     private final CallApi api;
 
@@ -42,6 +44,12 @@ final class PretendCalls implements CallApi.Backend {
         state.contacts = true;
         state.bluetooth = true;
         state.shell = true;
+        volumes.media.min = 0;
+        volumes.media.max = 15;
+        volumes.media.now = 6;
+        volumes.call.min = 1;
+        volumes.call.max = 5;
+        volumes.call.now = 3;
         api = new CallApi(this, System::currentTimeMillis);
         demo();
     }
@@ -224,6 +232,7 @@ final class PretendCalls implements CallApi.Backend {
         n.route = live.route;
         n.headset = live.headset;
         n.headsetBattery = live.headset.isEmpty() ? Calls.BATTERY_UNKNOWN : live.headsetBattery;
+        n.volume = volumeNow();
         int missed = 0;
         for (Calls.Entry e : log) {
             missed += e.isNew ? 1 : 0;
@@ -267,6 +276,32 @@ final class PretendCalls implements CallApi.Backend {
         live.muted = on;
         bump();
         return Calls.Result.ok(on ? "Microphone off." : "Microphone on.");
+    }
+
+    /** The volumes as the real phone would report them now: media on the headset when one is connected, the call's when a call's sound is there. */
+    private Calls.Volume volumeNow() {
+        Calls.Volume v = new Calls.Volume();
+        v.media.min = volumes.media.min;
+        v.media.max = volumes.media.max;
+        v.media.now = volumes.media.now;
+        v.call.min = volumes.call.min;
+        v.call.max = volumes.call.max;
+        v.call.now = volumes.call.now;
+        v.mediaOnHeadset = !live.headset.isEmpty();
+        v.callOnHeadset = VolumeRules.callOnHeadset(!live.calls.isEmpty(), !live.headset.isEmpty(), live.route);
+        return v;
+    }
+
+    @Override
+    public Calls.Result volume(String stream, int by) {
+        told.add("volume:" + stream + ":" + by);
+        VolumeRules.Plan plan = VolumeRules.plan(stream, by, volumeNow(), !live.headset.isEmpty());
+        if (!plan.ok) {
+            return Calls.Result.fail(plan.why);
+        }
+        VolumeRules.level(volumes, stream).now = plan.target;
+        bump();
+        return VolumeRules.verify(stream, plan, VolumeRules.level(volumeNow(), stream));
     }
 
     @Override

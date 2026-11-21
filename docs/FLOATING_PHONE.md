@@ -107,6 +107,15 @@ phone was not asked. A headset that CAN keep two connections ("multipoint") has 
 card, `Cfg.headsetBoth`, off by default): then nothing is disconnected. Pressing a Bluetooth button of the side that already has the headset
 only disconnects it there. A call's sound is never moved to the tablet (impossible, see `docs/PHONE_CALLS.md`).
 
+### 4. The headset's volume (2026-11-21; the user: "Add volume options ... on the phone tab and on the accessibility phone floating widget")
+
+A row at the bottom of the card, shown while the headset is connected to the PHONE and the phone's app knows about volume: a chip ("Media" or
+"Call"), a quieter button, rising bars, a louder button. The chip switches the row between the media and the call volume; it starts on Call while a
+call is on and on Media otherwise, and goes back to that when a call begins or ends. A press is one step on the phone, read back. A dimmed button still
+answers: it puts the reason in the card's message line ("The call volume can be changed while a call is on."). Same rules, same route and the same picture
+as the Phone tab's card: `docs/PHONE_CALLS.md`, "Headset volume". Code: `MiniPhoneView.buildVolume`, `FloatingPhoneController` (`buildModel`,
+`volumeStep`, `volumeSwitch`). The accessibility host (`FloatingPhoneAccess`) draws the same view, so it has the row too.
+
 ## Files
 
 Pure (no Android; `tools/test/FloatingLogicTest.java`, 55k checks, run by `tools/test.sh`): `BtBattery`, `BatteryRules`, `FloatRules`

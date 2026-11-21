@@ -89,7 +89,10 @@ final class VolumeRules {
         String words = "–";
         /** The sentence to read when the row is not enabled; "" when it is. */
         String why = "";
-        /** The bar's steps (max - min) and how many are filled (now - min); 0 and 0 when the volume is not known. */
+        /**
+         * The bar's segments and how many are filled; 0 and 0 when the volume is not known. A range of 0..15 draws 15 segments (none filled
+         * is silent) and a range of 1..5 draws 5 (the lowest step is one segment, since it is not silent).
+         */
         int steps;
         int filled;
     }
@@ -104,8 +107,9 @@ final class VolumeRules {
         Calls.Level l = level(v, stream);
         if (l.known()) {
             r.words = words(l);
-            r.steps = l.max - l.min;
-            r.filled = l.now - l.min;
+            int base = Math.max(l.min - 1, 0);
+            r.steps = l.max - base;
+            r.filled = l.now - base;
         }
         if (!reachable) {
             r.why = UNREACHED;
@@ -125,6 +129,40 @@ final class VolumeRules {
             r.canRaise = l.now < l.max;
         }
         return r;
+    }
+
+    /**
+     * What the Phone tab's card says instead of the rows while the phone cannot be heard; "" when it can. {@code watchStatus} is one of
+     * {@code Calls.WATCH_*}, {@code problem} the watch's own sentence for it, {@code callsSetUp} that calls have worked on this tablet once,
+     * {@code switchName} the name of the phone's switch.
+     */
+    static String unheard(int watchStatus, String problem, boolean callsSetUp, String switchName) {
+        String p = problem == null ? "" : problem;
+        switch (watchStatus) {
+            case Calls.WATCH_OK:
+                return "";
+            case Calls.WATCH_OFF:
+            case Calls.WATCH_OLD:
+                return p.isEmpty() ? (watchStatus == Calls.WATCH_OLD ? OLD_PHONE : "Calls are switched off on the phone. In its LinkMeter app, switch on \"" + switchName + "\".") : p;
+            case Calls.WATCH_NO_PEER:
+                return "This tablet does not know the phone yet.";
+            case Calls.WATCH_UNREACHED:
+                return UNREACHED + (p.isEmpty() ? "" : " " + p);
+            default:
+                return callsSetUp ? "Looking for the phone…"
+                        : "The volume buttons use the Calls feature. Open the Calls tab once, and on the phone switch on \"" + switchName + "\".";
+        }
+    }
+
+    /** The one line under the Phone tab's two rows: why a row is off (once when both say the same), or "" when both work. */
+    static String cardNote(Row media, Row call) {
+        if (media.why.isEmpty()) {
+            return call.why;
+        }
+        if (call.why.isEmpty() || call.why.equals(media.why)) {
+            return media.why;
+        }
+        return media.why + " " + call.why;
     }
 
     /** What the phone decided before it touches anything. */

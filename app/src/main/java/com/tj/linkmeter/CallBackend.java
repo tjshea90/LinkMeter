@@ -29,6 +29,7 @@ final class CallBackend implements CallApi.Backend {
     private final CallTracker tracker = new CallTracker();
     private final HeadsetLink headset;
     private final HeadsetVolume volumes = new HeadsetVolume();
+    private final Object volumeLock = new Object();
     private volatile Runnable listener;
     private volatile boolean started;
 
@@ -357,6 +358,12 @@ final class CallBackend implements CallApi.Backend {
     /** The headset's volume, one step at a time: only while the sound really goes to the headset (see {@link VolumeRules} and {@link HeadsetVolume}). */
     @Override
     public Calls.Result volume(String stream, int by) {
+        synchronized (volumeLock) { // two quick presses are two steps: each one reads the level the other left
+            return volumeLocked(stream, by);
+        }
+    }
+
+    private Calls.Result volumeLocked(String stream, int by) {
         AudioManager am = ctx.getSystemService(AudioManager.class);
         if (am == null) {
             return Calls.Result.fail("This phone has no audio service.");

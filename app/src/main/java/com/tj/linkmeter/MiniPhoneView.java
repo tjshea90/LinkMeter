@@ -52,6 +52,12 @@ final class MiniPhoneView extends LinearLayout {
 
         /** The user pressed the cross (only offered when no call is on). */
         void closed();
+
+        /** A volume button: -1 quieter, +1 louder, for the volume the row is on. Also called when the row is off, so the card can say why. */
+        void volumeStep(int by);
+
+        /** The chip of the volume row was pressed: switch between the media and the call volume. */
+        void volumeSwitch();
     }
 
     /** Everything the card shows. */
@@ -78,6 +84,13 @@ final class MiniPhoneView extends LinearLayout {
         /** A line to read (a refusal, a warning, what a switch did): "" for none. */
         String message = "";
         boolean messageIsBad;
+        /** The volume row: shown while the headset is connected to the phone and the phone knows about volume. */
+        boolean volumeShown;
+        /** {@link Calls#STREAM_MEDIA} or {@link Calls#STREAM_CALL}: the volume the row moves now. */
+        String volumeStream = Calls.STREAM_MEDIA;
+        VolumeRules.Row volume = new VolumeRules.Row();
+        /** A step is on its way to the phone. */
+        boolean volumeBusy;
     }
 
     static final int WIDTH_DP = 252;
@@ -103,6 +116,9 @@ final class MiniPhoneView extends LinearLayout {
     private TextView btTabletLabel;
     private TextView greenLabel;
     private TextView redLabel;
+    private LinearLayout volumeRow;
+    private TextView volumeChip;
+    private VolumeView volumeView;
     private boolean expanded;
     private String typed = "";
     private Model model = new Model();
@@ -201,6 +217,7 @@ final class MiniPhoneView extends LinearLayout {
         addView(message, mp);
 
         buildActions(c);
+        buildVolume(c);
         paintTyped();
         bind(model);
     }
@@ -280,6 +297,30 @@ final class MiniPhoneView extends LinearLayout {
         LayoutParams rp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rp.topMargin = Ui.dp(c, 6);
         addView(row, rp);
+    }
+
+    /** The headset's volume: a chip that says which volume (and switches it), then quieter, the bars and louder. Shown while the headset is on the phone. */
+    private void buildVolume(Context c) {
+        volumeRow = new LinearLayout(c);
+        volumeRow.setOrientation(HORIZONTAL);
+        volumeRow.setGravity(Gravity.CENTER_VERTICAL);
+        volumeChip = Ui.text(c, "Media", 11.5f, Ui.FG, true);
+        volumeChip.setGravity(Gravity.CENTER);
+        volumeChip.setPadding(Ui.dp(c, 8), Ui.dp(c, 5), Ui.dp(c, 8), Ui.dp(c, 5));
+        volumeChip.setBackground(CallsViews.ripple(Ui.CARD_HI, Ui.dp(c, 14)));
+        volumeChip.setMinWidth(Ui.dp(c, 54));
+        volumeChip.setClickable(true);
+        volumeChip.setContentDescription("Volume of the headset. Press to switch between the media and the call volume.");
+        volumeChip.setOnClickListener(v -> host.volumeSwitch());
+        volumeRow.addView(volumeChip, new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        volumeView = new VolumeView(c, true, "Headset", by -> host.volumeStep(by));
+        LayoutParams vp = new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        vp.leftMargin = Ui.dp(c, 6);
+        volumeRow.addView(volumeView, vp);
+        volumeRow.setVisibility(GONE);
+        LayoutParams rp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = Ui.dp(c, 6);
+        addView(volumeRow, rp);
     }
 
     // ------------------------------------------------------------------ the pad
@@ -444,6 +485,13 @@ final class MiniPhoneView extends LinearLayout {
         red.setContentDescription(FloatRules.redLabel(m.call));
         redLabel.setText(ringing ? "Decline" : "End");
         redLabel.setTextColor(redOn ? 0xFFFF8A8A : Ui.DIM);
+
+        volumeRow.setVisibility(m.volumeShown ? VISIBLE : GONE);
+        if (m.volumeShown) {
+            volumeChip.setText(VolumeRules.shortName(m.volumeStream));
+            volumeChip.setTextColor(m.volume.enabled ? Ui.FG : Ui.DIM);
+            volumeView.bind(m.volume, m.volumeBusy);
+        }
 
         message.setText(m.message);
         message.setTextColor(m.messageIsBad ? Ui.RED : Ui.AMBER);

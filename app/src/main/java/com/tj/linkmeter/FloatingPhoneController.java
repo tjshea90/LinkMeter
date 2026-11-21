@@ -78,6 +78,11 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
     private boolean armed;
     private boolean phoneBusy;
     private boolean tabletBusy;
+    /** Volume presses sent and not answered yet. */
+    private int volPending;
+    /** The volume the user switched the row to with its chip, or null: the call's while a call is on, else the media's. */
+    private String volChosen;
+    private boolean volCallWas;
     private String message = "";
     private boolean messageBad;
     private long endedAt;
@@ -275,6 +280,15 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
         m.headsetName = m.headsetOnPhone ? n.headset : d != null ? d.name : "";
         m.phoneBusy = phoneBusy;
         m.tabletBusy = tabletBusy;
+        boolean callOn = !state.isEmpty();
+        if (callOn != volCallWas) {
+            volCallWas = callOn;
+            volChosen = null; // a call began or ended: the row goes back to the volume that matters now
+        }
+        m.volumeStream = volChosen != null ? volChosen : VolumeRules.defaultStream(callOn);
+        m.volume = VolumeRules.row(n.volume, m.volumeStream, ok, m.headsetOnPhone, callOn);
+        m.volumeShown = ok && m.headsetOnPhone && !n.volume.old;
+        m.volumeBusy = volPending > 0;
         m.askFirst = Cfg.callsHeadsetAsk(ctx);
         m.armed = armed;
         m.message = message;
@@ -503,6 +517,33 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
             tabletBusy = false;
             say(text, bad, text.isEmpty() ? 0 : SAY_MS * 2);
         });
+    }
+
+    @Override
+    public void volumeStep(int by) {
+        VolumeRules.Row row = model.volume;
+        if (!row.enabled) {
+            if (!row.why.isEmpty()) {
+                say(row.why, true, SAY_MS * 2); // a dimmed button says why instead of nothing
+            }
+            return;
+        }
+        if (volPending >= 3) {
+            return; // three are on their way: the phone does them in turn
+        }
+        volPending++;
+        update();
+        watch.volume(model.volumeStream, by, (r, e) -> {
+            volPending--;
+            afterRequest(r, e, ""); // the bars show a step that worked; only a refusal is said
+            update();
+        });
+    }
+
+    @Override
+    public void volumeSwitch() {
+        volChosen = VolumeRules.other(model.volumeStream);
+        update();
     }
 
     @Override

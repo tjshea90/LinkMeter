@@ -183,6 +183,10 @@ Tell me what happened, in your own words, for any of these:
 - The headset's battery: does the Calls tab / Headset screen / Home show a percentage for your headset, or a dash (then: which headset)? Does it
   move when you use the headset? The two Bluetooth buttons: does **Phone** disconnect and connect the headset, and does **Tablet** connect it to
   the tablet (or open Android's list, and then one tap does it)? Does connecting to the tablet disconnect it from the phone first (and the other way round)? When the tablet cannot disconnect by itself, does the list open and say what to tap?
+- The headset's volume (new, install on BOTH devices): with the headset connected to the phone, Phone tab > **Headset volume**: do the louder and
+  quieter buttons change what you hear in the headset (Media: play a song on the phone; Call: during a call), and does the number move? Does the same row
+  on the floating phone do the same, and does its chip switch between Media and Call? If a button does nothing, what does the line under the rows say
+  (it may say Android asked on the phone's screen to allow louder sound)? Does turning the volume with the headset's own buttons show on the tablet?
 - Settings > Bluetooth link > Set up, then Test: did it say Ready?
 - Hotspot off, then Hotspot on from the tablet; Standby, then waking the phone.
 - Hotspot off (deep): after you press **Turn it off**, does the phone end up with the hotspot off, location off, airplane mode on and the screen off

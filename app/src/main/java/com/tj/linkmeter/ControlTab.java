@@ -52,6 +52,9 @@ final class ControlTab extends Tab {
     /** A question is on the screen: a second tap on the same button must not stack another one (confirming both would send twice). */
     private boolean questionOpen;
     private long ownCode = -2;
+    /** Volume presses sent and not answered yet (a few may be in flight: each is one step, the phone does them in turn). */
+    private int volPending;
+    private final CallWatch.Listener volListener = w -> paintVolume();
 
     // ---- the last answer, kept across a rebuild of the views (a tab is rebuilt each time it is shown)
     private String resultWhat = "";
@@ -71,6 +74,10 @@ final class ControlTab extends Tab {
     private Button bannerOther;
     private boolean bannerSends;
     private PhoneTabRules.Banner bannerKind = PhoneTabRules.Banner.NONE;
+    private Ui.Fact fVolHeadset;
+    private VolumeView volMedia;
+    private VolumeView volCall;
+    private TextView tVolNote;
     private Ui.Fact fSaver;
     private Ui.Choice saver;
     private Ui.Fact fAndroid;
@@ -144,6 +151,18 @@ final class ControlTab extends Tab {
         banner.addView(Ui.row(act, bannerMain, bannerOther), Ui.lp(act, 8));
         banner.setVisibility(View.GONE);
         col.addView(banner, Ui.lp(act, 10));
+
+        LinearLayout vol = Ui.card(act, "Headset volume", "Changes the volume of the Bluetooth headset that is connected to the phone, one step "
+                + "at a time, like the phone's own volume keys. The phone's speaker is never touched.");
+        fVolHeadset = new Ui.Fact(act, "Headset");
+        vol.addView(fVolHeadset.view, Ui.lp(act, 8));
+        volMedia = new VolumeView(act, false, VolumeRules.shortName(Calls.STREAM_MEDIA), by -> volumeStep(Calls.STREAM_MEDIA, by));
+        vol.addView(volMedia, Ui.lp(act, 8));
+        volCall = new VolumeView(act, false, VolumeRules.shortName(Calls.STREAM_CALL), by -> volumeStep(Calls.STREAM_CALL, by));
+        vol.addView(volCall, Ui.lp(act, 10));
+        tVolNote = Ui.hint(act, "");
+        vol.addView(tVolNote, Ui.lp(act, 6));
+        col.addView(vol, Ui.lp(act, 10));
 
         LinearLayout bat = Ui.card(act, "Battery", PhoneTabRules.SAVER_CARD_HINT);
         fSaver = new Ui.Fact(act, "LinkMeter's saver");
@@ -252,6 +271,10 @@ final class ControlTab extends Tab {
     @Override
     void onHide() {
         shown = false;
+        CallWatch w = act.callWatch();
+        if (w != null) {
+            w.removeListener(volListener);
+        }
         followGen++; // a look that is on its way ends here
         if (follow != null) {
             follow = null;
@@ -267,6 +290,13 @@ final class ControlTab extends Tab {
     @Override
     void onShow() {
         shown = true;
+        CallWatch w = act.callWatch();
+        if (w != null) {
+            w.addListener(volListener); // the volume card shows the phone's live picture (the same one the Calls tab and the floating phone use)
+            if (Cfg.callsWatch(act)) {
+                w.wake();
+            }
+        }
         if (boot != null) {
             boot.onShow();
         }
@@ -395,6 +425,7 @@ final class ControlTab extends Tab {
         }
         paintHeader();
         paintBanner();
+        paintVolume();
         paintBattery();
         paintSwitches();
         paintApp();
@@ -589,6 +620,60 @@ final class ControlTab extends Tab {
         if (bar != null) {
             bar.working(what);
         }
+    }
+
+    // ------------------------------------------------------------------------------------------------ the headset's volume
+
+    /** The "Headset volume" card from the live picture of the phone's calls (docs/PHONE_CALLS.md "Headset volume"). Decided by {@link VolumeRules}. */
+    private void paintVolume() {
+        if (volMedia == null) {
+            return;
+        }
+        CallWatch w = act.callWatch();
+        boolean heard = w != null && w.status() == CallWatch.OK;
+        Calls.Now n = w == null ? new Calls.Now() : w.latest();
+        boolean hs = heard && !n.headset.isEmpty();
+        boolean callOn = heard && !n.calls.isEmpty();
+        fVolHeadset.set(!heard ? "–" : hs ? n.headset : "none connected to the phone", hs ? Ui.FG : Ui.DIM);
+        VolumeRules.Row media = VolumeRules.row(n.volume, Calls.STREAM_MEDIA, heard, hs, callOn);
+        VolumeRules.Row call = VolumeRules.row(n.volume, Calls.STREAM_CALL, heard, hs, callOn);
+        volMedia.bind(media, volPending > 0);
+        volCall.bind(call, volPending > 0);
+        String note = heard ? VolumeRules.cardNote(media, call)
+                : VolumeRules.unheard(w == null ? CallWatch.IDLE : w.status(), w == null ? "" : w.problem(), Cfg.callsWatch(act), PhoneScreenRules.CALLS_SWITCH);
+        tVolNote.setText(note);
+        tVolNote.setVisibility(note.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    /** One press of a volume button: a refused row says why, an allowed one asks the phone for ONE step and shows what the phone read back. */
+    private void volumeStep(final String stream, int by) {
+        CallWatch w = act.callWatch();
+        if (w == null) {
+            return;
+        }
+        Calls.Now n = w.latest();
+        VolumeRules.Row row = VolumeRules.row(n.volume, stream, w.status() == CallWatch.OK, !n.headset.isEmpty(), !n.calls.isEmpty());
+        final String what = VolumeRules.name(stream);
+        if (!row.enabled) {
+            if (!row.why.isEmpty()) {
+                setResult(what, row.why, false);
+            }
+            return;
+        }
+        if (volPending >= 3) {
+            return; // three are on their way: the phone has to catch up
+        }
+        volPending++;
+        paintVolume();
+        w.volume(stream, by, (r, e) -> {
+            volPending--;
+            if (e != null) {
+                setResult(what, TextsTab.explain(e), false);
+            } else if (r != null) {
+                setResult(what, r.ok ? r.out : r.why, r.ok);
+            }
+            paintVolume();
+        });
     }
 
     private void setResult(String what, String text, boolean ok) {
