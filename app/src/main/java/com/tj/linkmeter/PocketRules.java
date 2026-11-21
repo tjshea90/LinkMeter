@@ -10,8 +10,12 @@ package com.tj.linkmeter;
  *   2. LinkMeter's battery saver on                    (eco_auto_on)
  *   3. the deep sleep: hotspot off, location off, airplane mode on (only while Bluetooth stays up), screen off   (hotspot_off_deep)
  *   4. wait until the phone says it has finished       (status: hotspot off, airplane on, screen off)
- *   5. Android's own Battery saver on, AFTER the hotspot is down (SystemSaver puts it back if the hotspot dies with it)   (eco_android_on)
+ *   5. Android's own Battery saver on and KEPT on, AFTER the hotspot is down (eco_android_keep: nothing of LinkMeter's puts it back off
+ *      when LinkMeter's saver ends; an older phone app that does not know the name gets eco_android_on)
  *   6. the screen off once more, checked, if it is on  (screen_off)
+ *   7. Android's own Battery saver is READ BACK from the phone's status (psm) and asked again, up to {@link #SAVER_TRIES} times in all, until
+ *      Android itself says it is on; one that is on already is left alone (the user, 2026-11-21: "The button should always ensure that
+ *      Android battery saver on the phone is on. If the battery saver is already on, this doesn't need to be changed.")
  * </pre>
  *
  * The tablet's own Wi-Fi may go off as soon as step 3's order is ACCEPTED ({@link Sink#sent}): the hotspot is the way to the phone until then,
@@ -29,7 +33,13 @@ final class PocketRules {
     static final String WIFI_OFF = "wifi_off";
     static final String SAVER = "eco_auto_on";
     static final String SLEEP = "hotspot_off_deep";
-    static final String SYSTEM_SAVER = "eco_android_on";
+    /** The one to ask: Android's own Battery saver on, and left on ({@link SystemSaver#ACTION_KEEP}). */
+    static final String SYSTEM_SAVER = SystemSaver.ACTION_KEEP;
+    /** What an older phone app understands: on, and put back by LinkMeter's saver ending ({@link SystemSaver#ACTION_ON}). */
+    static final String SYSTEM_SAVER_OLD = SystemSaver.ACTION_ON;
+    /** How many times Android's own Battery saver is asked for in all, and how long to wait between two asks (it follows a moment later). */
+    static final int SAVER_TRIES = 3;
+    static final long SAVER_RETRY_MS = 4_000L;
     static final String SCREEN_OFF = "screen_off";
 
     /** How long an action may take (the hotspot route; the Bluetooth route gives actions at least a minute by itself, see Reach). */
@@ -69,12 +79,19 @@ final class PocketRules {
     static final class Status {
         final Boolean hotspot, airplane, screen;
         final String deepSleep;
+        /** What ANDROID says about its own Battery saver (the phone's "psm"); null = this phone (or an older phone app) does not say. */
+        final Boolean androidSaver;
 
         Status(Boolean hotspot, Boolean airplane, Boolean screen, String deepSleep) {
+            this(hotspot, airplane, screen, deepSleep, null);
+        }
+
+        Status(Boolean hotspot, Boolean airplane, Boolean screen, String deepSleep, Boolean androidSaver) {
             this.hotspot = hotspot;
             this.airplane = airplane;
             this.screen = screen;
             this.deepSleep = deepSleep == null ? "" : deepSleep;
+            this.androidSaver = androidSaver;
         }
 
         /** The end state of the deep sleep, as the phone reports it: hotspot off, airplane mode on, screen off. */
@@ -214,6 +231,9 @@ final class PocketRules {
 
         // Android's own Battery saver goes on only now: with the hotspot still up it could take the hotspot down with it
         Reply system = p.act(SYSTEM_SAVER, SYSTEM_MS);
+        if (system.reached && !system.ok && system.text.contains("unknown action")) {
+            system = p.act(SYSTEM_SAVER_OLD, SYSTEM_MS); // an older phone app has only the form that LinkMeter's saver ends again
+        }
         if (system.reached) {
             add(text, said("Android's Battery saver", system));
             allGood &= system.ok;
@@ -235,7 +255,31 @@ final class PocketRules {
                 allGood = false;
             }
         }
+        // the last word is the phone's own: Android's Battery saver is read back, and asked for again while it says it is off (a phone
+        // that does not say is believed only for the answer it gave; a saver that is on already is never touched)
+        Boolean saverOn = androidSaverOn(p);
+        for (int i = 1; i < SAVER_TRIES && Boolean.FALSE.equals(saverOn); i++) {
+            p.pause(SAVER_RETRY_MS);
+            Reply again = p.act(system.reached && !system.ok && system.text.contains("unknown action") ? SYSTEM_SAVER_OLD : SYSTEM_SAVER, SYSTEM_MS);
+            if (!again.reached) {
+                break;
+            }
+            p.pause(SAVER_RETRY_MS);
+            saverOn = androidSaverOn(p);
+        }
+        if (Boolean.FALSE.equals(saverOn)) {
+            allGood = false;
+            add(text, "Android's Battery saver still says it is off after " + SAVER_TRIES + " tries: switch it on in the phone's quick settings.");
+        } else if (Boolean.TRUE.equals(saverOn)) {
+            add(text, "The phone says Android's Battery saver is on.");
+        }
         return end(sink, allGood ? State.DONE : State.FAILED, text.toString());
+    }
+
+    /** What the phone's status says about Android's own Battery saver: true, false, or null (no status, or it does not say). */
+    private static Boolean androidSaverOn(Phone p) {
+        Status st = p.status();
+        return st == null ? null : st.androidSaver;
     }
 
     private static Out end(Sink sink, State s, String text) {

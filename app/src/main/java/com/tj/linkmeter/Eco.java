@@ -411,6 +411,30 @@ final class Eco {
         }
     }
 
+    /**
+     * The pocket return's "Android's own Battery saver on, for good" ({@link SystemSaver#keep}): the option is stored as on, the saver is
+     * switched on now whether or not LinkMeter's own saver is, and the original is forgotten, so nothing of LinkMeter's puts it back off.
+     * Needs Shizuku (a switch that cannot run is an error answer, and the tablet tries again).
+     */
+    static String setSystemKeep(Context c) throws IOException {
+        Context app = c.getApplicationContext();
+        appCtx = app;
+        Cfg.setEcoSystem(app, true);
+        synchronized (Eco.class) {
+            if (!Priv.ready()) {
+                throw new Actions.NotDone(SystemSaver.STORED_NEEDS_SHIZUKU);
+            }
+            SystemSaver.Outcome o = SystemSaver.keep(systemEnv(app));
+            if (!o.ok) {
+                if (o.giveUp) {
+                    Cfg.setEcoSystem(app, false);
+                }
+                throw new Actions.NotDone(o.text);
+            }
+            return o.text;
+        }
+    }
+
     // ------------------------------------------------------------------------------------------ when it ends by itself
 
     /**

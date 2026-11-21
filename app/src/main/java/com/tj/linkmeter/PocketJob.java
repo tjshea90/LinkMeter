@@ -233,7 +233,7 @@ final class PocketJob {
                     return null;
                 }
                 JSONObject j = new JSONObject(res.resp.body);
-                return new PocketRules.Status(Call.flag(j, "hs"), Call.flag(j, "air"), Call.flag(j, "scr"), j.optString("dres", ""));
+                return new PocketRules.Status(Call.flag(j, "hs"), Call.flag(j, "air"), Call.flag(j, "scr"), j.optString("dres", ""), Call.flag(j, "psm"));
             } catch (JSONException | RuntimeException e) {
                 return null;
             }

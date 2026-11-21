@@ -272,6 +272,9 @@ final class Actions {
                 return Eco.setSystem(c, true);
             case SystemSaver.ACTION_OFF:
                 return Eco.setSystem(c, false);
+            case SystemSaver.ACTION_KEEP:
+                // the Launcher's pocket return: Android's own Battery saver on, and left on (never put back by LinkMeter)
+                return Eco.setSystemKeep(c);
             case "boot_wadb":
                 return Boot.enableWadb(c);
             case "boot_notify":

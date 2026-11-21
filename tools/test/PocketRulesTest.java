@@ -40,6 +40,8 @@ public final class PocketRulesTest {
         PocketRules.Reply saver = PocketRules.Reply.done("LinkMeter's saver is on.");
         PocketRules.Reply sleep = PocketRules.Reply.sent("Sent. The phone will do it in a moment.");
         PocketRules.Reply system = PocketRules.Reply.done("Android's Battery saver is on.");
+        /** The answer to eco_android_keep when it differs from the older name's (an older phone app does not know it). */
+        PocketRules.Reply systemKeep;
         PocketRules.Reply screen = PocketRules.Reply.done("The screen is off.");
         /** Status before the order, then one per look; the last one repeats. */
         PocketRules.Status before = new PocketRules.Status(Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, "");
@@ -63,7 +65,8 @@ public final class PocketRulesTest {
                 case PocketRules.WIFI_OFF: return wifi;
                 case PocketRules.SAVER: return saver;
                 case PocketRules.SLEEP: return sleep;
-                case PocketRules.SYSTEM_SAVER: return system;
+                case PocketRules.SYSTEM_SAVER: return systemKeep != null ? systemKeep : system;
+                case PocketRules.SYSTEM_SAVER_OLD: return system;
                 default: return screen;
             }
         }
@@ -116,11 +119,75 @@ public final class PocketRulesTest {
         return new PocketRules.Status(Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, "");
     }
 
+    private static PocketRules.Status asleepPsm(Boolean psm) {
+        return new PocketRules.Status(Boolean.FALSE, Boolean.TRUE, Boolean.FALSE, "Airplane mode is on, and Bluetooth stays on so that the tablet can wake the phone.", psm);
+    }
+
     private static List<String> list(String... s) {
         return Arrays.asList(s);
     }
 
     // ------------------------------------------------------------------------------------------------------------ the steps
+
+
+    // ------------------------------------------------------------------------------------------------------------ Android's Battery saver (CS1)
+
+    /** The user, 2026-11-21: the button must always leave Android's Battery saver ON; one that is on already is not touched again. */
+    private static void androidSaverReadBackAndAskedAgainUntilItIsOn() {
+        Sim p = new Sim();
+        p.looks.add(working());
+        p.looks.add(asleepPsm(Boolean.FALSE)); // the wait for the sleep
+        p.looks.add(asleepPsm(Boolean.FALSE)); // the look before the screen step
+        p.looks.add(asleepPsm(Boolean.FALSE)); // the read-back: still off
+        p.looks.add(asleepPsm(Boolean.TRUE));  // after the second ask: on
+        PocketRules.Out out = PocketRules.run(p, p);
+        eq(PocketRules.State.DONE, out.state, "saver took the second ask: done");
+        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_keep", "eco_android_keep"), p.acts, "saver asked a second time after the read-back said off");
+        yes(out.text.contains("The phone says Android's Battery saver is on."), "the text ends with the phone's own word: " + out.text);
+    }
+
+    private static void androidSaverThatNeverComesOnIsSaidAndNeverClaimed() {
+        Sim p = new Sim();
+        p.looks.add(working());
+        p.looks.add(asleepPsm(Boolean.FALSE));
+        PocketRules.Out out = PocketRules.run(p, p);
+        eq(PocketRules.State.FAILED, out.state, "saver stays off: failed");
+        int keeps = 0;
+        for (String a : p.acts) {
+            keeps += a.equals("eco_android_keep") ? 1 : 0;
+        }
+        eq(PocketRules.SAVER_TRIES, keeps, "asked exactly SAVER_TRIES times, no more");
+        yes(out.text.contains("still says it is off after 3 tries"), "said honestly: " + out.text);
+        yes(!out.text.contains("The phone says Android's Battery saver is on."), "never claimed");
+    }
+
+    private static void androidSaverAlreadyOnIsLeftAlone() {
+        Sim p = new Sim();
+        p.looks.add(working());
+        p.looks.add(asleepPsm(Boolean.TRUE));
+        PocketRules.Out out = PocketRules.run(p, p);
+        eq(PocketRules.State.DONE, out.state, "saver on: done");
+        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_keep"), p.acts, "asked once, not again when the phone says it is on");
+    }
+
+    private static void androidSaverOlderPhoneAppGetsTheOldName() {
+        Sim p = new Sim();
+        p.systemKeep = PocketRules.Reply.failed("unknown action: eco_android_keep");
+        p.looks.add(working());
+        p.looks.add(asleepPsm(Boolean.TRUE));
+        PocketRules.Out out = PocketRules.run(p, p);
+        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_keep", "eco_android_on"), p.acts, "older phone app: the old name is tried next");
+        eq(PocketRules.State.DONE, out.state, "and it counts when it took");
+    }
+
+    private static void androidSaverNotSaidByThePhoneIsNotRetried() {
+        Sim p = new Sim();
+        p.looks.add(working());
+        p.looks.add(asleep()); // an older status without psm
+        PocketRules.Out out = PocketRules.run(p, p);
+        eq(PocketRules.State.DONE, out.state, "no psm: the answer it gave is believed");
+        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_keep"), p.acts, "no retry for a phone that does not say");
+    }
 
     private static void happyPathOverTheHotspot() {
         Sim p = new Sim();
@@ -128,7 +195,7 @@ public final class PocketRulesTest {
         p.looks.add(asleep());
         PocketRules.Out out = PocketRules.run(p, p);
         eq(PocketRules.State.DONE, out.state, "happy path: done");
-        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_on"), p.acts, "happy path: steps in order, no second screen-off when the status shows the screen off");
+        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_keep"), p.acts, "happy path: steps in order, no second screen-off when the status shows the screen off");
         eq(1, p.sentCalls, "happy path: the tablet's Wi-Fi is released once");
         int sentAt = p.log.indexOf("sent");
         int sleepAt = p.log.indexOf("act:hotspot_off_deep");
@@ -144,7 +211,7 @@ public final class PocketRulesTest {
         PocketRules.Status almost = new PocketRules.Status(Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, "all but the screen");
         p.looks.add(almost);
         PocketRules.Out out = PocketRules.run(p, p);
-        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_on", "screen_off"), p.acts, "screen on: the screen step runs last");
+        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_keep", "screen_off"), p.acts, "screen on: the screen step runs last");
         yes(out.state == PocketRules.State.FAILED, "screen on after the sleep: not reported as done (the status never showed the end state)");
     }
 
@@ -163,7 +230,7 @@ public final class PocketRulesTest {
         p.wifi = PocketRules.Reply.failed("The phone's Wi-Fi did not switch off");
         p.looks.add(asleep());
         PocketRules.Out out = PocketRules.run(p, p);
-        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_on"), p.acts, "wifi failed: the other steps still run");
+        eq(list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_keep"), p.acts, "wifi failed: the other steps still run");
         eq(PocketRules.State.FAILED, out.state, "wifi failed: the run is not 'done'");
         yes(out.text.contains("did not switch off"), "wifi failed: the phone's words are kept");
     }
@@ -175,7 +242,7 @@ public final class PocketRulesTest {
         eq(0, p.sentCalls, "sleep refused: no release of the tablet's Wi-Fi");
         eq(0, p.pauses, "sleep refused: no waiting");
         eq(PocketRules.State.FAILED, out.state, "sleep refused: failed");
-        yes(p.acts.contains("eco_android_on") && p.acts.contains("screen_off"), "sleep refused: the savers and the screen are still tried");
+        yes(p.acts.contains("eco_android_keep") && p.acts.contains("screen_off"), "sleep refused: the savers and the screen are still tried");
         yes(out.text.contains("Shizuku"), "sleep refused: the words say why");
     }
 
@@ -245,7 +312,7 @@ public final class PocketRulesTest {
             {new PocketRules.Status(null, null, null, "")},
             {new PocketRules.Status(Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, "words")},
         };
-        List<String> order = list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_on", "screen_off");
+        List<String> order = list("wifi_off", "eco_auto_on", "hotspot_off_deep", "eco_android_keep", "screen_off");
         int runs = 0;
         for (PocketRules.Reply w : kinds) {
             for (PocketRules.Reply v : kinds) {
@@ -279,7 +346,7 @@ public final class PocketRulesTest {
                                 yes(p.pauses <= (int) (PocketRules.FOLLOW_MS / PocketRules.LOOK_EVERY_MS) + 3, "combo " + id + ": bounded waiting");
                                 if (out.state == PocketRules.State.DONE) {
                                     yes(w.ok && v.ok && s.ok && y.ok, "combo " + id + ": done only when every answer was ok");
-                                    yes(p.acts.contains("hotspot_off_deep") && p.acts.contains("eco_android_on"), "combo " + id + ": done only after both savers were asked");
+                                    yes(p.acts.contains("hotspot_off_deep") && p.acts.contains("eco_android_keep"), "combo " + id + ": done only after both savers were asked");
                                 }
                                 if (!w.reached) {
                                     eq(1, p.acts.size(), "combo " + id + ": unreachable at the start = one request");
@@ -333,6 +400,11 @@ public final class PocketRulesTest {
 
     public static void main(String[] args) {
         happyPathOverTheHotspot();
+        androidSaverReadBackAndAskedAgainUntilItIsOn();
+        androidSaverThatNeverComesOnIsSaidAndNeverClaimed();
+        androidSaverAlreadyOnIsLeftAlone();
+        androidSaverOlderPhoneAppGetsTheOldName();
+        androidSaverNotSaidByThePhoneIsNotRetried();
         screenStillOnGetsOneMoreSleep();
         unreachableAtTheStartEndsTheRun();
         oneFailureNeverStopsTheNext();

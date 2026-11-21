@@ -362,6 +362,76 @@ public class TextsPreviewTest {
         shot(a, "texts-new-search");
     }
 
+    /**
+     * THE REPORT of 2026-11-21: "it is awkward to text by typing in a phone number and then i have to press the next button then start
+     * typing a message". Now the To line and the message box are ONE screen, as in the texting apps: a number typed in To is the
+     * recipient, the message is written below, Send opens the conversation and sends.
+     */
+    @Test
+    public void newMessageToATypedNumberOnOneScreen() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        click(a, "New message");
+        settle();
+        check(findEdit(decor(a), "Text message") != null, "the message box is on the same screen as the To line");
+        check(PreviewTest.findButton(decor(a), "Next") == null, "there is no Next step any more");
+        findEdit(decor(a), "Type a name or a number").setText("555 010 7788");
+        later(600);
+        findEdit(decor(a), "Text message").setText("On my way");
+        settle();
+        shot(a, "texts-new-compose");
+        click(a, "Send");
+        later(800);
+        check(ph.outbox.size() == 1, "the phone has the text in its record: " + ph.outbox.size());
+        check(findText(decor(a), "On my way") != null, "the conversation is open with the text in it");
+    }
+
+    /** A person chosen from the list becomes a pill, the message box is next, and Send needs no other step. */
+    @Test
+    public void newMessageToAPickedPerson() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        click(a, "New message");
+        settle();
+        findEdit(decor(a), "Type a name or a number").setText("al");
+        later(600);
+        TextView who = findText(decor(a), "Alex");
+        check(who != null, "the list shows Alex");
+        android.view.View row = who;
+        while (row != null && !row.isClickable()) {
+            row = row.getParent() instanceof android.view.View ? (android.view.View) row.getParent() : null;
+        }
+        check(row != null, "the person's row can be tapped");
+        row.performClick();
+        settle();
+        check(findEdit(decor(a), "Add another person") != null, "the person is a pill now and the box offers another");
+        shot(a, "texts-new-picked");
+        findEdit(decor(a), "Text message").setText("See you soon");
+        click(a, "Send");
+        later(800);
+        check(ph.outbox.size() == 1, "the phone has the text: " + ph.outbox.size());
+    }
+
+    /** Send with nobody to send to says what is missing and sends nothing. */
+    @Test
+    public void newMessageWithoutARecipientSaysSo() throws Exception {
+        PretendSms ph = phone();
+        MainActivity a = tablet();
+        a.openTab(Tab.TEXTS);
+        settle();
+        click(a, "New message");
+        settle();
+        findEdit(decor(a), "Text message").setText("Hello");
+        click(a, "Send");
+        later(300);
+        check(ph.outbox.size() == 0, "nothing was sent");
+        check(findEdit(decor(a), "Text message") != null, "still on the New message screen");
+    }
+
     // ------------------------------------------------------------ a wide screen: the list stays, the conversation opens beside it
 
     @Test

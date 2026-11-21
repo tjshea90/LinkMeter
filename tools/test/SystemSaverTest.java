@@ -347,6 +347,67 @@ public final class SystemSaverTest {
         }
     }
 
+    /** The pocket return's form: on, and left on (the user, 2026-11-21: "sometimes i think it turns it off"). */
+    private static void keepSequence() throws Exception {
+        // an ordinary phone: switched on, then the original is forgotten so that nothing of LinkMeter's puts it back
+        Phone ph = new Phone();
+        ph.setLow("0");
+        FakeEnv env = new FakeEnv(ph);
+        SystemSaver.Outcome o = SystemSaver.keep(env);
+        yes(o.ok && !o.giveUp, "keep: an ordinary phone takes it");
+        eq(SystemSaver.KEPT_NEW, o.text, "keep: says it is on and stays on");
+        eq("1", ph.low(), "keep: the setting is 1");
+        eq(null, env.stored, "keep: the original is forgotten, so a later restore finds nothing to put back");
+        SystemSaver.Outcome back = SystemSaver.restore(env);
+        yes(back.ok && back.text.isEmpty(), "keep: the end of LinkMeter's saver (restore) does nothing");
+        eq("1", ph.low(), "keep: the setting is STILL 1 after restore");
+
+        // already on because LinkMeter switched it on earlier (an original is stored): kept, original forgotten
+        ph = new Phone();
+        ph.setLow("0");
+        env = new FakeEnv(ph);
+        yes(SystemSaver.apply(env).ok, "keep: first the ordinary option switches it on");
+        yes(env.stored != null, "keep: ...with an original stored");
+        o = SystemSaver.keep(env);
+        yes(o.ok, "keep: on already is fine");
+        eq(SystemSaver.KEPT, o.text, "keep: says it is left on");
+        eq(null, env.stored, "keep: the earlier original is forgotten too");
+        SystemSaver.restore(env);
+        eq("1", ph.low(), "keep: restore does not switch it off after a keep");
+
+        // the user's own saver is on: not touched, nothing written
+        ph = new Phone();
+        ph.setLow("1");
+        env = new FakeEnv(ph);
+        env.osAlreadyOn = true;
+        o = SystemSaver.keep(env);
+        yes(o.ok, "keep: the user's saver is on: fine");
+        eq(SystemSaver.KEPT, o.text, "keep: left on");
+        yes(!env.events.contains("settings put global low_power 1"), "keep: nothing is written for a saver that is on");
+
+        // a phone that does not take it: the answer of apply stands, nothing is kept, the original is put back
+        ph = new Phone();
+        ph.setLow("0");
+        env = new FakeEnv(ph);
+        env.os = Os.IGNORES;
+        o = SystemSaver.keep(env);
+        yes(!o.ok, "keep: a phone that stays off is not an ok");
+        eq(null, env.stored, "keep: and nothing is left stored");
+
+        // Shizuku down: the line cannot run, the error reaches the caller
+        ph = new Phone();
+        ph.setLow("0");
+        env = new FakeEnv(ph);
+        env.shizukuDown = true;
+        boolean threw = false;
+        try {
+            SystemSaver.keep(env);
+        } catch (IOException e) {
+            threw = true;
+        }
+        yes(threw, "keep: with Shizuku down it throws, as apply does");
+    }
+
     private static void sequence() throws Exception {
         // ---- the ordinary phone: the setting is 0, Android follows it
         Phone ph = new Phone();
@@ -647,6 +708,7 @@ public final class SystemSaverTest {
         facts();
         words();
         sequence();
+        keepSequence();
         random();
         System.out.println(checks + " checks, " + fails + " failed");
         if (fails != 0) {

@@ -30,6 +30,12 @@ final class SystemSaver {
     /** The tablet's names for the option (the action names of /act). */
     static final String ACTION_ON = "eco_android_on";
     static final String ACTION_OFF = "eco_android_off";
+    /**
+     * The Launcher's "Back to custom" (pocket return): Android's own Battery saver must be ON afterwards and STAY on. Switched on like
+     * {@link #ACTION_ON}, but the original is forgotten once it is on, so LinkMeter's saver ending (the screen comes on, ten quiet minutes)
+     * never switches it off again (the user, 2026-11-21: "sometimes i think it turns it off").
+     */
+    static final String ACTION_KEEP = "eco_android_keep";
 
     /** After the write, how long to wait for Android itself to say its Battery saver is on (it follows the setting a moment later). */
     static final long SETTLE_MS = 3000;
@@ -220,6 +226,24 @@ final class SystemSaver {
     }
 
     /**
+     * Switches Android's own Battery saver on and leaves it on for good: what {@link #apply} does, then the stored original is forgotten, so
+     * {@link #restore} has nothing to put back. A saver that is on already (the user's, or one LinkMeter switched on earlier) is simply
+     * kept. A switch that did not take is not kept: {@link #apply}'s answer (and its put-back) stand.
+     */
+    static Outcome keep(Env env) throws IOException {
+        if (Boolean.TRUE.equals(env.osOn())) {
+            env.forget(); // on already: whoever switched it on, it is not LinkMeter's to switch off any more
+            return new Outcome(true, false, KEPT);
+        }
+        Outcome o = apply(env);
+        if (o.ok) {
+            env.forget();
+            return new Outcome(true, false, o.text.equals(WAS_ON) ? KEPT : KEPT_NEW);
+        }
+        return o;
+    }
+
+    /**
      * Puts the setting back, but only when LinkMeter switched it on. The stored original is forgotten only after the line ran: when
      * Shizuku is down this throws and the original stays for the next try.
      */
@@ -250,6 +274,8 @@ final class SystemSaver {
             + "LinkMeter put its switch back.";
     static final String HOTSPOT_LOST = "Android's own Battery saver was switched on, but the hotspot went off with it. LinkMeter put it back "
             + "and will not switch it on again. Hotspot on, from the tablet, brings the hotspot back.";
+    static final String KEPT = "Android's own Battery saver is on, and LinkMeter leaves it on.";
+    static final String KEPT_NEW = "Android's own Battery saver is switched on, and LinkMeter leaves it on (it does not switch it off again by itself).";
     static final String BACK = "Android's own Battery saver is off again.";
     static final String BACK_BUT_ON = "LinkMeter put its switch back, but the phone still says Android's own Battery saver is on. "
             + "Switch it off in the phone's quick settings.";
