@@ -149,10 +149,14 @@ final class TextsTab extends Tab {
 
     // the new-message screen
     private final List<Sms.Person> picked = new ArrayList<>();
-    private LinearLayout pickedBox;
+    /** The New message screen: the To line (pills + the box), the list under it, and the message box with Send. */
+    private FlowRow toRow;
     private LinearLayout suggestBox;
     private EditText toInput;
-    private Button nextBtn;
+    private EditText newInput;
+    private IconButton newSend;
+    /** The first person the list shows for what is typed: what the keyboard's Next chooses. */
+    private Sms.Person firstSuggestion;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -2472,25 +2476,52 @@ final class TextsTab extends Tab {
         head.addView(TextsViews.icon(act, Icons.Kind.BACK, "Back", v -> closeDetail()));
         TextView t = Ui.text(act, "New message", 20, Ui.FG, true);
         head.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        nextBtn = Ui.primary(act, "Next", v -> startNew());
-        nextBtn.setEnabled(false);
-        head.addView(nextBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         col.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(act, 60)));
 
-        LinearLayout body = new LinearLayout(act);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(pad, pad, pad, pad);
-        body.addView(Ui.text(act, "To", 13, Ui.DIM, true));
-        pickedBox = new LinearLayout(act);
-        pickedBox.setOrientation(LinearLayout.VERTICAL);
-        body.addView(pickedBox);
+        // "To": the people chosen so far as pills, and the box that finds the next one; on ONE screen with the message box below,
+        // as in every texting app (no "Next" step between choosing who and writing what)
+        LinearLayout toLine = new LinearLayout(act);
+        toLine.setOrientation(LinearLayout.HORIZONTAL);
+        toLine.setBackgroundColor(Ui.CARD);
+        toLine.setPadding(pad, Ui.dp(act, 4), pad, Ui.dp(act, 8));
+        TextView toLabel = Ui.text(act, "To", 15, Ui.DIM, true);
+        toLabel.setGravity(Gravity.CENTER_VERTICAL);
+        toLine.addView(toLabel, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(act, 44)));
+        toRow = new FlowRow(act, Ui.dp(act, 6), Ui.dp(act, 150));
+        toRow.setPadding(Ui.dp(act, 10), Ui.dp(act, 4), 0, 0);
         toInput = new EditText(act);
         toInput.setHint("Type a name or a number");
         toInput.setTextColor(Ui.FG);
         toInput.setHintTextColor(Ui.DIM);
+        toInput.setTextSize(16);
+        toInput.setBackground(null);
         toInput.setSingleLine(true);
         toInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        toInput.setOnFocusChangeListener((v, focus) -> composeFocus(focus));
+        toInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        toInput.setPadding(Ui.dp(act, 4), 0, Ui.dp(act, 4), 0);
+        toInput.setMinHeight(Ui.dp(act, 36));
+        toInput.setOnFocusChangeListener((v, focus) -> {
+            if (!focus) {
+                commitTyped(false); // a number typed and then left (the message box was tapped) is the person it is for
+            }
+            composeFocus(toInput.hasFocus() || (newInput != null && newInput.hasFocus()));
+        });
+        toInput.setOnEditorActionListener((v, action, ev) -> {
+            commitTyped(true);
+            if (newInput != null) {
+                newInput.requestFocus();
+            }
+            return true;
+        });
+        toInput.setOnKeyListener((v, keyCode, ev) -> {
+            if (keyCode == android.view.KeyEvent.KEYCODE_DEL && ev.getAction() == android.view.KeyEvent.ACTION_DOWN
+                    && toInput.getText().length() == 0 && !picked.isEmpty()) {
+                picked.remove(picked.size() - 1); // Backspace in the empty box takes the last pill back
+                showPicked();
+                return true;
+            }
+            return false;
+        });
         toInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {
@@ -2505,13 +2536,63 @@ final class TextsTab extends Tab {
             @Override
             public void afterTextChanged(Editable s) {
                 searchPeople(s.toString().trim());
+                paintNewSend();
             }
         });
-        body.addView(toInput, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        toRow.addView(toInput);
+        toLine.addView(toRow, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        col.addView(toLine, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        col.addView(Ui.divider(act));
+
         suggestBox = new LinearLayout(act);
         suggestBox.setOrientation(LinearLayout.VERTICAL);
-        body.addView(suggestBox, Ui.lp(act, 4));
-        col.addView(Ui.scroll(act, body), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        suggestBox.setPadding(pad, Ui.dp(act, 6), pad, Ui.dp(act, 6));
+        col.addView(Ui.scroll(act, suggestBox), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        // the message box and Send, at the bottom, the same as in a conversation
+        LinearLayout bar = new LinearLayout(act);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.BOTTOM);
+        bar.setBackgroundColor(Ui.CARD);
+        bar.setPadding(Ui.dp(act, 12), Ui.dp(act, 6), Ui.dp(act, 8), Ui.dp(act, 8));
+        LinearLayout box = new LinearLayout(act);
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setBackground(TextsViews.shape(Ui.CARD_HI, Ui.dp(act, 22)));
+        newInput = new EditText(act);
+        newInput.setHint("Text message");
+        newInput.setTextColor(Ui.FG);
+        newInput.setHintTextColor(Ui.DIM);
+        newInput.setTextSize(16);
+        newInput.setBackground(null);
+        newInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        newInput.setMaxLines(5);
+        newInput.setPadding(Ui.dp(act, 16), Ui.dp(act, 10), Ui.dp(act, 16), Ui.dp(act, 10));
+        newInput.setOnFocusChangeListener((v, focus) -> composeFocus(focus || toInput.hasFocus()));
+        newInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+                // nothing
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int c) {
+                // nothing
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                paintNewSend();
+            }
+        });
+        box.addView(newInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        bp.rightMargin = Ui.dp(act, 8);
+        bar.addView(box, bp);
+        newSend = new IconButton(act, Icons.Kind.SEND, Ui.DIM, Ui.CARD_HI, "Send", v -> sendNew());
+        newSend.setScale(0.5f);
+        bar.addView(newSend, new LinearLayout.LayoutParams(Ui.dp(act, 46), Ui.dp(act, 46)));
+        col.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         detail.removeAllViews();
         detail.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -2519,6 +2600,63 @@ final class TextsTab extends Tab {
         arrange();
         showPicked();
         searchPeople("");
+        toInput.requestFocus(); // who it is for comes first, as everywhere
+    }
+
+    /**
+     * The text in the To box, if it is a whole phone number, becomes a recipient (a name is only chosen from the list). loud: the
+     * keyboard's Next was pressed, so the first person the list shows for the typed name is taken, and a word that is neither says so.
+     */
+    private void commitTyped(boolean loud) {
+        if (toInput == null) {
+            return;
+        }
+        String q = toInput.getText().toString().trim();
+        if (q.isEmpty()) {
+            return;
+        }
+        if (PhoneNumbers.looksLikeNumber(q) && !PhoneNumbers.forSending(q).isEmpty()) {
+            Sms.Person p = new Sms.Person();
+            p.number = PhoneNumbers.forSending(q);
+            p.name = PhoneNumbers.pretty(p.number);
+            addPicked(p);
+        } else if (loud && firstSuggestion != null) {
+            addPicked(firstSuggestion);
+        } else if (loud) {
+            Toast.makeText(act, "Pick a person from the list, or type the whole phone number.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Send on the New message screen: whoever is in the To box counts, the conversation opens and the text goes at once. */
+    private void sendNew() {
+        commitTyped(false);
+        String text = newInput == null ? "" : newInput.getText().toString();
+        if (picked.isEmpty()) {
+            Toast.makeText(act, "Add who it is for first: pick a person or type a phone number.", Toast.LENGTH_SHORT).show();
+            if (toInput != null) {
+                toInput.requestFocus();
+            }
+            return;
+        }
+        if (text.trim().isEmpty()) {
+            Toast.makeText(act, "Write the message first.", Toast.LENGTH_SHORT).show();
+            if (newInput != null) {
+                newInput.requestFocus();
+            }
+            return;
+        }
+        startNewWith(text);
+    }
+
+    /** The Send button is lit when there is a message and someone to send it to (a number in the To box counts). */
+    private void paintNewSend() {
+        if (newSend == null || newInput == null || toInput == null) {
+            return;
+        }
+        String q = toInput.getText().toString().trim();
+        boolean who = !picked.isEmpty() || (PhoneNumbers.looksLikeNumber(q) && !PhoneNumbers.forSending(q).isEmpty());
+        boolean can = who && newInput.getText().toString().trim().length() > 0;
+        newSend.set(Icons.Kind.SEND, can ? Ui.ON_ACCENT : Ui.DIM, can ? Ui.ACCENT : Ui.CARD_HI);
     }
 
     private void searchPeople(final String q) {
@@ -2566,6 +2704,7 @@ final class TextsTab extends Tab {
 
     private void showSuggestions(String q, List<Sms.Person> people) {
         suggestBox.removeAllViews();
+        firstSuggestion = null;
         if (PhoneNumbers.looksLikeNumber(q) && !PhoneNumbers.forSending(q).isEmpty()) {
             final String number = q;
             suggestBox.addView(personRow("Send to " + q, "", v -> {
@@ -2573,13 +2712,27 @@ final class TextsTab extends Tab {
                 p.name = PhoneNumbers.pretty(PhoneNumbers.forSending(number));
                 p.number = PhoneNumbers.forSending(number);
                 addPicked(p);
+                focusMessage();
             }));
         }
         for (final Sms.Person p : people) {
-            suggestBox.addView(personRow(p.name.isEmpty() ? p.number : p.name, p.name.isEmpty() ? "" : p.number, v -> addPicked(p)));
+            if (firstSuggestion == null) {
+                firstSuggestion = p;
+            }
+            suggestBox.addView(personRow(p.name.isEmpty() ? p.number : p.name, p.name.isEmpty() ? "" : p.number, v -> {
+                addPicked(p);
+                focusMessage();
+            }));
         }
         if (suggestBox.getChildCount() == 0 && !q.isEmpty()) {
             suggestBox.addView(Ui.text(act, "No contact found. Type the whole number to send to it.", 13, Ui.DIM, false));
+        }
+    }
+
+    /** A person was chosen from the list: the message is next. */
+    private void focusMessage() {
+        if (newInput != null) {
+            newInput.requestFocus();
         }
     }
 
@@ -2596,24 +2749,37 @@ final class TextsTab extends Tab {
         showPicked();
     }
 
+    /** The people chosen so far, as pills in front of the box (a tap on a pill takes that person back). */
     private void showPicked() {
-        pickedBox.removeAllViews();
+        toRow.removeAllViews();
         for (final Sms.Person p : picked) {
-            LinearLayout row = new LinearLayout(act);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            TextView name = Ui.text(act, (p.name.isEmpty() ? p.number : p.name + "  " + p.number), 15, Ui.FG, true);
-            row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            row.addView(TextsViews.icon(act, Icons.Kind.CLOSE, "Remove", v -> {
+            TextView pill = Ui.text(act, (p.name.isEmpty() ? p.number : p.name) + "  \u2715", 15, Ui.FG, true);
+            pill.setBackground(TextsViews.shape(Ui.CARD_HI, Ui.dp(act, 18)));
+            pill.setPadding(Ui.dp(act, 12), 0, Ui.dp(act, 12), 0);
+            pill.setGravity(Gravity.CENTER_VERTICAL);
+            pill.setMinHeight(Ui.dp(act, 36));
+            pill.setSingleLine(true);
+            pill.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            pill.setContentDescription("Remove " + (p.name.isEmpty() ? p.number : p.name));
+            pill.setClickable(true);
+            pill.setOnClickListener(v -> {
                 picked.remove(p);
                 showPicked();
-            }));
-            pickedBox.addView(row);
+            });
+            toRow.addView(pill);
         }
-        nextBtn.setEnabled(!picked.isEmpty());
+        toRow.addView(toInput);
+        toInput.setHint(picked.isEmpty() ? "Type a name or a number" : "Add another person");
+        paintNewSend();
     }
 
+    /** Opens the conversation with the chosen people (the one they already have, or a new one) without sending anything. */
     private void startNew() {
+        startNewWith(null);
+    }
+
+    /** As {@link #startNew()}; with a text, that text is sent the moment the conversation is open. */
+    private void startNewWith(String text) {
         if (picked.isEmpty()) {
             Toast.makeText(act, "Add who it is for first.", Toast.LENGTH_SHORT).show();
             return;
@@ -2629,13 +2795,21 @@ final class TextsTab extends Tab {
         for (String n : numbers) {
             addresses.add(PhoneNumbers.forSending(n));
         }
+        hideKeyboard();
+        boolean found = false;
         for (Sms.Thread t : threads) {
             if (t.key.equals(key)) { // they already have a conversation: open it
                 openThread(t.key, ThreadListRules.title(t), t.addresses);
-                return;
+                found = true;
+                break;
             }
         }
-        hideKeyboard();
-        openThread(key, name.toString(), addresses);
+        if (!found) {
+            openThread(key, name.toString(), addresses);
+        }
+        if (text != null && open != null) {
+            open.prefill(text);
+            open.submit();
+        }
     }
 }

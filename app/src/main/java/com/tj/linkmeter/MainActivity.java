@@ -70,6 +70,22 @@ public class MainActivity extends Activity {
         return resumed;
     }
 
+    /** The press look of every button of this screen (PressFeedback). */
+    private final PressFeedback press = new PressFeedback();
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        press.onTouch(getWindow().getDecorView(), ev); // before the event is dispatched: the tint is on the very frame the finger lands
+        return super.dispatchTouchEvent(ev);
+    }
+
+    /** How often the app has been paused since it started: another screen came in front (Android's Wi-Fi switch is one, see TabletWifi). */
+    private int pauses;
+
+    int pauseCount() {
+        return pauses;
+    }
+
     /** Set by the Fast Wi-Fi tile when Android's VPN question still has to be asked (it needs a screen). */
     static final String EXTRA_FAST = "fast";
 
@@ -108,6 +124,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         resumed = false;
+        pauses++;
+        press.unlightNow();
         FloatingPhone.setAppInFront(false);
         releaseWatch();
         if (cur != null) {

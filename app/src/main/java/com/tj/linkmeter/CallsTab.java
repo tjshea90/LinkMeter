@@ -161,21 +161,28 @@ final class CallsTab extends Tab {
                 act.openTab(Tab.SETTINGS);
             }
         });
-        floating.setScale(0.5f);
-        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(Ui.dp(act, 34), Ui.dp(act, 34));
-        fp.rightMargin = Ui.dp(act, 6);
+        floating.setScale(0.36f); // 48 dp to hit (a 34 dp button was missed again and again), the handset as big as before
+        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(Ui.dp(act, 48), Ui.dp(act, 48));
+        fp.rightMargin = Ui.dp(act, 2);
         head.addView(floating, fp);
         battery = new BatteryIconView(act, 1f); // the headset's battery, while it is connected to the phone
         battery.setVisibility(View.GONE);
         battery.setClickable(true);
         battery.setOnClickListener(v -> openHeadset());
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bp.rightMargin = Ui.dp(act, 8);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(act, 48));
+        bp.rightMargin = Ui.dp(act, 4);
         head.addView(battery, bp);
         chip = Ui.chip(act, "Headset", Ui.DIM);
-        chip.setClickable(true);
-        chip.setOnClickListener(v -> openHeadset());
-        head.addView(chip);
+        // the chip is small to look at and was small to hit: it sits in a 48 dp high button of its own (the press lights that)
+        FrameLayout chipHit = new FrameLayout(act);
+        chipHit.setClickable(true);
+        chipHit.setContentDescription("Headset");
+        chipHit.setOnClickListener(v -> openHeadset());
+        chipHit.setPadding(Ui.dp(act, 4), 0, Ui.dp(act, 4), 0);
+        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER);
+        chipHit.addView(chip, cp);
+        head.addView(chipHit, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(act, 48)));
         main.addView(head);
 
         noticeBox = new LinearLayout(act);

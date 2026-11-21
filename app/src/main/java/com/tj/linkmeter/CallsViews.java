@@ -3,7 +3,6 @@ package com.tj.linkmeter;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -46,10 +45,9 @@ final class CallsViews {
         }
     }
 
-    /** A background that ripples when it is touched. */
+    /** A background for something that is pressed: a plain shape, the press itself is lit by {@link PressFeedback}. */
     static android.graphics.drawable.Drawable ripple(int fill, float radiusPx) {
-        GradientDrawable shape = Ui.round(fill, radiusPx);
-        return new RippleDrawable(ColorStateList.valueOf(0x44FFFFFF), shape, Ui.round(0xFFFFFFFF, radiusPx));
+        return Ui.round(fill, radiusPx);
     }
 
     /** A round button with an icon: 48 dp for lists, larger for the call screen. */

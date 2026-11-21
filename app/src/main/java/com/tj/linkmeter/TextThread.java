@@ -424,6 +424,11 @@ final class TextThread {
         }
     }
 
+    /** Sends what is in the box, as the Send button does (the New message screen puts its text in and presses it). */
+    void submit() {
+        send();
+    }
+
     private void updateSend() {
         if (sendBtn == null) {
             return;

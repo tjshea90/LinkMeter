@@ -46,9 +46,16 @@ import org.robolectric.shadows.ShadowNetworkInfo;
 public class WifiFollowPreviewTest {
     private static final String LATER = "{\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}";
 
+    /** A pretend Android never pauses the activity when a screen is started: every screen it accepts counts as up (TabletWifi.showSwitch). */
+    @org.junit.Before
+    public void setUp() {
+        TabletWifi.assumeShownForTest = true;
+    }
+
     @After
     public void tearDown() {
         TabletWifi.refusedForTest = false;
+        TabletWifi.assumeShownForTest = false;
     }
 
     // ------------------------------------------------------------------------------------------------ helpers
@@ -440,6 +447,68 @@ public class WifiFollowPreviewTest {
         press(a, "Switch Wi-Fi on");
         settle();
         check(panelWasOpened(a), "Android's Wi-Fi switch was opened");
+        mustShow(a, "Switch the tablet's Wi-Fi on in the panel that opened");
+    }
+
+
+    /**
+     * THE FIELD REPORT of 2026-11-21: the card's "Switch Wi-Fi on" did nothing. Now a screen that Android accepted but that never came
+     * in front is followed by the next one (the Internet panel, the Wi-Fi panel, the Wi-Fi settings), and the card itself says what
+     * happened, right under its words (the result strip further down is out of sight).
+     */
+    @Test
+    public void theButtonTriesTheNextScreenWhenNoneComesUpAndSaysSo() throws Exception {
+        TabletWifi.refusedForTest = true;
+        TabletWifi.assumeShownForTest = false;
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(true, true);
+        p.install();
+        linkProved();
+        noNetworks();
+        wifiIs(false);
+        MainActivity a = tablet();
+        settle();
+        press(a, "Switch Wi-Fi on");
+        settle();
+        mustShow(a, "Switching the tablet's Wi-Fi on");
+        Intent first = shadowOf(a).getNextStartedActivity();
+        check(first != null && Settings.Panel.ACTION_INTERNET_CONNECTIVITY.equals(first.getAction()), "the Internet panel is tried first");
+        later(TabletWifi.SHOW_FIRST_MS + 300); // the app was not paused: the panel did not come up
+        Intent second = shadowOf(a).getNextStartedActivity();
+        check(second != null && Settings.Panel.ACTION_WIFI.equals(second.getAction()), "then the Wi-Fi panel");
+        later(TabletWifi.SHOW_NEXT_MS + 300);
+        Intent third = shadowOf(a).getNextStartedActivity();
+        check(third != null && Settings.ACTION_WIFI_SETTINGS.equals(third.getAction()), "then the Wi-Fi settings");
+        later(TabletWifi.SHOW_NEXT_MS + 300);
+        mustShow(a, "could not switch the tablet's Wi-Fi on, and no Android screen for it came up");
+        mustShow(a, "pull the screen down from the top and tap Wi-Fi");
+        check(nothingWasOpened(a), "nothing else was started");
+        shot(a, "state-home-wifi-none-came-up");
+    }
+
+    /** A screen that did come in front (the app was paused by it) is the only one: no second screen is stacked on it. */
+    @Test
+    public void theButtonStopsAtTheScreenThatCameUp() throws Exception {
+        TabletWifi.refusedForTest = true;
+        TabletWifi.assumeShownForTest = false;
+        Pretend p = new Pretend();
+        p.via = "bt";
+        p.status = Pretend.status(true, true);
+        p.install();
+        linkProved();
+        noNetworks();
+        wifiIs(false);
+        MainActivity a = tablet();
+        settle();
+        press(a, "Switch Wi-Fi on");
+        settle();
+        check(panelWasOpened(a), "the Internet panel was started");
+        PreviewTest.lastTablet.pause(); // it came in front
+        later(TabletWifi.SHOW_FIRST_MS + 300);
+        PreviewTest.lastTablet.resume();
+        settle();
+        check(nothingWasOpened(a), "no second screen was started");
         mustShow(a, "Switch the tablet's Wi-Fi on in the panel that opened");
     }
 

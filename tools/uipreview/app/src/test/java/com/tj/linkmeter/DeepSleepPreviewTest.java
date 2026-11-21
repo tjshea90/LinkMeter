@@ -48,9 +48,15 @@ import org.robolectric.shadows.ShadowAlertDialog;
 public class DeepSleepPreviewTest {
     private static final String LATER = "{\"ok\":true,\"later\":true,\"out\":\"Sent. The phone will do it in a moment.\"}";
 
+    @org.junit.Before
+    public void setUp() {
+        TabletWifi.assumeShownForTest = true; // a pretend Android never pauses the activity: every screen it accepts counts as up
+    }
+
     @After
     public void tearDown() {
         TabletWifi.refusedForTest = false;
+        TabletWifi.assumeShownForTest = false;
     }
 
     // ------------------------------------------------------------------------------------------------ helpers

@@ -77,13 +77,70 @@ final class TabletWifi {
             act.ui.post(() -> {
                 if (did) {
                     done.done(TabletWifiRules.Way.DONE);
-                } else if (mayAsk.getAsBoolean() && openSwitch(act)) {
-                    done.done(TabletWifiRules.Way.ASKED);
+                } else if (mayAsk.getAsBoolean()) {
+                    // one of Android's own screens, for one tap: and it is checked that a screen really came in front (field report
+                    // 2026-11-21: "Switch Wi-Fi on" did nothing, and nothing said so)
+                    showSwitch(act, shown -> done.done(shown ? TabletWifiRules.Way.ASKED : TabletWifiRules.Way.FAILED));
                 } else {
                     done.done(TabletWifiRules.Way.FAILED);
                 }
             });
         }, "linkmeter-wifi").start();
+    }
+
+    /** Tells whether one of Android's Wi-Fi screens really came in front. */
+    interface Shown {
+        void shown(boolean ok);
+    }
+
+    /** The screens Android has for its Wi-Fi switch, in the order they are tried. */
+    static final int OPEN_INTERNET_PANEL = 0;
+    static final int OPEN_WIFI_PANEL = 1;
+    static final int OPEN_WIFI_SETTINGS = 2;
+    static final int OPEN_WAYS = 3;
+    /**
+     * How long a screen that was started may take to come in front before the next one is tried. The first is a small Settings panel
+     * that has to start Android's Settings app on a 2 GB tablet: it can take a second or two, and starting the next screen on top of a
+     * slow one would only stack two.
+     */
+    static final long SHOW_FIRST_MS = 2500L;
+    static final long SHOW_NEXT_MS = 1800L;
+
+    /**
+     * Tests only (tools/uipreview): a pretend Android never pauses the activity when a screen is started, so every screen that was
+     * accepted counts as shown at once, with nothing waited for. Never set in the app.
+     */
+    static volatile boolean assumeShownForTest;
+
+    /**
+     * Opens Android's own Wi-Fi switch for one tap and makes sure something came up: the Internet panel, else the Wi-Fi panel, else
+     * the full Wi-Fi settings. A screen that Android accepted but that did not come in front (the app was not paused within the time
+     * given) is followed by the next one. Reports (on the UI thread) whether any screen showed.
+     */
+    static void showSwitch(final MainActivity act, final Shown result) {
+        tryWay(act, 0, act.pauseCount(), result);
+    }
+
+    private static void tryWay(final MainActivity act, int way, final int pausesBefore, final Shown result) {
+        while (way < OPEN_WAYS && !openSwitch(act, way)) {
+            way++;
+        }
+        if (way >= OPEN_WAYS) {
+            result.shown(false);
+            return;
+        }
+        if (assumeShownForTest) {
+            result.shown(true);
+            return;
+        }
+        final int started = way;
+        act.ui.postDelayed(() -> {
+            if (act.pauseCount() != pausesBefore || !act.inFront()) {
+                result.shown(true); // the app was covered (or the user has already gone): a screen is up
+            } else {
+                tryWay(act, started + 1, pausesBefore, result);
+            }
+        }, started == 0 ? SHOW_FIRST_MS : SHOW_NEXT_MS);
     }
 
     /** Is it as wanted already (it came on by itself while the phone was switching)? Then there is nothing to switch. */
@@ -144,16 +201,23 @@ final class TabletWifi {
      * False if neither could be opened. Only from the UI thread, and only while the app is in front.
      */
     static boolean openSwitch(Activity act) {
+        for (int way = OPEN_INTERNET_PANEL; way < OPEN_WAYS; way++) {
+            if (way != OPEN_WIFI_PANEL && openSwitch(act, way)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Starts one of the screens ({@link #OPEN_INTERNET_PANEL} ...). False if Android has no such screen or refuses it. */
+    static boolean openSwitch(Activity act, int way) {
+        String action = way == OPEN_INTERNET_PANEL ? Settings.Panel.ACTION_INTERNET_CONNECTIVITY
+                : way == OPEN_WIFI_PANEL ? Settings.Panel.ACTION_WIFI : Settings.ACTION_WIFI_SETTINGS;
         try {
-            act.startActivity(new Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY));
+            act.startActivity(new Intent(action));
             return true;
         } catch (RuntimeException e) {
-            try {
-                act.startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS));
-                return true;
-            } catch (RuntimeException e2) {
-                return false;
-            }
+            return false; // no such screen on this Android (ActivityNotFoundException), or it is not allowed
         }
     }
 }

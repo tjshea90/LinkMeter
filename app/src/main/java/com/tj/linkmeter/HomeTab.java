@@ -102,6 +102,11 @@ final class HomeTab extends Tab {
      * pause the app, which closes the Bluetooth connection that request is using ({@link #wifiFree}).
      */
     private boolean bannerWifi;
+    /** A line right under the card's words, for what the card's own button just did (the result strip further down is out of sight). */
+    private TextView bannerNote;
+    /** When the line was written (elapsedRealtime): it goes away by itself after {@link #NOTE_MS}. */
+    private long bannerNoteAt;
+    private static final long NOTE_MS = 45000L;
     /**
      * Until this time (elapsedRealtime) a pause of the app is Android's Wi-Fi switch that LinkMeter has just opened: a follow-up that
      * is running then goes on when the screen is back, instead of ending as "the screen was left". 0: no such pause is expected.
@@ -209,6 +214,9 @@ final class HomeTab extends Tab {
         banner.addView(bannerTitle);
         bannerText = Ui.hint(act, "");
         banner.addView(bannerText, Ui.lp(act, 2));
+        bannerNote = Ui.text(act, "", 14, Ui.AMBER, true);
+        bannerNote.setVisibility(View.GONE);
+        banner.addView(bannerNote, Ui.lp(act, 8));
         bannerMain = Ui.primary(act, "", null);
         bannerOther = Ui.button(act, "", null);
         banner.addView(Ui.row(act, bannerMain, bannerOther), Ui.lp(act, 8));
@@ -549,6 +557,7 @@ final class HomeTab extends Tab {
     private void paintBanner(Snap s) {
         bannerSends = false;
         bannerWifi = false;
+        showNote(false);
         if (s.phone != null && Reach.BLUETOOTH.equals(s.via) && joiningFastNetwork(s.phone)) {
             // Fast Wi-Fi's own network replaced the hotspot on purpose: not "the hotspot is off, turn it on"
             banner.setVisibility(View.VISIBLE);
@@ -576,6 +585,7 @@ final class HomeTab extends Tab {
                 bannerMain.setOnClickListener(v -> switchWifiOn());
                 bannerWifi = true; // greyed and freed by paintSwitches while a request to the phone is on its way
                 bannerMain.setEnabled(wifiFree());
+                showNote(true);
                 bannerOther.setVisibility(View.GONE);
             } else if (hs != null && hs) {
                 // On a Wi-Fi network (very likely the hotspot itself) it is only this question that did not get through there:
@@ -631,6 +641,7 @@ final class HomeTab extends Tab {
                 bannerMain.setOnClickListener(v -> switchWifiOn());
                 bannerWifi = true; // greyed and freed by paintSwitches while a request to the phone is on its way
                 bannerMain.setEnabled(wifiFree());
+                showNote(true);
                 bannerOther.setVisibility(View.VISIBLE);
                 bannerOther.setText("Ask again");
                 bannerOther.setOnClickListener(v -> askNow()); // a press: this one may switch the tablet's Bluetooth on
@@ -936,6 +947,7 @@ final class HomeTab extends Tab {
      */
     private void switchWifiOn() {
         if (!wifiFree()) {
+            note("Wait a moment: the phone is still answering the switch you pressed. Then press Switch Wi-Fi on again.");
             return; // greyed: a request to the phone is on its way (Android's Wi-Fi switch would pause the app and end that call)
         }
         touched();
@@ -944,15 +956,41 @@ final class HomeTab extends Tab {
         wifiWish = TabletWifiRules.Wish.NONE;
         wifiNetworkAtPress = TabletWifiRules.NO_NETWORK;
         bannerMain.setEnabled(false);
+        bannerMain.setText("Opening…");
+        note("Switching the tablet's Wi-Fi on…");
         setAction("Switching the tablet's Wi-Fi on…", true);
         TabletWifi.set(act, true, act::inFront, way -> {
             wifiBusy = false;
             panelOpened(way);
+            if (bannerWifi) {
+                bannerMain.setText("Switch Wi-Fi on"); // the card is repainted by the next look; until then it says what it did
+            }
             paintSwitches();
-            setAction(TabletWifiRules.words(TabletWifiRules.Verdict.SWITCH_ON, way), TabletWifiRules.good(true, way));
+            String said = TabletWifiRules.words(TabletWifiRules.Verdict.SWITCH_ON, way);
+            setAction(said, TabletWifiRules.good(true, way));
+            note(said);
             askNow();
             act.ui.postDelayed(this::askNow, 10000); // the tablet needs a few seconds to find the hotspot and join it
         });
+    }
+
+    /** Writes the line under the card's words (see {@link #bannerNote}) and shows it, when the card is the Wi-Fi one. */
+    private void note(String s) {
+        if (bannerNote == null) {
+            return;
+        }
+        bannerNote.setText(s);
+        bannerNoteAt = SystemClock.elapsedRealtime();
+        showNote(bannerWifi);
+    }
+
+    /** Shows or hides the line under the card's words: only on the Wi-Fi card, and only while it is recent. */
+    private void showNote(boolean wifiCard) {
+        if (bannerNote == null) {
+            return;
+        }
+        boolean fresh = SystemClock.elapsedRealtime() - bannerNoteAt < NOTE_MS && bannerNote.getText().length() > 0;
+        bannerNote.setVisibility(wifiCard && fresh ? View.VISIBLE : View.GONE);
     }
 
     /** The card's "Wi-Fi settings": Android's own Wi-Fi switch and networks, for a tablet that has not joined the phone's hotspot. */

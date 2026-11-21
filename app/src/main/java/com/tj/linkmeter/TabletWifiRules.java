@@ -150,7 +150,8 @@ final class TabletWifiRules {
                     return "Switch the tablet's Wi-Fi " + state + " in the panel that opened: Android does not let an app do it "
                             + "by itself.";
                 }
-                return "LinkMeter could not switch the tablet's Wi-Fi " + state + ". Do it in Android's quick settings.";
+                return "LinkMeter could not switch the tablet's Wi-Fi " + state + ", and no Android screen for it came up. Do it in Android's "
+                        + "quick settings: pull the screen down from the top and tap Wi-Fi.";
             default:
                 return "";
         }

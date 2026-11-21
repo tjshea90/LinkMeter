@@ -126,6 +126,15 @@ final class MiniPhoneView extends LinearLayout {
     private ValueAnimator halo;
     private int touchSlop;
 
+    /** The look of a press on every button of the card (PressFeedback): this window is not the app's screen, so it lights its own. */
+    private final PressFeedback press = new PressFeedback();
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent e) {
+        press.onTouch(this, e);
+        return super.dispatchTouchEvent(e);
+    }
+
     MiniPhoneView(Context c, Host h) {
         super(c);
         host = h;
@@ -545,6 +554,7 @@ final class MiniPhoneView extends LinearLayout {
 
     @Override
     protected void onDetachedFromWindow() {
+        press.unlightNow();
         if (pulse != null) {
             pulse.cancel();
             pulse = null;

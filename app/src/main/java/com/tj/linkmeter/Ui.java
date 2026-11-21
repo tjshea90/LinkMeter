@@ -9,7 +9,6 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
-import android.graphics.drawable.RippleDrawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -120,16 +119,18 @@ final class Ui {
         return g;
     }
 
-    /** A button's background: a rounded shape that ripples when touched, with a little room around it so neighbours do not touch. */
+    /**
+     * A button's background: a rounded shape with a little room around it so neighbours do not touch. The look of a press is
+     * {@link PressFeedback}'s (an instant tint); a ripple showed nothing where the animations are off.
+     */
     private static Drawable buttonShape(Context c, int fill, int stroke) {
         float rad = dp(c, 10);
         GradientDrawable shape = round(fill, rad);
         if (stroke != 0) {
             shape.setStroke(Math.max(1, dp(c, 1)), stroke);
         }
-        RippleDrawable ripple = new RippleDrawable(ColorStateList.valueOf(0x40FFFFFF), shape, round(0xFFFFFFFF, rad));
         int in = dp(c, 3);
-        return new InsetDrawable(ripple, in, in, in, in);
+        return new InsetDrawable(shape, in, in, in, in);
     }
 
     private static Button styled(Context c, String label, View.OnClickListener l, int fill, int stroke, int textColor) {

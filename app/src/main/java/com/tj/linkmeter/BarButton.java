@@ -10,7 +10,7 @@ import android.util.TypedValue;
 import android.view.View;
 
 /** One button of the remote screen's side bars: an icon (see Icons) with a small label under it. */
-final class BarButton extends View {
+final class BarButton extends View implements PressFeedback.OwnLook {
     private Icons.Kind kind;
     private String label;
     private boolean active;

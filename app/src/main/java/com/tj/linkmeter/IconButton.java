@@ -83,6 +83,11 @@ final class IconButton extends View {
         }
     }
 
+    /** Is it a coloured round button (the press then darkens it) rather than an icon on its own (the press then lights a disc)? */
+    boolean hasBackground() {
+        return background != 0;
+    }
+
     void set(Icons.Kind kind, int ink, int background) {
         this.kind = kind;
         this.ink = ink;
