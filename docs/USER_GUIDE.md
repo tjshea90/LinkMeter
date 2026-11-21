@@ -187,6 +187,13 @@ Tell me what happened, in your own words, for any of these:
   quieter buttons change what you hear in the headset (Media: play a song on the phone; Call: during a call), and does the number move? Does the same row
   on the floating phone do the same, and does its chip switch between Media and Call? If a button does nothing, what does the line under the rows say
   (it may say Android asked on the phone's screen to allow louder sound)? Does turning the volume with the headset's own buttons show on the tablet?
+- Round of 2026-11-21 (install the newest release on BOTH devices; NOT RUN ON A DEVICE): (1) Hotspot on but the tablet's Wi-Fi off: does **Switch Wi-Fi on** now open Android's Internet panel
+  within 2-3 seconds (and, if not, the Wi-Fi panel, then Wi-Fi settings), and does the line under the banner say what it just did? (2) The phone icon and the Bluetooth button in the Phone tab
+  (and the buttons of the floating phone): does every press now show at once (the button darkens for a moment) and work the FIRST time? Does the small **Headset** chip react too? (3) Texts >
+  **New message**: one screen, like Messages: a To line at the top (type a name or a number; a typed number becomes a pill when you press Next, leave the box or Send), the suggestions under it, the message box
+  and **Send** at the bottom. Does typing a number, then the message, then Send work with no separate "Next" step, and does the conversation open afterwards with your text sent once? (4) The Launcher's
+  **Back to custom** tile or icon with Pocket return on: after it, is the phone's Android Battery saver ON (Settings > Battery on the phone), also when it was off before? If it was on already, was it left on?
+  The Phone tab's line for the last pocket run says if Android still reported the saver off after three tries.
 - Settings > Bluetooth link > Set up, then Test: did it say Ready?
 - Hotspot off, then Hotspot on from the tablet; Standby, then waking the phone.
 - Hotspot off (deep): after you press **Turn it off**, does the phone end up with the hotspot off, location off, airplane mode on and the screen off

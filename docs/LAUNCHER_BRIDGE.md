@@ -23,6 +23,10 @@ name alone (a debug Launcher has another key). If the Launcher's keystore ever c
 while Bluetooth stays up, screen off; `DeepSleepRules` keeps its own rule that the phone is never left in airplane mode with no way to wake it). 4. wait (at most 100 s, a look every
 3 s) until the phone's status shows hotspot off + airplane on + screen off, or the phone's own words (`dres`) say how the sleep ended.  5. `eco_android_on` — Android's own Battery
 saver, only NOW (SystemSaver puts it back if the hotspot goes down with it; the hotspot is already down).  6. `screen_off` once more if the screen is not off.
+7. (2026-11-21, Launcher TASKS CS1) Step 5 now sends `eco_android_keep` (an older phone app that does not know the name gets `eco_android_on`): `SystemSaver.keep` switches Android's saver on and then
+FORGETS that LinkMeter did it (`Eco.setSystemKeep`), so nothing of LinkMeter's (the idle end of its own saver, "Leave alone", RESTORE) puts it back off. Step 7 reads Android's own answer back from the
+phone's status (`psm`) and asks again, up to `PocketRules.SAVER_TRIES` (3) times, `SAVER_RETRY_MS` (4 s) apart, until Android says it is on; a saver that is on already is left alone. A phone that does not say (older
+app) skips the read-back. If it is still off after three tries the result text says so. Proof: `PocketRulesTest` and `SystemSaverTest` (offline), NOT a real phone.
 Only existing `/act` names are used: the phone app needs no change (an older phone answers "unknown action" in the text).
 
 Rules: a phone that cannot be reached at all ends the run at once; a failing step never stops the next; the tablet's Wi-Fi may go off when `sent` turns true (the hotspot is

@@ -94,7 +94,11 @@ public class CallsPreviewTest {
         if (t == null) {
             throw new AssertionError("no text \"" + s + "\" on the screen");
         }
-        t.performClick();
+        android.view.View v = t; // like a real touch: the nearest clickable view at or above the text (the Headset chip's tap area is a frame around it)
+        while (!v.isClickable() && v.getParent() instanceof android.view.View) {
+            v = (android.view.View) v.getParent();
+        }
+        (v.isClickable() ? v : t).performClick();
     }
 
     static MainActivity calls() throws Exception {
@@ -223,6 +227,9 @@ public class CallsPreviewTest {
         // a name given on the tablet (here, through the Texts side) shows on the Calls side, and the other way round
         texts.rememberName("5559990000", "Sammy From Texts", false);
         tapText(a, "Contacts");
+        settle();
+        // the list is a scrolling list that builds only the rows that fit the screen: search for the name so it is among them whatever the header's height
+        TextsPreviewTest.findEdit(decor(a), "Search by name or number").setText("Sammy");
         settle();
         assertNotNull("the name given in Texts shows in Calls", text(a, "Sammy From Texts"));
         assertEquals("and Texts gives the same name to the number", "Sammy From Texts", texts.nameForNumber("+1 (555) 999-0000", "Sam"));

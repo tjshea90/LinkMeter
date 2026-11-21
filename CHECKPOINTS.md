@@ -267,3 +267,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-21T01:26:37Z HANDOFF: headset volume released as v0.2.200 (run 200 green)
 - 2026-11-21T18:46:26Z WORK IN PROGRESS (not finished, not built): wip: Wi-Fi button chain+note, press feedback, one-screen New message; builds; tests not run yet; next: preview tests, CS1 pocket saver
 - 2026-11-21T18:51:11Z WORK IN PROGRESS (not finished, not built): CS1 keep saver + texts tests; preview run in progress; next: read prev-all.log, fix, tools/test.sh, build
+- 2026-11-21T19:51:42Z WORK IN PROGRESS (not finished, not built): LinkMeter: docs (bridge, user guide), HANDOFF block, Calls preview test fixes; offline tests + assembleRelease green; previews re-running
