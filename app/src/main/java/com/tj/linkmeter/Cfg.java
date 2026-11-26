@@ -230,6 +230,18 @@ final class Cfg {
         sp(c).edit().putBoolean("fastBlockQuic", on).apply();
     }
 
+    /**
+     * Tablet: a server the phone reached a moment ago is answered to the app at once, without waiting for the phone to reach it again (one round
+     * trip less for most connections of a page). On by default (docs/FAST_WIFI.md, "Audit of 2026-11-26").
+     */
+    static boolean fastEarly(Context c) {
+        return sp(c).getBoolean("fastEarly", true);
+    }
+
+    static void setFastEarly(Context c, boolean on) {
+        sp(c).edit().putBoolean("fastEarly", on).apply();
+    }
+
     static boolean wifiFollow(Context c) {
         return sp(c).getBoolean("wifiFollow", true);
     }
@@ -378,7 +390,20 @@ final class Cfg {
     }
 
     static void clearFloatPos(Context c) {
-        sp(c).edit().remove("floatX").remove("floatY").apply();
+        sp(c).edit().remove("floatX").remove("floatY").remove("floatTextX").remove("floatTextY").apply();
+    }
+
+    /** Tablet: where the user left the small texting card of the floating phone (-1 = never moved: it opens beside the phone card). */
+    static int floatTextX(Context c) {
+        return sp(c).getInt("floatTextX", -1);
+    }
+
+    static int floatTextY(Context c) {
+        return sp(c).getInt("floatTextY", -1);
+    }
+
+    static void setFloatTextPos(Context c, int x, int y) {
+        sp(c).edit().putInt("floatTextX", x).putInt("floatTextY", y).apply();
     }
 
     /** Phone: may the paired tablet place, answer and end calls through this phone (docs/PHONE_CALLS.md)? OFF until the user switches it on. */

@@ -471,6 +471,19 @@ final class SettingsTab extends Tab {
                     }
                 });
         card.addView(quic.view, Ui.lp(act, 6));
+        Ui.Toggle early = new Ui.Toggle(act, "Open known servers at once (recommended)",
+                "A page opens many connections, most of them to servers that were reached a moment ago. For those, LinkMeter answers the "
+                + "app right away and lets the phone finish reaching the server meanwhile, which saves a round trip on every connection: "
+                + "pages start sooner. A server that then fails ends the connection with a reset, as a server that drops it would. "
+                + "Switch it off only if an app misbehaves.",
+                Cfg.fastEarly(act), (b, on) -> {
+                    Cfg.setFastEarly(act, on);
+                    TunStack e = FastVpn.engine;
+                    if (e != null) {
+                        e.early(on);
+                    }
+                });
+        card.addView(early.view, Ui.lp(act, 6));
         card.addView(Ui.text(act, "Fast Wi-Fi's Wi-Fi", 14.5f, Ui.FG, false), Ui.lp(act, 10));
         Ui.Choice link = new Ui.Choice(act, new String[] {"The phone's hotspot", "Its own Wi-Fi"},
                 FastRules.LINK_DIRECT.equals(Cfg.fastLink(act)) ? 1 : 0,

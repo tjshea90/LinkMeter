@@ -83,6 +83,9 @@ final class TunStack {
     static final long IDLE_MS = 2L * 60 * 60 * 1000;
     static final int SLOTS = 64;
     static final int TROUBLE_AFTER = 3;
+    /** A server the phone reached this lately is answered to the app at once (see {@link KnownServers}). */
+    static final long KNOWN_MS = 10L * 60 * 1000;
+    static final int KNOWN_MAX = 512;
 
     private static final int CONNECTING = 0;
     private static final int SYN_RCVD = 1;
@@ -124,6 +127,8 @@ final class TunStack {
     /** stop() was called (an end that nobody asked for is reported through {@link Events#stopped}). */
     private volatile boolean asked;
     private volatile boolean blockQuic = true;
+    private volatile boolean early = true;
+    private final KnownServers known = new KnownServers(KNOWN_MAX, KNOWN_MS);
 
     private DatagramChannel udp;
     private SelectionKey udpKey;
@@ -144,6 +149,8 @@ final class TunStack {
     volatile long opened;
     volatile long refused;
     volatile long dropped;
+    /** How many connections were answered to the app before the phone had reached the server (known servers only). */
+    volatile long earlyOpened;
 
     TunStack(Tun tun, Link link, Events events, byte[] key) throws IOException {
         this.tun = tun;
@@ -155,6 +162,14 @@ final class TunStack {
             slots[i] = new byte[FastProto.MTU + 64];
             slotBB[i] = ByteBuffer.wrap(slots[i]);
         }
+    }
+
+    /**
+     * Servers the phone reached lately are answered to the app at once (the default), or every connection waits for the phone to reach its
+     * server first. Takes effect for the next connection.
+     */
+    void early(boolean b) {
+        early = b;
     }
 
     /** QUIC refused (the default) or carried like any other UDP. Takes effect for the next packet. */
@@ -348,6 +363,10 @@ final class TunStack {
         boolean finSent;
         boolean finAcked;
         int dupAcks;
+        /** The app was answered before the phone said the server was reached; until its one-byte answer is read, nothing from it is data. */
+        boolean early;
+        boolean awaitAnswer;
+        long connectBy;
         // the one timer
         long timerAt;
         int timerKind;
@@ -418,7 +437,11 @@ final class TunStack {
             c.sndUna = c.iss + 1;
             c.sndNxt = c.iss + 1;
             c.appWnd = scaled(c, p.window);
-            timer(c, T_IDLE, c.lastSeen + IDLE_MS);
+            if (c.awaitAnswer) {
+                timer(c, T_CONNECT, c.connectBy); // answered early: the phone still has to reach the server, by the same deadline as ever
+            } else {
+                timer(c, T_IDLE, c.lastSeen + IDLE_MS);
+            }
             interest(c);
         }
         if ((p.flags & Ip4.ACK) != 0) {
@@ -476,7 +499,19 @@ final class TunStack {
         conns.put(id, c);
         open = conns.size();
         opened++;
-        timer(c, T_CONNECT, c.lastSeen + CONNECT_MS);
+        c.connectBy = c.lastSeen + CONNECT_MS;
+        if (early && known.known(p.dst, p.dport, c.lastSeen)) {
+            // the phone reached this server a moment ago: the app is answered now, its first bytes wait here, and the phone's one-byte
+            // answer is read before anything else (a server that fails after all is a reset, as when a server drops a connection)
+            c.early = true;
+            c.awaitAnswer = true;
+            c.state = SYN_RCVD;
+            c.sndNxt = c.iss + 1;
+            earlyOpened++;
+            synAck(c);
+        } else {
+            timer(c, T_CONNECT, c.connectBy);
+        }
     }
 
     /** Socket readiness for one connection. */
@@ -497,7 +532,14 @@ final class TunStack {
                 c.helloSent += c.ch.write(h);
                 if (c.helloSent == c.hello.length) {
                     c.hello = null;
-                    k.interestOps(SelectionKey.OP_READ); // now the phone's one-byte answer
+                    if (c.appFin && c.up.size() == 0) {
+                        shutUp(c); // an app that closed its side before the hello was out (a connection answered early): its close goes on now
+                    }
+                    if (c.state == OPEN) {
+                        interest(c); // answered early and already sending: the bytes that waited go on as well as the phone's answer is read
+                    } else {
+                        k.interestOps(SelectionKey.OP_READ); // now the phone's one-byte answer
+                    }
                 }
                 return;
             }
@@ -507,11 +549,26 @@ final class TunStack {
                 }
                 return;
             }
+            if (c.state == SYN_RCVD) {
+                // answered early, and the app has not acknowledged yet: only the phone's one-byte answer is of interest
+                if (k.isReadable() && c.awaitAnswer) {
+                    answerEarly(c);
+                }
+                if (c.state == SYN_RCVD && k.isValid()) {
+                    k.interestOps(c.awaitAnswer ? SelectionKey.OP_READ : 0); // the app's ACK (tcp()) starts the rest
+                }
+                return;
+            }
             if (k.isWritable()) {
                 flushUp(c);
             }
             if (c.state != CLOSED && k.isReadable()) {
-                readDown(c);
+                if (c.awaitAnswer) {
+                    answerEarly(c);
+                }
+                if (c.state != CLOSED && !c.awaitAnswer) {
+                    readDown(c);
+                }
             }
             if (c.state != CLOSED) {
                 finish(c);
@@ -547,10 +604,49 @@ final class TunStack {
             refuse(c);
             return;
         }
+        known.note(c.dst, c.dport, System.currentTimeMillis());
         c.state = SYN_RCVD;
         c.sndNxt = c.iss + 1;
         c.sk.interestOps(0);
         synAck(c);
+    }
+
+    /**
+     * The phone's one-byte answer to a connection the app was answered for early. The server was reached: the connection goes on as any
+     * other. Not reached (or no answer): the app gets a reset, and the server is no longer answered early.
+     */
+    private void answerEarly(Conn c) throws IOException {
+        one.clear();
+        int r = c.ch.read(one);
+        if (r == 0) {
+            return;
+        }
+        if (r < 0) {
+            relayFailed("The phone's relay closed the connection without an answer.");
+            known.forget(c.dst, c.dport);
+            abort(c, true);
+            return;
+        }
+        relayWorked();
+        int st = one.get(0) & 0xFF;
+        if (st != FastProto.OK) {
+            if (st == FastProto.DENIED) {
+                trouble("The phone refused the tablet. Pair the tablet with the phone again.");
+            }
+            refused++;
+            known.forget(c.dst, c.dport);
+            abort(c, true);
+            return;
+        }
+        c.awaitAnswer = false;
+        known.note(c.dst, c.dport, System.currentTimeMillis());
+        if (c.state == OPEN) {
+            if (c.timerKind == T_CONNECT) {
+                timer(c, T_IDLE, c.lastSeen + IDLE_MS);
+            }
+            interest(c);
+            push(c);
+        }
     }
 
     private void synAck(Conn c) {
@@ -625,7 +721,7 @@ final class TunStack {
         int off = p.data + skip;
         int took = 0;
         if (len > 0) {
-            if (c.up.size() == 0 && c.state == OPEN && !c.upShut) {
+            if (c.up.size() == 0 && c.state == OPEN && !c.upShut && c.hello == null) {
                 // nothing waits before it: hand it straight to the phone's socket, keep only what does not fit
                 try {
                     bb.limit(off + len).position(off);
@@ -655,7 +751,7 @@ final class TunStack {
         if (fin && took == len) {
             c.rcvNxt += 1;
             c.appFin = true;
-            if (c.up.size() == 0) {
+            if (c.up.size() == 0 && c.hello == null) {
                 shutUp(c);
             }
         }
@@ -815,8 +911,8 @@ final class TunStack {
 
     /** Which socket events this connection waits for now. */
     private void interest(Conn c) {
-        if (c.state != OPEN || c.sk == null || !c.sk.isValid()) {
-            return;
+        if (c.state != OPEN || c.sk == null || !c.sk.isValid() || c.hello != null) {
+            return; // (the hello of a connection answered early is written first, whatever else waits)
         }
         int ops = 0;
         if (!c.relayEof && c.down.room() > 0) {
@@ -954,10 +1050,19 @@ final class TunStack {
         switch (c.timerKind) {
             case T_CONNECT:
                 relayFailed("The phone did not reach the server in time.");
-                refuse(c);
+                if (c.early) {
+                    known.forget(c.dst, c.dport);
+                    abort(c, true); // the app was told the server was there: a reset is the honest end
+                } else {
+                    refuse(c);
+                }
                 break;
             case T_SYNACK:
-                if (++c.retries > MAX_RETRIES) {
+                if (c.early && c.awaitAnswer && now >= c.connectBy) {
+                    relayFailed("The phone did not reach the server in time.");
+                    known.forget(c.dst, c.dport);
+                    abort(c, true);
+                } else if (++c.retries > MAX_RETRIES) {
                     abort(c, true);
                 } else {
                     c.rto = Math.min(RTO_MAX, c.rto * 2);

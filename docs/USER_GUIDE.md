@@ -194,6 +194,12 @@ Tell me what happened, in your own words, for any of these:
   and **Send** at the bottom. Does typing a number, then the message, then Send work with no separate "Next" step, and does the conversation open afterwards with your text sent once? (4) The Launcher's
   **Back to custom** tile or icon with Pocket return on: after it, is the phone's Android Battery saver ON (Settings > Battery on the phone), also when it was off before? If it was on already, was it left on?
   The Phone tab's line for the last pocket run says if Android still reported the saver off after three tries.
+- Round of 2026-11-26 (install the newest release on BOTH devices; NOT RUN ON A DEVICE): (1) **Phone and Calls tabs after a call**: switch to another app, make or take a call (from the tablet or on the phone),
+  hang up, come back to LinkMeter: do the call strip and the Calls tab show at once that the call is over, and does the Phone tab answer? (2) **Floating phone**: the card has a **Text** button; the arrow now opens three tabs,
+  **Keypad**, **Recents** (the phone's call list: a line's phone button calls, its bubble opens a text) and **Contacts** (type in the search box: the keyboard of your keyboard app should come up and the card should
+  move to the top so it is not covered). Does the keyboard really appear in the floating card on this tablet (Android 10 Go, Accessibility way)? (3) **The small texting card** (the Text button): a list of conversations, one
+  conversation with a box and Send, **+** for a new message by name or number. Does a text sent from it reach the phone and show in the Texts tab, and does an answer show in the card by itself? (4) **Fast Wi-Fi**: pages should
+  start a little sooner (Settings > Fast Wi-Fi > **Open known servers at once**; switch it off if an app misbehaves). Does browsing feel faster than before, and does any app or site now fail that worked?
 - Settings > Bluetooth link > Set up, then Test: did it say Ready?
 - Hotspot off, then Hotspot on from the tablet; Standby, then waking the phone.
 - Hotspot off (deep): after you press **Turn it off**, does the phone end up with the hotspot off, location off, airplane mode on and the screen off

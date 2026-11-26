@@ -182,6 +182,45 @@ Settings > Fast Wi-Fi > "Fast Wi-Fi's Wi-Fi": **The phone's hotspot** (stage 1, 
 - The mode survives a restart of the phone's service (the group is made again); if Android takes the group away, it is made again a few
   times (3, 6, 9, 12, 15 s later). Android 13+ wants "Nearby Wi-Fi devices" for a group: Allow everything grants it through Shizuku.
 
+## Audit of 2026-11-26 (the user: "i use the fast wifi and it seems to work well. Audit it and see if it can be made even faster or more efficient")
+
+What was read: the whole pipeline in the code, `TunStack` (tablet engine), `FastRelayCore` (phone relay), `FastVpn` and `FastRelay` (the Android glue), `FastProto`. What was measured: `tools/fast_e2e.sh` on a real tun
+(download 2.1 to 2.6 Gbit/s, upload 1.7 Gbit/s on the sandbox).
+
+**Finding 1, speed of the data path is not the limit.** The engine moves about 2 Gbit/s here; the tablet's CPU is perhaps 20 times slower, which still leaves about 100 Mbit/s, well above what 2.4 GHz Wi-Fi gives (30 to 50
+Mbit/s). Copies, checksums, the 10,000-byte MTU, window sizes (256 KB per direction) and one thread per side are all fine for that. No change was made to the byte path, on purpose: it would add risk for no speed.
+**What a page feels is the cost of OPENING a connection**, and that is where the time went:
+
+**Finding 2 (changed), every new connection stopped the whole engine for two binder calls.** `FastVpn.prepareSocket` called `VpnService.protect(socket)` and `Network.bindSocket(socket)` for every relay socket, on the
+engine's one thread. Each is a call into Android's system services (about a millisecond or more on a Go tablet), and a page opens dozens of connections: every other connection (and every packet of a running download) waited
+meanwhile. NOW `SocketPool` (pure, `tools/test/SocketPoolTest.java`) keeps up to 8 prepared, unconnected sockets, made on a helper thread (`fast-sockets`) and refilled after each one is taken; `link.tcp()` takes one without
+waiting and makes its own only when none is ready. Nothing runs while idle (the waiting sockets are not connected: a file descriptor each and nothing else). The pool is started with the VPN and closed with it.
+
+**Finding 3 (changed), every connection waited for the phone to reach the server before the app was answered.** The engine answered the app's SYN only after the phone said the server was reached: the app's first bytes
+(the TLS hello) left one Wi-Fi round trip plus one mobile round trip later than on a normal network. NOW `KnownServers` (pure, `KnownServersTest`) remembers the address and port of every server the phone reached in the last
+10 minutes (512 at most, least recently used out first); a new connection to one of them is answered to the app at once (`TunStack.open`, `Conn.early`), its first bytes wait in the engine, the relay hello and the app's bytes
+go out as soon as the relay socket is up, and the phone's one-byte answer is read before anything else (`answerEarly`; `awaitAnswer`). A server the phone did NOT reach (never, not lately, or it failed) is still answered only
+after the phone reached it, so a refused or unreachable server looks like one. A server that was known and then fails (the phone says refused or unreachable, no answer, or the connect deadline) ends the connection with
+a RESET and is forgotten at once, so its next connection waits again. The relay protocol is unchanged (the phone already read the hello and then waited for the server before reading more), so only the TABLET needs the new
+release. Switch: Settings > Fast Wi-Fi > "Open known servers at once" (`Cfg.fastEarly`, default on; `TunStack.early(false)` for the running engine). Expected gain: one Wi-Fi round trip plus one mobile round trip per
+connection to a server that was already used, which is most of a page's connections. NOT MEASURED ON A DEVICE.
+The price: an app that connects to a known server that has gone sees "connected, then reset" where it used to see "refused". Apps treat both as a failed connection. An app that tries a second address of a host only when the
+first CONNECT fails (Happy Eyeballs on a host with several addresses, one dead) would not move on after the reset; that is why only servers that worked a minute ago are answered early, and why the switch exists.
+
+**Tests:** `tools/fast_e2e.sh` (28 checks; new: a known server is answered at once while the phone is still waiting for it (1 ms), an unknown server still waits (801 ms), a known server that has gone ends with a reset at once and
+is refused again after that); `python3 tools/mutate_fast.py e2e early` (5 breakages, all caught). NOT COVERED, on purpose: an app that closes its side before the relay hello is out (the loopback cannot reach that moment;
+the guards `c.hello == null` in `TunStack.data` and the hello branch of `event` were checked by reading).
+
+**Looked at and left alone (with the reason):**
+- The phone holds a partial wake lock until 30 seconds after the last relayed byte (`FastRelayCore.QUIET_MS`). A shorter time would save phone battery after bursts, but the phone's Wi-Fi may not wake its CPU for the next packet:
+  that needs a measurement on the phone (battery current with 30 s and with 10 s), not a guess.
+- No Wi-Fi lock on the tablet. On Android 10 the low-latency mode only works for an app in front, and the high-performance mode keeps the radio out of power save all the time: more tablet battery for a few milliseconds.
+- A pool of CONNECTED relay sockets would also save the tablet-to-phone connect, but it would need the phone to keep idle connections (its hello timeout is 10 s) and a timer on both devices while idle: it breaks the rule
+  "nothing runs while idle". The early answer already hides that round trip for known servers.
+- The phone checks the paired keys for every new connection and datagram (`FastRelay.keys`): a preferences read, microseconds, left as it was so that a forgotten tablet is out at once.
+- QUIC refused by default, IPv4 only, the route list, the authentication of the relay: unchanged and sound.
+- DNS goes to the phone's resolver per question (`getActiveNetwork` + `rawQuery`): small, cached by Android on both sides.
+
 ## Tests
 
 - `tools/test.sh`: `FastCodecTest` (packets against a plain reference checksum, a real Linux SYN, the key against Python's HMAC, the

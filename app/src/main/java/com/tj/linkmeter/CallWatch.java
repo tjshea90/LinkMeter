@@ -348,6 +348,32 @@ final class CallWatch {
         Calls.Result go(RemoteCalls rc) throws IOException;
     }
 
+    /** One question to the phone's calls that answers with something (the call list, the contacts). */
+    interface Fetch<T> {
+        T go(RemoteCalls rc) throws IOException;
+    }
+
+    interface Got<T> {
+        /** {@code value} is null when {@code problem} is not. Called on the screen's thread. */
+        void got(T value, IOException problem);
+    }
+
+    /** Asks the phone something off the screen's thread and hands the answer back on it. Does not wake the watch (nothing changed there). */
+    <T> void fetch(final Fetch<T> f, final Got<T> g) {
+        net.execute(() -> {
+            T v = null;
+            IOException bad = null;
+            try {
+                v = f.go(remote());
+            } catch (IOException e) {
+                bad = e;
+            }
+            final T fv = v;
+            final IOException fb = bad;
+            ui.post(() -> g.got(fv, fb));
+        });
+    }
+
     void answer(Done d) {
         run(RemoteCalls::answer, d);
     }

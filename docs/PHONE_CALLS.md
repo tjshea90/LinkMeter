@@ -146,6 +146,19 @@ reads the source and fails if `placeCall` appears anywhere else or without the c
 keys stay forbidden. Nothing calls by itself: a call needs a press on the tablet, the tablet must be paired, and the phone's switch
 must be on.
 
+## A call that stayed on the tablet after it ended (2026-11-26)
+
+The user wrote (verbatim): "sometimes the phone tab is unresponsive, especially if I switch apps, make a phone call, then return to the app, and it doesn't refresh and know that I already ended the call and hung up."
+Found by reading the code (nothing seen on a device), three causes, all changed:
+1. PHONE: `CallTracker` learned that a call ended only from Android's PHONE_STATE broadcast, and `CallBackend.dial` refuses a new call while the tracker holds one ("A call is already on"). A lost or late broadcast kept an ended
+   call for ever. NOW `CallTracker.reconcile` (pure, `CallsLogicTest`: 50,000 random steps) brings the tracker to what `TelephonyManager.getCallState()` says; `CallBackend.calls()` does it before every look and before dial, answer,
+   hang up, mute and route, and a watchdog does it every 3 s while a call is on or ringing (nothing runs otherwise). Needs the phone-state permission the app already asks for.
+2. TABLET: the watch holds one request open at the phone (it waits for news). When the connection dies silently (the tablet slept, the Wi-Fi changed) that request holds the loop for up to 32 s, and `wake()` could not end it.
+   NOW `CallWatch.refresh()` (the app comes back, the screen comes on) drops it and looks at once without waiting for news (at most once per 1.5 s); `stop()` forgets the stamp, so the next listener starts with a full look; an old
+   loop can no longer park the new one; `MainActivity.onResume` redraws the call strip and `CallsTab.onShow` redraws from the watch.
+3. TABLET, Phone tab: `ControlTab.refreshStatus` never asked again while one question was out, and a question that never came back (a Bluetooth connect that hung) stopped it for ever. NOW a question that is 12 s old is
+   not waited for, the newest answer wins (`askSeq`), and showing the tab again always asks afresh.
+
 ## Status
 
 - [x] Pure logic + tests (`Calls`, `CallRules`, `CallTracker`, `CallJson`, `CallApi`, `RemoteCalls`, `HeadsetRules`; `CallsLogicTest` about 1.17 million checks, `CallApiTest` 91 checks over a real socket)

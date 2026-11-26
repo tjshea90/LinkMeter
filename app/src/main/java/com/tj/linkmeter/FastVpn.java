@@ -43,6 +43,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Tablet only. Fast Wi-Fi's VPN (docs/FAST_WIFI.md): every app's internet traffic goes into this VPN, and {@link TunStack} carries it
@@ -512,8 +514,10 @@ public class FastVpn extends VpnService {
         }
         TunStack e = new TunStack(tun, link, events, FastProto.key(Cfg.token(this)));
         e.blockQuic(Cfg.fastBlockQuic(this));
+        e.early(Cfg.fastEarly(this));
         engine = e;
         e.start();
+        startPool();
         phone = r.getAddress().getHostAddress();
         onSince = SystemClock.elapsedRealtime();
         state = State.ON;
@@ -540,6 +544,7 @@ public class FastVpn extends VpnService {
     }
 
     private void tearDown() {
+        stopPool();
         TunStack e = engine;
         engine = null;
         AndroidTun t = tun;
@@ -645,9 +650,12 @@ public class FastVpn extends VpnService {
 
         @Override
         public SocketChannel tcp() throws IOException {
-            SocketChannel ch = SocketChannel.open();
-            prepareSocket(ch.socket());
-            return ch;
+            SocketPool p = pool;
+            SocketChannel ready = p == null ? null : p.take(); // made ahead on a helper thread: nothing is waited for here
+            if (ready != null && ready.isOpen()) {
+                return ready;
+            }
+            return newRelaySocket(); // none was ready: made here, as before
         }
 
         @Override
@@ -664,6 +672,55 @@ public class FastVpn extends VpnService {
             return ch;
         }
     };
+
+    /**
+     * Relay sockets are made ahead of the connections that need them (docs/FAST_WIFI.md, "Audit of 2026-11-26"): protecting a socket from
+     * the VPN and binding it to the Wi-Fi are calls into Android's system services, and made inside the engine's one thread they stopped
+     * every other connection for as long as they took, for every connection a page opens.
+     */
+    private static final int POOL_SIZE = 8;
+    private volatile SocketPool pool;
+    private ExecutorService poolHelper;
+
+    private SocketChannel newRelaySocket() throws IOException {
+        SocketChannel ch = SocketChannel.open();
+        try {
+            prepareSocket(ch.socket());
+        } catch (IOException | RuntimeException e) {
+            try {
+                ch.close();
+            } catch (IOException ignored) {
+                // closed
+            }
+            throw e;
+        }
+        return ch;
+    }
+
+    private void startPool() {
+        stopPool();
+        poolHelper = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "fast-sockets");
+            t.setDaemon(true);
+            return t;
+        });
+        SocketPool p = new SocketPool(this::newRelaySocket, POOL_SIZE, poolHelper);
+        pool = p;
+        p.refill();
+    }
+
+    private void stopPool() {
+        SocketPool p = pool;
+        pool = null;
+        if (p != null) {
+            p.close();
+        }
+        ExecutorService h2 = poolHelper;
+        poolHelper = null;
+        if (h2 != null) {
+            h2.shutdown(); // a socket that is being made is closed when it is done
+        }
+    }
 
     private void prepareSocket(Socket s) throws IOException {
         if (!protect(s)) {

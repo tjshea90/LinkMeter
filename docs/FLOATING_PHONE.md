@@ -116,6 +116,27 @@ answers: it puts the reason in the card's message line ("The call volume can be 
 as the Phone tab's card: `docs/PHONE_CALLS.md`, "Headset volume". Code: `MiniPhoneView.buildVolume`, `FloatingPhoneController` (`buildModel`,
 `volumeStep`, `volumeSwitch`). The accessibility host (`FloatingPhoneAccess`) draws the same view, so it has the row too.
 
+## Recents, Contacts and the small texting card (2026-11-26)
+
+The user wrote (verbatim): "for the phone floating widget, add a text button which opens a mini texting floating widget just like the phone one." and "add recents and contacts to the floating phone widget".
+
+- **The card** (`MiniPhoneView`, 264 dp wide now, five round buttons in its row: phone Bluetooth, green, red, **Text**, tablet Bluetooth; the two Bluetooth labels are one word, their state is the colour). The arrow opens a strip of
+  three tabs: **Keypad** (as before), **Recents** (`RemoteCalls.log`, grouped like the Calls tab: `MiniLists.recents`) and **Contacts** (`RemoteCalls.contacts`, letters, one line per person, a search box:
+  `MiniLists.contacts`). A line: tap = its number goes onto the keypad (the green button then calls it, same guard, same headset warning); its green button = the same and presses the green button; its chat bubble = opens the
+  texting card at that person. The lists are asked for when the tab opens and kept (calls 30 s, contacts 5 min; a call that ends makes the call list ask again); `FloatingPhoneController.needRecents/needContacts` via `CallWatch.fetch`.
+- **The small texting card** (`MiniTextView` + `MiniTexts` + `MiniTextRules`, its own window beside the phone card, draggable, its place is remembered: `Cfg.floatTextX/Y`). Screens: the list of conversations (unread dot, newest line,
+  time), one conversation (the newest 30 messages as bubbles, a box, Send, a call button that hands the number to the phone card's keypad), and New message (a To box: a number or a name; the contacts it offers:
+  `MiniTextRules.suggestions`). It asks the phone through the SAME `RemoteSms` routes as the Texts tab (`TextsTab.remoteFor`), listens for news (the waiting stamp request) only while it is up, marks a conversation
+  read when it is opened, and puts a text in the conversation at once as "Sending…" until the phone's copy takes its place (`MiniTextRules.merge`; a failed one stays red with the reason). It hides while LinkMeter's own screens
+  are in front and is back when they go (`FloatRules.textVisible`). Not built: pictures (a picture message shows as [Picture]), search over all messages, groups of more than the list shows, a badge on the Text button.
+- **The keyboard** (`FloatKeyboard`): a floating window never takes the keyboard (`FLAG_NOT_FOCUSABLE`), so a box inside it could not be typed in. The first touch of a box asks the controller (`keyboardFor`) to clear that flag
+  and to listen for touches outside; the box takes the focus 180 ms later and Android's keyboard (the user's own: glide typing works) comes up; the card is moved to the top of the screen meanwhile so the keyboard cannot cover it.
+  A touch outside, Back and the Done key give the focus up and put the flag and the place back. NOT KNOWN UNTIL THE TABLET TRIES: whether Android 10 Go lets an ACCESSIBILITY overlay take the keyboard this way (the
+  foreground-service way, `TYPE_APPLICATION_OVERLAY`, does). If it does not, the boxes cannot be typed in there and the Texts tab is the way; say so to the user.
+- **Tests**: `tools/test.sh` (`FloatingLogicTest`, 55,461 checks incl. `MiniLists`, `MiniTextRules`, `FloatRules.textVisible`); `tools/preview.sh --tests "com.tj.linkmeter.FloatingExtrasPreviewTest"` (7 scenarios: the tabs, a call from a
+  line, the keyboard flags, the texting card end to end against the pretend phone, a new message, stepping aside for the app, and the two stale-call tests). WRITTEN, COMPILED, NOT RUN: Maven Central rate-limited the sandbox's shared address
+  (`retry-after` about 20 hours) and the one-off way round it (Google's mirror of Central through a Gradle init script) was refused by the sandbox's permission check. Run them first when a session can.
+
 ## Files
 
 Pure (no Android; `tools/test/FloatingLogicTest.java`, 55k checks, run by `tools/test.sh`): `BtBattery`, `BatteryRules`, `FloatRules`

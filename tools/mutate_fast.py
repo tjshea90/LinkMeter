@@ -91,6 +91,17 @@ E2E = [
   "        if (verdict != FastProto.OK && false) {\n            denied++;\n            fail(p, FastProto.DENIED);\n            return;\n        }"),
  ("relay: the tablet's half-close not passed on", RC, "                p.s.shutdownOutput(); // the tablet's app closed its side", "                // p.s.shutdownOutput();"),
  ("relay: a DNS answer keeps the resolver's number", RC, "                    Ip4.w16(reply, 0, id); // the answer carries", "                    // the answer carries"),
+ # the audit of 2026-11-26: servers the phone reached lately are answered to the app at once
+ ("early: every server answered at once, unknown ones too", TS, "if (early && known.known(p.dst, p.dport, c.lastSeen)) {", "if (early) {"),
+ ("early: a server that failed is not forgotten", TS, "            refused++;\n            known.forget(c.dst, c.dport);\n            abort(c, true);\n            return;\n        }\n        c.awaitAnswer = false;",
+  "            refused++;\n            abort(c, true);\n            return;\n        }\n        c.awaitAnswer = false;"),
+ ("early: the phone's 'not reached' taken for 'reached'", TS, "        int st = one.get(0) & 0xFF;\n        if (st != FastProto.OK) {\n            if (st == FastProto.DENIED) {\n                trouble(\"The phone refused the tablet. Pair the tablet with the phone again.\");\n            }\n            refused++;",
+  "        int st = one.get(0) & 0xFF;\n        if (false) {\n            if (st == FastProto.DENIED) {\n                trouble(\"The phone refused the tablet. Pair the tablet with the phone again.\");\n            }\n            refused++;"),
+ ("early: the app's first bytes written before the hello", TS, "if (c.up.size() == 0 && c.state == OPEN && !c.upShut && c.hello == null) {", "if (c.up.size() == 0 && c.state == OPEN && !c.upShut) {"),
+ ("early: the phone's one-byte answer never read", TS, "                if (c.awaitAnswer) {\n                    answerEarly(c);\n                }\n                if (c.state != CLOSED && !c.awaitAnswer) {", "                if (c.state != CLOSED && !c.awaitAnswer) {"),
+ # NOT LISTED ON PURPOSE: "an app that closes its side before the hello is out" (TunStack.data / the hello branch of event). On the loopback
+ # the tablet's connection to the relay is complete before the app's FIN can arrive, so the sandbox cannot reach that moment; it was
+ # checked by reading only (docs/FAST_WIFI.md, "Audit of 2026-11-26"). A breakage of it would MISS here.
 ]
 
 only = [a for a in sys.argv[1:] if a not in ("pure", "e2e")]

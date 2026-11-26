@@ -74,6 +74,18 @@ public class FloatingPreviewTest {
 
         @Override
         public void volumeSwitch() {}
+
+        @Override
+        public void needRecents(boolean force) {}
+
+        @Override
+        public void needContacts(boolean force) {}
+
+        @Override
+        public void openTexts(String number) {}
+
+        @Override
+        public void wantKeyboard(boolean on) {}
     };
 
     @Before

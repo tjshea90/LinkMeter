@@ -44,6 +44,9 @@ public final class FastE2E {
     private static final int BANNER = 18081;
     private static final int UDP_ECHO = 18090;
     private static final int NOBODY = 18099;
+    private static final int SLOW = 18082;
+    private static final int SLOW_NEW = 18083;
+    private static final int DYING = 18084;
     private static final String SECRET = "0123456789abcdef0123456789abcdef";
     private static final InetAddress NET = addr("198.18.0.1");
 
@@ -162,6 +165,8 @@ public final class FastE2E {
             serverSpeaksFirst();
             refused();
             reset();
+            earlyAnswer(engine);
+            earlyThenFails(engine);
             udp();
             dns();
             quicRefused();
@@ -490,6 +495,125 @@ public final class FastE2E {
         }
         long ms = (System.nanoTime() - t0) / 1_000_000;
         yes(quiet && ms < 3000, "a reset reaches an app that is only waiting, at once (" + ms + " ms)");
+    }
+
+
+    // ------------------------------------------------------------------------------------------- servers the phone reached lately
+
+    /**
+     * Connections that sit unanswered in a listening socket's queue until it is full: a server with a backlog of 1 then has no room, and the
+     * next SYN is dropped (so the phone's own connection to it waits).
+     */
+    private static List<Socket> fillQueue(int port) throws IOException {
+        List<Socket> held = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            Socket s = new Socket();
+            try {
+                s.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), port), 300);
+                held.add(s);
+            } catch (SocketTimeoutException e) {
+                s.close();
+                break; // full
+            }
+        }
+        return held;
+    }
+
+    private static void earlyAnswer(TunStack engine) throws Exception {
+        // a server the phone reached before: the app is answered at once, even while the phone cannot reach the server this time
+        ServerSocket slow = new ServerSocket(SLOW, 1, InetAddress.getLoopbackAddress());
+        List<Socket> held = new ArrayList<>();
+        try {
+            try (Socket first = new Socket()) {
+                first.connect(new InetSocketAddress(NET, SLOW), 10_000); // the phone reaches it: the server is known from now on
+            }
+            Thread.sleep(200);
+            held.addAll(fillQueue(SLOW)); // now the server has no room: the phone's next connection waits for it
+            long before = engine.earlyOpened;
+            long t0 = System.nanoTime();
+            Socket early = new Socket();
+            early.connect(new InetSocketAddress(NET, SLOW), 5000);
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            yes(ms < 400, "a server the phone reached lately is answered at once, though the phone is still waiting for it (" + ms + " ms)");
+            yes(engine.earlyOpened == before + 1, "and the engine counted it as an early answer (" + (engine.earlyOpened - before) + ")");
+            early.getOutputStream().write("hello\n".getBytes(StandardCharsets.US_ASCII)); // its first bytes wait in the engine
+            early.close();
+        } finally {
+            for (Socket h : held) {
+                h.close();
+            }
+            slow.close(); // the phone's waiting connection is refused now, so the relay lets go of it
+        }
+        Thread.sleep(2500);
+
+        // a server nobody reached before is still answered only when the phone has reached it
+        ServerSocket fresh = new ServerSocket(SLOW_NEW, 1, InetAddress.getLoopbackAddress());
+        List<Socket> held2 = new ArrayList<>(fillQueue(SLOW_NEW));
+        boolean waited = false;
+        long t1 = System.nanoTime();
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(NET, SLOW_NEW), 800);
+        } catch (SocketTimeoutException e) {
+            waited = true;
+        } finally {
+            for (Socket h : held2) {
+                h.close();
+            }
+            fresh.close();
+        }
+        long ms2 = (System.nanoTime() - t1) / 1_000_000;
+        yes(waited && ms2 >= 700, "a server nobody reached before is not answered until the phone has reached it (" + ms2 + " ms)");
+        Thread.sleep(2500);
+    }
+
+    private static void earlyThenFails(TunStack engine) throws Exception {
+        ServerSocket dying = new ServerSocket(DYING, 8, InetAddress.getLoopbackAddress());
+        Thread acceptor = new Thread(() -> {
+            try {
+                while (true) {
+                    dying.accept().close();
+                }
+            } catch (IOException e) {
+                // closed
+            }
+        });
+        acceptor.setDaemon(true);
+        acceptor.start();
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(NET, DYING), 10_000); // reached: known
+        }
+        dying.close(); // the server goes away
+        Thread.sleep(200);
+        long before = engine.earlyOpened;
+        long t0 = System.nanoTime();
+        boolean accepted = false;
+        boolean ended = false;
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(NET, DYING), 5000);
+            accepted = true; // answered early: the server was there a moment ago
+            s.setSoTimeout(5000);
+            s.getOutputStream().write("anybody?\n".getBytes(StandardCharsets.US_ASCII));
+            try {
+                ended = s.getInputStream().read() < 0; // closed
+            } catch (SocketException e) {
+                ended = true; // reset
+            }
+        } catch (ConnectException e) {
+            accepted = false;
+        }
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        yes(accepted && engine.earlyOpened == before + 1, "a server that was there a moment ago is answered early even when it has gone");
+        yes(ended && ms < 3000, "and the app is told at once that the connection is over (" + ms + " ms)");
+        // the server is forgotten now: the next connection waits for the phone again and is refused, as on a normal network
+        long t1 = System.nanoTime();
+        boolean refused = false;
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(NET, DYING), 5000);
+        } catch (ConnectException e) {
+            refused = true;
+        }
+        long ms1 = (System.nanoTime() - t1) / 1_000_000;
+        yes(refused && ms1 < 3000, "a server that failed is not answered early again: its next connection is refused at once (" + ms1 + " ms)");
     }
 
     private static void udp() throws IOException {

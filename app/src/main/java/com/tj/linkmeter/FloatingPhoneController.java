@@ -13,6 +13,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Tablet only: everything the floating phone does (docs/FLOATING_PHONE.md), apart from being a service. A small dark card drawn over every
@@ -90,6 +91,22 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
     private long lastElapsed;
     private String lastCall = "";
     private MiniPhoneView.Model model = new MiniPhoneView.Model();
+    // ---- the lists of the open card, asked for once and kept for a while (the card is drawn again each time it shows)
+    private List<Calls.Entry> recentsCache;
+    private long recentsAt;
+    private List<Sms.Person> contactsCache;
+    private long contactsAt;
+    private static final long RECENTS_FRESH_MS = 30_000;
+    private static final long CONTACTS_FRESH_MS = 5 * 60_000;
+    // ---- the small texting card: its own window, drawn and moved like the phone's
+    private MiniTexts texts;
+    private MiniTextView textView;
+    private WindowManager.LayoutParams textLp;
+    /** The user has the texting card open (it hides while LinkMeter's own screens are in front and comes back). */
+    private boolean textOpen;
+    /** Where a card was before the keyboard lifted it to the top of the screen (-1: it was not lifted). */
+    private int phoneLiftedFrom = -1;
+    private int textLiftedFrom = -1;
     private final CallWatch.Listener watchListener = w -> update();
     private final Runnable tabletListener = this::update;
     private final Runnable tick = new Runnable() {
@@ -168,6 +185,7 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
             active = null;
         }
         ui.removeCallbacksAndMessages(null);
+        hideText();
         hide();
         if (watch != null) {
             watch.removeListener(watchListener);
@@ -195,8 +213,14 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
         return CallRules.shown(n, c.number);
     }
 
-    /** Looks at the phone's picture and the tablet's Bluetooth, and shows, changes or hides the card. */
+    /** Looks at everything the floating phone draws: the phone card and the small texting card. */
     private void update() {
+        updatePhone();
+        syncText();
+    }
+
+    /** Looks at the phone's picture and the tablet's Bluetooth, and shows, changes or hides the card. */
+    private void updatePhone() {
         final long now = SystemClock.elapsedRealtime();
         Calls.Call lead = watch.lead();
         boolean ok = watch.status() == CallWatch.OK;
@@ -212,6 +236,7 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
                 }
                 endedAt = 0;
             } else if (!lastCall.isEmpty()) {
+                recentsAt = 0; // the call that just ended is in the phone's list now: the Recents tab asks again
                 endedAt = now; // a call just ended: its length stays readable for a moment
                 ui.postDelayed(this::update, FloatRules.LINGER_MS + 150);
             }
@@ -341,6 +366,12 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
             return;
         }
         tablet.add(tabletListener); // the tablet's Bluetooth is listened to only while the card is up
+        if (recentsCache != null) {
+            view.setRecents(recentsCache, "");
+        }
+        if (contactsCache != null) {
+            view.setContacts(contactsCache, "");
+        }
         view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r - l != or - ol || b - t != ob - ot) {
                 place(); // the card has its size (first layout) or the pad opened or closed: keep all of it on the screen
@@ -360,6 +391,7 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
             // it was not attached
         }
         view = null;
+        phoneLiftedFrom = -1;
         armed = false;
         tablet.remove(tabletListener);
     }
@@ -547,6 +579,65 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
     }
 
     @Override
+    public void needRecents(boolean force) {
+        final long now = SystemClock.elapsedRealtime();
+        if (!force && recentsCache != null && now - recentsAt < RECENTS_FRESH_MS) {
+            if (view != null) {
+                view.setRecents(recentsCache, "");
+            }
+            return;
+        }
+        watch.fetch(rc -> rc.log(60, 0), (list, e) -> {
+            if (list != null) {
+                recentsCache = list;
+                recentsAt = SystemClock.elapsedRealtime();
+            }
+            if (view != null) {
+                view.setRecents(list, e == null ? "" : TextsTab.explain(e));
+            }
+        });
+    }
+
+    @Override
+    public void needContacts(boolean force) {
+        final long now = SystemClock.elapsedRealtime();
+        if (!force && contactsCache != null && now - contactsAt < CONTACTS_FRESH_MS) {
+            if (view != null) {
+                view.setContacts(contactsCache, "");
+            }
+            return;
+        }
+        watch.fetch(rc -> rc.contacts("", CallApi.MAX_CONTACTS), (list, e) -> {
+            if (list != null) {
+                contactsCache = list;
+                contactsAt = SystemClock.elapsedRealtime();
+            }
+            if (view != null) {
+                view.setContacts(list, e == null ? "" : TextsTab.explain(e));
+            }
+        });
+    }
+
+    @Override
+    public void openTexts(String number) {
+        textOpen = true;
+        if (texts == null) {
+            texts = new MiniTexts(ctx, () -> {
+                if (textView != null) {
+                    textView.bind();
+                }
+            });
+        }
+        texts.open(number == null ? "" : number);
+        syncText();
+    }
+
+    @Override
+    public void wantKeyboard(boolean on) {
+        phoneLiftedFrom = keyboardFor(view, lp, on, phoneLiftedFrom);
+    }
+
+    @Override
     public void dragBy(int dx, int dy) {
         if (view == null) {
             return;
@@ -584,5 +675,184 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
             view.setExpanded(false); // an open pad would keep it on the screen
         }
         update();
+    }
+
+    // ------------------------------------------------------------------ the small texting card (its own window)
+
+    /** Shows or hides the texting card to match what the user has open and where LinkMeter's own screens are. */
+    private void syncText() {
+        boolean want = FloatRules.textVisible(FloatingPhone.canShow(ctx), FloatingPhone.appInFront(), textOpen);
+        if (want) {
+            showText();
+            if (textView != null) {
+                textView.bind();
+            }
+        } else {
+            hideText();
+        }
+    }
+
+    private final MiniTextView.Host textHost = new MiniTextView.Host() {
+        @Override
+        public void wantKeyboard(boolean on) {
+            textLiftedFrom = keyboardFor(textView, textLp, on, textLiftedFrom);
+        }
+
+        @Override
+        public void dragBy(int dx, int dy) {
+            if (textView == null) {
+                return;
+            }
+            textLp.x += dx;
+            textLp.y += dy;
+            int[] c = FloatRules.clamp(textLp.x, textLp.y, textView.getWidth(), textView.getHeight(), screenW(), screenH(), 0);
+            textLp.x = c[0];
+            textLp.y = c[1];
+            applyText();
+        }
+
+        @Override
+        public void dragEnd() {
+            if (textView == null) {
+                return;
+            }
+            int[] c = FloatRules.snap(textLp.x, textLp.y, textView.getWidth(), textView.getHeight(), screenW(), screenH(), Ui.dp(ctx, 6));
+            textLp.x = c[0];
+            textLp.y = c[1];
+            applyText();
+            Cfg.setFloatTextPos(ctx, textLp.x, textLp.y);
+        }
+
+        @Override
+        public void closed() {
+            textOpen = false;
+            if (textView != null) {
+                textView.reset();
+            }
+            syncText();
+        }
+
+        @Override
+        public void callNumber(String number) {
+            // the phone card takes the number: its green button calls it, with the same guard and the same warning about the headset
+            pinned = true;
+            updatePhone();
+            if (view != null) {
+                view.prefill(number);
+            }
+        }
+
+        @Override
+        public void sizeChanged() {
+            ui.post(FloatingPhoneController.this::placeText);
+        }
+    };
+
+    private void showText() {
+        if (textView != null || texts == null) {
+            return;
+        }
+        textView = new MiniTextView(ctx, textHost, texts);
+        textLp = new WindowManager.LayoutParams(Ui.dp(ctx, MiniTextView.WIDTH_DP), WindowManager.LayoutParams.WRAP_CONTENT, windowType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT);
+        textLp.gravity = Gravity.TOP | Gravity.START;
+        int x = Cfg.floatTextX(ctx);
+        int y = Cfg.floatTextY(ctx);
+        if (x < 0 || y < 0) {
+            // never moved: to the left of the phone card (or the left edge), at the same height
+            int w = Ui.dp(ctx, MiniTextView.WIDTH_DP);
+            x = lp != null ? lp.x - w - Ui.dp(ctx, 8) : Ui.dp(ctx, 8);
+            y = lp != null ? lp.y : screenH() / 8;
+        }
+        textLp.x = x;
+        textLp.y = y;
+        textLp.setTitle("LinkMeter floating texts");
+        try {
+            wm.addView(textView, textLp);
+        } catch (RuntimeException e) {
+            textView = null; // Android refused (the permission went): the next update stops the host
+            return;
+        }
+        textView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l != or - ol || b - t != ob - ot) {
+                placeText(); // the card has its size (first layout) or another screen of it is on: keep all of it on the screen
+            }
+        });
+        texts.start();
+    }
+
+    private void hideText() {
+        if (texts != null) {
+            texts.stop();
+        }
+        if (textView == null) {
+            return;
+        }
+        textView.reset();
+        try {
+            wm.removeView(textView);
+        } catch (RuntimeException ignored) {
+            // it was not attached
+        }
+        textView = null;
+        textLiftedFrom = -1;
+    }
+
+    private void placeText() {
+        if (textView == null) {
+            return;
+        }
+        int w = textView.getWidth() > 0 ? textView.getWidth() : textLp.width;
+        int h = textView.getHeight() > 0 ? textView.getHeight() : Ui.dp(ctx, 200);
+        int[] c = FloatRules.clamp(textLp.x, textLp.y, w, h, screenW(), screenH(), Ui.dp(ctx, 6));
+        textLp.x = c[0];
+        textLp.y = c[1];
+        applyText();
+    }
+
+    private void applyText() {
+        if (textView == null) {
+            return;
+        }
+        try {
+            wm.updateViewLayout(textView, textLp);
+        } catch (RuntimeException ignored) {
+            // the view is going away
+        }
+    }
+
+    /**
+     * A card's window may take Android's keyboard only while somebody types in a box of it: until then it is a window that never takes
+     * focus (so it cannot steal the typing of the app under it). While the keyboard is up the card is lifted to the top of the screen, so
+     * the keyboard cannot cover it, and it hears the touches outside it (they end the typing). Returns where the card was before it was
+     * lifted (to put it back), or -1.
+     */
+    private int keyboardFor(View v, WindowManager.LayoutParams l, boolean on, int liftedFrom) {
+        if (v == null || l == null) {
+            return -1;
+        }
+        int back = liftedFrom;
+        if (on) {
+            l.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            l.flags |= WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH;
+            l.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN | WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED;
+            if (back < 0) {
+                back = l.y;
+            }
+            l.y = Ui.dp(ctx, 8);
+        } else {
+            l.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            l.flags &= ~WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH;
+            if (back >= 0) {
+                l.y = back;
+                back = -1;
+            }
+        }
+        try {
+            wm.updateViewLayout(v, l);
+        } catch (RuntimeException ignored) {
+            // the view is going away
+        }
+        return back;
     }
 }

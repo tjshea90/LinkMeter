@@ -11,7 +11,7 @@ if [ "$(id -u)" != 0 ] || [ ! -c /dev/net/tun ]; then
 fi
 out=$(mktemp -d)
 FM=app/src/main/java/com/tj/linkmeter
-javac -proc:none -encoding UTF-8 -d "$out" $FM/Ip4.java $FM/FastProto.java $FM/TunStack.java $FM/FastRelayCore.java \
+javac -proc:none -encoding UTF-8 -d "$out" $FM/Ip4.java $FM/FastProto.java $FM/KnownServers.java $FM/TunStack.java $FM/FastRelayCore.java \
   tools/test/FastE2E.java || exit 1
 timeout 300 java -cp "$out" com.tj.linkmeter.FastE2E
 rc=$?

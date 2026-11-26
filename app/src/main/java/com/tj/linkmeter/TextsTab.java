@@ -223,15 +223,20 @@ final class TextsTab extends Tab {
     }
 
     RemoteSms remote() throws IOException {
+        return remoteFor(act);
+    }
+
+    /** The phone's texts as the tablet asks for them: the Texts tab and the floating phone's small texting card ask the same way. */
+    static RemoteSms remoteFor(android.content.Context c) throws IOException {
         if (testLink != null) {
             return new RemoteSms(new TimedLink(testLink, LOG, System::currentTimeMillis));
         }
-        String host = Net.peerHost(act);
+        String host = Net.peerHost(c);
         if (host.isEmpty()) {
-            throw new IOException(FileBrowser.noPeer(act));
+            throw new IOException(FileBrowser.noPeer(c));
         }
         // 8 s to make the connection: a phone that just woke up can need a few seconds (3 s showed "no answer" for a phone that was there)
-        return new RemoteSms(new TimedLink(new PeerLink(host, Net.peerToken(act), 8000), LOG, System::currentTimeMillis));
+        return new RemoteSms(new TimedLink(new PeerLink(host, Net.peerToken(c), 8000), LOG, System::currentTimeMillis));
     }
 
     /** The start of the sentence for a phone that is there but did not answer in time (it is not "can't reach"). */
