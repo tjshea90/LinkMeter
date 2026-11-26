@@ -49,6 +49,8 @@ public class FloatingExtrasPreviewTest {
         CallWatch.dropForTest();
         RuntimeEnvironment.setFontScale(1.2f);
         FloatingPhone.canDrawForTest = true;
+        FloatingPhone.accessForTest = null;
+        FloatingPhone.setAppInFront(false); // a class that ran before may have left LinkMeter "in front": the cards would hide behind it
     }
 
     @After
