@@ -279,3 +279,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-26T20:26:44Z WORK IN PROGRESS (not finished, not built): notes: HANDOFF and FLOATING_PHONE now say the previews ran (7/7) and record the user's two yeses (release, Google mirror); whole preview suite still running before the release push
 - 2026-11-26T20:53:02Z closing save of the round the user asked for (2026-11-26): stale call state fixed, floating phone Recents + Contacts tabs, Text button + small texting card, Fast Wi-Fi audit (ready sockets, known servers answered at once); tools/test.sh, release build, fast_e2e 28, whole screen preview green; not run on a device
 - 2026-11-26T20:56:16Z HANDOFF: LinkMeter released as v0.2.206 (run 206 green)
+- 2026-11-26T21:30:15Z tools/prewarm.sh: warms the app build and the two Robolectric versions for the cloud environment's setup script; HANDOFF note
