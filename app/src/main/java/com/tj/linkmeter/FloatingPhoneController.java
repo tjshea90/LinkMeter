@@ -110,7 +110,7 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
         @Override
         public void onReceive(Context c, Intent i) {
             if (watch != null) {
-                watch.wake(); // the tablet was asleep: ask the phone at once, not after the pause of an unreached phone
+                watch.refresh(); // the tablet was asleep: a request left open may be dead; ask the phone at once, not after its timeout
             }
         }
     };

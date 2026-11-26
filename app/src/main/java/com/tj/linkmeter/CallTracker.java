@@ -86,6 +86,25 @@ final class CallTracker {
         return changed;
     }
 
+    /**
+     * Android's phone state as it is RIGHT NOW (the phone was asked, not told by a broadcast). A broadcast can be lost or arrive late (the app's
+     * process was frozen, Samsung's battery rules, a hang-up while the tablet was away), and a call that the tracker still holds after Android
+     * said "idle" would stay on the tablet for ever. This brings the tracker to what Android says; nothing changes when both already agree.
+     * Returns true when what the tablet sees changed.
+     */
+    synchronized boolean reconcile(String androidState, long now) {
+        if (IDLE.equals(androidState)) {
+            return ringing != null || active != null ? onState(IDLE, "", now) : false;
+        }
+        if (OFFHOOK.equals(androidState)) {
+            return active != null && ringing == null ? false : onState(OFFHOOK, "", now);
+        }
+        if (RINGING.equals(androidState)) {
+            return ringing != null ? false : onState(RINGING, "", now);
+        }
+        return false; // a state nobody knows: believe nothing
+    }
+
     /** The calls now: a ringing one first, then the one that is on. */
     synchronized List<Calls.Call> calls() {
         List<Calls.Call> out = new ArrayList<>();

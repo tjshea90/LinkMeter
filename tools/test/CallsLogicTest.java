@@ -448,6 +448,50 @@ public final class CallsLogicTest {
             }
         }
         check(true, "random events");
+
+        // a hang-up broadcast that never came: asking Android puts the tracker right (the tablet kept showing the ended call)
+        CallTracker m = new CallTracker();
+        check(!m.reconcile("IDLE", 1), "idle and idle agree");
+        m.onState("OFFHOOK", "", 1000);
+        check(!m.reconcile("OFFHOOK", 2000), "on and on agree: nothing changes");
+        check(m.calls().size() == 1, "the call stays while Android says it is on");
+        check(m.reconcile("IDLE", 3000), "Android says idle, the tracker still had a call: it ends");
+        check(m.calls().isEmpty() && m.missed() == 0, "an ended answered call is gone and is not missed");
+        m.noteDial("5551230000", 4000);
+        check(m.reconcile("OFFHOOK", 4100), "a call the broadcast never announced is found");
+        check(m.calls().size() == 1 && m.calls().get(0).number.equals("5551230000") && !m.calls().get(0).incoming, "with the number the tablet dialed");
+        m.reconcile("IDLE", 5000);
+        check(m.reconcile("RINGING", 6000), "a ring that was not announced is found");
+        check(m.calls().get(0).state.equals(Calls.RINGING), "as a ringing call");
+        check(m.reconcile("IDLE", 7000) && m.missed() == 1 && m.calls().isEmpty(), "and a ring that ended unanswered is missed once");
+        m.onState("RINGING", "5557770000", 8000);
+        check(m.reconcile("OFFHOOK", 9000) && m.calls().get(0).state.equals(Calls.ACTIVE), "a missed answer: the ringing call is now on");
+        m.onState("RINGING", "5558880000", 9500);
+        check(m.reconcile("OFFHOOK", 9600) && m.calls().size() == 1 && m.calls().get(0).state.equals(Calls.ACTIVE), "a waiting call that stopped ringing is dropped");
+        check(!m.reconcile("", 9700) && !m.reconcile("garbage", 9800) && !m.reconcile(null, 9900), "a state nobody knows changes nothing");
+        // whatever happened before, after one reconcile the tracker says what Android says
+        java.util.Random rr = new java.util.Random(5);
+        CallTracker q = new CallTracker();
+        long tq = 0;
+        for (int i = 0; i < 50_000; i++) {
+            tq += rr.nextInt(2000);
+            q.onState(states[rr.nextInt(3)], "", tq);
+            String android = states[rr.nextInt(3)];
+            q.reconcile(android, tq);
+            int ringingNow = 0;
+            int activeNow = 0;
+            for (Calls.Call x : q.calls()) {
+                ringingNow += x.state.equals(Calls.RINGING) ? 1 : 0;
+                activeNow += x.state.equals(Calls.ACTIVE) ? 1 : 0;
+            }
+            boolean agrees = android.equals("IDLE") ? ringingNow == 0 && activeNow == 0
+                    : android.equals("OFFHOOK") ? ringingNow == 0 && activeNow == 1 : ringingNow == 1;
+            if (!agrees) {
+                check(false, "after reconcile(" + android + ") the tracker disagrees at step " + i);
+                break;
+            }
+        }
+        check(true, "reconcile always agrees with Android");
     }
 
 

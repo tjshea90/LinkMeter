@@ -44,6 +44,10 @@ final class ControlTab extends Tab {
     /** A request is out: the buttons wait, so nothing is sent twice. */
     private boolean busy;
     private boolean asking;
+    /** When the question that is out began, and which question is the newest: a question that never came back (a Bluetooth connect that hung) must not stop every later look. */
+    private long askedAt;
+    private int askSeq;
+    private static final long ASK_STUCK_MS = 12_000;
     private FollowUp follow;
     private long followSince;
     /** Counts the follow-ups, so that a look from one that has ended cannot go on. */
@@ -301,6 +305,7 @@ final class ControlTab extends Tab {
             boot.onShow();
         }
         paintAll();
+        asking = false; // back from another app: a question that was out then may be dead (the link changed meanwhile); ask afresh
         refreshStatus();
     }
 
@@ -356,23 +361,38 @@ final class ControlTab extends Tab {
 
     /** One status read: when the tab is shown, and after each press. Never while hidden, never two at once. */
     private void refreshStatus() {
-        if (!shown || asking) {
+        if (!shown || askBusy()) {
             return;
         }
         asking = true;
+        askedAt = SystemClock.elapsedRealtime();
+        final int my = ++askSeq;
         askStatus(false, s -> {
+            if (my != askSeq) {
+                return; // a newer question was asked meanwhile: this answer is old
+            }
             asking = false;
             noted(s);
         });
     }
 
+    /** A question is out and not long overdue. */
+    private boolean askBusy() {
+        return asking && SystemClock.elapsedRealtime() - askedAt < ASK_STUCK_MS;
+    }
+
     /** The user pressed "Ask again": this question may switch the tablet's Bluetooth on. */
     private void askAgain() {
-        if (!shown || asking) {
+        if (!shown || askBusy()) {
             return;
         }
         asking = true;
+        askedAt = SystemClock.elapsedRealtime();
+        final int my = ++askSeq;
         askStatus(true, s -> {
+            if (my != askSeq) {
+                return;
+            }
             asking = false;
             noted(s);
         });

@@ -116,6 +116,12 @@ public class MainActivity extends Activity {
         afterShow();
         updateWatches();
         holdWatch(); // hears the phone ring while the app is in front (only for a tablet that uses calls)
+        if (callWatch != null) {
+            callWatch.refresh(); // back from another app (a call, the lock screen): what was heard before may be old, look now
+            if (callBanner != null) {
+                callBanner.refresh(); // the strip was left as it was; it follows the watch again at once
+            }
+        }
         FloatingPhone.sync(this); // the floating phone follows its setting and Android's permission (tablet only)
         FloatingPhone.setAppInFront(true); // and keeps out of the way of these screens, which show the call themselves
         FastVpn.resumeIfWanted(this); // Fast Wi-Fi was on, and nothing runs (the app was stopped): it comes back (tablet only)

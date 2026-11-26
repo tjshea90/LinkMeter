@@ -46,6 +46,69 @@ final class CallBackend implements CallApi.Backend {
         }
     }
 
+
+    /** The calls the tablet is told about, after the tracker was compared with what Android says right now (see {@link #syncWithAndroid}). */
+    private List<Calls.Call> calls() {
+        syncWithAndroid();
+        List<Calls.Call> now = tracker.calls();
+        armWatchdog(!now.isEmpty());
+        return now;
+    }
+
+    private static String androidName(int callState) {
+        switch (callState) {
+            case TelephonyManager.CALL_STATE_RINGING:
+                return CallTracker.RINGING;
+            case TelephonyManager.CALL_STATE_OFFHOOK:
+                return CallTracker.OFFHOOK;
+            case TelephonyManager.CALL_STATE_IDLE:
+                return CallTracker.IDLE;
+            default:
+                return "";
+        }
+    }
+
+    /**
+     * Asks Android whether a call is on, and puts the tracker right when a broadcast was lost (a hang-up that was not heard would keep the call
+     * on the tablet for ever and refuse every new call with "A call is already on"). Needs the phone-state permission; without it the broadcasts
+     * are all there is. Fires the change listener when the picture changed, so a waiting tablet hears it.
+     */
+    @SuppressWarnings("deprecation")
+    private boolean syncWithAndroid() {
+        try {
+            TelephonyManager tm = ctx.getSystemService(TelephonyManager.class);
+            if (tm == null || !CallAccess.has(ctx, CallAccess.STATE)) {
+                return false;
+            }
+            String s = androidName(tm.getCallState());
+            if (!s.isEmpty() && tracker.reconcile(s, System.currentTimeMillis())) {
+                fire();
+                return true;
+            }
+        } catch (RuntimeException ignored) {
+            // Android would not say: what the broadcasts told stays
+        }
+        return false;
+    }
+
+    /** While a call is on or ringing, Android is asked every few seconds whether it still is (a lost hang-up broadcast ends here). Nothing runs otherwise. */
+    private static final long WATCHDOG_MS = 3_000;
+    private final android.os.Handler watchdogHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean watchdogArmed;
+    private final Runnable watchdog = () -> {
+        synchronized (this) {
+            watchdogArmed = false;
+        }
+        calls(); // compares, tells the tablet, and arms the next look while a call is still on
+    };
+
+    private synchronized void armWatchdog(boolean callOn) {
+        if (callOn && !watchdogArmed) {
+            watchdogArmed = true;
+            watchdogHandler.postDelayed(watchdog, WATCHDOG_MS);
+        }
+    }
+
     private final BroadcastReceiver phoneState = new BroadcastReceiver() {
         @Override
         public void onReceive(Context c, Intent i) {
@@ -54,6 +117,7 @@ final class CallBackend implements CallApi.Backend {
             if (state != null && tracker.onState(state, number, System.currentTimeMillis())) {
                 fire();
             }
+            armWatchdog(!tracker.calls().isEmpty()); // a call began: look at Android's own answer every few seconds until it ends
         }
     };
 
@@ -153,7 +217,7 @@ final class CallBackend implements CallApi.Backend {
         start();
         Calls.Now n = new Calls.Now();
         boolean names = CallAccess.has(ctx, android.Manifest.permission.READ_CONTACTS);
-        for (Calls.Call c : tracker.calls()) {
+        for (Calls.Call c : calls()) {
             c.name = names && !c.number.isEmpty() ? sms.nameFor(c.number) : "";
             n.calls.add(c);
         }
@@ -221,7 +285,7 @@ final class CallBackend implements CallApi.Backend {
         if (!CallAccess.has(ctx, CallAccess.CALL)) {
             return Calls.Result.fail("The phone has not allowed LinkMeter to place calls yet. " + CallAccess.note(ctx));
         }
-        if (!tracker.calls().isEmpty()) {
+        if (!calls().isEmpty()) {
             return Calls.Result.fail("A call is already on or ringing. End it first.");
         }
         try {
@@ -253,7 +317,7 @@ final class CallBackend implements CallApi.Backend {
             return Calls.Result.fail("The phone has not allowed LinkMeter to answer calls yet. " + CallAccess.note(ctx));
         }
         boolean ringing = false;
-        for (Calls.Call c : tracker.calls()) {
+        for (Calls.Call c : calls()) {
             ringing |= Calls.RINGING.equals(c.state);
         }
         if (!ringing) {
@@ -273,7 +337,7 @@ final class CallBackend implements CallApi.Backend {
         if (!CallAccess.has(ctx, CallAccess.ANSWER)) {
             return Calls.Result.fail("The phone has not allowed LinkMeter to end calls yet. " + CallAccess.note(ctx));
         }
-        if (tracker.calls().isEmpty()) {
+        if (calls().isEmpty()) {
             return Calls.Result.fail("No call is on.");
         }
         TelecomManager tc = ctx.getSystemService(TelecomManager.class);
@@ -338,7 +402,7 @@ final class CallBackend implements CallApi.Backend {
         if (am == null) {
             return Calls.Result.fail("This phone has no audio service.");
         }
-        if (tracker.calls().isEmpty()) {
+        if (calls().isEmpty()) {
             return Calls.Result.fail("No call is on.");
         }
         boolean hs = !headset.connectedName().isEmpty();
@@ -369,7 +433,7 @@ final class CallBackend implements CallApi.Backend {
             return Calls.Result.fail("This phone has no audio service.");
         }
         boolean hs = !headset.connectedName().isEmpty();
-        boolean callOn = !tracker.calls().isEmpty();
+        boolean callOn = !calls().isEmpty();
         boolean callOnHeadset = VolumeRules.callOnHeadset(callOn, hs, callOn ? routeNow(am, hs) : Calls.ROUTE_UNKNOWN);
         VolumeRules.Plan plan = VolumeRules.plan(stream, by, volumes.read(am, callOnHeadset), hs);
         if (!plan.ok) {

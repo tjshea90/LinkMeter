@@ -92,6 +92,21 @@ final class CallWatch {
         act = a;
     }
 
+
+    /** When the loop was last started (the tablet's elapsed clock): {@link #refresh} does not start another one at once. */
+    private volatile long launchedAt;
+    private static final long REFRESH_GAP_MS = 1_500;
+
+    /** Starts a new loop and ends the old one (its request, if one is open, is dropped unheard). Call with the lock of this watch held. */
+    private void launch() {
+        running = true;
+        launchedAt = SystemClock.elapsedRealtime();
+        final int my = ++gen;
+        Thread t = new Thread(() -> loop(my), "linkmeter-callwatch");
+        t.setDaemon(true);
+        t.start();
+    }
+
     /**
      * Back to the state of a watch nobody has used (what the app's screens expect at a new start): forgets the picture and the problem and asks
      * again from nothing. Those who want to hear (the count of {@link #start}) are NOT forgotten: the floating phone keeps listening while the
@@ -110,11 +125,7 @@ final class CallWatch {
             lock.notifyAll();
         }
         if (holds > 0 && Cfg.callsWatch(act)) {
-            running = true;
-            final int my = ++gen;
-            Thread t = new Thread(() -> loop(my), "linkmeter-callwatch");
-            t.setDaemon(true);
-            t.start();
+            launch();
         }
     }
 
@@ -176,11 +187,7 @@ final class CallWatch {
         if (!Cfg.callsWatch(act)) {
             return;
         }
-        running = true;
-        final int my = ++gen;
-        Thread t = new Thread(() -> loop(my), "linkmeter-callwatch");
-        t.setDaemon(true);
-        t.start();
+        launch();
     }
 
     /** Calls may have started to work since somebody asked to hear: starts the listening that {@link #start} could not start then. */
@@ -188,11 +195,7 @@ final class CallWatch {
         if (running || holds <= 0 || !Cfg.callsWatch(act)) {
             return;
         }
-        running = true;
-        final int my = ++gen;
-        Thread t = new Thread(() -> loop(my), "linkmeter-callwatch");
-        t.setDaemon(true);
-        t.start();
+        launch();
     }
 
     /** One of those who wanted to hear has gone; the last one stops the listening (the request that is held ends by itself within half a minute). */
@@ -205,8 +208,30 @@ final class CallWatch {
         }
         running = false;
         gen++;
+        stamp = ""; // nobody hears from now on: whoever comes next starts from a full look, never from "tell me when it changes"
         synchronized (lock) {
             lock.notifyAll();
+        }
+    }
+
+    /**
+     * The app came back to the front, the screen came on, or the user opened a screen after a pause: look at the phone NOW. A request that is
+     * still open is not trusted (a connection that died while the tablet slept holds a loop for half a minute, and the call that ended meanwhile
+     * would stay on the screen); it is dropped, and a new look is made that does not wait for news. Once per 1.5 seconds at most, and only when
+     * somebody wants to hear.
+     */
+    synchronized void refresh() {
+        if (holds <= 0 || !Cfg.callsWatch(act)) {
+            return;
+        }
+        if (running && SystemClock.elapsedRealtime() - launchedAt < REFRESH_GAP_MS) {
+            return; // a look began a moment ago
+        }
+        parked = false;
+        stamp = "";
+        launch();
+        synchronized (lock) {
+            lock.notifyAll(); // a loop that rests between failed tries ends now (it sees the new generation)
         }
     }
 
@@ -214,11 +239,7 @@ final class CallWatch {
     synchronized void wake() {
         parked = false;
         if (!running) {
-            running = true;
-            final int my = ++gen;
-            Thread t = new Thread(() -> loop(my), "linkmeter-callwatch");
-            t.setDaemon(true);
-            t.start();
+            launch();
         }
         synchronized (lock) {
             lock.notifyAll();
@@ -264,11 +285,17 @@ final class CallWatch {
                 failures = 0;
                 deliver(n);
             } catch (RemoteCalls.Off e) {
+                if (my != gen) {
+                    return;
+                }
                 parked = true;
                 stamp = "";
                 now = new Calls.Now();
                 tell(OFF, e.getMessage());
             } catch (RemoteCalls.TooOld e) {
+                if (my != gen) {
+                    return;
+                }
                 parked = true;
                 stamp = "";
                 tell(OLD, e.getMessage());

@@ -282,6 +282,7 @@ final class CallsTab extends Tab {
         loadState(my);
         paintChip();
         paintNotice();
+        onWatch(); // the picture may have changed while this tab was away (a call ended): draw what the watch knows now
     }
 
     @Override

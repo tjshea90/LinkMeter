@@ -271,3 +271,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-21T20:08:35Z LinkMeter: Wi-Fi button chain, instant press feedback, one-screen New message, saver kept on + read back; offline tests, release build and previews green (not run on a device)
 - 2026-11-21T21:52:17Z LinkMeter: closing save for the release the user asked for: Wi-Fi button chain, instant press feedback, one-screen New message, saver kept on + read back (not run on a device)
 - 2026-11-21T21:58:36Z HANDOFF: LinkMeter released as v0.2.204 (run 204 green)
+- 2026-11-26T19:45:09Z T2: stale call state fixed (phone reconciles with Android's call state + watchdog, tablet refresh drops dead request on resume, Phone tab ask guard); offline tests + release build green; not run on a device
