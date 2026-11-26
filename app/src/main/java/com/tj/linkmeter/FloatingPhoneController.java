@@ -186,6 +186,10 @@ final class FloatingPhoneController implements MiniPhoneView.Host {
         }
         ui.removeCallbacksAndMessages(null);
         hideText();
+        if (texts != null) {
+            texts.close();
+            texts = null;
+        }
         hide();
         if (watch != null) {
             watch.removeListener(watchListener);

@@ -348,6 +348,13 @@ final class MiniTexts {
         watchGen++;
     }
 
+    /** The floating phone itself is gone: the helper threads end too. */
+    void close() {
+        stop();
+        net.shutdown();
+        outbox.shutdown();
+    }
+
     private void watch(int my) {
         String since = "";
         boolean v2 = false;
