@@ -134,8 +134,7 @@ The user wrote (verbatim): "for the phone floating widget, add a text button whi
   A touch outside, Back and the Done key give the focus up and put the flag and the place back. NOT KNOWN UNTIL THE TABLET TRIES: whether Android 10 Go lets an ACCESSIBILITY overlay take the keyboard this way (the
   foreground-service way, `TYPE_APPLICATION_OVERLAY`, does). If it does not, the boxes cannot be typed in there and the Texts tab is the way; say so to the user.
 - **Tests**: `tools/test.sh` (`FloatingLogicTest`, 55,461 checks incl. `MiniLists`, `MiniTextRules`, `FloatRules.textVisible`); `tools/preview.sh --tests "com.tj.linkmeter.FloatingExtrasPreviewTest"` (7 scenarios: the tabs, a call from a
-  line, the keyboard flags, the texting card end to end against the pretend phone, a new message, stepping aside for the app, and the two stale-call tests). WRITTEN, COMPILED, NOT RUN: Maven Central rate-limited the sandbox's shared address
-  (`retry-after` about 20 hours) and the one-off way round it (Google's mirror of Central through a Gradle init script) was refused by the sandbox's permission check. Run them first when a session can.
+  line, the keyboard flags, the texting card end to end against the pretend phone, a new message, stepping aside for the app, and the two stale-call tests). GREEN (the first run found one real fault, `MiniTexts.showNew` kept the old recipient: fixed). The pictures `tools/uipreview/out/float-*.png` were looked at.
 
 ## Files
 
