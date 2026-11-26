@@ -240,10 +240,11 @@ public class FloatingExtrasPreviewTest {
         assertEquals("the card is lifted out of the keyboard's way", Ui.dp(ctx(), 8), phoneParams(s).y);
 
         // typing filters the list; a touch outside ends the typing
-        find.setText("an");
+        int everybody = rows(v, "contactsAdapter");
+        find.setText("Bob");
         settle();
         int found = rows(v, "contactsAdapter");
-        assertTrue("typing narrows the contacts: " + found, found >= 1);
+        assertTrue("typing narrows the contacts: " + found + " of " + everybody, found >= 1 && found < everybody);
         long t2 = SystemClock.uptimeMillis();
         v.onTouchEvent(MotionEvent.obtain(t2, t2, MotionEvent.ACTION_OUTSIDE, 0, 0, 0));
         settle();
@@ -294,10 +295,10 @@ public class FloatingExtrasPreviewTest {
         }
         assertEquals("the phone's copy took the bubble's place (one, not two)", 1, copies);
         boolean onPhone = false;
-        for (Sms.Msg m : sms.messages(first.key, 100)) {
+        for (Sms.Msg m : TextsTab.remoteFor(ctx()).thread(first.key, 100).msgs) {
             onPhone |= m.mine && m.body.equals("on my way from the floating card");
         }
-        assertTrue("the phone has the message", onPhone);
+        assertTrue("the phone has the message (read back through the same routes as the Texts tab)", onPhone);
         draw(t, MiniTextView.WIDTH_DP, "texts-sent");
 
         // back to the list; the list's newest line follows
@@ -351,13 +352,16 @@ public class FloatingExtrasPreviewTest {
         FloatingPhoneController s = FloatingPhoneController.active();
         MiniPhoneView v = openCard(s);
         press(v, "Contacts");
+        ((android.widget.EditText) field(v, "find")).setText("Mom"); // the list shows five lines at a time: search for the one wanted
+        settle();
         layout(v, MiniPhoneView.WIDTH_DP);
-        press(v, "Text Taylor Brooks");
+        press(v, "Text Mom");
         MiniTextView t = textViewOf(s);
         assertNotNull("a contact's message button opens the texting card", t);
         MiniTexts texts = textsOf(s);
         assertEquals(MiniTexts.Mode.THREAD, texts.mode);
-        assertEquals("+15551112222", texts.to.get(0));
+        assertEquals("+15551234567", texts.to.get(0));
+        String keyBefore = texts.key;
 
         // LinkMeter's own screens show the texts themselves: the card steps aside and comes back
         FloatingPhone.setAppInFront(true);
@@ -366,33 +370,70 @@ public class FloatingExtrasPreviewTest {
         FloatingPhone.setAppInFront(false);
         settle();
         assertNotNull("and is back when the app goes away", textViewOf(s));
-        assertEquals("with the same conversation", "Taylor Brooks", textsOf(s).name);
+        assertEquals("with the same conversation", keyBefore, textsOf(s).key);
 
         // its call button hands the number to the phone card's keypad (same guard, same headset warning)
         press(textViewOf(s), "Call");
         MiniPhoneView pv = viewOf(s);
         assertNotNull(pv);
         assertTrue(pv.expanded());
-        assertEquals("5551112222".length() + 2, pv.typed().length());
+        assertEquals("+15551234567", pv.typed());
         stopService(sc);
     }
 
     // ------------------------------------------------------------ the call list that stayed old
 
-    /** A link that goes dead after it was told to: every request that waits for news hangs and fails late, the way a dead connection does. */
+    /**
+     * A link that goes dead after it was told to: a request that waits for news (it carries "since=") is no longer answered once {@code dead} is
+     * set, even when it is already open at the phone; it ends late with a timeout, the way a dead connection does. Everything else goes through.
+     */
     private static RemoteStore.Link deadAfter(final RemoteStore.Link inner, final AtomicBoolean dead) {
         return new RemoteStore.Link() {
             @Override
             public Client.Resp call(String method, String target, int readMs) throws IOException {
-                if (dead.get() && target.contains("since=")) {
+                if (!target.contains("since=")) {
+                    return inner.call(method, target, readMs);
+                }
+                final Client.Resp[] answer = new Client.Resp[1];
+                final IOException[] failed = new IOException[1];
+                final boolean[] done = {false};
+                Thread t = new Thread(() -> {
                     try {
-                        Thread.sleep(8000);
+                        answer[0] = inner.call(method, target, readMs);
+                    } catch (IOException e) {
+                        failed[0] = e;
+                    }
+                    synchronized (done) {
+                        done[0] = true;
+                    }
+                }, "dead-link-inner");
+                t.setDaemon(true);
+                t.start();
+                while (true) {
+                    synchronized (done) {
+                        if (done[0] && !dead.get()) {
+                            break;
+                        }
+                    }
+                    if (dead.get()) {
+                        try {
+                            Thread.sleep(8000);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        throw new java.net.SocketTimeoutException("Read timed out");
+                    }
+                    try {
+                        Thread.sleep(10);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
+                        throw new IOException("interrupted");
                     }
-                    throw new java.net.SocketTimeoutException("Read timed out");
                 }
-                return inner.call(method, target, readMs);
+                if (failed[0] != null) {
+                    throw failed[0];
+                }
+                return answer[0];
             }
 
             @Override
@@ -426,7 +467,9 @@ public class FloatingExtrasPreviewTest {
         settle();
         assertNotNull("the open request hears nothing: the ended call is still drawn", w.lead());
 
-        // the app comes back: the old request is dropped and the phone is asked at once
+        // the app comes back (a good while later: a look that began a moment ago is not repeated): the old request is dropped and the
+        // phone is asked at once
+        PreviewTest.later(3000);
         w.refresh();
         dead.set(false);
         settle();

@@ -108,6 +108,13 @@ final class MiniTexts {
 
     void showNew() {
         mode = Mode.NEW;
+        key = ""; // nobody is chosen yet: nothing of the conversation that was open can be sent to by mistake
+        name = "";
+        to.clear();
+        loaded.clear();
+        temps.clear();
+        threadReady = false;
+        threadProblem = "";
         toTyped = "";
         picks = new ArrayList<>();
         loadPeople();
