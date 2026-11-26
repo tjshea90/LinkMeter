@@ -281,3 +281,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-26T20:56:16Z HANDOFF: LinkMeter released as v0.2.206 (run 206 green)
 - 2026-11-26T21:30:15Z tools/prewarm.sh: warms the app build and the two Robolectric versions for the cloud environment's setup script; HANDOFF note
 - 2026-11-26T22:25:52Z HANDOFF: prewarm landed in 7 repos, Keyboard merge waits for the other account (watcher trigger recorded)
+- 2026-11-26T23:06:31Z handoff: Keyboard watcher replaced by a timed send_later check (00:40 UTC)
