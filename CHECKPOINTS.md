@@ -280,3 +280,4 @@ Newest at the bottom. `tools/checkpoint.sh "message"` appends a line here, commi
 - 2026-11-26T20:53:02Z closing save of the round the user asked for (2026-11-26): stale call state fixed, floating phone Recents + Contacts tabs, Text button + small texting card, Fast Wi-Fi audit (ready sockets, known servers answered at once); tools/test.sh, release build, fast_e2e 28, whole screen preview green; not run on a device
 - 2026-11-26T20:56:16Z HANDOFF: LinkMeter released as v0.2.206 (run 206 green)
 - 2026-11-26T21:30:15Z tools/prewarm.sh: warms the app build and the two Robolectric versions for the cloud environment's setup script; HANDOFF note
+- 2026-11-26T22:25:52Z HANDOFF: prewarm landed in 7 repos, Keyboard merge waits for the other account (watcher trigger recorded)
