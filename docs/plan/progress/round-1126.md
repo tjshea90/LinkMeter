@@ -12,3 +12,13 @@ The user's words (verbatim, one message):
 - T3 floating phone Recents + Contacts. T4 floating mini texting card. T1 Fast Wi-Fi audit.
 ## Status
 - [ ] T2  - [ ] T3  - [ ] T4  - [ ] T1
+## Progress (2026-11-26, later)
+- T2 DONE + pushed (defd498): phone reconcile+watchdog, tablet CallWatch.refresh, ControlTab ask guard.
+- T3/T4 CODE WRITTEN, COMPILES (assembleRelease OK), offline tests green (FloatingLogicTest 55461): MiniLists, MiniTextRules, MiniRow, FloatKeyboard,
+  MiniTexts, MiniTextView, MiniPhoneView (tabs Keypad/Recents/Contacts + Text button), FloatingPhoneController (second window for the texting card,
+  keyboard focus only while typing), CallWatch.fetch, TextsTab.remoteFor, Cfg.floatTextX/Y.
+  NOT YET RUN: preview tests tools/uipreview/.../FloatingExtrasPreviewTest.java (Maven Central gave 429; retry loop in scratchpad prevloop.sh).
+  Existing preview Host stubs in FloatingPreviewTest/VolumePreviewTest were updated for the 4 new Host methods.
+- SDK: container had none; installed by hand (see HANDOFF); user was given a setup-script text for their cloud environment.
+- T1 Fast Wi-Fi audit: started reading TunStack/FastRelayCore (single engine thread each; relay conn per app conn; 10,000 MTU). Next: run tools/fast_e2e.sh
+  baseline, find hot spots, pick safe wins, test with FastCodecTest/FastRulesTest/fast_e2e/mutate_fast.
