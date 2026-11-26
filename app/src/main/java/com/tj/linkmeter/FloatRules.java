@@ -52,6 +52,14 @@ final class FloatRules {
         return in.enabled && in.endedAt > 0 && in.now - in.endedAt >= 0 && in.now - in.endedAt < LINGER_MS;
     }
 
+    /**
+     * Does the small texting card show? Only while the user has it open, Android lets this app draw, and LinkMeter's own screens are not in
+     * front (the Texts tab is the whole thing there; the card comes back when the user leaves the app).
+     */
+    static boolean textVisible(boolean canDraw, boolean appInFront, boolean open) {
+        return canDraw && open && !appInFront;
+    }
+
     // ------------------------------------------------------------------ the two big buttons
 
     /** What the green button does. */

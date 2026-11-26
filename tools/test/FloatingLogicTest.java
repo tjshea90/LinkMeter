@@ -42,6 +42,8 @@ public final class FloatingLogicTest {
         tabletCard();
         tabletWords();
         handOver();
+        miniLists();
+        miniTexts();
         System.out.println(checks + " checks, " + fails + " failed");
         if (fails > 0) {
             System.exit(1);
@@ -510,5 +512,183 @@ public final class FloatingLogicTest {
         yes(HandOverRules.working(HandOverRules.Step.DISCONNECT_PHONE, "Sony").contains("from the phone"), "words: from the phone");
         yes(HandOverRules.working(HandOverRules.Step.DISCONNECT_TABLET, "Sony").contains("from this tablet"), "words: from the tablet");
         yes(HandOverRules.SETTLE_MS > 0, "a pause between the two steps");
+    }
+
+    // ------------------------------------------------------------------ Recents and Contacts in the floating phone (MiniLists)
+
+    private static Calls.Entry entry(String number, String name, String type, long time) {
+        Calls.Entry e = new Calls.Entry();
+        e.number = number;
+        e.name = name;
+        e.type = type;
+        e.time = time;
+        return e;
+    }
+
+    private static Sms.Person person(String name, String number) {
+        Sms.Person p = new Sms.Person();
+        p.name = name;
+        p.number = number;
+        return p;
+    }
+
+    private static void miniLists() {
+        TextTime.Env env = new TextTime.Env(java.util.TimeZone.getTimeZone("UTC"), java.util.Locale.US, false);
+        long now = 1_700_000_000_000L;
+        // three calls in a row with the same person are ONE line with a count; a missed call is marked; a hidden number cannot be called
+        List<Calls.Entry> log = new java.util.ArrayList<>();
+        log.add(entry("+15551230001", "Mom", Calls.IN, now - 1000));
+        log.add(entry("+15551230001", "Mom", Calls.IN, now - 2000));
+        log.add(entry("+15551230001", "Mom", Calls.IN, now - 3000));
+        log.add(entry("+15551230002", "", Calls.MISSED, now - 4000));
+        log.add(entry("", "", Calls.IN, now - 5000));
+        List<MiniLists.Recent> r = MiniLists.recents(log, now, env);
+        eq(3, r.size(), "recents: grouped lines");
+        eq("Mom (3)", r.get(0).title(), "recents: a count");
+        yes(!r.get(0).missed, "recents: answered");
+        eq("+1 (555) 123-0002", r.get(1).label, "recents: a number without a name");
+        yes(r.get(1).missed, "recents: missed is marked");
+        eq("Unknown", r.get(2).label, "recents: a hidden number");
+        eq("", r.get(2).number, "recents: nothing to dial");
+        yes(!r.get(1).detail.isEmpty(), "recents: a detail line");
+        // never more than the card keeps
+        List<Calls.Entry> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            many.add(entry("+1555" + String.format("%07d", i), "N" + i, i % 2 == 0 ? Calls.OUT : Calls.IN, now - i * 1000L));
+        }
+        eq(MiniLists.MAX_RECENTS, MiniLists.recents(many, now, env).size(), "recents: capped");
+        eq(0, MiniLists.recents(null, now, env).size(), "recents: no list");
+        eq(0, MiniLists.recents(new java.util.ArrayList<Calls.Entry>(), now, env).size(), "recents: an empty log");
+
+        // contacts: sorted, one letter above each group, one line per person
+        List<Sms.Person> people = new java.util.ArrayList<>();
+        people.add(person("zed", "+15550000003"));
+        people.add(person("Bob", "+15550000002"));
+        people.add(person("alice", "+15550000001"));
+        people.add(person("Bobby", "5550000002")); // the same number as Bob in another spelling
+        people.add(person("Anna", "+15550000004"));
+        List<Object> rows = MiniLists.contacts(people, "");
+        eq(4, MiniLists.people(rows), "contacts: one line per person");
+        eq("A", rows.get(0), "contacts: a letter first");
+        eq("alice", ((CallRules.Match) rows.get(1)).name, "contacts: sorted without regard to case");
+        eq("Anna", ((CallRules.Match) rows.get(2)).name, "contacts: the second A");
+        eq("B", rows.get(3), "contacts: B");
+        eq("Z", rows.get(5), "contacts: Z");
+        List<Object> byName = MiniLists.contacts(people, "an");
+        eq(1, MiniLists.people(byName), "contacts: a name search");
+        List<Object> byDigits = MiniLists.contacts(people, "0004");
+        eq(1, MiniLists.people(byDigits), "contacts: a digit search");
+        yes(!(byDigits.get(0) instanceof String), "contacts: a digit search has no letter rows");
+        eq(0, MiniLists.people(MiniLists.contacts(people, "nobody")), "contacts: nobody found");
+        eq(0, MiniLists.contacts(null, "").size(), "contacts: no list");
+        List<Sms.Person> big = new java.util.ArrayList<>();
+        for (int i = 0; i < 2000; i++) {
+            big.add(person("P" + i, "+1555" + String.format("%07d", i)));
+        }
+        yes(MiniLists.people(MiniLists.contacts(big, "")) <= MiniLists.MAX_CONTACTS, "contacts: capped");
+    }
+
+    // ------------------------------------------------------------------ the small texting card (MiniTextRules)
+
+    private static Sms.Msg msg(String body, boolean mine, long time, int state) {
+        Sms.Msg m = new Sms.Msg();
+        m.body = body;
+        m.mine = mine;
+        m.time = time;
+        m.state = state;
+        return m;
+    }
+
+    private static void miniTexts() {
+        eq("+15551234567", MiniTextRules.recipient("(555) 123-4567"), "recipient: a US number");
+        eq("", MiniTextRules.recipient("Mom"), "recipient: a name is not a number");
+        eq("", MiniTextRules.recipient(""), "recipient: empty");
+        eq("", MiniTextRules.recipient(null), "recipient: null");
+        eq("+447911123456", MiniTextRules.recipient("+44 7911 123456"), "recipient: a foreign number");
+
+        List<Sms.Person> people = new java.util.ArrayList<>();
+        people.add(person("Mom", "+15551230001"));
+        people.add(person("Momo", "(555) 123-0001")); // the same number again
+        people.add(person("Dad", "+15551230002"));
+        people.add(person("Home phone", "ext 5")); // cannot be texted
+        List<MiniTextRules.Pick> s = MiniTextRules.suggestions(people, "mo", 5);
+        eq(1, s.size(), "suggest: a name, one line per person");
+        eq("Mom", s.get(0).name, "suggest: the first name wins");
+        eq("+15551230001", s.get(0).number, "suggest: the number is ready to send");
+        s = MiniTextRules.suggestions(people, "555 123 0002", 5);
+        eq(1, s.size(), "suggest: a typed number that is a contact is ONE line");
+        eq("Dad", s.get(0).name, "suggest: and it shows the contact's name");
+        s = MiniTextRules.suggestions(people, "5559998888", 5);
+        eq("+15559998888", s.get(0).number, "suggest: the typed number first");
+        eq("", s.get(0).name, "suggest: a typed number that nobody has has no name");
+        eq(0, MiniTextRules.suggestions(people, "", 5).size(), "suggest: nothing typed, nothing offered");
+        eq(0, MiniTextRules.suggestions(people, "x", 0).size(), "suggest: a limit of zero");
+        eq(0, MiniTextRules.suggestions(people, "zzz", 5).size(), "suggest: nobody");
+        eq(0, MiniTextRules.suggestions(people, "ext", 5).size(), "suggest: a contact without a usable number is not offered");
+        eq(1, MiniTextRules.suggestions(null, "5551230002", 5).size(), "suggest: no contacts, the typed number");
+
+        yes(MiniTextRules.canSend("hi", java.util.Arrays.asList("+15551230001")), "send: words and a person");
+        yes(!MiniTextRules.canSend("   ", java.util.Arrays.asList("+15551230001")), "send: blank words");
+        yes(!MiniTextRules.canSend("hi", new java.util.ArrayList<String>()), "send: nobody");
+        yes(!MiniTextRules.canSend(null, null), "send: nothing");
+
+        // my bubbles that are on their way give way to the phone's copy, ONE copy for ONE bubble
+        long t = 1_700_000_000_000L;
+        List<Sms.Msg> loaded = new java.util.ArrayList<>();
+        loaded.add(msg("hello", false, t - 10_000, Sms.STATE_NONE));
+        loaded.add(msg("ok", true, t, Sms.STATE_SENT));
+        List<Sms.Msg> temps = new java.util.ArrayList<>();
+        temps.add(msg("ok", true, t + 500, Sms.STATE_SENDING));
+        temps.add(msg("ok", true, t + 900, Sms.STATE_SENDING));
+        temps.add(msg("later", true, t + 1000, Sms.STATE_SENDING));
+        List<Sms.Msg> m = MiniTextRules.merge(loaded, temps);
+        eq(4, m.size(), "merge: one copy replaces one bubble, the other equal text stays");
+        eq("later", m.get(3).body, "merge: the newest is last");
+        List<Sms.Msg> failed = new java.util.ArrayList<>();
+        failed.add(msg("ok", true, t + 500, Sms.STATE_FAILED));
+        eq(3, MiniTextRules.merge(loaded, failed).size(), "merge: a failed bubble is never taken for a copy");
+        eq(0, MiniTextRules.merge(null, null).size(), "merge: nothing");
+        List<Sms.Msg> longList = new java.util.ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            longList.add(msg("m" + i, i % 2 == 0, t + i, Sms.STATE_NONE));
+        }
+        List<Sms.Msg> kept = MiniTextRules.merge(longList, null);
+        eq(MiniTextRules.SHOW, kept.size(), "merge: only the newest are kept");
+        eq("m99", kept.get(kept.size() - 1).body, "merge: and the very newest is among them");
+
+        Sms.Thread th = new Sms.Thread();
+        th.addresses.add("+15551230001");
+        eq("(555) 123-0001", MiniTextRules.title(th), "title: a number");
+        th.name = "Mom";
+        eq("Mom", MiniTextRules.title(th), "title: a name");
+        th.name = "+15551230001";
+        eq("(555) 123-0001", MiniTextRules.title(th), "title: a name that is a number is shown as one");
+        eq("No messages", MiniTextRules.preview(th), "preview: none");
+        th.attachment = true;
+        eq("Picture or file", MiniTextRules.preview(th), "preview: a picture");
+        th.snippet = "see you\nsoon";
+        eq("see you soon", MiniTextRules.preview(th), "preview: one line");
+
+        eq("Sending…", MiniTextRules.sendLine(msg("a", true, t, Sms.STATE_SENDING)), "line: sending");
+        eq("Not sent: no signal", MiniTextRules.sendLine(failedWith("no signal")), "line: failed with a reason");
+        eq("Not sent", MiniTextRules.sendLine(failedWith("")), "line: failed without a reason");
+        eq("", MiniTextRules.sendLine(msg("a", true, t, Sms.STATE_SENT)), "line: sent says nothing");
+        eq("", MiniTextRules.sendLine(msg("a", false, t, Sms.STATE_SENDING)), "line: not mine");
+        eq("", MiniTextRules.sendLine(null), "line: nothing");
+        eq("Mom", MiniTextRules.threadTitle("Mom", null), "card title: a name");
+        eq("(555) 123-0001", MiniTextRules.threadTitle("", java.util.Arrays.asList("+15551230001")), "card title: one number");
+        eq("2 people", MiniTextRules.threadTitle(null, java.util.Arrays.asList("+1", "+2")), "card title: a group");
+        eq("New message", MiniTextRules.threadTitle(null, null), "card title: nobody yet");
+
+        yes(FloatRules.textVisible(true, false, true), "text card: shown");
+        yes(!FloatRules.textVisible(false, false, true), "text card: never without Android's permission");
+        yes(!FloatRules.textVisible(true, true, true), "text card: not over the app's own screens");
+        yes(!FloatRules.textVisible(true, false, false), "text card: not when closed");
+    }
+
+    private static Sms.Msg failedWith(String why) {
+        Sms.Msg m = msg("a", true, 1L, Sms.STATE_FAILED);
+        m.error = why;
+        return m;
     }
 }
